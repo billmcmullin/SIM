@@ -1,0 +1,10 @@
+backup/
+__pycache__/
+output/
+logs/
+jsonl/
+csv/
+heavyarms_chats.db
+.markdownlint.jsonc
+terms.txt
+widgets_id.json
