@@ -121,6 +121,7 @@ from typing import List, Dict, Any
 # config values; also import config module to allow runtime set_embed_map_file
 import config
 from config import (
+    DEFAULT_INSECURE,
     DEFAULT_BASE,
     DEFAULT_API_KEY,
     DEFAULT_API_HEADER,
@@ -128,7 +129,6 @@ from config import (
     DEFAULT_HUMAN,
     DEFAULT_DB,
     DEFAULT_CA_BUNDLE,
-    DEFAULT_INSECURE,
     DEFAULT_VERBOSE,
     now_iso,
 )
@@ -314,8 +314,8 @@ if __name__ == "__main__":
     # If user provided an embed map file via CLI, try to load it now (so export/search use it)
     if getattr(args, "embed_map", None):
         try:
-            ok = config.set_embed_map_file(args.embed_map)
-            if ok:
+            OK = config.set_embed_map_file(args.embed_map)
+            if OK:
                 logger.info("Loaded embed map from %s", args.embed_map)
             else:
                 logger.warning("Failed to load embed map from %s; using defaults.", args.embed_map)
