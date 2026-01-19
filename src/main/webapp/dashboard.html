@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard</title>
+  <style>
+    body{font-family:Arial;margin:20px;}
+    .top{display:flex;justify-content:space-between;align-items:center}
+    .cards{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}
+    .card{flex:1 1 200px;border:1px solid #ddd;padding:16px;border-radius:6px;cursor:pointer}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #eee}
+    .small{font-size:0.9em;color:#666}
+    #btnAdmin{margin-left:8px;}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <h3>Dashboard</h3>
+      <div class="small" id="userInfo"></div>
+    </div>
+    <div>
+      <button id="btnRefresh">Refresh</button>
+      <button id="btnAdmin" style="display:none">Admin Console</button>
+      <button id="btnLogout">Logout</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <h4>Widgets</h4>
+  <div id="widgetList"></div>
+
+  <script>
+    async function api(path, opts={}) {
+      opts.headers = opts.headers || {};
+      const token = localStorage.getItem('jwt');
+      if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+      opts.headers['Accept'] = 'application/json';
+      return fetch(path, opts).then(async r => {
+        const txt = await r.text();
+        let j=null;
+        try{ j = txt ? JSON.parse(txt) : null; }catch(e){}
+        if (!r.ok) throw {status:r.status, body:j||txt};
+        return j;
+      });
+    }
+
+    function requireAuth() {
+      const tok = localStorage.getItem('jwt');
+      if (!tok) {
+        // Not logged in -> send to login page
+        location.href='index.html';
+        throw new Error('Not authenticated');
+      }
+      const user = localStorage.getItem('username') || 'unknown';
+      document.getElementById('userInfo').textContent = 'Logged in as: ' + user;
+
+      const role = (localStorage.getItem('role') || '').toUpperCase();
+      if (role === 'ADMIN') {
+        const adminBtn = document.getElementById('btnAdmin');
+        adminBtn.style.display = 'inline-block';
+        adminBtn.onclick = () => { window.location.href = 'admin.html'; };
+      }
+    }
+
+    async function loadDashboard() {
+      document.getElementById('cards').innerHTML = 'Loading...';
+      const categories = ['All','Forum','Portal','Website'];
+      const cardHtml = categories.map(c => `<div class="card" data-cat="${c}"><h4>${c}</h4><div class="count">...</div></div>`).join('');
+      document.getElementById('cards').innerHTML = cardHtml;
+
+      try {
+        const widgets = await api('api/widgets');
+        if (!Array.isArray(widgets)) {
+          document.getElementById('widgetList').textContent = 'No widgets found';
+          return;
+        }
+        // show list
+        const wl = widgets.map(w => `<div><strong>${escapeHtml(w.displayName || w.embedUuid)}</strong> - ${escapeHtml(w.category || '')}</div>`).join('');
+        document.getElementById('widgetList').innerHTML = wl;
+
+        // compute counts per category (naive; for many widgets this will be slow)
+        for (const c of categories) {
+          const catWidgets = widgets.filter(w => {
+            if (!w.category) return c==='All';
+            if (c==='All') return true;
+            return (w.category||'').toLowerCase() === c.toLowerCase();
+          });
+          let total = 0;
+          for (const w of catWidgets) {
+            try {
+              const resp = await api(`api/chats?widget=${encodeURIComponent(w.embedUuid)}&page=1&perPage=1`);
+              if (resp && typeof resp.total === 'number') total += resp.total;
+              else if (Array.isArray(resp)) total += resp.length;
+            } catch(e) {
+              // ignore per-widget errors
+            }
+          }
+          const el = document.querySelector(`.card[data-cat="${c}"] .count`);
+          if (el) el.textContent = total;
+        }
+
+        // card click opens drilldown with category filter
+        document.querySelectorAll('.card').forEach(card => {
+          card.onclick = () => {
+            const cat = card.dataset.cat;
+            location.href = 'drilldown.html?category=' + encodeURIComponent(cat);
+          };
+        });
+
+      } catch (err) {
+        console.error('Failed to load dashboard', err);
+        // if DB not configured show friendly message and Admin button (if user admin)
+        const msg = err.body?.error || err.status || 'Failed';
+        document.getElementById('cards').textContent = 'Failed to load widgets: ' + msg;
+        // If unauthorized, redirect to login
+        if (err.status === 401 || err.status === 403) {
+          localStorage.removeItem('jwt');
+          localStorage.removeItem('role');
+          localStorage.removeItem('username');
+          location.href = 'index.html';
+        }
+      }
+    }
+
+    function escapeHtml(s) {
+      return (s || '').toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+    }
+
+    document.getElementById('btnRefresh').onclick = loadDashboard;
+    document.getElementById('btnLogout').onclick = () => {
+      localStorage.removeItem('jwt'); localStorage.removeItem('role'); localStorage.removeItem('username');
+      location.href = 'index.html';
+    };
+
+    // init
+    try {
+      requireAuth();
+      loadDashboard();
+    } catch(e) {
+      // requireAuth will redirect if not authenticated
+    }
+  </script>
+</body>
+</html>

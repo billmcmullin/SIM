@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_0.xsd"
+             version="3.0">
+
+  <!-- PROGRAMMATIC persistence unit used with application-managed EMF -->
+  <persistence-unit name="ChatsPU-Local" transaction-type="RESOURCE_LOCAL">
+    <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+    <class>com.sim.chatserver.model.UserAccount</class>
+    <class>com.sim.chatserver.model.WidgetMapping</class>
+    <class>com.sim.chatserver.model.Chat</class>
+    <class>com.sim.chatserver.model.Term</class>
+    <class>com.sim.chatserver.model.MatchEntity</class>
+    <class>com.sim.chatserver.model.JobEntity</class>
+    <properties>
+      <property name="jakarta.persistence.schema-generation.database.action" value="none"/>
+      <property name="hibernate.hbm2ddl.auto" value="validate"/>
+      <property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/>
+      <!-- nonJtaDataSource will be provided programmatically when creating the EMF -->
+    </properties>
+  </persistence-unit>
+
+</persistence>

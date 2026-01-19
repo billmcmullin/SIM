@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Drilldown</title>
+  <style>
+    body{font-family:Arial;margin:20px}
+    .controls{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #eee;padding:8px}
+    .toolbar{margin-top:12px}
+  </style>
+</head>
+<body>
+  <h3>Drilldown</h3>
+  <div class="controls">
+    <label>Category<select id="category"><option value="">All</option><option>Forum</option><option>Portal</option><option>Website</option></select></label>
+    <label>Widget<input id="widget" placeholder="widget id (optional)"></label>
+    <label>Search<input id="term" placeholder="term search"></label>
+    <label>Start<input id="start" type="date"></label>
+    <label>End<input id="end" type="date"></label>
+    <button id="btnSearch">Search</button>
+  </div>
+
+  <div class="toolbar">
+    <button id="btnSelectAll">Select All</button>
+    <button id="btnExportCSV">Export CSV</button>
+    <button id="btnExportJSON">Export JSON</button>
+  </div>
+
+  <table id="results">
+    <thead><tr><th></th><th>Date</th><th>Widget</th><th>Prompt</th><th>Text</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    function api(path, opts={}) {
+      opts.headers = opts.headers || {};
+      const token = localStorage.getItem('jwt');
+      if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+      opts.headers['Accept'] = 'application/json';
+      return fetch(path, opts).then(async r => {
+        const txt = await r.text();
+        let j=null; try{ j = txt?JSON.parse(txt):null;}catch(e){}
+        if (!r.ok) throw {status:r.status,body:j||txt};
+        return j;
+      });
+    }
+
+    function getParam(name) {
+      const p = new URLSearchParams(location.search);
+      return p.get(name);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const cat = getParam('category');
+      if (cat) document.getElementById('category').value = cat;
+
+      document.getElementById('btnSearch').onclick = fetchResults;
+      document.getElementById('btnSelectAll').onclick = () => {
+        document.querySelectorAll('#results tbody input[type=checkbox]').forEach(cb => cb.checked = true);
+      };
+      document.getElementById('btnExportCSV').onclick = () => exportSelected('csv');
+      document.getElementById('btnExportJSON').onclick = () => exportSelected('json');
+
+      // auto-search if category param present
+      if (cat) fetchResults();
+    });
+
+    async function fetchResults() {
+      const widget = document.getElementById('widget').value;
+      const term = document.getElementById('term').value;
+      const category = document.getElementById('category').value;
+      const start = document.getElementById('start').value;
+      const end = document.getElementById('end').value;
+
+      // build query
+      const q = new URLSearchParams();
+      if (widget) q.set('widget', widget);
+      if (term) q.set('term', term);
+      q.set('page', '1');
+      q.set('perPage', '200');
+      // backend supports date filtering? if not, filter client-side
+      try {
+        const resp = await api('api/chats?' + q.toString());
+        const items = resp.items || resp || [];
+        // optional client-side date filter
+        const filtered = items.filter(i => {
+          if (!i.createdAt) return true;
+          if (start && new Date(i.createdAt) < new Date(start)) return false;
+          if (end && new Date(i.createdAt) > new Date(end + 'T23:59:59')) return false;
+          return true;
+        });
+        renderResults(filtered);
+      } catch (err) {
+        console.error(err);
+        alert('Search failed: ' + (err.body?.error || err.status));
+      }
+    }
+
+    function renderResults(items) {
+      const tbody = document.querySelector('#results tbody');
+      tbody.innerHTML = '';
+      items.forEach(it => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><input type="checkbox" data-id="${it.id}"></td>
+                        <td>${it.createdAt||''}</td>
+                        <td>${it.embedUuid||''}</td>
+                        <td>${escapeHtml(it.prompt||'')}</td>
+                        <td>${escapeHtml(it.text||'')}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    function exportSelected(format) {
+      const selected = Array.from(document.querySelectorAll('#results tbody input[type=checkbox]:checked'))
+        .map(cb => cb.dataset.id);
+      if (selected.length === 0) { alert('Select one or more rows'); return; }
+      // If backend supports export endpoint, you can POST selected ids to it.
+      // Here we assemble CSV/JSON from already-rendered rows.
+      const rows = Array.from(document.querySelectorAll('#results tbody tr'))
+        .filter(tr => tr.querySelector('input').checked)
+        .map(tr => {
+          const tds = tr.querySelectorAll('td');
+          return {id: tr.querySelector('input').dataset.id, date: tds[1].textContent, widget: tds[2].textContent, prompt: tds[3].textContent, text: tds[4].textContent};
+        });
+      if (format === 'json') {
+        download('export.json', JSON.stringify(rows, null, 2), 'application/json');
+      } else {
+        // CSV
+        const header = ['id','date','widget','prompt','text'];
+        const csv = [header.join(',')].concat(rows.map(r => header.map(h => `"${(r[h]||'').replace(/"/g,'""')}"`).join(','))).join('\n');
+        download('export.csv', csv, 'text/csv');
+      }
+    }
+
+    function download(filename, content, type) {
+      const blob = new Blob([content], {type});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      URL.revokeObjectURL(url); a.remove();
+    }
+  </script>
+</body>
+</html>
