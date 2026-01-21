@@ -26,3 +26,21 @@ Run to perform just search function with options:
 ```
 python main.py --search --per-widget --csv csv/output.csv --details-dir csv --terms-file <TERMS TEXT FILE>
 ```
+
+## Example Files to use
+
+Example terms.txt:
+
+```
+Term1
+Term2
+Term3=(?i)(?<!\w)(?:TERM3|Term3|TeRM3)(?!\w)
+```
+
+Example widgets_id.json:
+
+```
+{
+    "<WIDGET ID>": "<NAME OF WIDGET>"
+}
+```
