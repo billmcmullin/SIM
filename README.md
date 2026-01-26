@@ -1,61 +1,34 @@
-Chat Server (WildFly) - Backend scaffold
-=======================================
+chat-server — SIM Chat Server
+=============================
 
 Overview
---------
-This is a Java (Jakarta EE) WAR scaffold that provides:
-- JAX-RS REST API
-- JPA entities (Hibernate)
-- Flyway migrations for PostgreSQL (pg_trgm and pgvector enabled)
-- JWT-based authentication skeleton
-- Startup migrator that runs Flyway using WildFly datasource
 
-It is a starting point; core sync logic and export generation are left as TODOs to integrate your existing normalization and HTTP client logic.
+- Maven WAR using Java 21
+- Package: com.sim.chatserver
+- Includes Postgres + Hikari + Hibernate connectivity with H2 fallback
+- Entities: UserAccount, Chat, AdminSettings
+- Startup initializer creates default admin user if none exists.
 
-Prerequisites
--------------
-- Java 17 JDK
-- Maven 3.8+
-- WildFly 30+ (or compatible Jakarta EE server)
-- PostgreSQL instance with pgvector and pg_trgm extensions available (Flyway migration will attempt to create them)
+Build
 
-Configure WildFly datasource
-----------------------------
-1. Create a datasource in WildFly with JNDI name:
-   java:jboss/datasources/ChatDS
+- mvn clean package
 
-   Point it to your Postgres database and ensure the user has permissions.
-2. Add the PostgreSQL JDBC driver as a module in WildFly (or place the driver JAR into the server).
+Deploy
 
-Build the WAR
--------------
-From the project root:
+- Deploy target/chat-server.war to WildFly (or other Jakarta EE 10+ server).
 
-```
-mvn clean package
-```
-This produces target/chat-server.war.
+Configuration (env vars)
 
-Deployment
-----------
-- Deploy the WAR to WildFly (management console or copy to deployments/).
-- WildFly will run the application; on startup Flyway will run migrations against the configured datasource.
-- An initial admin user will be created with username "admin" and password "admin" (see BootstrapData). Change this in production.
+- DB_HOST (default: localhost)
+- DB_PORT (default: 5432)
+- DB_NAME (default: chat)
+- DB_USER (default: postgres)
+- DB_PASSWORD (password)
+- DB_URL (optional) - if provided, used as JDBC URL
+- SETTINGS_ENC_KEY (optional) - app-specific key
 
-Environment
------------
-- Provide a JWT secret via environment variable `CHAT_JWT_SECRET` on the WildFly server to change default signing key.
-- Store API keys securely (this scaffold does not include secure storage; implement encryption and config pages).
+The app will attempt to use environment variables to connect to Postgres. If not available it falls back to an embedded H2 database.
 
-Usage
------
-- Authentication:
-  POST /api/auth/login  { "username":"admin", "password":"admin" }
-  Response: { "token": "<jwt>" }
+Logging
 
-- Use the token in Authorization header:
-  Authorization: Bearer <token>
-
-- Trigger sync (admin):
-  POST /api/admin/sync  (body: JSON SyncRequest)
-
+- Log4j2 configuration in src/main/resources/log4j2.xml.

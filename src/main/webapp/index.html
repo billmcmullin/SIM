@@ -2,108 +2,13 @@
 <html>
 
 <head>
-  <meta charset="utf-8">
-  <title>Chat Server - Login</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 700px;
-      margin: 40px auto;
-    }
-
-    .card {
-      border: 1px solid #ddd;
-      padding: 20px;
-      border-radius: 6px;
-    }
-
-    label {
-      display: block;
-      margin: 8px 0;
-    }
-
-    input {
-      padding: 8px;
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    button {
-      padding: 10px 16px;
-      margin-top: 10px;
-    }
-
-    .small {
-      font-size: 0.9em;
-      color: #666;
-      margin-top: 8px;
-    }
-  </style>
+  <meta charset="utf-8" />
+  <title>SIM Chat Server</title>
 </head>
 
 <body>
-  <div class="card">
-    <h2>Login</h2>
-    <label>Username<input id="username" value="admin"></label>
-    <label>Password<input id="password" type="password" value="admin"></label>
-    <button id="btnLogin">Login</button>
-    <div id="msg" class="small"></div>
-    <hr>
-    <div class="small">If you are an admin, you will be redirected to the Admin Console after login.</div>
-  </div>
-
-  <script>
-    function api(path, opts = {}) {
-      opts.headers = opts.headers || {};
-      const token = localStorage.getItem('jwt');
-      if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-      opts.headers['Accept'] = 'application/json';
-      return fetch(path, opts).then(async r => {
-        const text = await r.text();
-        let json = null;
-        try { json = text ? JSON.parse(text) : null; } catch (e) { }
-        if (!r.ok) throw { status: r.status, body: json || text };
-        return json;
-      });
-    }
-
-    document.getElementById('btnLogin').onclick = async () => {
-      const u = document.getElementById('username').value;
-      const p = document.getElementById('password').value;
-      document.getElementById('msg').textContent = 'Logging in...';
-      try {
-        const res = await api('api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: u, password: p })
-        });
-        const tok = res.token || (res && res.access_token);
-        if (!tok) throw { message: 'No token in response' };
-        localStorage.setItem('jwt', tok);
-        // store role/username from response if present
-        if (res.username) localStorage.setItem('username', res.username);
-        if (res.role) localStorage.setItem('role', res.role);
-
-        // try to parse token to get role if not provided
-        if (!res.role) {
-          try {
-            const parts = tok.split('.');
-            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-            if (payload.role) localStorage.setItem('role', payload.role);
-            if (payload.sub) localStorage.setItem('username', payload.sub);
-          } catch (e) { }
-        }
-
-        const role = localStorage.getItem('role') || 'USER';
-        // Admins go to the dashboard first; from the dashboard there is an Admin Console link.
-        window.location.href = 'dashboard.html';
-      } catch (err) {
-        console.error(err);
-        const msg = err?.body?.error || err?.body?.message || (err.message || 'Login failed');
-        document.getElementById('msg').textContent = 'Login error: ' + msg;
-      }
-    };
-  </script>
+  <h1>SIM Chat Server</h1>
+  <p>Access the <a href="login.html">login page</a> to sign in as <strong>admin/admin</strong>.</p>
 </body>
 
 </html>

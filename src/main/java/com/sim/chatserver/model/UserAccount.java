@@ -1,48 +1,107 @@
 package com.sim.chatserver.model;
 
-import jakarta.persistence.*;
-import java.util.UUID;
-import java.time.OffsetDateTime;
+import java.time.Instant;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "user_account")
 public class UserAccount {
-    @Id
-    @Column(columnDefinition = "uuid")
-    private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true, nullable = false)
     private String username;
 
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
+    private String password;
 
-    @Column(nullable = false)
-    private String role;
-
-    private String fullName;
     private String email;
 
-    private OffsetDateTime createdAt;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (id == null) id = UUID.randomUUID();
-        if (createdAt == null) createdAt = OffsetDateTime.now();
+    // getters & setters
+    public Long getId() {
+        return id;
     }
 
-    // getters & setters omitted for brevity (generate them)
-    // ...
-    public java.util.UUID getId() { return id; }
-    public void setId(java.util.UUID id) { this.id = id; }
-    public String getUsername() { return username; }
-    public void setUsername(String u) { this.username = u; }
-    public String getPasswordHash() { return passwordHash; }
-    public void setPasswordHash(String h) { this.passwordHash = h; }
-    public String getRole() { return role; }
-    public void setRole(String r) { this.role = r; }
-    public String getFullName() { return fullName; }
-    public void setFullName(String n) { this.fullName = n; }
-    public String getEmail() { return email; }
-    public void setEmail(String e) { this.email = e; }
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    // inside class UserAccount (add fields)
+    @Column(name = "role")
+    private String role;
+
+    @Column(name = "full_name")
+    private String fullName;
+
+// add these getters/setters and compatibility methods
+    public String getRole() {
+        return role == null ? "user" : role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public String getFullName() {
+        return fullName != null ? fullName : username;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    /**
+     * Compatibility method: code expects getPasswordHash() Return the stored
+     * password field (replace with hashed password field later).
+     */
+    public String getPasswordHash() {
+        return this.password;
+    }
+
+    public void setPasswordHash(String hash) {
+        this.password = hash;
+    }
+
 }

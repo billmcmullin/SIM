@@ -1,6 +1,8 @@
 package com.sim.chatserver.service;
 
-import java.util.List;
+import java.time.Instant;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -11,79 +13,107 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.EntityTransaction;
-import jakarta.persistence.TypedQuery;
+import jakarta.persistence.NoResultException;
+import jakarta.transaction.Transactional;
 
 @ApplicationScoped
 public class UserService {
 
+    private static final Logger log = Logger.getLogger(UserService.class.getName());
+
     @Inject
-    AppDataSourceHolder holder;
+    AppDataSourceHolder dsHolder;
 
-    private EntityManagerFactory emf() {
-        EntityManagerFactory emf = holder.getEmf();
-        if (emf == null) {
-            throw new IllegalStateException("Database not configured. Please configure DB via admin UI.");
-        }
-        return emf;
-    }
-
-    public void ensureAdminExists() {
-        EntityManager em = emf().createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            TypedQuery<UserAccount> q = em.createQuery(
-                    "SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class);
-            q.setParameter("u", "admin");
-            List<UserAccount> res = q.getResultList();
-            if (res.isEmpty()) {
-                UserAccount admin = new UserAccount();
-                admin.setUsername("admin");
-                admin.setPasswordHash(BCrypt.hashpw("admin", BCrypt.gensalt()));
-                admin.setRole("ADMIN");
-                admin.setFullName("Administrator");
-                em.persist(admin);
-            }
-            tx.commit();
-        } catch (RuntimeException e) {
-            if (tx.isActive()) tx.rollback();
-            throw e;
-        } finally {
-            em.close();
-        }
-    }
-
+    /**
+     * Find a user by username or return null.
+     */
     public UserAccount findByUsername(String username) {
-        EntityManager em = emf().createEntityManager();
+        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManager em = emf.createEntityManager();
         try {
-            TypedQuery<UserAccount> q = em.createQuery(
-                    "SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class);
-            q.setParameter("u", username);
-            List<UserAccount> res = q.getResultList();
-            return res.isEmpty() ? null : res.get(0);
+            return em.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
+                    .setParameter("u", username)
+                    .getSingleResult();
+        } catch (NoResultException nre) {
+            return null;
         } finally {
             em.close();
         }
     }
 
+    public boolean userExists(String username) {
+        return findByUsername(username) != null;
+    }
+
+    /**
+     * Authenticate user. Supports bcrypt hashed passwords; falls back to
+     * plaintext compare for legacy entries.
+     */
+    public boolean authenticate(String username, String password) {
+        UserAccount u = findByUsername(username);
+        if (u == null) {
+            return false;
+        }
+        String stored = u.getPassword(); // existing field
+        if (stored == null) {
+            return false;
+        }
+
+        // If stored value looks like a bcrypt hash, verify using BCrypt
+        if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
+            try {
+                return BCrypt.checkpw(password, stored);
+            } catch (Exception e) {
+                log.log(Level.WARNING, "BCrypt check failed", e);
+                return false;
+            }
+        }
+
+        // fallback plaintext comparison (dev only)
+        return stored.equals(password);
+    }
+
+    /**
+     * Create a user with a bcrypt-hashed password and given role.
+     */
+    @Transactional
     public UserAccount createUser(String username, String password, String role) {
-        EntityManager em = emf().createEntityManager();
-        EntityTransaction tx = em.getTransaction();
+        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManager em = emf.createEntityManager();
         try {
-            tx.begin();
+            em.getTransaction().begin();
             UserAccount u = new UserAccount();
             u.setUsername(username);
-            u.setPasswordHash(BCrypt.hashpw(password, BCrypt.gensalt()));
+            // Hash password for storage
+            String hashed = BCrypt.hashpw(password, BCrypt.gensalt(10));
+            u.setPassword(hashed);
             u.setRole(role);
+            u.setCreatedAt(Instant.now());
             em.persist(u);
-            tx.commit();
+            em.getTransaction().commit();
             return u;
-        } catch (RuntimeException e) {
-            if (tx.isActive()) tx.rollback();
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Failed to create user: " + e.getMessage(), e);
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
             throw e;
         } finally {
             em.close();
+        }
+    }
+
+    /**
+     * Ensure an admin user exists (creates admin/admin if none found).
+     */
+    public void ensureAdminExists() {
+        try {
+            if (!userExists("admin")) {
+                log.info("Creating default admin user (username=admin)");
+                createUser("admin", "admin", "admin");
+            }
+        } catch (Exception e) {
+            log.log(Level.WARNING, "ensureAdminExists failed: " + e.getMessage(), e);
         }
     }
 }

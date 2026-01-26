@@ -1,47 +1,60 @@
 package com.sim.chatserver.model;
 
-import jakarta.persistence.*;
-import java.time.OffsetDateTime;
+import java.time.Instant;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "chat")
 public class Chat {
+
     @Id
-    @Column(name="id")
     private String id;
 
-    @Column(name="embed_uuid")
-    private String embedUuid;
+    @Column(name = "created_at")
+    private Instant createdAt;
 
-    @Column(name="created_at")
-    private OffsetDateTime createdAt;
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String metadata;
 
-    @Column(columnDefinition = "text")
-    private String prompt;
-
-    @Column(columnDefinition = "text")
+    @Lob
+    @Column(columnDefinition = "TEXT")
     private String text;
 
-    private String language;
+    public String getId() {
+        return id;
+    }
 
-    @Column(columnDefinition = "jsonb")
-    private String metadata; // store JSON as text; convert with Jackson if needed
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    // vector and indexed_tsv handled by DB/triggers
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 
-    // getters/setters...
-    public String getId() { return id; }
-    public void setId(String s) { id = s; }
-    public String getEmbedUuid() { return embedUuid; }
-    public void setEmbedUuid(String s) { embedUuid = s; }
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(OffsetDateTime t) { createdAt = t; }
-    public String getPrompt() { return prompt; }
-    public void setPrompt(String p) { prompt = p; }
-    public String getText() { return text; }
-    public void setText(String t) { text = t; }
-    public String getLanguage() { return language; }
-    public void setLanguage(String l) { language = l; }
-    public String getMetadata() { return metadata; }
-    public void setMetadata(String m) { metadata = m; }
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(String metadata) {
+        this.metadata = metadata;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
 }
