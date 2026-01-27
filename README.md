@@ -9,6 +9,15 @@ This is python CLI that will make request to chat widgets and perform the follow
 
 ## How to use
 
+## Setup environment
+
+```python
+python -m venv venv
+. venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
 Run the following to perform function all functions:
 
 ```
@@ -55,19 +64,25 @@ Installation
 
 Usage
 * Environment variables:
+```
   BASE_URL (required)        - base URL of the workspace (e.g. https://workspace.example.com)
   UPLOAD_ENDPOINT (optional) - endpoint path (default: /ingest)
   API_KEY (optional)         - API key for Authorization header
+```
+
 * Command line:
-  python -m sim.upload_embedded --source ./embedded --base-url https://example.com --endpoint /api/v1/ingest --concurrency 4 --wrap
+
+```cmd
+python -m sim.upload_embedded --source ./embedded --base-url https://example.com --endpoint /api/v1/ingest --concurrency 4 --wrap
+ ```
 
 Notes
 * The uploader sends JSON (application/json). By default each file is wrapped with metadata:
   { "filename": "...", "checksum": "...", "document": <file content>, "metadata": {...} }
-  Use --wrap to include metadata, or omit --wrap (not recommended) to send the file content verbatim.
+  * Use --wrap to include metadata, or omit --wrap (not recommended) to send the file content verbatim.
 * Do not commit API keys into source control. Use CI secrets for production.
 
-## Auto-update workspace embeddings after upload
+## Auto-update workspace after upload
 
 The uploader can optionally call AnythingLLM's workspace embeddings update endpoint (/v1/workspace/{slug}/update-embeddings) to add the newly uploaded documents to a workspace:
 

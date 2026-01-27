@@ -148,49 +148,6 @@ renderPage();
 </html>
 """
 
-PARTIAL_METRICS_TEMPLATE = """
-<section class="section" id="overview">
-  <h2>Keyword Metrics</h2>
-  <div class="filters">
-    <input type="text" id="searchInput" placeholder="Search chats by text, prompt, session, or source..." />
-    <button onclick="resetSearch()">Clear</button>
-  </div>
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <strong>{chat_count}</strong>
-      Chats processed
-    </div>
-    <div class="metric-card">
-      <strong>{term_total}</strong>
-      Keyword mentions
-    </div>
-  </div>
-  <h3>Topics</h3>
-  <div class="metrics-grid">
-    {first_topic_section}
-  </div>
-  <h3>Term breakdown</h3>
-  <div class="metrics-grid">
-    {term_cards}
-  </div>
-</section>
-"""
-
-PARTIAL_CHATS_TEMPLATE = """
-<section class="section" id="chats">
-  <h2>Chats</h2>
-  <div class="pagination-controls">
-    <button id="prevPage">Previous</button>
-    <span id="pageInfo">0 / 0</span>
-    <button id="nextPage">Next</button>
-  </div>
-  <div id="noResults">No chats match your search criteria.</div>
-  <div id="chatContainer">
-    {chat_cards}
-  </div>
-</section>
-"""
-
 CHAT_CARD_TEMPLATE = """
 <div class="chat-card" data-search="{searchable}">
   <h3>{prompt}</h3>
@@ -449,19 +406,7 @@ def main():
     report_dir.mkdir(parents=True, exist_ok=True)
     output_file = report_dir / "index.html"
     output_file.write_text(html, encoding="utf-8")
+    print(f"Report written to {output_file.resolve()}")
 
-    metrics_html = PARTIAL_METRICS_TEMPLATE.format(
-        chat_count=len(records),
-        term_total=sum(term_counts.values()),
-        term_cards=term_cards,
-        first_topic_section=first_topic_entries,
-    )
-    (report_dir / "metrics.html").write_text(metrics_html, encoding="utf-8")
-
-    chats_html = PARTIAL_CHATS_TEMPLATE.format(chat_cards="\n".join(chat_cards))
-    (report_dir / "chats.html").write_text(chats_html, encoding="utf-8")
-
-    print(f"Report written to {output_file.resolve()} (additional metrics.html and chats.html generated)")
-    
 if __name__ == "__main__":
     main()
