@@ -50,34 +50,52 @@ Example widgets_id.json:
 This repository includes a small uploader script at sim/upload_embedded.py which posts JSON embedding files to a workspace ingest endpoint.
 
 Installation
-- Ensure Python dependencies are installed:
+* Ensure Python dependencies are installed:
   pip install -r requirements.txt
 
 Usage
-- Environment variables:
+* Environment variables:
   BASE_URL (required)        - base URL of the workspace (e.g. https://workspace.example.com)
   UPLOAD_ENDPOINT (optional) - endpoint path (default: /ingest)
   API_KEY (optional)         - API key for Authorization header
-- Command line:
+* Command line:
   python -m sim.upload_embedded --source ./embedded --base-url https://example.com --endpoint /api/v1/ingest --concurrency 4 --wrap
 
 Notes
-- The uploader sends JSON (application/json). By default each file is wrapped with metadata:
+* The uploader sends JSON (application/json). By default each file is wrapped with metadata:
   { "filename": "...", "checksum": "...", "document": <file content>, "metadata": {...} }
   Use --wrap to include metadata, or omit --wrap (not recommended) to send the file content verbatim.
-- Do not commit API keys into source control. Use CI secrets for production.
+* Do not commit API keys into source control. Use CI secrets for production.
 
 ## Auto-update workspace embeddings after upload
 
 The uploader can optionally call AnythingLLM's workspace embeddings update endpoint (/v1/workspace/{slug}/update-embeddings) to add the newly uploaded documents to a workspace:
 
 Example usage (upload and auto-update):
-BASE_URL="https://anythingllm.example" API_KEY="your_api_key" \
-python -m sim.upload_embedded --source ./embedded --folder custom-documents --workspaces "my-workspace" --auto-update
 
-- --workspaces / WORKSPACES: comma-separated workspace slug(s) to attach the uploaded documents to.
-- --auto-update: when set, the uploader will call /v1/workspace/{slug}/update-embeddings with the list of uploaded document locations returned by the upload endpoint.
+BASE_URL="https://anythingllm.example" API_KEY="your_api_key" \
+
+python .upload_embedded.py --source ./embedded --folder custom-documents --workspaces "my-workspace" --auto-update
+
+* --workspaces / WORKSPACES: comma-separated workspace slug(s) to attach the uploaded documents to.
+* --auto-update: when set, the uploader will call /v1/workspace/{slug}/update-embeddings with the list of uploaded document locations returned by the upload endpoint.
 
 Notes
-- The uploader uses the document API responses' `location` (preferred) or `name` values as the items to send in the "adds" array for update-embeddings.
-- Ensure API_KEY has permission to upload and update workspaces.
+
+* The uploader uses the document API responses' `location` (preferred) or `name` values as the items to send in the "adds" array for update-embeddings.
+* Ensure API_KEY has permission to upload and update workspaces.
+
+Example:
+
+```cmd
+python split_files.py --input "<LOG_FILE>" --outdir "<OUTPUT_DIRECTORY>" --max-chars 3000000
+python upload_embedded.py --source "<LOGS_LOCATION>" --base-url "<BASE_URL>" --api-key "<API KEY>" --folder "<DESTINATION_FOLDER>" --workspaces "<WORKSPACE>" --auto-update --insecure
+```
+
+# Create HTML
+
+To create HTML pages for human readable use:
+
+```cmd
+python chat_report.py <Directory to JSON/CSV> --terms <TERMS TEXT> --report <REPORT DIRECTORY>
+```
