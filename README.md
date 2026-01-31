@@ -24,11 +24,6 @@ Configuration (env vars)
 - DB_NAME (default: chat)
 - DB_USER (default: postgres)
 - DB_PASSWORD (password)
-- DB_URL (optional) - if provided, used as JDBC URL
-- SETTINGS_ENC_KEY (optional) - app-specific key
 
 The app will attempt to use environment variables to connect to Postgres. If not available it falls back to an embedded H2 database.
 
-Logging
-
-- Log4j2 configuration in src/main/resources/log4j2.xml.

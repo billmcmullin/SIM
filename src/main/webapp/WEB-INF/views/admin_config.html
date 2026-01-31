@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Admin Configuration</title>
+    <style>
+        body {
+            font-family: "Segoe UI", sans-serif;
+            margin: 24px;
+            background: #f7fafc;
+            color: #111;
+        }
+
+        h1,
+        h2 {
+            color: #0f172a;
+        }
+
+        .section {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, .08);
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #334155;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #cbd5f5;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 10px 22px;
+            border-radius: 8px;
+            border: none;
+            background: #4338ca;
+            color: #fff;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+
+        button:hover:enabled {
+            background: #312e81;
+        }
+
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        .small-note {
+            font-size: 0.9rem;
+            color: #475569;
+            margin-top: 6px;
+        }
+
+        .actions {
+            margin-top: 12px;
+        }
+
+        a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .widget-section .widget-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 12px;
+        }
+
+        .widget-section .widget-controls input {
+            width: 100%;
+        }
+
+        .widget-section .widget-controls button {
+            margin: 0;
+        }
+
+        .widget-section .widget-message {
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .widget-section .widget-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .widget-section .widget-table th,
+        .widget-section .widget-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        .widget-section .widget-table th {
+            background: #f8fafc;
+            font-size: 0.85rem;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .widget-section .widget-table td.actions {
+            min-width: 150px;
+        }
+
+        .widget-section .ghost-btn {
+            background: #e5e7eb;
+            color: #111;
+            border-radius: 6px;
+            padding: 6px 12px;
+            margin-right: 6px;
+        }
+
+        .widget-section .ghost-btn:hover:enabled {
+            background: #cbd5f5;
+        }
+
+        .widget-section .empty-row {
+            text-align: center;
+            color: #475569;
+        }
+
+        .widget-section .search-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .widget-section .search-row input {
+            flex: 1;
+        }
+
+        .widget-section .search-row button {
+            flex: 0 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <section class="section">
+        <h1>Admin Configuration</h1>
+        <p>Hello, ${user}. Configure the chat server connection below.</p>
+        <p><a href="${contextPath}/dashboard">&larr; Back to Dashboard</a></p>
+    </section>
+
+    <section class="section">
+        <h2>Server Configuration</h2>
+        <form id="serverConfigForm">
+            <div class="form-group">
+                <label for="serverHost">Server Host</label>
+                <input type="text" id="serverHost" name="serverHost" placeholder="https://chat-server.example.com"
+                    value="${serverHost}" required>
+            </div>
+            <div class="form-group">
+                <label for="serverPort">Server Port</label>
+                <input type="number" id="serverPort" name="serverPort" placeholder="9090" value="${serverPort}"
+                    required>
+            </div>
+            <div class="form-group">
+                <label for="apiKey">API Key</label>
+                <input type="password" id="apiKey" name="apiKey" placeholder="Enter API key to set or replace">
+                <div class="small-note">
+                    <span id="apiKeyStoredNote" style="display:none;">An API key is already stored. Leave blank to keep
+                        it.</span>
+                </div>
+            </div>
+            <div class="actions">
+                <button type="button" id="testConnectionBtn" onclick="testConnection()">Test Connection</button>
+                <button type="button" id="saveConfigBtn" onclick="saveConfiguration()" disabled>Save
+                    Configuration</button>
+            </div>
+            <div id="testResult" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+        </form>
+    </section>
+
+    <section class="section widget-section">
+        <h2>Widget Registry</h2>
+        <div class="search-row">
+            <input type="text" id="widgetSearch" placeholder="Search widget ID or name">
+            <button type="button" onclick="reloadWidgetList()">Search</button>
+            <button type="button" onclick="clearWidgetSearch()">Clear</button>
+        </div>
+        <div class="widget-controls">
+            <div>
+                <label for="widgetIdInput">Widget ID</label>
+                <input type="text" id="widgetIdInput" placeholder="Enter widget identifier">
+            </div>
+            <div>
+                <label for="widgetNameInput">Widget Name</label>
+                <input type="text" id="widgetNameInput" placeholder="Friendly name">
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type="button" onclick="saveWidgetEntry()" style="width:100%;">Save Widget</button>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type="button" onclick="clearWidgetForm()" style="width:100%;">Clear Form</button>
+            </div>
+        </div>
+        <div id="widgetMessage" class="widget-message" style="color:#047857;"></div>
+        <div style="overflow-x:auto;">
+            <table class="widget-table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="widgetSelectAll"></th>
+                        <th>Widget ID</th>
+                        <th>Name</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="widgetTableBody">
+                    <tr>
+                        <td colspan="4" class="empty-row">Loading widget entries…</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="actions">
+            <button type="button" onclick="deleteSelectedWidgets()">Delete Selected</button>
+        </div>
+    </section>
+
+    <script>
+        const contextPath = '${contextPath}';
+        let lastTestSuccess = false;
+        const initialWidgetList = '${widgetListJson}';
+        const apiKeyStored = '${apiKeyStored}';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (apiKeyStored === true || apiKeyStored === 'true') {
+                const note = document.getElementById('apiKeyStoredNote');
+                if (note) {
+                    note.style.display = 'block';
+                }
+            }
+
+            if (widgetState.widgets.length) {
+                renderWidgetTable();
+            }
+            updateSaveButton();
+            reloadWidgetList();
+        });
+
+        function getApiKey() {
+            return document.getElementById('apiKey')?.value.trim() || '';
+        }
+
+        function testConnection() {
+            const host = document.getElementById('serverHost').value.trim();
+            const port = document.getElementById('serverPort').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const resultEl = document.getElementById('testResult');
+
+            if (!host || !port) {
+                resultEl.textContent = 'Please provide host and port.';
+                resultEl.style.color = '#b91c1c';
+                lastTestSuccess = false;
+                updateSaveButton();
+                return;
+            }
+
+            const data = new URLSearchParams();
+            data.append('serverHost', host);
+            data.append('serverPort', port);
+            if (apiKey) {
+                data.append('apiKey', apiKey);
+            }
+
+            fetch(`${contextPath}/admin/test-connection`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: data.toString()
+            })
+                .then(response => response.json().then(payload => ({ status: response.status, payload })))
+                .then(({ status, payload }) => {
+                    if (payload.status === 'ok') {
+                        resultEl.textContent = 'Connection successful.';
+                        resultEl.style.color = '#047857';
+                        lastTestSuccess = true;
+                    } else {
+                        resultEl.textContent = payload.message || `Connection failed (${status}).`;
+                        resultEl.style.color = '#b91c1c';
+                        lastTestSuccess = false;
+                    }
+                    updateSaveButton();
+                })
+                .catch(error => {
+                    resultEl.textContent = `Connection error: ${error.message}`;
+                    resultEl.style.color = '#b91c1c';
+                    lastTestSuccess = false;
+                    updateSaveButton();
+                });
+        }
+
+        function updateSaveButton() {
+            const saveBtn = document.getElementById('saveConfigBtn');
+            if (saveBtn) {
+                saveBtn.disabled = !lastTestSuccess;
+            }
+        }
+
+        function saveConfiguration() {
+            const host = document.getElementById('serverHost').value.trim();
+            const port = document.getElementById('serverPort').value.trim();
+            const apiKey = getApiKey();
+            const resultEl = document.getElementById('testResult');
+
+            if (!lastTestSuccess) {
+                resultEl.textContent = 'Please test the connection successfully before saving.';
+                resultEl.style.color = '#b91c1c';
+                return;
+            }
+
+            const data = new URLSearchParams();
+            data.append('serverHost', host);
+            data.append('serverPort', port);
+            data.append('apiKey', apiKey);
+
+            fetch(`${contextPath}/admin/save-config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: data.toString()
+            })
+                .then(response => response.json())
+                .then(payload => {
+                    if (payload.status === 'ok') {
+                        resultEl.textContent = 'Configuration saved successfully.';
+                        resultEl.style.color = '#047857';
+                    } else {
+                        resultEl.textContent = payload.message || 'Unable to save configuration.';
+                        resultEl.style.color = '#b91c1c';
+                    }
+                })
+                .catch(error => {
+                    resultEl.textContent = `Save error: ${error.message}`;
+                    resultEl.style.color = '#b91c1c';
+                });
+        }
+
+        const widgetState = {
+            editingId: null,
+            widgets: Array.isArray(initialWidgetList) ? initialWidgetList : []
+        };
+
+        const widgetMessageEl = document.getElementById('widgetMessage');
+        const widgetSearchInput = document.getElementById('widgetSearch');
+        const widgetSelectAll = document.getElementById('widgetSelectAll');
+
+        function showWidgetMessage(text, isError = false) {
+            widgetMessageEl.textContent = text;
+            widgetMessageEl.style.color = isError ? '#b91c1c' : '#047857';
+        }
+
+        function escapeHtml(value) {
+            if (!value) {
+                return '';
+            }
+            return value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderWidgetTable() {
+            const tbody = document.getElementById('widgetTableBody');
+            if (!tbody) {
+                return;
+            }
+
+            if (!widgetState.widgets.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No widget entries available.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = widgetState.widgets
+                .map(entry => {
+                    return `<tr>
+            <td><input type="checkbox" class="widget-select" value="${entry.id}"></td>
+            <td>${escapeHtml(entry.widgetId)}</td>
+            <td>${escapeHtml(entry.displayName)}</td>
+            <td class="actions">
+              <button type="button" class="ghost-btn" onclick="editWidgetEntry(${entry.id})">Edit</button>
+              <button type="button" class="ghost-btn" onclick="deleteWidgetEntry(${entry.id})">Delete</button>
+            </td>
+          </tr>`;
+                })
+                .join('');
+
+            if (widgetSelectAll) {
+                widgetSelectAll.checked = false;
+            }
+        }
+
+        function reloadWidgetList() {
+            const filter = widgetSearchInput.value.trim();
+            const endpoint = `${contextPath}/admin/widgets${filter ? '?filter=' + encodeURIComponent(filter) : ''}`;
+
+            fetch(endpoint, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(payload => {
+                    if (payload.status !== 'ok') {
+                        showWidgetMessage(payload.message || 'Unable to load widgets.', true);
+                        return;
+                    }
+                    widgetState.widgets = payload.widgets || [];
+                    renderWidgetTable();
+                    showWidgetMessage(`Loaded ${widgetState.widgets.length} widget(s).`);
+                })
+                .catch(error => {
+                    showWidgetMessage(`Could not load widgets: ${error.message}`, true);
+                });
+        }
+
+        function clearWidgetSearch() {
+            widgetSearchInput.value = '';
+            reloadWidgetList();
+        }
+
+        function populateWidgetForm(entry) {
+            widgetState.editingId = entry ? entry.id : null;
+            document.getElementById('widgetIdInput').value = entry ? entry.widgetId : '';
+            document.getElementById('widgetNameInput').value = entry ? entry.displayName : '';
+            showWidgetMessage(entry ? `Editing widget ${entry.widgetId}.` : 'Ready to add a new widget.');
+        }
+
+        function clearWidgetForm() {
+            populateWidgetForm(null);
+        }
+
+        function saveWidgetEntry() {
+            const widgetIdInput = document.getElementById('widgetIdInput');
+            const widgetNameInput = document.getElementById('widgetNameInput');
+            const widgetIdValue = widgetIdInput.value.trim();
+            const widgetNameValue = widgetNameInput.value.trim();
+
+            if (!widgetIdValue || !widgetNameValue) {
+                showWidgetMessage('Widget ID and name are required.', true);
+                return;
+            }
+
+            const data = new URLSearchParams();
+            data.append('widgetId', widgetIdValue);
+            data.append('displayName', widgetNameValue);
+            if (widgetState.editingId) {
+                data.append('id', widgetState.editingId);
+            }
+
+            fetch(`${contextPath}/admin/widgets`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
+                },
+                body: data.toString()
+            })
+                .then(response => response.json().then(payload => ({ status: response.status, payload })))
+                .then(({ status, payload }) => {
+                    if (payload.status === 'ok') {
+                        showWidgetMessage(widgetState.editingId ? 'Widget updated.' : 'Widget added.');
+                        widgetState.editingId = null;
+                        reloadWidgetList();
+                        clearWidgetForm();
+                    } else {
+                        showWidgetMessage(payload.message || `Unable to save widget (status ${status}).`, true);
+                    }
+                })
+                .catch(error => {
+                    showWidgetMessage(`Save failed: ${error.message}`, true);
+                });
+        }
+
+        function editWidgetEntry(id) {
+            const entry = widgetState.widgets.find(item => item.id === id);
+            if (!entry) {
+                showWidgetMessage('Widget entry not found.', true);
+                return;
+            }
+            populateWidgetForm(entry);
+        }
+
+        function deleteWidgetEntry(id) {
+            if (!confirm('Delete this widget entry?')) {
+                return;
+            }
+
+            fetch(`${contextPath}/admin/widgets?ids=${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+                .then(response => response.json().then(payload => ({ status: response.status, payload })))
+                .then(({ payload }) => {
+                    if (payload.status === 'ok') {
+                        showWidgetMessage('Widget deleted.');
+                        reloadWidgetList();
+                    } else {
+                        showWidgetMessage(payload.message || 'Unable to delete widget.', true);
+                    }
+                })
+                .catch(error => {
+                    showWidgetMessage(`Delete failed: ${error.message}`, true);
+                });
+        }
+
+        function deleteSelectedWidgets() {
+            const checkboxes = Array.from(document.querySelectorAll('.widget-select:checked'));
+            if (!checkboxes.length) {
+                showWidgetMessage('Please select widgets to delete.', true);
+                return;
+            }
+
+            if (!confirm(`Delete ${checkboxes.length} widget(s)?`)) {
+                return;
+            }
+
+            const ids = checkboxes.map(cb => cb.value);
+
+            fetch(`${contextPath}/admin/widgets?ids=${ids.join(',')}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+                .then(response => response.json().then(payload => ({ status: response.status, payload })))
+                .then(({ payload }) => {
+                    if (payload.status === 'ok') {
+                        showWidgetMessage(`${payload.deleted || ids.length} widget(s) deleted.`);
+                        reloadWidgetList();
+                    } else {
+                        showWidgetMessage(payload.message || 'Unable to delete selected widgets.', true);
+                    }
+                })
+                .catch(error => {
+                    showWidgetMessage(`Bulk delete failed: ${error.message}`, true);
+                });
+        }
+
+        if (widgetSelectAll) {
+            widgetSelectAll.addEventListener('change', event => {
+                const checked = event.target.checked;
+                document.querySelectorAll('.widget-select').forEach(cb => (cb.checked = checked));
+            });
+        }
+
+        widgetSearchInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                reloadWidgetList();
+            }
+        });
+    </script>
+</body>
+
+</html>

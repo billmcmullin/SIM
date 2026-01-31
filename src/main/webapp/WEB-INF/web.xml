@@ -3,9 +3,37 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     version="6.0"
     xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd">
+
     <display-name>chat-server</display-name>
 
     <welcome-file-list>
         <welcome-file>login</welcome-file>
     </welcome-file-list>
+
+    <servlet>
+        <servlet-name>AdminConfigServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.AdminConfigServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AdminConfigServlet</servlet-name>
+        <url-pattern>/admin</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>WidgetApiServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.WidgetApiServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>WidgetApiServlet</servlet-name>
+        <url-pattern>/admin/widgets</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>SaveConfigServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.SaveConfigServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>SaveConfigServlet</servlet-name>
+        <url-pattern>/admin/save-config</url-pattern>
+    </servlet-mapping>
 </web-app>

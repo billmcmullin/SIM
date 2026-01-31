@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: "Segoe UI", sans-serif;
+            margin: 24px;
+            background: #f7fafc;
+            color: #111;
+        }
+
+        h1 {
+            color: #0f172a;
+        }
+
+        .section {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, .08);
+            margin-bottom: 20px;
+        }
+
+        a {
+            color: #2563eb;
+            display: inline-block;
+            margin-top: 12px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+    <section class="section">
+        <h1>Welcome, ${user}</h1>
+        <p>You are logged in and the dashboard is ready.</p>
+        <p><a href="${contextPath}/admin">Go to Admin Configuration</a></p>
+        <p><a href="${contextPath}/logout">Logout</a></p>
+    </section>
+</body>
+
+</html>
