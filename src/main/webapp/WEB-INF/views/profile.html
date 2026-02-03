@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Profile</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+<div class="top-bar" data-role="${role}">
+    <div class="top-bar-inner">
+        <div class="brand">Chat Server</div>
+        <div>
+            <span>Signed in as <strong>${user}</strong></span>
+            <a href="${contextPath}/dashboard">Dashboard</a>
+            <a href="${contextPath}/logout">Logout</a>
+        </div>
+    </div>
+</div>
+
+    <div class="container">
+        <section class="section">
+            <h1>Profile</h1>
+            <p>Update your username or password below.</p>
+            <form id="profileForm">
+                <div class="form-group">
+                    <label for="usernameInput">Username</label>
+                    <input type="text" id="usernameInput" name="username" value="${user}" required>
+                </div>
+                <div class="form-group">
+                    <label for="passwordInput">New Password <span style="font-weight:400; font-size:.85rem;">(leave
+                            blank to keep)</span></label>
+                    <input type="password" id="passwordInput" name="password" placeholder="Enter a new password">
+                </div>
+                <button type="submit">Save Changes</button>
+                <div id="profileResult"></div>
+                <div class="profile-footer">
+                    Changes apply immediately. Your new username will appear across the UI.
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script>
+        (function () {
+            const role = '${role}'.toUpperCase();
+            if (role !== 'ADMIN') {
+                document.querySelectorAll('[data-admin-link]').forEach(el => el.style.display = 'none');
+            }
+        })();
+    </script>
+
+    <script>
+        const contextPath = '${contextPath}';
+        const profileForm = document.getElementById('profileForm');
+        const resultEl = document.getElementById('profileResult');
+        profileForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const data = new URLSearchParams(new FormData(profileForm));
+            resultEl.textContent = 'Saving…';
+            resultEl.style.color = '#0f172a';
+            fetch(`${contextPath}/profile`, {
+                method: 'POST',
+                body: data.toString(),
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            })
+                .then(async (response) => {
+                    const payload = await response.json();
+                    if (payload.status === 'ok') {
+                        resultEl.textContent = 'Profile updated successfully.';
+                        resultEl.style.color = '#047857';
+                    } else {
+                        throw new Error(payload.message || 'Update failed.');
+                    }
+                })
+                .catch((error) => {
+                    resultEl.textContent = `Error: ${error.message}`;
+                    resultEl.style.color = '#b91c1c';
+                });
+        });
+    </script>
+</body>
+
+</html>

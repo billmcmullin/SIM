@@ -1,4 +1,3 @@
-// src/main/java/com/sim/chatserver/web/AdminConfigServlet.java
 package com.sim.chatserver.web;
 
 import java.io.BufferedReader;
@@ -9,6 +8,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.config.ConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -26,6 +26,7 @@ import jakarta.servlet.http.HttpSession;
 public class AdminConfigServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
+    private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getName());
 
     @Override
     public void init() throws ServletException {
@@ -41,7 +42,19 @@ public class AdminConfigServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
+            log.info("Redirecting to login because no valid session/user is present.");
             resp.sendRedirect(req.getContextPath() + "/login");
+            return;
+        }
+
+        String username = String.valueOf(session.getAttribute("user"));
+        Object roleAttr = session.getAttribute("role");
+        String role = roleAttr == null ? "UNKNOWN" : roleAttr.toString();
+        log.info(() -> String.format("User '%s' with role '%s' requested /admin", username, role));
+
+        if (!"ADMIN".equalsIgnoreCase(role)) {
+            log.warning(() -> String.format("User '%s' with role '%s' denied access to /admin; redirecting to dashboard.", username, role));
+            resp.sendRedirect(req.getContextPath() + "/dashboard");
             return;
         }
 
@@ -65,7 +78,7 @@ public class AdminConfigServlet extends HttpServlet {
         String apiKeyForJs = escapeJs(apiKeyStored ? config.getApiKey() : "");
 
         String rendered = template
-                .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+                .replace("${user}", escapeHtml(username))
                 .replace("${contextPath}", req.getContextPath())
                 .replace("${serverHost}", escapeAttribute(config != null ? config.getServerHost() : ""))
                 .replace("${serverPort}", config != null ? String.valueOf(config.getServerPort()) : "")

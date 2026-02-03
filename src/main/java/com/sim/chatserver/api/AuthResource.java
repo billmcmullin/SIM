@@ -1,11 +1,14 @@
 package com.sim.chatserver.api;
 
 import java.util.Map;
+import java.util.logging.Logger;
 
+import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 
 import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -16,6 +19,8 @@ import jakarta.ws.rs.core.Response;
 
 @Path("/auth")
 public class AuthResource {
+
+    private static final Logger log = Logger.getLogger(AuthResource.class.getName());
 
     @Inject
     UserService userService;
@@ -37,14 +42,22 @@ public class AuthResource {
                     .build();
         }
 
-        boolean authenticated = userService.authenticate(username, password);
-        if (!authenticated) {
+        final String name = username.trim();
+        UserAccount user = userService.findByUsername(username);
+        if (user == null || !userService.authenticate(username, password)) {
+            log.warning(() -> "Authentication failed for username: " + name);
             return Response.status(Response.Status.UNAUTHORIZED)
                     .entity(Map.of("authenticated", false))
                     .build();
         }
 
-        servletRequest.getSession(true).setAttribute("user", username);
-        return Response.ok(Map.of("authenticated", true, "username", username)).build();
+        HttpSession session = servletRequest.getSession(true);
+        final String resolvedUsername = user.getUsername();
+        final String role = user.getRole().toUpperCase();
+        session.setAttribute("user", resolvedUsername);
+        session.setAttribute("role", role);
+        log.info(() -> String.format("User '%s' logged in with role '%s'", resolvedUsername, role));
+
+        return Response.ok(Map.of("authenticated", true, "username", resolvedUsername)).build();
     }
 }

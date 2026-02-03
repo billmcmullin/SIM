@@ -26,4 +26,3 @@ Configuration (env vars)
 - DB_PASSWORD (password)
 
 The app will attempt to use environment variables to connect to Postgres. If not available it falls back to an embedded H2 database.
-

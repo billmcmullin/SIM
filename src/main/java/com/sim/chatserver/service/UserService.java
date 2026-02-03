@@ -104,6 +104,38 @@ public class UserService {
     }
 
     /**
+     * Update username/password for the caller.
+     */
+    @Transactional
+    public UserAccount updateCredentials(String currentUsername, String newUsername, String newPassword) {
+        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManager em = emf.createEntityManager();
+        try {
+            em.getTransaction().begin();
+            UserAccount user = em.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
+                    .setParameter("u", currentUsername)
+                    .getSingleResult();
+
+            String trimmedUsername = newUsername.trim();
+            user.setUsername(trimmedUsername);
+            if (newPassword != null && !newPassword.isBlank()) {
+                String hashed = BCrypt.hashpw(newPassword, BCrypt.gensalt(10));
+                user.setPassword(hashed);
+            }
+            em.getTransaction().commit();
+            return user;
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Failed to update credentials: " + e.getMessage(), e);
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            em.close();
+        }
+    }
+
+    /**
      * Ensure an admin user exists (creates admin/admin if none found).
      */
     public void ensureAdminExists() {

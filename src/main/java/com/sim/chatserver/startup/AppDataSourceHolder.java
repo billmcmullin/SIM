@@ -119,6 +119,16 @@ public class AppDataSourceHolder {
     }
 
     /**
+     * Return the underlying JDBC DataSource (Hikari).
+     */
+    public synchronized DataSource getDataSource() {
+        if (this.ds == null) {
+            throw new IllegalStateException("DataSource not initialized. Configure DB or check logs.");
+        }
+        return this.ds;
+    }
+
+    /**
      * Set the EntityManagerFactory (used when switching DBs at runtime).
      */
     public synchronized void setEmf(EntityManagerFactory emf) {
