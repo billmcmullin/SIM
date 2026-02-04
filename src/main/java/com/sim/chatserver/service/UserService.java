@@ -1,6 +1,7 @@
 package com.sim.chatserver.service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -14,6 +15,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
+import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 
 @ApplicationScoped
@@ -83,7 +85,7 @@ public class UserService {
         try {
             em.getTransaction().begin();
             UserAccount u = new UserAccount();
-            u.setUsername(username);
+            u.setUsername(username.trim());
             // Hash password for storage
             String hashed = BCrypt.hashpw(password, BCrypt.gensalt(10));
             u.setPassword(hashed);
@@ -130,6 +132,53 @@ public class UserService {
                 em.getTransaction().rollback();
             }
             throw e;
+        } finally {
+            em.close();
+        }
+    }
+
+    /**
+     * List all users.
+     */
+    public List<UserAccount> listAllUsers() {
+        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManager em = emf.createEntityManager();
+        try {
+            TypedQuery<UserAccount> query = em.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
+            return query.getResultList();
+        } finally {
+            em.close();
+        }
+    }
+
+    /**
+     * Delete a user by id.
+     */
+    @Transactional
+    public boolean deleteUser(String userId) {
+        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManager em = emf.createEntityManager();
+        try {
+            em.getTransaction().begin();
+            UserAccount user = em.find(UserAccount.class, Long.valueOf(userId));
+            if (user == null) {
+                em.getTransaction().rollback();
+                return false;
+            }
+            em.remove(user);
+            em.getTransaction().commit();
+            return true;
+        } catch (NumberFormatException nfe) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            return false;
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Failed to delete user: " + e.getMessage(), e);
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            return false;
         } finally {
             em.close();
         }

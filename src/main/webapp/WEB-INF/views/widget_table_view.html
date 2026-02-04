@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Widget Chats</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar" data-role="${role}">
+            <div class="top-bar-inner">
+                <div class="brand">Chat Server</div>
+                <div>
+                    <span>Signed in as <strong>${user}</strong></span>
+                    <a href="${contextPath}/profile"> Profile </a>
+                    <a href="${contextPath}/dashboard"> Dashboard </a>
+                    <a href="${contextPath}/logout"> Logout</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="section">
+            <a class="back-link" href="${contextPath}/dashboard">
+                &larr; Back to dashboard
+            </a>
+            <h1>Widget Chat Entries</h1>
+            <p><strong>${widgetName}</strong> (<em>${widgetId}</em>)</p>
+            <p class="helper-note">Select multiple rows, keep selections across pages, and review them in detail.</p>
+        </section>
+
+        <section class="widget-view-wrapper">
+            <div class="widget-view-controls">
+                <div class="form-group">
+                    <label for="globalSearchInput">Global search</label>
+                    <input type="search" id="globalSearchInput" placeholder="Search across prompts/responses">
+                </div>
+                <div class="form-group">
+                    <label for="filterPrompt">Prompt contains</label>
+                    <input type="search" id="filterPrompt" placeholder="Filter by prompt">
+                </div>
+                <div class="form-group">
+                    <label for="filterResponse">Response contains</label>
+                    <input type="search" id="filterResponse" placeholder="Filter by response">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button id="reviewSelectedBtn" disabled>Review Selected (0)</button>
+                    <div class="helper-note" id="selectedInfo"></div>
+                </div>
+            </div>
+
+            <div class="widget-view-table">
+                <table id="widgetTableView">
+                    <thead>
+                        <tr>
+                            <th class="select-column">
+                                <input type="checkbox" id="selectAllPage">
+                            </th>
+                            <th data-column="widget_chat_id">Chat ID</th>
+                            <th data-column="prompt">Prompt</th>
+                            <th data-column="response_text">Response</th>
+                            <th data-column="created_at">Created At</th>
+                            <th data-column="session_id">Session ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetTableBody">
+                        <tr>
+                            <td colspan="6" class="empty-row">Loading chat entries…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-wrapper">
+                <div class="pagination-controls">
+                    <button id="prevPageBtn">Previous</button>
+                    <button id="nextPageBtn">Next</button>
+                    <div class="page-info" id="pageInfo"></div>
+                </div>
+                <div class="form-group">
+                    <label for="limitSelectBottom">Rows per page</label>
+                    <select id="limitSelectBottom">
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        window.widgetTableViewConfig = {
+            contextPath: '${contextPath}',
+            widgetId: '${widgetId}',
+            widgetName: '${widgetName}'
+        };
+    </script>
+    <script src="${contextPath}/assets/js/widget_table_view.js"></script>
+</body>
+
+</html>

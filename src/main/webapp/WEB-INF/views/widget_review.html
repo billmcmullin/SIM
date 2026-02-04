@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Review Selected Chats</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar" data-role="${role}">
+            <div class="top-bar-inner">
+                <div class="brand">Chat Server</div>
+                <div>
+                    <span>Signed in as <strong>${user}</strong></span>
+                    <a href="${contextPath}/profile"> Profile </a>
+                    <a href="${contextPath}/logout"> Logout</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="section">
+            <a class="back-link" href="${contextPath}/admin/widgets/view?widgetId=${widgetId}">
+                &larr; Back to widget entries
+            </a>
+            <h1>Review Selected Chats</h1>
+            <p class="helper-note">Showing all columns except the response. Use the search or sort controls to explore
+                the selection.</p>
+        </section>
+
+        <section class="widget-review-wrapper">
+            <div class="search-summary" id="searchTermsDisplay">
+                <span>No search terms were applied.</span>
+            </div>
+
+            <div class="widget-view-controls">
+                <div class="form-group">
+                    <label for="reviewSearchInput">Search prompt, response, or session ID</label>
+                    <input type="search" id="reviewSearchInput" placeholder="Enter search text">
+                </div>
+            </div>
+
+            <div class="widget-review-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-column="widget_chat_id">Chat ID</th>
+                            <th data-column="prompt">Prompt (summary)</th>
+                            <th data-column="created_at">Created At</th>
+                            <th data-column="session_id">Session ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetReviewBody">
+                        <tr>
+                            <td colspan="4" class="empty-row">Loading selected chats…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-wrapper">
+                <div class="pagination-controls">
+                    <button id="prevPageBtn">Previous</button>
+                    <button id="nextPageBtn">Next</button>
+                    <div class="page-info" id="pageInfo"></div>
+                </div>
+            </div>
+
+            <div class="detail-card" id="detailCard" style="display:none;">
+                <div class="summary-label">Selected Chat Details</div>
+                <div>
+                    <strong>Prompt</strong>
+                    <pre id="detailPrompt"></pre>
+                </div>
+                <div style="margin-top:12px;">
+                    <strong>Response</strong>
+                    <pre id="detailResponse"></pre>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        window.widgetReviewConfig = {
+            contextPath: '${contextPath}',
+            selectionId: '${selectionId}'
+        };
+    </script>
+    <script src="${contextPath}/assets/js/widget_review.js"></script>
+</body>
+
+</html>

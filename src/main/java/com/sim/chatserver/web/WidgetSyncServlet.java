@@ -16,10 +16,17 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -38,6 +45,7 @@ import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
 import jakarta.json.JsonStructure;
 import jakarta.json.JsonValue;
+import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -45,44 +53,159 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-@WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync"})
+@WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync", "/admin/widgets/sync/timer"})
 public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getName());
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+    private static final long DEFAULT_INTERVAL_SECONDS = 300L;
 
     @Inject
     AppDataSourceHolder dsHolder;
 
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "widget-sync-timer");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private ScheduledFuture<?> scheduledFuture;
+    private volatile long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
+    private volatile Timestamp lastSynced;
+
+    @Override
+    public void init(ServletConfig config) throws ServletException {
+        super.init(config);
+        try {
+            loadSyncSettings();
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to load sync settings", e);
+        }
+        scheduleSyncTask();
+    }
+
+    @Override
+    public void destroy() {
+        if (scheduledFuture != null) {
+            scheduledFuture.cancel(false);
+        }
+        scheduler.shutdownNow();
+        super.destroy();
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (isTimerRequest(req)) {
+            handleTimerStatus(resp);
+        } else {
+            resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+        }
+    }
+
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (isTimerRequest(req)) {
+            handleTimerUpdate(req, resp);
+            return;
+        }
+
         if (!authorizeAdmin(req, resp)) {
             return;
         }
 
-        ServerConfig config;
+        List<WidgetSyncStatus> statuses;
         try {
-            config = ConfigStore.load();
+            statuses = runSync(req.getParameter("widgetId"));
         } catch (Exception e) {
-            log.log(Level.SEVERE, "Unable to load server config", e);
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load server configuration.");
+            log.log(Level.WARNING, "Widget sync failed", e);
+            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    "Widget sync failed: " + e.getMessage());
             return;
         }
+
+        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
+        statuses.forEach(status -> arrayBuilder.add(status.toJson()));
+        JsonObject responsePayload = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("widgetStatus", arrayBuilder)
+                .build();
+
+        resp.setContentType("application/json");
+        resp.getWriter().write(responsePayload.toString());
+    }
+
+    private boolean isTimerRequest(HttpServletRequest req) {
+        String uri = req.getRequestURI();
+        return uri != null && uri.endsWith("/timer");
+    }
+
+    private void handleTimerStatus(HttpServletResponse resp) throws IOException {
+        JsonObject payload = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("intervalSeconds", syncIntervalSeconds)
+                .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
+                .build();
+        resp.setContentType("application/json");
+        resp.getWriter().write(payload.toString());
+    }
+
+    private void handleTimerUpdate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (!authorizeAdmin(req, resp)) {
+            return;
+        }
+        String intervalParam = req.getParameter("intervalSeconds");
+        long intervalSeconds;
+        try {
+            intervalSeconds = Long.parseLong(intervalParam);
+            if (intervalSeconds < 30) {
+                intervalSeconds = 30;
+            }
+        } catch (NumberFormatException e) {
+            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid interval specified.");
+            return;
+        }
+
+        updateInterval(intervalSeconds);
+        persistSyncSettings();
+
+        JsonObject payload = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("intervalSeconds", syncIntervalSeconds)
+                .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
+                .build();
+        resp.setContentType("application/json");
+        resp.getWriter().write(payload.toString());
+    }
+
+    private synchronized void updateInterval(long newIntervalSeconds) {
+        this.syncIntervalSeconds = newIntervalSeconds;
+        scheduleSyncTask();
+    }
+
+    private synchronized void scheduleSyncTask() {
+        if (scheduledFuture != null) {
+            scheduledFuture.cancel(false);
+        }
+        scheduledFuture = scheduler.scheduleWithFixedDelay(this::runScheduledSync,
+                syncIntervalSeconds, syncIntervalSeconds, TimeUnit.SECONDS);
+    }
+
+    private void runScheduledSync() {
+        try {
+            List<WidgetSyncStatus> statuses = runSync(null);
+            updateLastSynced();
+            log.info("Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Automatic widget sync failed", e);
+        }
+    }
+
+    private List<WidgetSyncStatus> runSync(String requestedWidgetId) throws Exception {
+        ServerConfig config = ConfigStore.load();
         if (config == null) {
-            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Server configuration is missing.");
-            return;
+            throw new IOException("Server configuration is missing.");
         }
 
-        List<WidgetEntry> widgets;
-        try {
-            widgets = WidgetStore.list(null);
-        } catch (Exception e) {
-            log.log(Level.SEVERE, "Unable to load widget registry", e);
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load widget registry.");
-            return;
-        }
-
-        String requestedWidgetId = req.getParameter("widgetId");
+        List<WidgetEntry> widgets = WidgetStore.list(null);
         if (requestedWidgetId != null && !requestedWidgetId.isBlank()) {
             widgets.removeIf(entry -> entry == null || !requestedWidgetId.equals(entry.getWidgetId()));
         }
@@ -112,21 +235,72 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
                 statuses.add(new WidgetSyncStatus(widgetId, tableName, tableExists, synced, message));
             }
-        } catch (SQLException e) {
-            log.log(Level.SEVERE, "Database error while syncing widgets", e);
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to access the database.");
-            return;
         }
 
-        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-        statuses.forEach(status -> arrayBuilder.add(status.toJson()));
-        JsonObject responsePayload = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("widgetStatus", arrayBuilder)
-                .build();
+        return statuses;
+    }
 
-        resp.setContentType("application/json");
-        resp.getWriter().write(responsePayload.toString());
+    private void updateLastSynced() {
+        lastSynced = Timestamp.from(Instant.now());
+        persistSyncSettings();
+    }
+
+    private synchronized void loadSyncSettings() throws SQLException {
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            ensureSyncSettingsTable(conn);
+            SyncSettings settings = readSyncSettings(conn);
+            if (settings.intervalSeconds > 0) {
+                syncIntervalSeconds = settings.intervalSeconds;
+            }
+            lastSynced = settings.lastSynced;
+        }
+    }
+
+    private void persistSyncSettings() {
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            ensureSyncSettingsTable(conn);
+            upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to persist sync settings", e);
+        }
+    }
+
+    private void ensureSyncSettingsTable(Connection conn) throws SQLException {
+        String sql = "CREATE TABLE IF NOT EXISTS widget_sync_settings ("
+                + "id INTEGER PRIMARY KEY, "
+                + "interval_seconds BIGINT NOT NULL, "
+                + "last_synced TIMESTAMP)";
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        }
+    }
+
+    private SyncSettings readSyncSettings(Connection conn) throws SQLException {
+        String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
+        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                long interval = rs.getLong(1);
+                Timestamp last = rs.getTimestamp(2);
+                return new SyncSettings(interval, last);
+            }
+        }
+        upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
+        return new SyncSettings(syncIntervalSeconds, lastSynced);
+    }
+
+    private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) throws SQLException {
+        String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced) "
+                + "VALUES (1, ?, ?) "
+                + "ON CONFLICT (id) DO UPDATE SET interval_seconds = EXCLUDED.interval_seconds, last_synced = EXCLUDED.last_synced";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, intervalSeconds);
+            if (lastSynced != null) {
+                ps.setTimestamp(2, lastSynced);
+            } else {
+                ps.setTimestamp(2, null);
+            }
+            ps.executeUpdate();
+        }
     }
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -153,8 +327,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private void createWidgetDataTable(Connection conn, String tableName) throws SQLException {
         String sql = "CREATE TABLE " + quoteIdentifier(tableName)
-                + " (id BIGSERIAL PRIMARY KEY, chat_id TEXT, prompt TEXT, text TEXT, translated_text TEXT,"
-                + " language TEXT, created_at TIMESTAMP, session_id TEXT, payload TEXT)";
+                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT UNIQUE, prompt TEXT, response_text TEXT,"
+                + " created_at TIMESTAMP, session_id TEXT, username TEXT)";
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         }
@@ -193,34 +367,99 @@ public class WidgetSyncServlet extends HttpServlet {
         if (chats == null || chats.isEmpty()) {
             return;
         }
+        Set<String> existingIds = fetchExistingChatIds(conn, tableName);
         String sql = "INSERT INTO " + quoteIdentifier(tableName)
-                + " (chat_id, prompt, text, translated_text, language, created_at, session_id, payload) "
-                + "VALUES (?,?,?,?,?,?,?,?)";
+                + " (widget_chat_id, prompt, response_text, created_at, session_id, username) "
+                + "VALUES (?,?,?,?,?,?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int inserted = 0;
             for (JsonObject chat : chats) {
-                ps.setString(1, getString(chat, "chat_id"));
-                ps.setString(2, getString(chat, "prompt"));
-                ps.setString(3, getString(chat, "text"));
-                ps.setString(4, getString(chat, "translated_text"));
-                ps.setString(5, getString(chat, "language"));
-                Timestamp ts = parseTimestamp(chat);
-                if (ts != null) {
-                    ps.setTimestamp(6, ts);
-                } else {
-                    ps.setTimestamp(6, null);
+                String chatId = getString(chat, "id");
+                if (chatId == null || existingIds.contains(chatId)) {
+                    continue;
                 }
-                ps.setString(7, getString(chat, "session_id"));
-                ps.setString(8, chat.toString());
+                ps.setString(1, chatId);
+                ps.setString(2, getString(chat, "prompt"));
+                ps.setString(3, formatResponseText(chat));
+                Timestamp ts = parseCreatedAt(chat);
+                ps.setTimestamp(4, ts);
+                ps.setString(5, getString(chat, "session_id"));
+                ps.setString(6, getString(chat, "username"));
                 ps.addBatch();
+                inserted++;
             }
-            ps.executeBatch();
+            if (inserted > 0) {
+                ps.executeBatch();
+            }
         }
     }
 
-    private Timestamp parseTimestamp(JsonObject chat) {
-        String created = getString(chat, "created_at");
+    private Set<String> fetchExistingChatIds(Connection conn, String tableName) throws SQLException {
+        Set<String> existing = new HashSet<>();
+        String sql = "SELECT widget_chat_id FROM " + quoteIdentifier(tableName);
+        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                existing.add(rs.getString(1));
+            }
+        }
+        return existing;
+    }
+
+    private String formatResponseText(JsonObject chat) {
+        JsonValue responseValue = chat.get("response");
+        String text = extractText(responseValue);
+        if (text == null) {
+            JsonValue rawChatValue = chat.get("raw_chat");
+            if (rawChatValue instanceof JsonObject rawChat) {
+                text = extractText(rawChat.get("response"));
+            }
+        }
+        return humanize(normalizeToJsonText(text));
+    }
+
+    private String extractText(JsonValue value) {
+        if (value == null || value == JsonValue.NULL) {
+            return null;
+        }
+        if (value instanceof JsonObject obj) {
+            return getString(obj, "text");
+        }
+        if (value instanceof JsonString js) {
+            return js.getString();
+        }
+        return value.toString();
+    }
+
+    private String normalizeToJsonText(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try (JsonReader reader = Json.createReader(new StringReader(raw))) {
+            JsonStructure structure = reader.read();
+            if (structure.getValueType() == JsonValue.ValueType.OBJECT) {
+                JsonObject obj = structure.asJsonObject();
+                String text = getString(obj, "text");
+                if (text != null) {
+                    return text;
+                }
+            }
+        } catch (JsonException e) {
+            // raw is not valid JSON
+        }
+        return raw;
+    }
+
+    private String humanize(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text.replace("\\n", "\n").replace("\\r", "\r").trim();
+    }
+
+    private Timestamp parseCreatedAt(JsonObject chat) {
+        String created = getString(chat, "createdAt");
         if (created == null) {
-            created = getString(chat, "prompt_date");
+            created = getString(chat, "created_at");
         }
         if (created == null) {
             return null;
@@ -291,8 +530,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 path = path + "/api";
             }
             String apiPath = path + "/v1/embed/" + URLEncoder.encode(widgetId, StandardCharsets.UTF_8) + "/chats";
-            URI resolved = new URI(base.getScheme(), base.getAuthority(), apiPath, null, null);
-            return resolved;
+            return new URI(base.getScheme(), base.getAuthority(), apiPath, null, null);
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("Invalid base URL for sync endpoint", e);
         }
@@ -397,6 +635,17 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("synced", synced)
                     .add("message", message == null ? "" : message)
                     .build();
+        }
+    }
+
+    private static final class SyncSettings {
+
+        private final long intervalSeconds;
+        private final Timestamp lastSynced;
+
+        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+            this.intervalSeconds = intervalSeconds;
+            this.lastSynced = lastSynced;
         }
     }
 }

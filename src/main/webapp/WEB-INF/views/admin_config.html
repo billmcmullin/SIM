@@ -13,9 +13,9 @@
             <div class="brand">Chat Server Admin</div>
             <div>
                 <span>Signed in as <strong>${user}</strong></span>
-                <a href="${contextPath}/profile">Profile</a>
-                <a href="${contextPath}/dashboard">Dashboard</a>
-                <a href="${contextPath}/logout">Logout</a>
+                <a href="${contextPath}/profile"> Profile </a>
+                <a href="${contextPath}/dashboard"> Dashboard </a>
+                <a href="${contextPath}/logout"> Logout</a>
             </div>
         </div>
     </div>
@@ -49,9 +49,8 @@
                     </div>
                 </div>
                 <div class="actions">
-                    <button type="button" id="testConnectionBtn" onclick="testConnection()">Test Connection</button>
-                    <button type="button" id="saveConfigBtn" onclick="saveConfiguration()" disabled>Save
-                        Configuration</button>
+                    <button type="button" id="testConnectionBtn">Test Connection</button>
+                    <button type="button" id="saveConfigBtn" disabled>Save Configuration</button>
                 </div>
                 <div id="testResult" style="font-weight:600; color:#047857; margin-top:12px;"></div>
             </form>
@@ -61,8 +60,8 @@
             <h2>Widget Registry</h2>
             <div class="search-row">
                 <input type="text" id="widgetSearch" placeholder="Search widget ID or name">
-                <button type="button" onclick="reloadWidgetList()">Search</button>
-                <button type="button" onclick="clearWidgetSearch()">Clear</button>
+                <button type="button" id="searchWidgetsBtn">Search</button>
+                <button type="button" id="clearWidgetSearchBtn">Clear</button>
             </div>
             <div class="widget-controls">
                 <div>
@@ -75,11 +74,11 @@
                 </div>
                 <div>
                     <label>&nbsp;</label>
-                    <button type="button" onclick="saveWidgetEntry()" style="width:100%;">Save Widget</button>
+                    <button type="button" id="saveWidgetEntryBtn" style="width:100%;">Save Widget</button>
                 </div>
                 <div>
                     <label>&nbsp;</label>
-                    <button type="button" onclick="clearWidgetForm()" style="width:100%;">Clear Form</button>
+                    <button type="button" id="clearWidgetFormBtn" style="width:100%;">Clear Form</button>
                 </div>
             </div>
             <div id="widgetMessage" class="widget-message" style="color:#047857;"></div>
@@ -101,7 +100,7 @@
                 </table>
             </div>
             <div class="actions">
-                <button type="button" onclick="deleteSelectedWidgets()">Delete Selected</button>
+                <button type="button" id="deleteSelectedWidgetsBtn">Delete Selected</button>
             </div>
         </section>
 
@@ -111,6 +110,17 @@
                 chat content.</p>
             <div class="actions">
                 <button type="button" id="syncWidgetTablesBtn">Sync Widget Tables</button>
+            </div>
+            <div class="automated-sync">
+                <h3>Automatic Sync Timer</h3>
+                <div class="form-group">
+                    <label for="syncInterval">Sync Interval (minutes)</label>
+                    <input type="number" id="syncInterval" min="1" placeholder="Enter interval">
+                </div>
+                <div class="actions">
+                    <button type="button" id="saveSyncIntervalBtn">Save Interval</button>
+                </div>
+                <div id="syncIntervalMessage" class="widget-message" style="color:#047857; margin-top:8px;"></div>
             </div>
             <div id="widgetTableExplorerMessage" class="widget-message" style="color:#047857;"></div>
             <div style="overflow-x:auto;">
@@ -158,484 +168,36 @@
                 </div>
                 <div id="userResult" class="result" style="color:#047857;"></div>
             </form>
+            <div class="user-list">
+                <h3>Existing Users</h3>
+                <div style="overflow-x:auto;">
+                    <table class="widget-table" id="userTable">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <tr>
+                                <td colspan="3" class="empty-row">Loading users…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
     </div>
 
     <script>
-        const contextPath = '${contextPath}';
-        let lastTestSuccess = false;
-        const initialWidgetList = '${widgetListJson}';
-        const apiKeyStored = '${apiKeyStored}';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (apiKeyStored === true || apiKeyStored === 'true') {
-                const note = document.getElementById('apiKeyStoredNote');
-                if (note) {
-                    note.style.display = 'block';
-                }
-            }
-
-            if (widgetState.widgets.length) {
-                renderWidgetTable();
-                renderWidgetTableExplorer();
-            }
-            updateSaveButton();
-            reloadWidgetList();
-
-            document.getElementById('userCreateForm').addEventListener('submit', event => {
-                event.preventDefault();
-                createUser();
-            });
-
-            const syncBtn = document.getElementById('syncWidgetTablesBtn');
-            if (syncBtn) {
-                syncBtn.addEventListener('click', () => {
-                    syncBtn.disabled = true;
-                    syncWidgetTables().finally(() => syncBtn.disabled = false);
-                });
-            }
-        });
-
-        function getApiKey() {
-            return document.getElementById('apiKey')?.value.trim() || '';
-        }
-
-        function testConnection() {
-            const host = document.getElementById('serverHost').value.trim();
-            const port = document.getElementById('serverPort').value.trim();
-            const apiKey = document.getElementById('apiKey').value.trim();
-            const resultEl = document.getElementById('testResult');
-
-            if (!host || !port) {
-                resultEl.textContent = 'Please provide host and port.';
-                resultEl.style.color = '#b91c1c';
-                lastTestSuccess = false;
-                updateSaveButton();
-                return;
-            }
-
-            const data = new URLSearchParams();
-            data.append('serverHost', host);
-            data.append('serverPort', port);
-            if (apiKey) {
-                data.append('apiKey', apiKey);
-            }
-
-            fetch(`${contextPath}/admin/test-connection`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: data.toString()
-            })
-                .then(response => response.json().then(payload => ({ status: response.status, payload })))
-                .then(({ status, payload }) => {
-                    if (payload.status === 'ok') {
-                        resultEl.textContent = 'Connection successful.';
-                        resultEl.style.color = '#047857';
-                        lastTestSuccess = true;
-                    } else {
-                        resultEl.textContent = payload.message || `Connection failed (${status}).`;
-                        resultEl.style.color = '#b91c1c';
-                        lastTestSuccess = false;
-                    }
-                    updateSaveButton();
-                })
-                .catch(error => {
-                    resultEl.textContent = `Connection error: ${error.message}`;
-                    resultEl.style.color = '#b91c1c';
-                    lastTestSuccess = false;
-                    updateSaveButton();
-                });
-        }
-
-        function updateSaveButton() {
-            const saveBtn = document.getElementById('saveConfigBtn');
-            if (saveBtn) {
-                saveBtn.disabled = !lastTestSuccess;
-            }
-        }
-
-        function saveConfiguration() {
-            const host = document.getElementById('serverHost').value.trim();
-            const port = document.getElementById('serverPort').value.trim();
-            const apiKey = getApiKey();
-            const resultEl = document.getElementById('testResult');
-
-            if (!lastTestSuccess) {
-                resultEl.textContent = 'Please test the connection successfully before saving.';
-                resultEl.style.color = '#b91c1c';
-                return;
-            }
-
-            const data = new URLSearchParams();
-            data.append('serverHost', host);
-            data.append('serverPort', port);
-            data.append('apiKey', apiKey);
-
-            fetch(`${contextPath}/admin/save-config`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: data.toString()
-            })
-                .then(response => response.json())
-                .then(payload => {
-                    if (payload.status === 'ok') {
-                        resultEl.textContent = 'Configuration saved successfully.';
-                        resultEl.style.color = '#047857';
-                    } else {
-                        resultEl.textContent = payload.message || 'Unable to save configuration.';
-                        resultEl.style.color = '#b91c1c';
-                    }
-                })
-                .catch(error => {
-                    resultEl.textContent = `Save error: ${error.message}`;
-                    resultEl.style.color = '#b91c1c';
-                });
-        }
-
-        function createUser() {
-            const username = document.getElementById('newUsername').value.trim();
-            const password = document.getElementById('newPassword').value.trim();
-            const role = document.getElementById('roleSelect').value;
-            const resultEl = document.getElementById('userResult');
-
-            if (!username || !password) {
-                resultEl.textContent = 'Username and password are required.';
-                resultEl.style.color = '#b91c1c';
-                return;
-            }
-
-            fetch(`${contextPath}/admin/users`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ username, password, role })
-            })
-                .then(async response => {
-                    const payload = await response.json();
-                    if (response.ok) {
-                        resultEl.textContent = `Created ${payload.role.toLowerCase()} ${payload.username}.`;
-                        resultEl.style.color = '#047857';
-                        document.getElementById('userCreateForm').reset();
-                    } else {
-                        throw new Error(payload.error || 'Unable to create user.');
-                    }
-                })
-                .catch(error => {
-                    resultEl.textContent = `Error: ${error.message}`;
-                    resultEl.style.color = '#b91c1c';
-                });
-        }
-
-        const widgetState = {
-            editingId: null,
-            widgets: Array.isArray(initialWidgetList) ? initialWidgetList : []
+        window.adminPageConfig = {
+            contextPath: '${contextPath}',
+            widgetListJson: '${widgetListJson}',
+        apiKeyStored: '${ apiKeyStored }'
         };
-
-        const widgetMessageEl = document.getElementById('widgetMessage');
-        const widgetSearchInput = document.getElementById('widgetSearch');
-        const widgetSelectAll = document.getElementById('widgetSelectAll');
-        const widgetTableExplorerBody = document.getElementById('widgetTableExplorerBody');
-        const widgetTableExplorerMessage = document.getElementById('widgetTableExplorerMessage');
-        const syncWidgetTablesBtn = document.getElementById('syncWidgetTablesBtn');
-
-        const widgetSyncStatuses = {};
-
-        function showWidgetMessage(text, isError = false) {
-            if (!widgetMessageEl) {
-                return;
-            }
-            widgetMessageEl.textContent = text;
-            widgetMessageEl.style.color = isError ? '#b91c1c' : '#047857';
-        }
-
-        function showWidgetTableExplorerMessage(text, isError = false) {
-            if (!widgetTableExplorerMessage) {
-                return;
-            }
-            widgetTableExplorerMessage.textContent = text;
-            widgetTableExplorerMessage.style.color = isError ? '#b91c1c' : '#047857';
-        }
-
-        function escapeHtml(value) {
-            if (!value) {
-                return '';
-            }
-            return value
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        function renderWidgetTable() {
-            const tbody = document.getElementById('widgetTableBody');
-            if (!tbody) {
-                return;
-            }
-
-            if (!widgetState.widgets.length) {
-                tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No widget entries available.</td></tr>';
-            } else {
-                tbody.innerHTML = widgetState.widgets
-                    .map(entry => {
-                        return `<tr>
-            <td><input type="checkbox" class="widget-select" value="${entry.id}"></td>
-            <td>${escapeHtml(entry.widgetId)}</td>
-            <td>${escapeHtml(entry.displayName)}</td>
-            <td class="actions">
-              <button type="button" class="ghost-btn" onclick="editWidgetEntry(${entry.id})">Edit</button>
-              <button type="button" class="ghost-btn" onclick="deleteWidgetEntry(${entry.id})">Delete</button>
-            </td>
-          </tr>`;
-                    })
-                    .join('');
-            }
-
-            if (widgetSelectAll) {
-                widgetSelectAll.checked = false;
-            }
-
-            renderWidgetTableExplorer();
-        }
-
-        function renderWidgetTableExplorer() {
-            if (!widgetTableExplorerBody) {
-                return;
-            }
-
-            if (!widgetState.widgets.length) {
-                widgetTableExplorerBody.innerHTML = '<tr><td colspan="4" class="empty-row">Widget IDs will appear here once the registry loads.</td></tr>';
-                return;
-            }
-
-            widgetTableExplorerBody.innerHTML = widgetState.widgets
-                .map(entry => {
-                    const status = widgetSyncStatuses[entry.widgetId];
-                    const tableStatus = status ? (status.tableExists ? 'Table ready' : 'Table missing') : 'Not checked';
-                    const syncStatus = status ? (status.synced ? 'Synced' : 'Pending sync') : 'Awaiting sync';
-                    const message = status?.message ? `<div class="small-note">${escapeHtml(status.message)}</div>` : '';
-                    return `<tr>
-            <td>${escapeHtml(entry.widgetId)}</td>
-            <td>${tableStatus}</td>
-            <td>${syncStatus}</td>
-            <td>${message}</td>
-          </tr>`;
-                })
-                .join('');
-        }
-
-        function reloadWidgetList() {
-            const filter = widgetSearchInput.value.trim();
-            const endpoint = `${contextPath}/admin/widgets${filter ? '?filter=' + encodeURIComponent(filter) : ''}`;
-
-            fetch(endpoint, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-                .then(response => response.json())
-                .then(payload => {
-                    if (payload.status !== 'ok') {
-                        showWidgetMessage(payload.message || 'Unable to load widgets.', true);
-                        return;
-                    }
-                    widgetState.widgets = payload.widgets || [];
-                    renderWidgetTable();
-                    showWidgetMessage(`Loaded ${widgetState.widgets.length} widget(s).`);
-                })
-                .catch(error => {
-                    showWidgetMessage(`Could not load widgets: ${error.message}`, true);
-                });
-        }
-
-        function clearWidgetSearch() {
-            widgetSearchInput.value = '';
-            reloadWidgetList();
-        }
-
-        function populateWidgetForm(entry) {
-            widgetState.editingId = entry ? entry.id : null;
-            document.getElementById('widgetIdInput').value = entry ? entry.widgetId : '';
-            document.getElementById('widgetNameInput').value = entry ? entry.displayName : '';
-            showWidgetMessage(entry ? `Editing widget ${entry.widgetId}.` : 'Ready to add a new widget.');
-        }
-
-        function clearWidgetForm() {
-            populateWidgetForm(null);
-        }
-
-        function saveWidgetEntry() {
-            const widgetIdInput = document.getElementById('widgetIdInput');
-            const widgetNameInput = document.getElementById('widgetNameInput');
-            const widgetIdValue = widgetIdInput.value.trim();
-            const widgetNameValue = widgetNameInput.value.trim();
-
-            if (!widgetIdValue || !widgetNameValue) {
-                showWidgetMessage('Widget ID and name are required.', true);
-                return;
-            }
-
-            const data = new URLSearchParams();
-            data.append('widgetId', widgetIdValue);
-            data.append('displayName', widgetNameValue);
-            if (widgetState.editingId) {
-                data.append('id', widgetState.editingId);
-            }
-
-            fetch(`${contextPath}/admin/widgets`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
-                },
-                body: data.toString()
-            })
-                .then(response => response.json().then(payload => ({ status: response.status, payload })))
-                .then(({ status, payload }) => {
-                    if (payload.status === 'ok') {
-                        showWidgetMessage(widgetState.editingId ? 'Widget updated.' : 'Widget added.');
-                        widgetState.editingId = null;
-                        reloadWidgetList();
-                        clearWidgetForm();
-                    } else {
-                        showWidgetMessage(payload.message || `Unable to save widget (status ${status}).`, true);
-                    }
-                })
-                .catch(error => {
-                    showWidgetMessage(`Save failed: ${error.message}`, true);
-                });
-        }
-
-        function syncWidgetTables() {
-            if (!widgetState.widgets.length) {
-                showWidgetTableExplorerMessage('No widget entries to sync.', true);
-                return Promise.resolve();
-            }
-
-            showWidgetTableExplorerMessage('Syncing widget tables...');
-            return fetch(`${contextPath}/admin/widgets/sync`, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-                .then(async response => {
-                    const payload = await response.json();
-                    if (payload.status !== 'ok') {
-                        throw new Error(payload.message || 'Sync failed.');
-                    }
-                    const statuses = payload.widgetStatus || [];
-                    statuses.forEach(status => {
-                        if (status && status.widgetId) {
-                            widgetSyncStatuses[status.widgetId] = {
-                                tableExists: Boolean(status.tableExists),
-                                synced: Boolean(status.synced),
-                                tableName: status.tableName || '',
-                                message: status.message || ''
-                            };
-                        }
-                    });
-                    const missing = statuses.filter(status => status && !status.tableExists).length;
-                    const summary = missing
-                        ? `${missing} table(s) were missing and created before syncing.`
-                        : 'All widget tables exist and have been synced.';
-                    showWidgetTableExplorerMessage(summary);
-                })
-                .catch(error => {
-                    showWidgetTableExplorerMessage(`Sync error: ${error.message}`, true);
-                })
-                .finally(renderWidgetTableExplorer);
-        }
-
-        function editWidgetEntry(id) {
-            const entry = widgetState.widgets.find(item => item.id === id);
-            if (!entry) {
-                showWidgetMessage('Widget entry not found.', true);
-                return;
-            }
-            populateWidgetForm(entry);
-        }
-
-        function deleteWidgetEntry(id) {
-            if (!confirm('Delete this widget entry?')) {
-                return;
-            }
-
-            fetch(`${contextPath}/admin/widgets?ids=${id}`, {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-                .then(response => response.json().then(payload => ({ status: response.status, payload })))
-                .then(({ payload }) => {
-                    if (payload.status === 'ok') {
-                        showWidgetMessage('Widget deleted.');
-                        reloadWidgetList();
-                    } else {
-                        showWidgetMessage(payload.message || 'Unable to delete widget.', true);
-                    }
-                })
-                .catch(error => {
-                    showWidgetMessage(`Delete failed: ${error.message}`, true);
-                });
-        }
-
-        function deleteSelectedWidgets() {
-            const checkboxes = Array.from(document.querySelectorAll('.widget-select:checked'));
-            if (!checkboxes.length) {
-                showWidgetMessage('Please select widgets to delete.', true);
-                return;
-            }
-
-            if (!confirm(`Delete ${checkboxes.length} widget(s)?`)) {
-                return;
-            }
-
-            const ids = checkboxes.map(cb => cb.value);
-
-            fetch(`${contextPath}/admin/widgets?ids=${ids.join(',')}`, {
-                method: 'DELETE',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-                .then(response => response.json().then(payload => ({ status: response.status, payload })))
-                .then(({ payload }) => {
-                    if (payload.status === 'ok') {
-                        showWidgetMessage(`${payload.deleted || ids.length} widget(s) deleted.`);
-                        reloadWidgetList();
-                    } else {
-                        showWidgetMessage(payload.message || 'Unable to delete selected widgets.', true);
-                    }
-                })
-                .catch(error => {
-                    showWidgetMessage(`Bulk delete failed: ${error.message}`, true);
-                });
-        }
-
-        if (widgetSelectAll) {
-            widgetSelectAll.addEventListener('change', event => {
-                const checked = event.target.checked;
-                document.querySelectorAll('.widget-select').forEach(cb => (cb.checked = checked));
-            });
-        }
-
-        widgetSearchInput.addEventListener('keydown', event => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                reloadWidgetList();
-            }
-        });
     </script>
+    <script src="${contextPath}/assets/js/admin_page.js"></script>
 </body>
 
 </html>

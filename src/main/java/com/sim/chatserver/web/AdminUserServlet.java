@@ -1,6 +1,7 @@
 package com.sim.chatserver.web;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -9,6 +10,8 @@ import com.sim.chatserver.service.UserService;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -26,33 +29,39 @@ public class AdminUserServlet extends HttpServlet {
     UserService userService;
 
     @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (!isAdmin(req, resp)) {
+            return;
+        }
+
+        List<UserAccount> users = userService.listAllUsers();
+        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
+        users.forEach(user -> arrayBuilder.add(Json.createObjectBuilder()
+                .add("id", user.getId())
+                .add("username", user.getUsername())
+                .add("role", user.getRole())
+                .build()));
+
+        JsonObject response = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("users", arrayBuilder)
+                .build();
+        resp.setContentType("application/json");
+        resp.getWriter().write(response.toString());
+    }
+
+    @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        if (!"application/json".equalsIgnoreCase(req.getContentType())) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"error\":\"Content-Type must be application/json\"}");
-            return;
-        }
-
-        HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"error\":\"Authentication required\"}");
-            return;
-        }
-
-        String roleAttr = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(roleAttr)) {
-            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            resp.getWriter().write("{\"error\":\"Admin role required\"}");
+        if (!isAdmin(req, resp)) {
             return;
         }
 
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
-        } catch (Exception e) {
+        } catch (JsonException | IOException e) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"error\":\"Invalid JSON\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
             return;
         }
 
@@ -62,37 +71,56 @@ public class AdminUserServlet extends HttpServlet {
 
         if (username.isEmpty() || password.isEmpty()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"error\":\"username and password are required\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"username and password are required.\"}");
             return;
         }
 
         try {
-            UserAccount created = userService.createUser(username, password, role);
-            JsonObject responseBody = Json.createObjectBuilder()
-                    .add("id", created.getId().toString())
-                    .add("username", created.getUsername())
-                    .add("role", created.getRole())
-                    .add("fullName", created.getFullName())
-                    .add("email", created.getEmail() == null ? "" : created.getEmail())
-                    .build();
-            resp.setStatus(HttpServletResponse.SC_CREATED);
+            userService.createUser(username, password, role);
             resp.setContentType("application/json");
-            resp.getWriter().write(responseBody.toString());
-        } catch (jakarta.persistence.PersistenceException pe) {
-            log.log(Level.WARNING, "User creation conflict", pe);
-            resp.setStatus(HttpServletResponse.SC_CONFLICT);
-            resp.getWriter().write("{\"error\":\"Could not create user: " + escape(pe.getMessage()) + "\"}");
+            resp.getWriter().write("{\"status\":\"ok\"}");
         } catch (Exception e) {
             log.log(Level.SEVERE, "Failed to create user", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"error\":\"Failed to create user\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create user.\"}");
         }
     }
 
-    private String escape(String value) {
-        if (value == null) {
-            return "";
+    @Override
+    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (!isAdmin(req, resp)) {
+            return;
         }
-        return value.replace("\"", "\\\"").replace("\n", " ").replace("\r", " ");
+        String userId = req.getParameter("userId");
+        if (userId == null || userId.isBlank()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Missing userId.\"}");
+            return;
+        }
+
+        boolean deleted = userService.deleteUser(userId);
+        if (!deleted) {
+            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"User not found.\"}");
+            return;
+        }
+        resp.setContentType("application/json");
+        resp.getWriter().write("{\"status\":\"ok\"}");
+    }
+
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        HttpSession session = req.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
+            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            return false;
+        }
+        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
+        if (!"ADMIN".equalsIgnoreCase(role)) {
+            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Admin role required.\"}");
+            return false;
+        }
+        return true;
     }
 }

@@ -8,16 +8,16 @@
 </head>
 
 <body>
-<div class="top-bar" data-role="${role}">
-    <div class="top-bar-inner">
-        <div class="brand">Chat Server</div>
-        <div>
-            <span>Signed in as <strong>${user}</strong></span>
-            <a href="${contextPath}/dashboard">Dashboard</a>
-            <a href="${contextPath}/logout">Logout</a>
+    <div class="top-bar" data-role="${role}">
+        <div class="top-bar-inner">
+            <div class="brand">Chat Server</div>
+            <div>
+                <span>Signed in as <strong>${user}</strong></span>
+                <a href="${contextPath}/dashboard"> Dashboard </a>
+                <a href="${contextPath}/logout"> Logout</a>
+            </div>
         </div>
     </div>
-</div>
 
     <div class="container">
         <section class="section">
@@ -43,45 +43,13 @@
     </div>
 
     <script>
-        (function () {
-            const role = '${role}'.toUpperCase();
-            if (role !== 'ADMIN') {
-                document.querySelectorAll('[data-admin-link]').forEach(el => el.style.display = 'none');
-            }
-        })();
+        window.profileConfig = {
+            contextPath: '${contextPath}',
+            role: '${role}',
+            user: '${user}'
+        };
     </script>
-
-    <script>
-        const contextPath = '${contextPath}';
-        const profileForm = document.getElementById('profileForm');
-        const resultEl = document.getElementById('profileResult');
-        profileForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const data = new URLSearchParams(new FormData(profileForm));
-            resultEl.textContent = 'Saving…';
-            resultEl.style.color = '#0f172a';
-            fetch(`${contextPath}/profile`, {
-                method: 'POST',
-                body: data.toString(),
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            })
-                .then(async (response) => {
-                    const payload = await response.json();
-                    if (payload.status === 'ok') {
-                        resultEl.textContent = 'Profile updated successfully.';
-                        resultEl.style.color = '#047857';
-                    } else {
-                        throw new Error(payload.message || 'Update failed.');
-                    }
-                })
-                .catch((error) => {
-                    resultEl.textContent = `Error: ${error.message}`;
-                    resultEl.style.color = '#b91c1c';
-                });
-        });
-    </script>
+    <script src="assets/js/profile.js"></script>
 </body>
 
 </html>

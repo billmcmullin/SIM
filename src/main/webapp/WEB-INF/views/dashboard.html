@@ -14,8 +14,8 @@
                 <div class="brand">Chat Server</div>
                 <div>
                     <span>Signed in as <strong>${user}</strong></span>
-                    <a href="${contextPath}/profile">Profile</a>
-                    <a href="${contextPath}/logout">Logout</a>
+                    <a href="${contextPath}/profile"> Profile </a>
+                    <a href="${contextPath}/logout"> Logout</a>
                 </div>
             </div>
         </div>
@@ -24,9 +24,26 @@
     <div class="container">
         <section class="section">
             <h1>Welcome, ${user}</h1>
-            <p>You are logged in and the dashboard is ready.</p>
-            <p><a href="${contextPath}/admin">Go to Admin Configuration</a></p>
-            <p><a href="${contextPath}/logout">Logout</a></p>
+            ${adminLink}
+        </section>
+
+        <section class="section stats-section">
+            <h2>Widget Chat Overview</h2>
+            <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
+            <div style="overflow-x:auto;">
+                <table class="widget-table">
+                    <thead>
+                        <tr>
+                            <th>Widget Name</th>
+                            <th>Chat Entries</th>
+                            <th>View</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetStatsBody">
+                        ${widgetStatsRows}
+                    </tbody>
+                </table>
+            </div>
         </section>
     </div>
 </body>
