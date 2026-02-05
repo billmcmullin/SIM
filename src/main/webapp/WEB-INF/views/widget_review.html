@@ -45,9 +45,31 @@
                 <div class="form-group">
                     <label>&nbsp;</label>
                     <div class="button-row">
-                        <button type="button" id="selectPageBtn">Select all on page</button>
+                        <button type="button" id="selectAllEntriesBtn">Select all entries</button>
                         <button type="button" id="deselectAllBtn">Deselect all</button>
+                        <button type="button" id="manualMessageToggleBtn">Send manual workspace message</button>
                     </div>
+                </div>
+            </div>
+
+            <div class="manual-message-section" id="manualMessageSection" aria-hidden="true">
+                <div class="form-group">
+                    <label for="manualMessageText">Message</label>
+                    <textarea id="manualMessageText" placeholder="Type your manual workspace message here"></textarea>
+                </div>
+                <div class="manual-message-status" id="manualMessageStatus"></div>
+                <div class="manual-message-selection-preview">
+                    <strong>Selected chats context (Markdown)</strong>
+                    <textarea id="manualMessageSelectionPreview" readonly>No chat selected.</textarea>
+                </div>
+                <div class="manual-message-response-wrapper">
+                    <strong>Workspace response</strong>
+                    <div class="manual-message-response" id="manualMessageResponse">No response yet.</div>
+                </div>
+                <div class="manual-message-buttons">
+                    <button type="button" id="manualMessageClearBtn">Clear</button>
+                    <button type="button" id="manualMessageCloseBtn">Hide</button>
+                    <button type="button" id="manualMessageSendBtn" class="primary">Send</button>
                 </div>
             </div>
 

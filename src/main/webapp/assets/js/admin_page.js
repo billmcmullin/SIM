@@ -347,7 +347,9 @@ function createUser() {
         .then(async response => {
             const payload = await response.json();
             if (response.ok) {
-                showUserResult(`Created ${payload.role.toLowerCase()} ${payload.username}.`);
+                const createdRole = (payload.role || 'user').toLowerCase();
+                const createdUsername = payload.username || username;
+                showUserResult(`Created ${createdRole} ${createdUsername}.`);
                 document.getElementById('userCreateForm').reset();
                 loadUserList();
             } else {

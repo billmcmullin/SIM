@@ -599,6 +599,249 @@ a {
     display: inline-block;
 }
 
+.manual-message-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.manual-message-dialog.is-visible {
+    display: flex;
+}
+
+.manual-message-panel {
+    background: #fff;
+    border-radius: 8px;
+    width: min(520px, 90%);
+    padding: 24px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.manual-message-panel textarea {
+    width: 100%;
+    min-height: 160px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    padding: 12px;
+    font-family: inherit;
+    resize: vertical;
+    font-size: 1rem;
+}
+
+.manual-message-panel .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.manual-message-panel button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.manual-message-panel button.primary {
+    background: #0f766e;
+    color: #fff;
+}
+
+.manual-message-panel button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.manual-message-panel .close-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: transparent;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+}
+
+.manual-message-status {
+    font-size: 0.9rem;
+    min-height: 1.2rem;
+}
+
+.manual-message-status.error {
+    color: #b91c1c;
+}
+
+.manual-message-status.success {
+    color: #047857;
+}
+
+.manual-message-section {
+    margin-top: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    background: #f9fafb;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.manual-message-section.is-visible {
+    display: flex;
+}
+
+.manual-message-section textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    padding: 10px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.manual-message-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.manual-message-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.manual-message-buttons button.primary {
+    background: #0f766e;
+    color: #fff;
+}
+
+.manual-message-status {
+    min-height: 1.2rem;
+    font-size: 0.9rem;
+}
+
+.manual-message-status.error {
+    color: #b91c1c;
+}
+
+.manual-message-status.success {
+    color: #047857;
+}
+
+.manual-message-response-wrapper {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 12px;
+    background: #fff;
+    max-height: 280px;
+    overflow: auto;
+}
+
+.manual-message-response {
+    margin: 0;
+    font-family: Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.95rem;
+}
+
+.manual-message-response h1,
+.manual-message-response h2,
+.manual-message-response h3,
+.manual-message-response h4,
+.manual-message-response h5,
+.manual-message-response h6 {
+    margin: 0.5em 0 0.3em;
+    font-weight: 600;
+}
+
+.manual-message-response strong {
+    font-weight: 700;
+}
+
+.manual-message-response em {
+    font-style: italic;
+}
+
+.manual-message-response code {
+    background: #f3f4f6;
+    border-radius: 4px;
+    padding: 2px 4px;
+}
+
+.manual-message-response ul {
+    padding-left: 1.2em;
+    margin: 0.5em 0;
+}
+
+.manual-message-response li {
+    margin: 0.2em 0;
+}
+
+.manual-message-response .markdown-code {
+    background: #111827;
+    color: #f9fafb;
+    padding: 12px;
+    border-radius: 6px;
+    margin: 0.5em 0;
+    overflow: auto;
+}
+
+.manual-message-selection-preview {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fff;
+}
+
+.manual-message-selection-preview textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 6px;
+    border: 1px solid #cbd5f5;
+    padding: 10px;
+    font-size: 0.85rem;
+    font-family: "Segoe UI", sans-serif;
+    resize: vertical;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.manual-message-selection-preview {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fff;
+}
+
+.manual-message-selection-preview textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 6px;
+    border: 1px solid #cbd5f5;
+    padding: 10px;
+    font-size: 0.85rem;
+    font-family: "Segoe UI", sans-serif;
+    resize: vertical;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
 @media (max-width: 768px) {
     .top-bar {
         flex-direction: column;
