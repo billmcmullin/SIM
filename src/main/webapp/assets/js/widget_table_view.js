@@ -13,6 +13,8 @@ const limitSelectBottom = document.getElementById('limitSelectBottom');
 const reviewBtn = document.getElementById('reviewSelectedBtn');
 const selectedInfo = document.getElementById('selectedInfo');
 const selectAllPageCheckbox = document.getElementById('selectAllPage');
+const selectAllMatchesBtn = document.getElementById('selectAllMatchesBtn');
+const deselectAllMatchesBtn = document.getElementById('deselectAllMatchesBtn');
 
 const state = {
     limit: parseInt(limitSelectBottom?.value, 10) || 10,
@@ -126,6 +128,34 @@ function bindControls() {
         updateSelectAllCheckbox();
     });
 
+    selectAllMatchesBtn?.addEventListener('click', () => {
+        if (!selectAllMatchesBtn) return;
+        selectAllMatchesBtn.disabled = true;
+        fetchAllMatchingChatIds()
+            .then(ids => {
+                ids.forEach(chatId => {
+                    if (!chatId) return;
+                    selectedChats.set(chatId, { chatId });
+                });
+                renderRows(latestRows);
+                updateSelectionUI();
+                updateSelectAllCheckbox();
+            })
+            .catch(error => {
+                showError(error.message);
+            })
+            .finally(() => {
+                selectAllMatchesBtn.disabled = false;
+            });
+    });
+
+    deselectAllMatchesBtn?.addEventListener('click', () => {
+        selectedChats.clear();
+        renderRows(latestRows);
+        updateSelectionUI();
+        updateSelectAllCheckbox();
+    });
+
     reviewBtn?.addEventListener('click', () => {
         if (!selectedChats.size) {
             return;
@@ -159,6 +189,25 @@ function bindControls() {
                 showError(error.message);
             });
     });
+}
+
+function fetchAllMatchingChatIds() {
+    const params = new URLSearchParams();
+    params.append('widgetId', widgetId);
+    if (state.search) params.append('search', state.search);
+    if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
+    if (state.filters.response) params.append('filterResponse', state.filters.response);
+
+    return fetch(`${contextPath}/admin/widgets/view/select-ids?${params.toString()}`, {
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(res => res.json())
+        .then(payload => {
+            if (payload.status !== 'ok') {
+                throw new Error(payload.message || 'Unable to collect all chat IDs.');
+            }
+            return payload.chatIds || [];
+        });
 }
 
 function loadTable() {

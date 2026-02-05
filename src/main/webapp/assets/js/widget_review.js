@@ -7,11 +7,15 @@ const searchTermsDisplay = document.getElementById('searchTermsDisplay');
 const detailCard = document.getElementById('detailCard');
 const detailPrompt = document.getElementById('detailPrompt');
 const detailResponse = document.getElementById('detailResponse');
+const detailTitle = document.getElementById('detailTitle');
 const reviewSearchInput = document.getElementById('reviewSearchInput');
 const prevBtn = document.getElementById('prevPageBtn');
 const nextBtn = document.getElementById('nextPageBtn');
 const pageInfo = document.getElementById('pageInfo');
 const tableHeaders = document.querySelectorAll('.widget-review-table th[data-column]');
+const selectAllCheckbox = document.getElementById('reviewSelectAll');
+const selectPageBtn = document.getElementById('selectPageBtn');
+const deselectAllBtn = document.getElementById('deselectAllBtn');
 
 const state = {
     limit: 10,
@@ -25,6 +29,7 @@ const state = {
 let rows = [];
 let activeChatId = null;
 let debounceTimer;
+const multiSelected = new Set();
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!selectionId) {
@@ -72,6 +77,55 @@ function attachHandlers() {
             loadSelectionData();
         });
     });
+
+    selectAllCheckbox?.addEventListener('change', event => {
+        const checked = event.target.checked;
+        reviewBody?.querySelectorAll('.row-multi-select').forEach(cb => {
+            cb.checked = checked;
+            const chatId = cb.dataset.chatId;
+            if (!chatId) return;
+            if (checked) {
+                multiSelected.add(chatId);
+            } else {
+                multiSelected.delete(chatId);
+            }
+        });
+        updateSelectAllCheckbox();
+        refreshDetailPanel();
+    });
+
+    selectPageBtn?.addEventListener('click', () => {
+        reviewBody?.querySelectorAll('.row-multi-select').forEach(cb => {
+            cb.checked = true;
+            const chatId = cb.dataset.chatId;
+            if (!chatId) return;
+            multiSelected.add(chatId);
+        });
+        updateSelectAllCheckbox();
+        refreshDetailPanel();
+    });
+
+    deselectAllBtn?.addEventListener('click', () => {
+        multiSelected.clear();
+        reviewBody?.querySelectorAll('.row-multi-select').forEach(cb => {
+            cb.checked = false;
+        });
+        updateSelectAllCheckbox();
+        refreshDetailPanel();
+    });
+
+    reviewBody?.addEventListener('change', event => {
+        if (!event.target.matches('.row-multi-select')) return;
+        const chatId = event.target.dataset.chatId;
+        if (!chatId) return;
+        if (event.target.checked) {
+            multiSelected.add(chatId);
+        } else {
+            multiSelected.delete(chatId);
+        }
+        updateSelectAllCheckbox();
+        refreshDetailPanel();
+    });
 }
 
 function loadSelectionData() {
@@ -100,15 +154,10 @@ function loadSelectionData() {
             state.page = payload.page || 1;
             renderRows(rows);
             renderSearchTerms(payload.searchTerms);
-            if (rows.length) {
-                if (!activeChatId || !rows.some(row => row.chatId === activeChatId)) {
-                    selectRow(rows[0].chatId);
-                } else {
-                    selectRow(activeChatId);
-                }
-            } else {
-                detailCard.style.display = 'none';
+            if (!multiSelected.size && rows.length) {
+                activeChatId = rows[0].chatId;
             }
+            refreshDetailPanel();
             updatePagination();
         })
         .catch(error => {
@@ -119,36 +168,79 @@ function loadSelectionData() {
 function renderRows(data) {
     if (!reviewBody) return;
     if (!data.length) {
-        reviewBody.innerHTML = '<tr><td colspan="4" class="empty-row">No selected chats available.</td></tr>';
+        reviewBody.innerHTML = '<tr><td colspan="5" class="empty-row">No selected chats available.</td></tr>';
+        selectAllCheckbox && (selectAllCheckbox.checked = false);
         return;
     }
-    reviewBody.innerHTML = data.map(row => `<tr data-chat-id="${escapeHtml(row.chatId)}">
-        <td><div class="text-summary">${escapeHtml(row.chatId)}</div></td>
-        <td><div class="text-summary">${escapeHtml(truncateText(row.prompt))}</div></td>
-        <td><div class="text-summary">${escapeHtml(formatDate(row.createdAt))}</div></td>
-        <td><div class="text-summary">${escapeHtml(row.sessionId)}</div></td>
-    </tr>`).join('');
+    reviewBody.innerHTML = data.map(row => {
+        const checked = multiSelected.has(row.chatId) ? 'checked' : '';
+        return `<tr data-chat-id="${escapeHtml(row.chatId)}">
+            <td class="select-column">
+                <input type="checkbox" class="row-multi-select" data-chat-id="${escapeHtml(row.chatId)}" ${checked}>
+            </td>
+            <td><div class="text-summary">${escapeHtml(row.chatId)}</div></td>
+            <td><div class="text-summary">${escapeHtml(truncateText(row.prompt))}</div></td>
+            <td><div class="text-summary">${escapeHtml(formatDate(row.createdAt))}</div></td>
+            <td><div class="text-summary">${escapeHtml(row.sessionId)}</div></td>
+        </tr>`;
+    }).join('');
 
     reviewBody.querySelectorAll('tr[data-chat-id]').forEach(row => {
-        row.addEventListener('click', () => selectRow(row.dataset.chatId));
+        row.addEventListener('click', () => {
+            const chatId = row.dataset.chatId;
+            activeChatId = chatId;
+            reviewBody.querySelectorAll('tr').forEach(r => r.classList.toggle('selected', r.dataset.chatId === chatId));
+            refreshDetailPanel();
+        });
     });
+    updateSelectAllCheckbox();
 }
 
-function selectRow(chatId) {
-    activeChatId = chatId;
-    if (!reviewBody) return;
-    reviewBody.querySelectorAll('tr').forEach(row => {
-        row.classList.toggle('selected', row.dataset.chatId === chatId);
-    });
-
-    const record = rows.find(r => r.chatId === chatId);
-    if (!record) {
-        detailCard.style.display = 'none';
+function refreshDetailPanel() {
+    if (!detailCard || !detailTitle) return;
+    const selectionCount = multiSelected.size;
+    if (selectionCount > 1) {
+        detailTitle.textContent = 'Select one chat to review';
+        detailPrompt.textContent = '';
+        detailResponse.textContent = '';
+        detailCard.style.display = 'block';
         return;
     }
-    detailCard.style.display = 'block';
-    detailPrompt.textContent = record.prompt || '(no prompt)';
-    detailResponse.textContent = record.response || '(no response)';
+    if (selectionCount === 1) {
+        const chatId = [...multiSelected][0];
+        const record = rows.find(r => r.chatId === chatId);
+        if (record) {
+            detailTitle.textContent = 'Selected Chat Details';
+            detailPrompt.textContent = record.prompt || '(no prompt)';
+            detailResponse.textContent = record.response || '(no response)';
+            detailCard.style.display = 'block';
+            return;
+        }
+    }
+    const fallback = rows.find(r => r.chatId === activeChatId) || rows[0];
+    if (fallback) {
+        detailTitle.textContent = 'Selected Chat Details';
+        detailPrompt.textContent = fallback.prompt || '(no prompt)';
+        detailResponse.textContent = fallback.response || '(no response)';
+        detailCard.style.display = 'block';
+    } else {
+        detailCard.style.display = 'none';
+    }
+}
+
+function updateSelectAllCheckbox() {
+    if (!selectAllCheckbox) {
+        return;
+    }
+    if (!rows.length) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        return;
+    }
+    const totalRows = rows.length;
+    const selectedOnPage = rows.filter(row => multiSelected.has(row.chatId)).length;
+    selectAllCheckbox.checked = selectedOnPage === totalRows && totalRows > 0;
+    selectAllCheckbox.indeterminate = selectedOnPage > 0 && selectedOnPage < totalRows;
 }
 
 function updatePagination() {
@@ -181,9 +273,11 @@ function renderSearchTerms(terms) {
 
 function showError(message) {
     if (reviewBody) {
-        reviewBody.innerHTML = `<tr><td colspan="4" class="empty-row" style="color:#b91c1c;">${escapeHtml(message)}</td></tr>`;
+        reviewBody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:#b91c1c;">${escapeHtml(message)}</td></tr>`;
     }
-    detailCard.style.display = 'none';
+    if (detailCard) {
+        detailCard.style.display = 'none';
+    }
 }
 
 function truncateText(text) {

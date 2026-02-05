@@ -56,6 +56,22 @@
             </form>
         </section>
 
+        <section class="section">
+            <h2>Workspace Management</h2>
+            <form id="workspaceForm">
+                <div class="form-group">
+                    <label for="workspaceNameInput">Workspace Name</label>
+                    <input type="text" id="workspaceNameInput" name="workspaceName"
+                        placeholder="e.g. North America Support" value="${workspaceName}">
+                </div>
+                <div class="actions">
+                    <button type="button" id="saveWorkspaceBtn">Save Workspace Name</button>
+                </div>
+                <div id="workspaceMessage" class="widget-message"></div>
+            </form>
+        </section>
+
+
         <section class="section widget-section">
             <h2>Widget Registry</h2>
             <div class="search-row">
@@ -142,6 +158,62 @@
             </div>
         </section>
 
+        <!-- Additional section located after the user creation section -->
+        <section class="section terms-section">
+            <h2>Term Definitions</h2>
+            <p>Define how prompts/responses should match saved terms. You can specify a regex or a wildcard pattern.</p>
+            <form id="termCreateForm">
+                <input type="hidden" id="termId">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="termName">Term Name</label>
+                        <input type="text" id="termName" name="name" placeholder="Term name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="termDescription">Description</label>
+                        <input type="text" id="termDescription" name="description" placeholder="What it matches"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="termPattern">Match Pattern</label>
+                        <input type="text" id="termPattern" name="matchPattern" placeholder="Regex or wildcard pattern">
+                    </div>
+                    <div class="form-group">
+                        <label for="termType">Match Type</label>
+                        <select id="termType" name="matchType">
+                            <option value="WILDCARD">Wildcard</option>
+                            <option value="REGEX">Regular Expression</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit" id="saveTermBtn">Save Term</button>
+                    <button type="button" id="cancelTermEditBtn" style="display:none;">Cancel</button>
+                </div>
+                <div id="termMessage" class="widget-message"></div>
+            </form>
+            <div style="overflow-x:auto;">
+                <table class="widget-table" id="termTable">
+                    <thead>
+                        <tr>
+                            <th>Term</th>
+                            <th>Description</th>
+                            <th>Pattern</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="termTableBody">
+                        <tr>
+                            <td colspan="5" class="empty-row">Loading terms…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+
         <section class="section user-section">
             <h2>Create User</h2>
             <p>Only admins may create new admin or regular users. Choose the role below.</p>
@@ -194,7 +266,8 @@
         window.adminPageConfig = {
             contextPath: '${contextPath}',
             widgetListJson: '${widgetListJson}',
-        apiKeyStored: '${ apiKeyStored }'
+            termsListJson: '${termsListJson}',
+            apiKeyStored: '${apiKeyStored}'
         };
     </script>
     <script src="${contextPath}/assets/js/admin_page.js"></script>

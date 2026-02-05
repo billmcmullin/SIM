@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import com.sim.chatserver.term.TermChatSnapshot;
 
 import jakarta.json.Json;
 import jakarta.json.JsonException;
@@ -28,13 +31,46 @@ public class WidgetReviewStartServlet extends HttpServlet {
     public static final class Selection {
 
         final String widgetId;
+        final String displayName;
+        final String backUrl;
         final List<String> chatIds;
         final SearchTerms searchTerms;
+        final List<TermChatSnapshot> snapshots;
 
-        Selection(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
+        private Selection(String widgetId,
+                String displayName,
+                String backUrl,
+                List<String> chatIds,
+                List<TermChatSnapshot> snapshots,
+                SearchTerms searchTerms) {
             this.widgetId = widgetId;
+            this.displayName = displayName;
+            this.backUrl = backUrl;
             this.chatIds = chatIds;
             this.searchTerms = searchTerms;
+            this.snapshots = snapshots;
+        }
+
+        static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
+            return new Selection(widgetId, widgetId, null, new ArrayList<>(chatIds), null, searchTerms);
+        }
+
+        static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
+            List<String> chatIds = snapshots.stream()
+                    .map(TermChatSnapshot::getChatId)
+                    .collect(Collectors.toCollection(LinkedHashSet::new))
+                    .stream()
+                    .toList();
+            return new Selection(displayName, displayName, backUrl, chatIds, new ArrayList<>(snapshots),
+                    new SearchTerms("", "", ""));
+        }
+
+        boolean hasSnapshots() {
+            return snapshots != null && !snapshots.isEmpty();
+        }
+
+        String getBackUrl() {
+            return backUrl;
         }
     }
 
@@ -96,15 +132,13 @@ public class WidgetReviewStartServlet extends HttpServlet {
         String prompt = search == null ? "" : search.getString("prompt", "");
         String responseText = search == null ? "" : search.getString("response", "");
 
-        Selection selection = new Selection(
+        Selection selection = Selection.fromWidget(
                 widgetId,
                 new ArrayList<>(chatSet),
                 new SearchTerms(global, prompt, responseText)
         );
 
-        Map<String, Selection> selections = getSelectionMap(session);
-        String selectionId = UUID.randomUUID().toString();
-        selections.put(selectionId, selection);
+        String selectionId = storeSelection(session, selection);
 
         resp.setContentType("application/json");
         resp.getWriter().write(Json.createObjectBuilder()
@@ -113,8 +147,26 @@ public class WidgetReviewStartServlet extends HttpServlet {
                 .toString());
     }
 
+    public static String createSnapshotSelection(HttpSession session,
+            String label,
+            List<TermChatSnapshot> snapshots,
+            String backUrl) {
+        if (session == null || label == null || label.isBlank() || snapshots == null || snapshots.isEmpty()) {
+            return null;
+        }
+        Selection selection = Selection.fromTermSnapshots(label, backUrl, snapshots);
+        return storeSelection(session, selection);
+    }
+
+    private static String storeSelection(HttpSession session, Selection selection) {
+        Map<String, Selection> selections = getSelectionMap(session);
+        String selectionId = UUID.randomUUID().toString();
+        selections.put(selectionId, selection);
+        return selectionId;
+    }
+
     @SuppressWarnings("unchecked")
-    private Map<String, Selection> getSelectionMap(HttpSession session) {
+    private static Map<String, Selection> getSelectionMap(HttpSession session) {
         Object existing = session.getAttribute(SESSION_KEY);
         if (existing instanceof Map<?, ?> map) {
             return (Map<String, Selection>) map;

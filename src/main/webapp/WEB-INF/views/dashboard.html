@@ -30,7 +30,7 @@
         <section class="section stats-section">
             <h2>Widget Chat Overview</h2>
             <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
-            <div style="overflow-x:auto;">
+            <div class="table-scroll">
                 <table class="widget-table">
                     <thead>
                         <tr>
@@ -45,7 +45,22 @@
                 </table>
             </div>
         </section>
+
+        <section class="chart-wrapper">
+            <h2>Term Distribution</h2>
+            <div class="chart-area">
+                <canvas id="termChart"></canvas>
+            </div>
+            <div id="termChartLegend" class="term-legend"></div>
+        </section>
     </div>
+
+    <script>
+        window.termChartData = '${termChartData}';
+        window.dashboardConfig = { contextPath: '${contextPath}' };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="${contextPath}/assets/js/dashboard.js"></script>
 </body>
 
 </html>

@@ -7,12 +7,16 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.term.TermChatSnapshot;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
@@ -54,6 +58,11 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if (selection == null) {
             resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Selection not found.\"}");
+            return;
+        }
+
+        if (selection.hasSnapshots()) {
+            handleSnapshotSelection(selection, req, resp);
             return;
         }
 
@@ -165,6 +174,96 @@ public class WidgetReviewDataServlet extends HttpServlet {
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load selection.\"}");
         }
+    }
+
+    private void handleSnapshotSelection(WidgetReviewStartServlet.Selection selection,
+            HttpServletRequest req,
+            HttpServletResponse resp) throws IOException {
+        String search = req.getParameter("search");
+        String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
+        String sortDir = parseSortDirection(req.getParameter("sortDir"));
+        int limit = parseInteger(req.getParameter("limit"), 10);
+        int page = parseInteger(req.getParameter("page"), 1);
+        if (page < 1) {
+            page = 1;
+        }
+        int offset = (page - 1) * limit;
+
+        List<TermChatSnapshot> filtered = filterSnapshots(selection.snapshots, search);
+        sortSnapshots(filtered, sortColumn, sortDir);
+
+        int totalRows = filtered.size();
+        int fromIndex = Math.min(offset, totalRows);
+        int toIndex = Math.min(offset + limit, totalRows);
+        List<TermChatSnapshot> pageRows = filtered.subList(fromIndex, toIndex);
+
+        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
+        for (TermChatSnapshot snapshot : pageRows) {
+            arrayBuilder.add(Json.createObjectBuilder()
+                    .add("chatId", snapshot.getChatId())
+                    .add("prompt", snapshot.getPrompt())
+                    .add("response", snapshot.getResponse())
+                    .add("createdAt", formatTimestamp(snapshot.getCreatedAt()))
+                    .add("sessionId", snapshot.getSessionId()));
+        }
+
+        int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / limit);
+        JsonObject body = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("rows", arrayBuilder)
+                .add("searchTerms", Json.createObjectBuilder()
+                        .add("global", selection.searchTerms.global == null ? "" : selection.searchTerms.global)
+                        .add("prompt", selection.searchTerms.prompt == null ? "" : selection.searchTerms.prompt)
+                        .add("response", selection.searchTerms.response == null ? "" : selection.searchTerms.response))
+                .add("totalRows", totalRows)
+                .add("totalPages", totalPages)
+                .add("page", page)
+                .build();
+
+        resp.setContentType("application/json");
+        resp.getWriter().write(body.toString());
+    }
+
+    private List<TermChatSnapshot> filterSnapshots(List<TermChatSnapshot> base, String search) {
+        if (search == null || search.isBlank()) {
+            return new ArrayList<>(base);
+        }
+        String normalized = search.trim().toLowerCase(Locale.ROOT);
+        return base.stream()
+                .filter(snapshot -> containsIgnoreCase(snapshot.getPrompt(), normalized)
+                || containsIgnoreCase(snapshot.getResponse(), normalized)
+                || containsIgnoreCase(snapshot.getSessionId(), normalized))
+                .collect(Collectors.toList());
+    }
+
+    private boolean containsIgnoreCase(String source, String needle) {
+        if (source == null || needle == null) {
+            return false;
+        }
+        return source.toLowerCase(Locale.ROOT).contains(needle);
+    }
+
+    private void sortSnapshots(List<TermChatSnapshot> data, String column, String direction) {
+        Comparator<TermChatSnapshot> comparator = switch (column) {
+            case "prompt" ->
+                Comparator.comparing(snapshot -> snapshot.getPrompt() == null ? "" : snapshot.getPrompt(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "session_id" ->
+                Comparator.comparing(snapshot -> snapshot.getSessionId() == null ? "" : snapshot.getSessionId(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "widget_chat_id" ->
+                Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "created_at" ->
+                Comparator.comparing(snapshot -> snapshot.getCreatedAt() == null ? 0L : snapshot.getCreatedAt().getTime());
+            default ->
+                Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
+                String.CASE_INSENSITIVE_ORDER);
+        };
+        if ("DESC".equalsIgnoreCase(direction)) {
+            comparator = comparator.reversed();
+        }
+        data.sort(comparator);
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {

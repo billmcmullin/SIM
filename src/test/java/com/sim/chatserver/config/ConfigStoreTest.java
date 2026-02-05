@@ -1,161 +1,168 @@
 package com.sim.chatserver.config;
 
-import java.lang.reflect.Field;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
-import java.util.Map;
+import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.mockito.ArgumentMatchers.anyString;
-import org.mockito.MockedStatic;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.sim.chatserver.startup.AppDataSourceHolder;
+
 class ConfigStoreTest {
 
-    @BeforeAll
-    static void ensureDatabaseEnv() throws Exception {
-        setEnv(Map.of(
-                "DB_HOST", "localhost",
-                "DB_PORT", "5432",
-                "DB_NAME", "chat",
-                "DB_USER", "test",
-                "DB_PASSWORD", "test"));
+    private AppDataSourceHolder holder;
+    private DataSource dataSource;
+
+    @BeforeEach
+    void setUp() {
+        holder = mock(AppDataSourceHolder.class);
+        dataSource = mock(DataSource.class);
+        when(holder.getDataSource()).thenReturn(dataSource);
+        ConfigStore.setAppDataSourceHolder(holder);
     }
 
     @Test
-    void ensureTable_executesCreateStatement() throws Exception {
-        Connection connection = mock(Connection.class);
-        Statement statement = mock(Statement.class);
-        when(connection.createStatement()).thenReturn(statement);
+    void ensureTable_createsTableAndAddsColumnIfMissing() throws Exception {
+        Connection createConn = mock(Connection.class);
+        PreparedStatement createStmt = mock(PreparedStatement.class);
+        Connection columnConn = mock(Connection.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columns = mock(ResultSet.class);
+        PreparedStatement alterStmt = mock(PreparedStatement.class);
 
-        try (MockedStatic<Database> db = mockStatic(Database.class)) {
-            db.when(Database::getConnection).thenReturn(connection);
+        stubConnections(createConn, columnConn);
+        when(createConn.prepareStatement(startsWith("CREATE TABLE IF NOT EXISTS server_config"))).thenReturn(createStmt);
+        when(columnConn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, null, "server_config", "workspace_name")).thenReturn(columns);
+        when(columns.next()).thenReturn(false);
+        when(columnConn.prepareStatement(startsWith("ALTER TABLE server_config"))).thenReturn(alterStmt);
 
-            ConfigStore.ensureTable();
-        }
+        ConfigStore.ensureTable();
 
-        verify(statement).execute(anyString());
-        verify(statement).close();
-        verify(connection).close();
+        verify(createStmt).execute();
+        verify(createStmt).close();
+        verify(columnConn).prepareStatement(startsWith("ALTER TABLE server_config"));
+        verify(alterStmt).execute();
+        verify(alterStmt).close();
+        verify(columnConn).close();
     }
 
     @Test
-    void load_returnsConfigWhenRowPresent() throws Exception {
-        Connection connection = mock(Connection.class);
-        PreparedStatement ps = mock(PreparedStatement.class);
-        ResultSet rs = mock(ResultSet.class);
+    void load_retrievesAllValuesIncludingWorkspace() throws Exception {
+        Connection createConn = mock(Connection.class);
+        PreparedStatement createStmt = mock(PreparedStatement.class);
+        Connection columnConn = mock(Connection.class);
+        PreparedStatement selectStmt = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columnRs = mock(ResultSet.class);
+        Connection selectConn = mock(Connection.class);
 
-        when(connection.prepareStatement(
-                "SELECT server_host, server_port, connection_info, api_key FROM server_config ORDER BY id DESC LIMIT 1"))
-                .thenReturn(ps);
-        when(ps.executeQuery()).thenReturn(rs);
-        when(rs.next()).thenReturn(true);
-        when(rs.getString("server_host")).thenReturn("example.com");
-        when(rs.getInt("server_port")).thenReturn(8080);
-        when(rs.getString("connection_info")).thenReturn("info");
-        when(rs.getString("api_key")).thenReturn("secret");
+        stubConnections(createConn, columnConn, selectConn);
+        when(createConn.prepareStatement(startsWith("CREATE TABLE IF NOT EXISTS server_config"))).thenReturn(createStmt);
+        when(columnConn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, null, "server_config", "workspace_name")).thenReturn(columnRs);
+        when(columnRs.next()).thenReturn(true);
+        when(selectConn.prepareStatement(startsWith("SELECT server_host"))).thenReturn(selectStmt);
 
-        try (MockedStatic<Database> db = mockStatic(Database.class)) {
-            db.when(Database::getConnection).thenReturn(connection);
+        when(selectStmt.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true);
+        when(resultSet.getString("server_host")).thenReturn("example.com");
+        when(resultSet.getInt("server_port")).thenReturn(8080);
+        when(resultSet.getString("connection_info")).thenReturn("info");
+        when(resultSet.getString("api_key")).thenReturn("secret");
+        when(resultSet.getString("workspace_name")).thenReturn("workspace-a");
 
-            ServerConfig config = ConfigStore.load();
+        ServerConfig config = ConfigStore.load();
 
-            assertNotNull(config);
-            assertEquals("example.com", config.getServerHost());
-            assertEquals(8080, config.getServerPort());
-            assertEquals("info", config.getConnectionInfo());
-            assertEquals("secret", config.getApiKey());
-        }
-
-        verify(ps).executeQuery();
-        verify(rs).close();
-        verify(ps).close();
-        verify(connection).close();
+        assertNotNull(config);
+        assertEquals("example.com", config.getServerHost());
+        assertEquals(8080, config.getServerPort());
+        assertEquals("info", config.getConnectionInfo());
+        assertEquals("secret", config.getApiKey());
+        assertEquals("workspace-a", config.getWorkspaceName());
     }
 
     @Test
-    void load_returnsNullWhenNoRows() throws Exception {
-        Connection connection = mock(Connection.class);
-        PreparedStatement ps = mock(PreparedStatement.class);
-        ResultSet rs = mock(ResultSet.class);
+    void load_returnsNullDefaultsWhenEmpty() throws Exception {
+        Connection createConn = mock(Connection.class);
+        PreparedStatement createStmt = mock(PreparedStatement.class);
+        Connection columnConn = mock(Connection.class);
+        PreparedStatement selectStmt = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columnRs = mock(ResultSet.class);
+        Connection selectConn = mock(Connection.class);
 
-        when(connection.prepareStatement(anyString())).thenReturn(ps);
-        when(ps.executeQuery()).thenReturn(rs);
-        when(rs.next()).thenReturn(false);
+        stubConnections(createConn, columnConn, selectConn);
+        when(createConn.prepareStatement(startsWith("CREATE TABLE IF NOT EXISTS server_config"))).thenReturn(createStmt);
+        when(columnConn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, null, "server_config", "workspace_name")).thenReturn(columnRs);
+        when(columnRs.next()).thenReturn(true);
+        when(selectConn.prepareStatement(startsWith("SELECT server_host"))).thenReturn(selectStmt);
+        when(selectStmt.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(false);
 
-        try (MockedStatic<Database> db = mockStatic(Database.class)) {
-            db.when(Database::getConnection).thenReturn(connection);
+        ServerConfig config = ConfigStore.load();
 
-            assertNull(ConfigStore.load());
-        }
-
-        verify(rs).close();
-        verify(ps).close();
-        verify(connection).close();
+        assertNotNull(config);
+        assertEquals(null, config.getServerHost());
+        assertEquals(0, config.getServerPort());
+        assertEquals(null, config.getConnectionInfo());
+        assertEquals(null, config.getApiKey());
+        assertEquals(null, config.getWorkspaceName());
     }
 
     @Test
-    void save_clearsExistingRowsAndInsertsNewConfig() throws Exception {
-        Connection deleteConnection = mock(Connection.class);
-        Statement deleteStatement = mock(Statement.class);
-        when(deleteConnection.createStatement()).thenReturn(deleteStatement);
+    void save_writesRowAndDeletesPrevious() throws Exception {
+        Connection createConn = mock(Connection.class);
+        PreparedStatement createStmt = mock(PreparedStatement.class);
+        Connection columnConn = mock(Connection.class);
+        PreparedStatement deleteStmt = mock(PreparedStatement.class);
+        Connection deleteConn = mock(Connection.class);
+        Connection insertConn = mock(Connection.class);
+        PreparedStatement insertStmt = mock(PreparedStatement.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columnRs = mock(ResultSet.class);
 
-        Connection insertConnection = mock(Connection.class);
-        PreparedStatement insertStatement = mock(PreparedStatement.class);
-        when(insertConnection.prepareStatement(
-                "INSERT INTO server_config (server_host, server_port, connection_info, api_key) VALUES (?, ?, ?, ?)"))
-                .thenReturn(insertStatement);
+        stubConnections(createConn, columnConn, deleteConn, insertConn);
+        when(createConn.prepareStatement(startsWith("CREATE TABLE IF NOT EXISTS server_config"))).thenReturn(createStmt);
+        when(columnConn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, null, "server_config", "workspace_name")).thenReturn(columnRs);
+        when(columnRs.next()).thenReturn(true);
+        when(deleteConn.prepareStatement(startsWith("DELETE FROM server_config"))).thenReturn(deleteStmt);
+        when(insertConn.prepareStatement(startsWith("INSERT INTO server_config"))).thenReturn(insertStmt);
 
-        ServerConfig config = new ServerConfig("example.com", 9090, "info", "secret");
+        ServerConfig config = new ServerConfig("example.com", 9090, "info", "secret", "workspace-a");
 
-        try (MockedStatic<Database> db = mockStatic(Database.class)) {
-            db.when(Database::getConnection).thenReturn(deleteConnection, insertConnection);
+        ConfigStore.save(config);
 
-            ConfigStore.save(config);
-        }
-
-        verify(deleteStatement).executeUpdate("DELETE FROM server_config");
-        verify(deleteStatement).close();
-        verify(deleteConnection).close();
-
-        verify(insertStatement).setString(1, "example.com");
-        verify(insertStatement).setInt(2, 9090);
-        verify(insertStatement).setString(3, "info");
-        verify(insertStatement).setString(4, "secret");
-        verify(insertStatement).executeUpdate();
-        verify(insertStatement).close();
-        verify(insertConnection).close();
+        verify(deleteStmt).executeUpdate();
+        verify(deleteStmt).close();
+        verify(insertStmt).setString(1, "example.com");
+        verify(insertStmt).setInt(2, 9090);
+        verify(insertStmt).setString(3, "info");
+        verify(insertStmt).setString(4, "secret");
+        verify(insertStmt).setString(5, "workspace-a");
+        verify(insertStmt).executeUpdate();
+        verify(insertStmt).close();
+        verify(insertConn).close();
     }
 
-    @SuppressWarnings("unchecked")
-    private static void setEnv(Map<String, String> newenv) throws Exception {
-        try {
-            Class<?> pe = Class.forName("java.lang.ProcessEnvironment");
-            Field theEnvironmentField = pe.getDeclaredField("theEnvironment");
-            theEnvironmentField.setAccessible(true);
-            ((Map<String, String>) theEnvironmentField.get(null)).putAll(newenv);
-            Field theCaseInsensitiveEnvironmentField = pe.getDeclaredField("theCaseInsensitiveEnvironment");
-            theCaseInsensitiveEnvironmentField.setAccessible(true);
-            ((Map<String, String>) theCaseInsensitiveEnvironmentField.get(null)).putAll(newenv);
-        } catch (NoSuchFieldException e) {
-            Class<?>[] classes = java.util.Collections.class.getDeclaredClasses();
-            Map<String, String> env = System.getenv();
-            for (Class<?> cl : classes) {
-                if ("java.util.Collections$UnmodifiableMap".equals(cl.getName())) {
-                    Field field = cl.getDeclaredField("m");
-                    field.setAccessible(true);
-                    ((Map<String, String>) field.get(env)).putAll(newenv);
-                }
-            }
-        }
+    private void stubConnections(Connection... connections) throws SQLException {
+        AtomicInteger counter = new AtomicInteger(0);
+        when(dataSource.getConnection()).thenAnswer(invocation -> connections[counter.getAndIncrement()]);
     }
 }

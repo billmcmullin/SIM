@@ -11,16 +11,25 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.term.TermDefinition;
+import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
+import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -34,9 +43,13 @@ public class DashboardServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
+    private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
 
     @Inject
     AppDataSourceHolder dsHolder;
+
+    @Inject
+    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -62,6 +75,22 @@ public class DashboardServlet extends HttpServlet {
         int totalChats = widgetStats.stream().mapToInt(stat -> stat.count).sum();
         String statsRows = renderWidgetStatsRows(widgetStats, req.getContextPath());
 
+        String termChartJson = "[]";
+        TermSummary summary = null;
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            List<TermDefinition> terms = termsStore.listAll();
+            summary = buildTermSummary(conn, widgets, terms);
+            termChartJson = summary.toJson();
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute term summaries", e);
+        }
+
+        if (summary != null) {
+            storeTermSnapshots(session, summary);
+        } else {
+            session.removeAttribute(TERM_SNAPSHOT_SESSION_KEY);
+        }
+
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String userName = String.valueOf(session.getAttribute("user"));
         String rendered = template
@@ -70,12 +99,18 @@ public class DashboardServlet extends HttpServlet {
                 .replace("${role}", escapeHtml(role))
                 .replace("${adminLink}", adminLink)
                 .replace("${totalChats}", escapeHtml(String.valueOf(totalChats)))
-                .replace("${widgetStatsRows}", statsRows);
+                .replace("${widgetStatsRows}", statsRows)
+                .replace("${termChartData}", termChartJson);
 
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
+    }
+
+    private void storeTermSnapshots(HttpSession session, TermSummary summary) {
+        Map<String, List<TermChatSnapshot>> copies = summary.copyTermSnapshots();
+        session.setAttribute(TERM_SNAPSHOT_SESSION_KEY, copies);
     }
 
     private String renderWidgetStatsRows(List<WidgetStat> stats, String contextPath) {
@@ -118,6 +153,85 @@ public class DashboardServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to query widget tables", e);
         }
         return stats;
+    }
+
+    private TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+        TermSummary summary = new TermSummary();
+        if (widgets == null || widgets.isEmpty() || terms == null) {
+            return summary;
+        }
+
+        List<TermMatcher> matchers = new ArrayList<>();
+        for (TermDefinition term : terms) {
+            if (term == null || term.isSystemFlag()) {
+                continue;
+            }
+            matchers.add(new TermMatcher(term));
+            summary.ensureTerm(term.getName());
+        }
+
+        String multiLabel = "Multi";
+        String otherLabel = "Other Parasoft Match";
+        summary.ensureTerm(multiLabel);
+        summary.ensureTerm(otherLabel);
+
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null) {
+                continue;
+            }
+            String widgetId = widget.getWidgetId();
+            String tableName = sanitizeWidgetTableName(widgetId);
+            if (!tableExists(conn, tableName)) {
+                continue;
+            }
+            String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM " + quoteIdentifier(tableName);
+            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String chatId = rs.getString("widget_chat_id");
+                    if (chatId == null) {
+                        chatId = "";
+                    }
+                    String prompt = rs.getString("prompt");
+                    if (prompt == null) {
+                        prompt = "";
+                    }
+                    String response = rs.getString("response_text");
+                    Timestamp createdAt = rs.getTimestamp("created_at");
+                    String sessionId = rs.getString("session_id");
+
+                    int matches = 0;
+                    String matchedTerm = null;
+                    for (TermMatcher matcher : matchers) {
+                        if (matcher.matches(prompt)) {
+                            matches++;
+                            matchedTerm = matcher.term.getName();
+                            if (matches > 1) {
+                                break;
+                            }
+                        }
+                    }
+
+                    String snapshotTerm = otherLabel;
+                    if (matches > 1) {
+                        snapshotTerm = multiLabel;
+                    } else if (matches == 1) {
+                        snapshotTerm = matchedTerm;
+                    }
+
+                    TermChatSnapshot snapshot = new TermChatSnapshot(
+                            snapshotTerm,
+                            widgetId,
+                            chatId,
+                            prompt,
+                            response,
+                            createdAt,
+                            sessionId
+                    );
+                    summary.recordMatch(snapshotTerm, snapshot);
+                }
+            }
+        }
+        return summary;
     }
 
     private int countRows(Connection conn, String tableName) throws SQLException {
@@ -200,6 +314,72 @@ public class DashboardServlet extends HttpServlet {
             this.widgetId = widgetId;
             this.label = label;
             this.count = count;
+        }
+    }
+
+    private static final class TermSummary {
+
+        private final Map<String, Integer> termCounts = new LinkedHashMap<>();
+        private final Map<String, List<TermChatSnapshot>> termSnapshots = new LinkedHashMap<>();
+
+        private void ensureTerm(String termName) {
+            termCounts.putIfAbsent(termName, 0);
+            termSnapshots.putIfAbsent(termName, new ArrayList<>());
+        }
+
+        private void recordMatch(String termName, TermChatSnapshot snapshot) {
+            termCounts.merge(termName, 1, Integer::sum);
+            termSnapshots.computeIfAbsent(termName, k -> new ArrayList<>()).add(snapshot);
+        }
+
+        private String toJson() {
+            JsonArrayBuilder builder = Json.createArrayBuilder();
+            for (Map.Entry<String, Integer> entry : termCounts.entrySet()) {
+                builder.add(Json.createObjectBuilder()
+                        .add("label", entry.getKey())
+                        .add("count", entry.getValue())
+                        .add("term", entry.getKey()));
+            }
+            return builder.build().toString();
+        }
+
+        private Map<String, List<TermChatSnapshot>> copyTermSnapshots() {
+            Map<String, List<TermChatSnapshot>> copies = new LinkedHashMap<>();
+            for (Map.Entry<String, List<TermChatSnapshot>> entry : termSnapshots.entrySet()) {
+                copies.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+            return copies;
+        }
+    }
+
+    private static final class TermMatcher {
+
+        private final TermDefinition term;
+        private final Pattern pattern;
+
+        private TermMatcher(TermDefinition term) {
+            this.term = term;
+            this.pattern = compile(term);
+        }
+
+        private boolean matches(String input) {
+            if (input == null || input.isBlank()) {
+                return false;
+            }
+            return pattern.matcher(input).find();
+        }
+
+        private Pattern compile(TermDefinition term) {
+            String raw = term.getMatchPattern();
+            if (raw == null || raw.isBlank()) {
+                raw = term.getName();
+            }
+            if ("REGEX".equalsIgnoreCase(term.getMatchType())) {
+                return Pattern.compile(raw, Pattern.CASE_INSENSITIVE);
+            }
+            String escaped = Pattern.quote(raw);
+            escaped = escaped.replace("\\*", ".*").replace("\\?", ".");
+            return Pattern.compile(escaped, Pattern.CASE_INSENSITIVE);
         }
     }
 }

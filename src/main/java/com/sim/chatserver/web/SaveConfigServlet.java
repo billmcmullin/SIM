@@ -33,8 +33,9 @@ public class SaveConfigServlet extends HttpServlet {
             if (apiKey == null || apiKey.isBlank()) {
                 apiKey = existingConfig != null ? existingConfig.getApiKey() : "";
             }
+            String workspaceName = existingConfig != null ? existingConfig.getWorkspaceName() : "";
 
-            ServerConfig config = new ServerConfig(serverHost, serverPort, connectionInfo, apiKey);
+            ServerConfig config = new ServerConfig(serverHost, serverPort, connectionInfo, apiKey, workspaceName);
             ConfigStore.save(config);
 
             resp.setContentType("application/json");

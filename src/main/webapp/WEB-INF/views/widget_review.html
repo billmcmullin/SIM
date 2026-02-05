@@ -23,10 +23,11 @@
 
     <div class="container">
         <section class="section">
-            <a class="back-link" href="${contextPath}/admin/widgets/view?widgetId=${widgetId}">
-                &larr; Back to widget entries
+            <a class="back-link" href="${backLink}">
+                &larr; Back
             </a>
             <h1>Review Selected Chats</h1>
+            <p class="helper-note">Currently reviewing ${subjectType}: <strong>${subjectLabel}</strong></p>
             <p class="helper-note">Showing all columns except the response. Use the search or sort controls to explore
                 the selection.</p>
         </section>
@@ -41,12 +42,22 @@
                     <label for="reviewSearchInput">Search prompt, response, or session ID</label>
                     <input type="search" id="reviewSearchInput" placeholder="Enter search text">
                 </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="button-row">
+                        <button type="button" id="selectPageBtn">Select all on page</button>
+                        <button type="button" id="deselectAllBtn">Deselect all</button>
+                    </div>
+                </div>
             </div>
 
             <div class="widget-review-table">
                 <table>
                     <thead>
                         <tr>
+                            <th class="select-column">
+                                <input type="checkbox" id="reviewSelectAll">
+                            </th>
                             <th data-column="widget_chat_id">Chat ID</th>
                             <th data-column="prompt">Prompt (summary)</th>
                             <th data-column="created_at">Created At</th>
@@ -55,7 +66,7 @@
                     </thead>
                     <tbody id="widgetReviewBody">
                         <tr>
-                            <td colspan="4" class="empty-row">Loading selected chats…</td>
+                            <td colspan="5" class="empty-row">Loading selected chats…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -70,7 +81,7 @@
             </div>
 
             <div class="detail-card" id="detailCard" style="display:none;">
-                <div class="summary-label">Selected Chat Details</div>
+                <div class="summary-label" id="detailTitle">Selected Chat Details</div>
                 <div>
                     <strong>Prompt</strong>
                     <pre id="detailPrompt"></pre>
@@ -86,7 +97,9 @@
     <script>
         window.widgetReviewConfig = {
             contextPath: '${contextPath}',
-            selectionId: '${selectionId}'
+            selectionId: '${selectionId}',
+            subjectLabel: '${subjectLabel}',
+            subjectType: '${subjectType}'
         };
     </script>
     <script src="${contextPath}/assets/js/widget_review.js"></script>

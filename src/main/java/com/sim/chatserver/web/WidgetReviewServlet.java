@@ -42,6 +42,15 @@ public class WidgetReviewServlet extends HttpServlet {
             return;
         }
 
+        String subjectLabel = selection.displayName == null || selection.displayName.isBlank()
+                ? selection.widgetId
+                : selection.displayName;
+        String subjectType = selection.hasSnapshots() ? "Term" : "Widget";
+        String backLink = selection.getBackUrl();
+        if (backLink == null || backLink.isBlank()) {
+            backLink = req.getContextPath() + "/admin/widgets/view?widgetId=" + selection.widgetId;
+        }
+
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String userName = String.valueOf(session.getAttribute("user"));
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
@@ -49,9 +58,12 @@ public class WidgetReviewServlet extends HttpServlet {
                 .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role))
                 .replace("${contextPath}", req.getContextPath())
-                .replace("${widgetName}", escapeHtml(selection.widgetId))
+                .replace("${widgetName}", escapeHtml(subjectLabel))
                 .replace("${widgetId}", escapeHtml(selection.widgetId))
-                .replace("${selectionId}", escapeHtml(selectionId));
+                .replace("${selectionId}", escapeHtml(selectionId))
+                .replace("${subjectType}", escapeHtml(subjectType))
+                .replace("${subjectLabel}", escapeHtml(subjectLabel))
+                .replace("${backLink}", escapeHtml(backLink));
 
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {

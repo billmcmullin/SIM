@@ -2,11 +2,18 @@ const config = window.adminPageConfig || {};
 const contextPath = config.contextPath || '';
 const apiKeyStored = Boolean(config.apiKeyStored);
 let initialWidgetList = [];
+let initialTermList = [];
 
 try {
     initialWidgetList = Array.isArray(config.widgetListJson) ? config.widgetListJson : JSON.parse(config.widgetListJson || '[]');
 } catch (e) {
     initialWidgetList = [];
+}
+
+try {
+    initialTermList = Array.isArray(config.termsListJson) ? config.termsListJson : JSON.parse(config.termsListJson || '[]');
+} catch (e) {
+    initialTermList = [];
 }
 
 let lastTestSuccess = false;
@@ -23,6 +30,21 @@ const widgetSelectAll = document.getElementById('widgetSelectAll');
 const widgetTableExplorerBody = document.getElementById('widgetTableExplorerBody');
 const widgetTableExplorerMessage = document.getElementById('widgetTableExplorerMessage');
 const userTableBody = document.getElementById('userTableBody');
+const termTableBody = document.getElementById('termTableBody');
+const termMessageEl = document.getElementById('termMessage');
+const termForm = document.getElementById('termCreateForm');
+const termIdInput = document.getElementById('termId');
+const termNameInput = document.getElementById('termName');
+const termDescriptionInput = document.getElementById('termDescription');
+const termPatternInput = document.getElementById('termPattern');
+const termTypeSelect = document.getElementById('termType');
+const saveTermBtn = document.getElementById('saveTermBtn');
+const cancelTermEditBtn = document.getElementById('cancelTermEditBtn');
+const workspaceNameInput = document.getElementById('workspaceNameInput');
+const saveWorkspaceBtn = document.getElementById('saveWorkspaceBtn');
+const workspaceMessageEl = document.getElementById('workspaceMessage');
+
+let isEditingTerm = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     if (apiKeyStored) {
@@ -38,6 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
     reloadWidgetList();
     loadSyncInterval();
     loadUserList();
+    loadTermList(initialTermList);
+    initWorkspaceSection();
 
     document.getElementById('testConnectionBtn').addEventListener('click', testConnection);
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfiguration);
@@ -61,6 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
         createUser();
     });
 
+    termForm?.addEventListener('submit', event => {
+        event.preventDefault();
+        submitTermForm();
+    });
+    cancelTermEditBtn?.addEventListener('click', () => {
+        resetTermForm();
+    });
+
     const syncBtn = document.getElementById('syncWidgetTablesBtn');
     if (syncBtn) {
         syncBtn.addEventListener('click', () => {
@@ -76,6 +108,59 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+function initWorkspaceSection() {
+    if (workspaceNameInput && typeof config.workspaceName === 'string') {
+        workspaceNameInput.value = config.workspaceName;
+    }
+    if (saveWorkspaceBtn) {
+        saveWorkspaceBtn.addEventListener('click', () => {
+            const name = workspaceNameInput.value.trim();
+            saveWorkspaceName(name);
+        });
+    }
+}
+
+function saveWorkspaceName(name) {
+    if (!saveWorkspaceBtn) {
+        return;
+    }
+    const params = new URLSearchParams();
+    params.append('workspaceName', name);
+
+    saveWorkspaceBtn.disabled = true;
+    fetch(`${contextPath}/admin/workspace`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        },
+        body: params.toString()
+    })
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok && payload.status === 'ok') {
+                showWorkspaceMessage('Workspace name saved.', false);
+                workspaceNameInput.value = payload.workspaceName || name;
+            } else {
+                throw new Error(payload.message || 'Unable to save workspace name.');
+            }
+        })
+        .catch(error => {
+            showWorkspaceMessage(`Error: ${error.message}`, true);
+        })
+        .finally(() => {
+            saveWorkspaceBtn.disabled = false;
+        });
+}
+
+function showWorkspaceMessage(text, isError = false) {
+    if (!workspaceMessageEl) {
+        return;
+    }
+    workspaceMessageEl.textContent = text;
+    workspaceMessageEl.style.color = isError ? '#b91c1c' : '#047857';
+}
 
 function formatHumanReadableTimestamp(value) {
     if (!value) {
@@ -605,4 +690,149 @@ function deleteSelectedWidgets() {
         .catch(error => {
             showWidgetMessage(`Bulk delete failed: ${error.message}`, true);
         });
+}
+
+function loadTermList(fallbackTerms = []) {
+    if (!termTableBody) {
+        return;
+    }
+    renderTermList(fallbackTerms);
+    fetch(`${contextPath}/admin/terms`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(response => response.json())
+        .then(payload => {
+            if (payload.status !== 'ok') {
+                throw new Error(payload.message || 'Unable to load terms.');
+            }
+            renderTermList(payload.terms || []);
+        })
+        .catch(error => {
+            showTermMessage(`Unable to load terms: ${error.message}`, true);
+        });
+}
+
+function renderTermList(terms) {
+    if (!termTableBody) return;
+    if (!terms.length) {
+        termTableBody.innerHTML = '<tr><td colspan="5" class="empty-row">No terms defined yet.</td></tr>';
+        return;
+    }
+    termTableBody.innerHTML = terms.map(term => {
+        const canModify = !term.isSystem;
+        return `<tr>
+            <td>${escapeHtml(term.name)}</td>
+            <td>${escapeHtml(term.description)}</td>
+            <td>${escapeHtml(term.matchPattern || '')}</td>
+            <td>${escapeHtml(term.matchType || '')}</td>
+            <td class="actions">
+                ${canModify ? `<button type="button" class="ghost-btn" onclick="startTermEdit(${term.id}, '${escapeHtml(term.name)}', '${escapeHtml(term.description)}', '${escapeHtml(term.matchPattern)}', '${escapeHtml(term.matchType)}')">Edit</button>
+                <button type="button" class="ghost-btn" onclick="deleteTerm(${term.id})">Delete</button>` : '<span class="small-note">System</span>'}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function submitTermForm() {
+    const name = termNameInput.value.trim();
+    const description = termDescriptionInput.value.trim();
+    const matchPattern = termPatternInput.value.trim();
+    const matchType = termTypeSelect?.value || 'WILDCARD';
+
+    if (!name || !description) {
+        showTermMessage('Name and description are required.', true);
+        return;
+    }
+
+    const payload = {
+        name,
+        description,
+        matchPattern,
+        matchType
+    };
+
+    let url = `${contextPath}/admin/terms`;
+    let method = 'POST';
+    if (isEditingTerm) {
+        payload.id = Number(termIdInput.value);
+        method = 'PUT';
+    }
+
+    fetch(url, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Unable to save term.');
+            }
+            showTermMessage(`Term "${data.term.name}" saved.`);
+            resetTermForm();
+            loadTermList();
+        })
+        .catch(error => {
+            showTermMessage(`Error: ${error.message}`, true);
+        });
+}
+
+window.startTermEdit = function (id, name, description, pattern, type) {
+    isEditingTerm = true;
+    termIdInput.value = id;
+    termNameInput.value = name;
+    termDescriptionInput.value = description;
+    termPatternInput.value = pattern || '';
+    termTypeSelect.value = type || 'WILDCARD';
+    if (saveTermBtn) {
+        saveTermBtn.textContent = 'Update Term';
+    }
+    if (cancelTermEditBtn) {
+        cancelTermEditBtn.style.display = 'inline-block';
+    }
+};
+
+function resetTermForm() {
+    isEditingTerm = false;
+    termIdInput.value = '';
+    termForm?.reset();
+    if (saveTermBtn) {
+        saveTermBtn.textContent = 'Save Term';
+    }
+    if (cancelTermEditBtn) {
+        cancelTermEditBtn.style.display = 'none';
+    }
+}
+
+window.deleteTerm = function (id) {
+    if (!confirm('Delete this term?')) {
+        return;
+    }
+    fetch(`${contextPath}/admin/terms?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(async response => {
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.message || 'Unable to delete term.');
+            }
+            showTermMessage('Term deleted.');
+            loadTermList();
+        })
+        .catch(error => {
+            showTermMessage(`Error: ${error.message}`, true);
+        });
+};
+
+function showTermMessage(message, isError = false) {
+    if (!termMessageEl) {
+        return;
+    }
+    termMessageEl.textContent = message;
+    termMessageEl.style.color = isError ? '#b91c1c' : '#047857';
 }
