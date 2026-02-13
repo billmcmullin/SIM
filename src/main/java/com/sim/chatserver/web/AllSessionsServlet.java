@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -46,8 +47,23 @@ public class AllSessionsServlet extends HttpServlet {
         long count;
         Timestamp last;
 
-        void addCount(long c) {
+        // per-widget counts keyed by display name
+        Map<String, Long> widgetCounts = new HashMap<>();
+
+        // computed fields
+        String topWidgetId;
+        String topWidgetName;
+        long topWidgetCount;
+        String widgetNamesCombined;      // e.g. "Widget A, Widget B"
+        List<String> widgetNamesOrdered; // ordered by contribution desc, used for cycling sort
+
+        void addCount(long c, String widgetId, String widgetName) {
             this.count += c;
+            String nameKey = (widgetName == null || widgetName.isBlank()) ? widgetId : widgetName;
+            if (nameKey == null) {
+                nameKey = "";
+            }
+            this.widgetCounts.put(nameKey, this.widgetCounts.getOrDefault(nameKey, 0L) + c);
         }
 
         void updateLast(Timestamp t) {
@@ -57,6 +73,38 @@ public class AllSessionsServlet extends HttpServlet {
             if (this.last == null || t.after(this.last)) {
                 this.last = t;
             }
+        }
+
+        void finalizeWidgetNames() {
+            // compute ordered list of widget names by contribution desc, tie-break by name
+            List<Map.Entry<String, Long>> list = new ArrayList<>(widgetCounts.entrySet());
+            Collections.sort(list, (a, b) -> {
+                int cmp = Long.compare(b.getValue(), a.getValue()); // desc by count
+                if (cmp != 0) {
+                    return cmp;
+                }
+                // tie-break by case-insensitive name
+                String an = a.getKey() == null ? "" : a.getKey();
+                String bn = b.getKey() == null ? "" : b.getKey();
+                return an.compareToIgnoreCase(bn);
+            });
+            List<String> ordered = new ArrayList<>();
+            String bestName = null;
+            long bestCount = -1;
+            for (Map.Entry<String, Long> en : list) {
+                ordered.add(en.getKey());
+                if (en.getValue() > bestCount) {
+                    bestCount = en.getValue();
+                    bestName = en.getKey();
+                }
+            }
+            this.widgetNamesOrdered = ordered;
+            this.widgetNamesCombined = String.join(", ", ordered);
+            if (this.widgetNamesCombined.isEmpty()) {
+                this.widgetNamesCombined = null;
+            }
+            this.topWidgetName = bestName;
+            this.topWidgetCount = bestCount < 0 ? 0 : bestCount;
         }
     }
 
@@ -73,12 +121,12 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        // Determine if JSON requested: URL /dashboard/sessions.json OR Accept header includes application/json OR format=json
+        // Determine if JSON requested
         boolean wantsJson = req.getRequestURI().endsWith(".json")
                 || "json".equalsIgnoreCase(req.getParameter("format"))
                 || (req.getHeader("Accept") != null && req.getHeader("Accept").contains("application/json"));
 
-        // Parse pagination parameters (optional)
+        // Parse pagination parameters
         int page = DEFAULT_PAGE;
         int pageSize = DEFAULT_PAGE_SIZE;
         String pageParam = req.getParameter("page");
@@ -86,17 +134,28 @@ public class AllSessionsServlet extends HttpServlet {
         try {
             if (pageParam != null) {
                 page = Math.max(1, Integer.parseInt(pageParam));
-            }
-        } catch (NumberFormatException ignored) {
+        
+            }} catch (NumberFormatException ignored) {
             page = DEFAULT_PAGE;
         }
         try {
             if (pageSizeParam != null) {
                 pageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, Integer.parseInt(pageSizeParam)));
-            }
-        } catch (NumberFormatException ignored) {
+        
+            }} catch (NumberFormatException ignored) {
             pageSize = DEFAULT_PAGE_SIZE;
         }
+
+        // Read sort parameters (server-side sort applied to full dataset)
+        String sortBy = req.getParameter("sortBy");
+        if (sortBy == null || sortBy.isBlank()) {
+            sortBy = "count";
+        }
+        String sortDir = req.getParameter("sortDir");
+        if (sortDir == null || (!"asc".equalsIgnoreCase(sortDir) && !"desc".equalsIgnoreCase(sortDir))) {
+            sortDir = "desc";
+        }
+        sortBy = sortBy.trim();
 
         Map<String, SessionStats> aggregated = new HashMap<>();
         List<WidgetEntry> widgets = listWidgets();
@@ -108,38 +167,33 @@ public class AllSessionsServlet extends HttpServlet {
                         continue;
                     }
                     String widgetId = w.getWidgetId();
+                    String widgetName = (w.getDisplayName() != null && !w.getDisplayName().isBlank()) ? w.getDisplayName() : widgetId;
                     String tableName = sanitizeWidgetTableName(widgetId);
                     try {
                         if (!tableExists(conn, tableName)) {
                             continue;
                         }
-                        // Aggregate per-table session statistics
+
                         String sql = "SELECT session_id, COUNT(*) AS cnt, MAX(created_at) AS last_ts FROM "
                                 + quoteIdentifier(tableName) + " GROUP BY session_id";
-                        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                            try (ResultSet rs = ps.executeQuery()) {
-                                while (rs.next()) {
-                                    String sessionId = rs.getString("session_id");
-                                    long cnt = rs.getLong("cnt");
-                                    Timestamp last = rs.getTimestamp("last_ts");
-                                    if (sessionId == null || sessionId.isBlank()) {
-                                        continue;
-                                    }
-                                    SessionStats st = aggregated.get(sessionId);
-                                    if (st == null) {
-                                        st = new SessionStats();
-                                        st.count = cnt;
-                                        st.last = last;
-                                        aggregated.put(sessionId, st);
-                                    } else {
-                                        st.addCount(cnt);
-                                        st.updateLast(last);
-                                    }
+                        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                String sessionId = rs.getString("session_id");
+                                long cnt = rs.getLong("cnt");
+                                Timestamp last = rs.getTimestamp("last_ts");
+                                if (sessionId == null || sessionId.isBlank()) {
+                                    continue;
                                 }
+                                SessionStats st = aggregated.get(sessionId);
+                                if (st == null) {
+                                    st = new SessionStats();
+                                    aggregated.put(sessionId, st);
+                                }
+                                st.addCount(cnt, widgetId, widgetName);
+                                st.updateLast(last);
                             }
                         }
                     } catch (SQLException e) {
-                        // Log and continue with other tables
                         log.log(Level.WARNING, "Failed to query table " + tableName + ": " + e.getMessage(), e);
                     }
                 }
@@ -150,10 +204,69 @@ public class AllSessionsServlet extends HttpServlet {
             }
         }
 
-        // Convert to list and sort by count desc, then by last desc
+        // Finalize widget-name derived fields for each session
+        for (SessionStats s : aggregated.values()) {
+            s.finalizeWidgetNames();
+        }
+
+        // Convert to list
         List<Entry<String, SessionStats>> entries = new ArrayList<>(aggregated.entrySet());
-        entries.sort(Comparator.<Entry<String, SessionStats>>comparingLong(e -> e.getValue().count).reversed()
-                .thenComparing((e1, e2) -> {
+
+        // Build comparator according to sortBy and sortDir.
+        Comparator<Entry<String, SessionStats>> comparator;
+        switch (sortBy) {
+            case "sessionId":
+                comparator = Comparator.comparing(e -> e.getKey().toLowerCase());
+                comparator = comparator.thenComparing((e1, e2) -> Long.compare(e2.getValue().count, e1.getValue().count))
+                        .thenComparing((e1, e2) -> {
+                            Timestamp t1 = e1.getValue().last;
+                            Timestamp t2 = e2.getValue().last;
+                            if (t1 == null && t2 == null) {
+                                return 0;
+                            }
+                            if (t1 == null) {
+                                return 1;
+                            }
+                            if (t2 == null) {
+                                return -1;
+                            }
+                            return t2.compareTo(t1);
+                        });
+                break;
+
+            case "widget":
+                // Compare sessions by cycling through their widgetNamesOrdered lists (ordered by contribution desc).
+                comparator = (a, b) -> {
+                    List<String> la = a.getValue().widgetNamesOrdered;
+                    List<String> lb = b.getValue().widgetNamesOrdered;
+                    int na = la == null ? 0 : la.size();
+                    int nb = lb == null ? 0 : lb.size();
+                    int max = Math.max(na, nb);
+                    for (int i = 0; i < max; i++) {
+                        String va  = (i < na) ? (la.get(i) == null ? "" : la.get(i)) : "";
+                        String vb = (i < nb) ? (lb.get(i) == null ? "" : lb.get(i)) : "";
+                        int cmp = va.compareToIgnoreCase(vb);
+                        if (cmp != 0) {
+                            return cmp;
+                        }
+                    }
+                    // all equal up to min length; shorter list first
+                    return Integer.compare(na, nb);
+                };
+                // tie-breaker: total count desc
+                comparator = comparator.thenComparing((e1, e2) -> Long.compare(e2.getValue().count, e1.getValue().count));
+                break;
+
+            case "last":
+                comparator = Comparator.comparing((Entry<String, SessionStats> e)
+                        -> e.getValue().last == null ? Long.MIN_VALUE : e.getValue().last.getTime());
+                comparator = comparator.thenComparing((e1, e2) -> Long.compare(e2.getValue().count, e1.getValue().count));
+                break;
+
+            case "count":
+            default:
+                comparator = Comparator.comparingLong((Entry<String, SessionStats> e) -> e.getValue().count);
+                comparator = comparator.thenComparing((e1, e2) -> {
                     Timestamp t1 = e1.getValue().last;
                     Timestamp t2 = e2.getValue().last;
                     if (t1 == null && t2 == null) {
@@ -166,7 +279,16 @@ public class AllSessionsServlet extends HttpServlet {
                         return -1;
                     }
                     return t2.compareTo(t1);
-                }));
+                });
+                break;
+        }
+
+        // Apply direction
+        if ("desc".equalsIgnoreCase(sortDir)) {
+            comparator = comparator.reversed();
+        }
+
+        entries.sort(comparator);
 
         final int total = entries.size();
         final int totalPages = (int) Math.max(1, Math.ceil((double) total / pageSize));
@@ -182,7 +304,6 @@ public class AllSessionsServlet extends HttpServlet {
         if (wantsJson) {
             resp.setContentType("application/json;charset=UTF-8");
             try (PrintWriter out = resp.getWriter()) {
-                // Build JSON
                 StringBuilder sb = new StringBuilder();
                 sb.append("{");
                 sb.append("\"status\":\"ok\",");
@@ -190,6 +311,8 @@ public class AllSessionsServlet extends HttpServlet {
                 sb.append("\"pageSize\":").append(pageSize).append(",");
                 sb.append("\"total\":").append(total).append(",");
                 sb.append("\"totalPages\":").append(totalPages).append(",");
+                sb.append("\"sortBy\":").append(jsonEscape(sortBy)).append(",");
+                sb.append("\"sortDir\":").append(jsonEscape(sortDir)).append(",");
                 sb.append("\"sessions\":[");
                 boolean first = true;
                 String contextPath = req.getContextPath();
@@ -204,6 +327,8 @@ public class AllSessionsServlet extends HttpServlet {
                     sb.append("\"sessionId\":").append(jsonEscape(sessionId)).append(",");
                     sb.append("\"count\":").append(s.count).append(",");
                     sb.append("\"last\":").append(s.last == null ? "null" : jsonEscape(s.last.toInstant().toString())).append(",");
+                    sb.append("\"topWidgetName\":").append(s.topWidgetName == null ? "null" : jsonEscape(s.topWidgetName)).append(",");
+                    sb.append("\"widgetNamesCombined\":").append(s.widgetNamesCombined == null ? "null" : jsonEscape(s.widgetNamesCombined)).append(",");
                     String reviewUrl = contextPath + "/dashboard/session-review?sessionId=" + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
                     sb.append("\"reviewUrl\":").append(jsonEscape(reviewUrl));
                     sb.append("}");
@@ -215,10 +340,30 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        // Render HTML (paged)
+        // Render HTML (paged) with server-side sortable columns (links)
         resp.setContentType("text/html;charset=UTF-8");
         String contextPath = req.getContextPath();
         String user = (session.getAttribute("user") != null) ? session.getAttribute("user").toString() : "Unknown";
+
+        // Precompute sort links (toggle direction if same column)
+        String sessionIdNextDir = "asc".equalsIgnoreCase(sortDir) && "sessionId".equals(sortBy) ? "desc" : "asc";
+        String widgetNextDir = "asc".equalsIgnoreCase(sortDir) && "widget".equals(sortBy) ? "desc" : "asc";
+        String countNextDir = "asc".equalsIgnoreCase(sortDir) && "count".equals(sortBy) ? "desc" : "asc";
+        String lastNextDir = "asc".equalsIgnoreCase(sortDir) && "last".equals(sortBy) ? "desc" : "asc";
+
+        String sIdLink = contextPath + "/dashboard/sessions?sortBy=" + URLEncoder.encode("sessionId", StandardCharsets.UTF_8)
+                + "&sortDir=" + URLEncoder.encode(sessionIdNextDir, StandardCharsets.UTF_8)
+                + "&pageSize=" + pageSize + "&page=1";
+        String widgetLink = contextPath + "/dashboard/sessions?sortBy=" + URLEncoder.encode("widget", StandardCharsets.UTF_8)
+                + "&sortDir=" + URLEncoder.encode(widgetNextDir, StandardCharsets.UTF_8)
+                + "&pageSize=" + pageSize + "&page=1";
+        String countLink = contextPath + "/dashboard/sessions?sortBy=" + URLEncoder.encode("count", StandardCharsets.UTF_8)
+                + "&sortDir=" + URLEncoder.encode(countNextDir, StandardCharsets.UTF_8)
+                + "&pageSize=" + pageSize + "&page=1";
+        String lastLink = contextPath + "/dashboard/sessions?sortBy=" + URLEncoder.encode("last", StandardCharsets.UTF_8)
+                + "&sortDir=" + URLEncoder.encode(lastNextDir, StandardCharsets.UTF_8)
+                + "&pageSize=" + pageSize + "&page=1";
+
         try (PrintWriter out = resp.getWriter()) {
             out.write("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>All Sessions</title>");
             out.write("<link rel=\"stylesheet\" href=\"" + contextPath + "/assets/css/app.css\">");
@@ -230,28 +375,38 @@ public class AllSessionsServlet extends HttpServlet {
 
             out.write("<div class=\"container\"><section class=\"section\">");
             out.write("<h1>All Sessions</h1>");
-            out.write("<p>List of all session IDs across all widget tables with total chat counts and last entry time.</p>");
+            out.write("<p>List of all session IDs across all widget tables with total chat counts, top widget, and last entry time.</p>");
             out.write("<p><a href=\"" + contextPath + "/dashboard\">&larr; Back to Dashboard</a></p>");
             out.write("</section>");
 
             out.write("<section class=\"section\">");
             out.write("<div class=\"table-scroll\">");
-            out.write("<table class=\"widget-table\"><thead><tr>");
-            out.write("<th>Session ID</th><th>Total Chats</th><th>Last Entry</th><th>Actions</th>");
+            out.write("<table class=\"session-table\" aria-describedby=\"session-table-desc\">");
+            out.write("<caption id=\"session-table-desc\" style=\"display:none\">Sessions with counts and last entry; click columns to sort.</caption>");
+            out.write("<thead><tr>");
+
+            out.write("<th><a href=\"" + sIdLink + "\">Session ID" + ("sessionId".equals(sortBy) ? ("asc".equalsIgnoreCase(sortDir) ? " ▲" : " ▼") : "") + "</a></th>");
+            out.write("<th><a href=\"" + widgetLink + "\">Widget Table" + ("widget".equals(sortBy) ? ("asc".equalsIgnoreCase(sortDir) ? " ▲" : " ▼") : "") + "</a></th>");
+            out.write("<th><a href=\"" + countLink + "\">Total Chats" + ("count".equals(sortBy) ? ("asc".equalsIgnoreCase(sortDir) ? " ▲" : " ▼") : "") + "</a></th>");
+            out.write("<th><a href=\"" + lastLink + "\">Last Entry" + ("last".equals(sortBy) ? ("asc".equalsIgnoreCase(sortDir) ? " ▲" : " ▼") : "") + "</a></th>");
+            out.write("<th>Actions</th>");
             out.write("</tr></thead><tbody>");
 
             if (pageEntries.isEmpty()) {
-                out.write("<tr><td colspan=\"4\" class=\"empty-row\">No sessions found.</td></tr>");
+                out.write("<tr><td colspan=\"5\" class=\"empty-row\">No sessions found.</td></tr>");
             } else {
                 for (Entry<String, SessionStats> e : pageEntries) {
                     String sessionId = e.getKey();
                     SessionStats s = e.getValue();
-                    String last = (s.last == null) ? "—" : s.last.toString();
+                    String lastDisplay = (s.last == null) ? "—" : s.last.toString();
+                    String lastValue = (s.last == null) ? "" : s.last.toInstant().toString();
                     String reviewUrl = contextPath + "/dashboard/session-review?sessionId=" + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
+
                     out.write("<tr>");
-                    out.write("<td>" + escapeHtml(sessionId) + "</td>");
-                    out.write("<td>" + s.count + "</td>");
-                    out.write("<td>" + escapeHtml(last) + "</td>");
+                    out.write("<td data-value=\"" + escapeHtmlAttr(sessionId) + "\">" + escapeHtml(sessionId) + "</td>");
+                    out.write("<td data-value=\"" + escapeHtmlAttr(s.widgetNamesCombined) + "\">" + escapeHtml(s.topWidgetName == null ? "—" : s.topWidgetName) + "</td>");
+                    out.write("<td data-value=\"" + s.count + "\">" + s.count + "</td>");
+                    out.write("<td data-value=\"" + escapeHtmlAttr(lastValue) + "\">" + escapeHtml(lastDisplay) + "</td>");
                     out.write("<td><a class=\"ghost-btn\" href=\"" + reviewUrl + "\">Review</a></td>");
                     out.write("</tr>");
                 }
@@ -259,26 +414,30 @@ public class AllSessionsServlet extends HttpServlet {
 
             out.write("</tbody></table></div>");
 
-            // Pagination controls
+            // Pagination controls (preserve sort params)
             out.write("<div style=\"margin-top:12px; display:flex; align-items:center; justify-content:space-between;\">");
             out.write("<div>Page " + page + " of " + totalPages + " (Total sessions: " + total + ")</div>");
             out.write("<div>");
-            // previous link
             if (page > 1) {
-                out.write("<a class=\"ghost-btn\" href=\"" + contextPath + "/dashboard/sessions?page=" + (page - 1) + "&pageSize=" + pageSize + "\">Previous</a>");
+                out.write("<a class=\"ghost-btn\" href=\"" + contextPath + "/dashboard/sessions?page=" + (page - 1)
+                        + "&pageSize=" + pageSize + "&sortBy=" + URLEncoder.encode(sortBy, StandardCharsets.UTF_8)
+                        + "&sortDir=" + URLEncoder.encode(sortDir, StandardCharsets.UTF_8) + "\">Previous</a>");
             }
-            // next link
             if (page < totalPages) {
-                out.write("<a class=\"ghost-btn\" style=\"margin-left:8px;\" href=\"" + contextPath + "/dashboard/sessions?page=" + (page + 1) + "&pageSize=" + pageSize + "\">Next</a>");
+                out.write("<a class=\"ghost-btn\" style=\"margin-left:8px;\" href=\"" + contextPath + "/dashboard/sessions?page=" + (page + 1)
+                        + "&pageSize=" + pageSize + "&sortBy=" + URLEncoder.encode(sortBy, StandardCharsets.UTF_8)
+                        + "&sortDir=" + URLEncoder.encode(sortDir, StandardCharsets.UTF_8) + "\">Next</a>");
             }
             out.write("</div></div>");
 
-            // Page size form
+            // Page size form (preserve sort params)
             out.write("<div style=\"margin-top:8px;\">");
             out.write("<form method=\"get\" action=\"" + contextPath + "/dashboard/sessions\">");
             out.write("<label for=\"pageSize\">Page size:</label>");
             out.write("<input type=\"number\" id=\"pageSize\" name=\"pageSize\" min=\"1\" max=\"" + MAX_PAGE_SIZE + "\" value=\"" + pageSize + "\" style=\"width:80px; margin-left:8px;\"/>");
             out.write("<input type=\"hidden\" name=\"page\" value=\"1\"/>");
+            out.write("<input type=\"hidden\" name=\"sortBy\" value=\"" + escapeHtmlAttr(sortBy) + "\"/>");
+            out.write("<input type=\"hidden\" name=\"sortDir\" value=\"" + escapeHtmlAttr(sortDir) + "\"/>");
             out.write("<button type=\"submit\" class=\"ghost-btn\" style=\"margin-left:8px;\">Go</button>");
             out.write("</form>");
             out.write("</div>");
@@ -370,13 +529,20 @@ public class AllSessionsServlet extends HttpServlet {
                     break;
                 default:
                     if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
+                        sb.append(String.format("\\u%04x", (int) c)); 
+                    }else {
                         sb.append(c);
                     }
             }
         }
         sb.append('"');
         return sb.toString();
+    }
+
+    private static String escapeHtmlAttr(String v) {
+        if (v == null) {
+            return "";
+        }
+        return v.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

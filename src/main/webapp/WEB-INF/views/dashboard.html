@@ -56,23 +56,24 @@
 
         <section class="section session-overview-section">
             <div class="session-list-card">
-            <div class="section-header" style="display:flex; align-items:center; justify-content:space-between;">
-                <div>
-                    <h2>Top 10 Sessions</h2>
-                    <p>Most frequent Session IDs across all widget tables.</p>
-                    <!-- NEW: total sessions placeholder -->
-                    <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
+                <div class="section-header" style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <h2>Top 10 Sessions</h2>
+                        <p>Most frequent Session IDs across all widget tables.</p>
+                        <!-- NEW: total sessions placeholder -->
+                        <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
+                    </div>
+                    <div>
+                        <a class="ghost-btn" href="${contextPath}/dashboard/sessions">View all sessions</a>
+                    </div>
                 </div>
-                <div>
-                    <a class="ghost-btn" href="${contextPath}/dashboard/sessions">View all sessions</a>
-                </div>
-            </div>
                 <div class="table-scroll">
                     <table class="session-table">
                         <thead>
                             <tr>
                                 <th scope="col">Rank</th>
                                 <th scope="col">Session ID</th>
+                                <th scope="col">Widget Table</th>
                                 <th scope="col">Chat Entries</th>
                                 <th scope="col">Last Entry</th>
                             </tr>
@@ -84,6 +85,7 @@
                 </div>
             </div>
         </section>
+
     </div>
 
     <script>

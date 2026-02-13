@@ -82,40 +82,65 @@ if (legendEl && termSlices.length) {
     });
 }
 
-// --- Added: fetch total sessions count for Top 10 Sessions display ---
-(async function loadTotalSessions() {
+// --- Added: fetch total sessions count and top 10 sessions with widget column ---
+(async function loadTopSessions() {
     const totalEl = document.getElementById('totalSessions');
-    if (!totalEl) return;
+    const listEl = document.getElementById('topSessionList');
+    if (!listEl || !totalEl) return;
 
     try {
-        // Request a small page but read the 'total' field that the JSON API returns
-        const url = `${contextPath}/dashboard/sessions.json?page=1&pageSize=1`;
+        // Request top 10 sessions sorted by count desc (server sorts full dataset)
+        const url = `${contextPath}/dashboard/sessions.json?page=1&pageSize=10&sortBy=count&sortDir=desc`;
         const resp = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
         if (!resp.ok) {
-            // try alternative query param format if .json mapping not present
-            const alt = `${contextPath}/dashboard/sessions?format=json&page=1&pageSize=1`;
-            const altResp = await fetch(alt, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-            if (!altResp.ok) {
-                totalEl.textContent = 'N/A';
-                return;
-            }
-            const altJson = await altResp.json().catch(() => null);
-            if (altJson && typeof altJson.total === 'number') {
-                totalEl.textContent = String(altJson.total);
-                return;
-            } else {
-                totalEl.textContent = 'N/A';
-                return;
-            }
+            totalEl.textContent = 'N/A';
+            return;
         }
-        const data = await resp.json().catch(() => null);
-        if (data && typeof data.total === 'number') {
+        const data = await resp.json();
+        if (!data || data.status !== 'ok') {
+            totalEl.textContent = 'N/A';
+            return;
+        }
+
+        // total sessions
+        if (typeof data.total === 'number') {
             totalEl.textContent = String(data.total);
         } else {
             totalEl.textContent = '—';
         }
+
+        // sessions array
+        const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+        if (!sessions.length) {
+            // leave server-rendered rows if present; else show no rows
+            listEl.innerHTML = '<tr><td colspan="5" class="empty-row">No sessions found.</td></tr>';
+            return;
+        }
+
+        // Render rows - use topWidgetName for display
+        listEl.innerHTML = sessions.map((s, idx) => {
+            const rank = idx + 1;
+            const sessionId = s.sessionId || '';
+            const count = typeof s.count === 'number' ? s.count : 0;
+            const last = s.last || '—';
+            const topWidgetName = s.topWidgetName || '—';
+            const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/session-review?sessionId=${encodeURIComponent(sessionId)}`;
+            // Escape content minimally
+            function esc(v) {
+                if (v === null || typeof v === 'undefined') return '';
+                return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+            }
+            return `<tr>
+                <td>${rank}</td>
+                <td>${esc(sessionId)}</td>
+                <td>${esc(topWidgetName)}</td>
+                <td>${count}</td>
+                <td>${esc(last)}</td>
+            </tr>`;
+        }).join('');
+
     } catch (e) {
-        console.warn('Unable to load total sessions count:', e);
+        console.warn('Unable to load top sessions:', e);
         totalEl.textContent = 'N/A';
     }
 })();
