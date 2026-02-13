@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -63,6 +64,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
             return;
         }
 
+        // Create a selection for review (assumes WidgetReviewStartServlet.createSnapshotSelection exists)
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
                 "Session " + sessionId,
@@ -119,6 +121,9 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                             ));
                         }
                     }
+                } catch (SQLException e) {
+                    // log and continue with other widgets
+                    log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + e.getMessage(), e);
                 }
             }
         }
@@ -134,10 +139,18 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
     }
 
+    // Proper tableExists implementation using DatabaseMetaData
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        return com.sim.chatserver.web.WidgetTableDataServlet.class.getDeclaredMethods().length > 0
-                ? com.sim.chatserver.web.WidgetTableDataServlet.class.getDeclaredMethods().length >= 0
-                : false;
+        DatabaseMetaData meta = conn.getMetaData();
+        // query possible name forms to be robust to case sensitivity
+        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
