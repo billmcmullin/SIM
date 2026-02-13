@@ -34,16 +34,16 @@ public class TermsStore {
     }
 
     public void ensureTable() throws SQLException {
-        try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement stmt = conn.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS term_definition ("
+        String sql = "CREATE TABLE IF NOT EXISTS term_definition ("
                 + "id SERIAL PRIMARY KEY, "
-                + "name VARCHAR(255) UNIQUE NOT NULL, "
+                + "name TEXT UNIQUE NOT NULL, "
                 + "description TEXT NOT NULL, "
-                + "match_pattern VARCHAR(255) NOT NULL DEFAULT '', "
-                + "match_type VARCHAR(50) NOT NULL DEFAULT 'WILDCARD', "
+                + "match_pattern TEXT NOT NULL DEFAULT '', "
+                + "match_type TEXT NOT NULL DEFAULT 'WILDCARD', "
                 + "system_flag BOOLEAN NOT NULL DEFAULT FALSE, "
                 + "created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
-                + ")")) {
+                + ")";
+        try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.execute();
         }
         ensureDefaultTerms();
