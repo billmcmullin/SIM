@@ -47,11 +47,38 @@
         </section>
 
         <section class="chart-wrapper">
-            <h2>Term Distribution</h2>
+            <h2>Term Distribution based on Prompts</h2>
             <div class="chart-area">
                 <canvas id="termChart"></canvas>
             </div>
             <div id="termChartLegend" class="term-legend"></div>
+        </section>
+
+        <section class="section session-overview-section">
+            <div class="section-header">
+                <h2>Top 10 Sessions</h2>
+                <p>Most frequent Session IDs across all widget tables.</p>
+            </div>
+            <div class="session-list-card">
+                <div class="session-list-header">
+                    <span>Top 10 Session IDs</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="session-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Rank</th>
+                                <th scope="col">Session ID</th>
+                                <th scope="col">Chat Entries</th>
+                                <th scope="col">Last Entry</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topSessionList">
+                            ${sessionRows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
     </div>
 
@@ -59,6 +86,7 @@
         window.termChartData = '${termChartData}';
         window.dashboardConfig = { contextPath: '${contextPath}' };
     </script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="${contextPath}/assets/js/dashboard.js"></script>
 </body>

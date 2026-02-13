@@ -25,6 +25,8 @@ const manualMessageCloseBtn = document.getElementById('manualMessageCloseBtn');
 const manualMessageStatus = document.getElementById('manualMessageStatus');
 const manualMessageResponse = document.getElementById('manualMessageResponse');
 const manualMessageSelectionPreview = document.getElementById('manualMessageSelectionPreview');
+const sessionIndicator = document.getElementById('sessionIndicator');
+const sessionIndicatorValue = document.getElementById('sessionIndicatorValue');
 
 const state = {
     limit: 10,
@@ -43,8 +45,16 @@ const selectedEntryDetails = new Map();
 let selectionPreviewText = 'No chat selected.';
 let selectionSummaryText = '';
 
-const MAX_SUMMARY_CHARS = 100000000;
+const MAX_SUMMARY_CHARS = 4000;
+const MAX_ENTRIES_IN_SUMMARY = 8;
+const PROMPT_SNIPPET_LENGTH = 280;
+const RESPONSE_SNIPPET_LENGTH = 600;
 const MAX_TOTAL_MESSAGE_CHARS = 8912;
+
+const urlSessionId = new URLSearchParams(window.location.search).get('sessionId');
+if (urlSessionId) {
+    showSessionIndicator(urlSessionId);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!selectionId) {
@@ -55,6 +65,14 @@ document.addEventListener('DOMContentLoaded', () => {
     attachManualMessageHandlers();
     loadSelectionData();
 });
+
+function showSessionIndicator(value) {
+    if (!sessionIndicator || !sessionIndicatorValue) {
+        return;
+    }
+    sessionIndicatorValue.textContent = value;
+    sessionIndicator.removeAttribute('hidden');
+}
 
 function attachHandlers() {
     reviewSearchInput?.addEventListener('input', () => {
@@ -176,7 +194,9 @@ function attachManualMessageHandlers() {
 }
 
 function toggleManualMessageSection() {
-    if (!manualMessageSection) return;
+    if (!manualMessageSection) {
+        return;
+    }
     const isVisible = manualMessageSection.classList.toggle('is-visible');
     manualMessageSection.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
     if (manualMessageTextarea && isVisible) {
@@ -191,7 +211,9 @@ function toggleManualMessageSection() {
 }
 
 function hideManualMessageSection() {
-    if (!manualMessageSection) return;
+    if (!manualMessageSection) {
+        return;
+    }
     manualMessageSection.classList.remove('is-visible');
     manualMessageSection.setAttribute('aria-hidden', 'true');
     if (manualMessageToggleBtn) {
@@ -201,20 +223,26 @@ function hideManualMessageSection() {
 }
 
 function setManualMessageStatus(message, isError = false) {
-    if (!manualMessageStatus) return;
+    if (!manualMessageStatus) {
+        return;
+    }
     manualMessageStatus.textContent = message;
     manualMessageStatus.classList.toggle('error', isError);
     manualMessageStatus.classList.toggle('success', !isError && Boolean(message));
 }
 
 async function sendManualMessage() {
-    if (!manualMessageTextarea) return;
+    if (!manualMessageTextarea) {
+        return;
+    }
     const text = manualMessageTextarea.value.trim();
     if (!text) {
         setManualMessageStatus('Enter a message before sending.', true);
         return;
     }
-    if (!manualMessageSendBtn) return;
+    if (!manualMessageSendBtn) {
+        return;
+    }
     manualMessageSendBtn.disabled = true;
     setManualMessageStatus('Sending...');
     updateSelectionView();
@@ -278,7 +306,6 @@ function buildSafeSelectionSummary() {
     if (combined.length <= MAX_SUMMARY_CHARS) {
         return combined;
     }
-    // Trim the combined string to the maximum allowed length without dropping entries completely.
     return ensureWithinLength(combined, MAX_SUMMARY_CHARS);
 }
 
@@ -358,13 +385,17 @@ function selectAllEntries() {
 }
 
 function displayManualMessageResponse(text) {
-    if (!manualMessageResponse) return;
+    if (!manualMessageResponse) {
+        return;
+    }
     const sanitized = text || 'No response yet.';
     manualMessageResponse.innerHTML = renderMarkdownIfNeeded(sanitized);
 }
 
 function renderMarkdownIfNeeded(raw) {
-    if (!raw) return '';
+    if (!raw) {
+        return '';
+    }
     const hasMarkers = /(#|\*|_|\`)/.test(raw);
     const escaped = escapeHtml(raw);
     if (!hasMarkers) {
@@ -400,7 +431,9 @@ function convertToolsLists(text) {
 }
 
 function parseJsonSafe(value) {
-    if (!value) return null;
+    if (!value) {
+        return null;
+    }
     try {
         return JSON.parse(value);
     } catch {
@@ -427,7 +460,9 @@ function updateSelectionSummary() {
 
 function buildFullSelectionPreview() {
     const entries = Array.from(selectedEntryDetails.values());
-    if (!entries.length) return '';
+    if (!entries.length) {
+        return '';
+    }
     const sorted = entries
         .slice()
         .sort((a, b) => {
@@ -489,7 +524,7 @@ function renderRows(data) {
     if (!reviewBody) return;
     if (!data.length) {
         reviewBody.innerHTML = '<tr><td colspan="5" class="empty-row">No selected chats available.</td></tr>';
-        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+        selectAllCheckbox && (selectAllCheckbox.checked = false);
         return;
     }
     reviewBody.innerHTML = data.map(row => {
@@ -531,7 +566,9 @@ function refreshDetailPanel() {
 }
 
 function updateSelectAllCheckbox() {
-    if (!selectAllCheckbox) return;
+    if (!selectAllCheckbox) {
+        return;
+    }
     if (!rows.length) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
@@ -544,7 +581,9 @@ function updateSelectAllCheckbox() {
 }
 
 function updateSelectAllEntriesButtonState() {
-    if (!selectAllEntriesBtn) return;
+    if (!selectAllEntriesBtn) {
+        return;
+    }
     selectAllEntriesBtn.disabled = state.totalRows <= 0;
 }
 
@@ -556,11 +595,19 @@ function updatePagination() {
 }
 
 function renderSearchTerms(terms) {
-    if (!searchTermsDisplay || !terms) return;
+    if (!searchTermsDisplay || !terms) {
+        return;
+    }
     const entries = [];
-    if (terms.global) entries.push(`Global: "${terms.global}"`);
-    if (terms.prompt) entries.push(`Prompt: "${terms.prompt}"`);
-    if (terms.response) entries.push(`Response: "${terms.response}"`);
+    if (terms.global) {
+        entries.push(`Global: "${terms.global}"`);
+    }
+    if (terms.prompt) {
+        entries.push(`Prompt: "${terms.prompt}"`);
+    }
+    if (terms.response) {
+        entries.push(`Response: "${terms.response}"`);
+    }
     if (!entries.length) {
         searchTermsDisplay.innerHTML = '<span>No search terms were applied.</span>';
         return;
@@ -572,7 +619,9 @@ function showError(message) {
     if (reviewBody) {
         reviewBody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:#b91c1c;">${escapeHtml(message)}</td></tr>`;
     }
-    if (detailCard) detailCard.style.display = 'none';
+    if (detailCard) {
+        detailCard.style.display = 'none';
+    }
 }
 
 function truncateText(text, length = 160) {

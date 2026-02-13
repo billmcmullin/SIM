@@ -710,137 +710,163 @@ a {
     resize: vertical;
 }
 
-.manual-message-buttons {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-.manual-message-buttons button {
-    padding: 8px 16px;
+.manual-message-section textarea {
+    width: 100%;
+    min-height: 140px;
     border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
+    border: 1px solid #d1d5db;
+    padding: 10px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
 }
 
-.manual-message-buttons button.primary {
-    background: #0f766e;
-    color: #fff;
-}
-
-.manual-message-status {
-    min-height: 1.2rem;
-    font-size: 0.9rem;
-}
-
-.manual-message-status.error {
-    color: #b91c1c;
-}
-
-.manual-message-status.success {
-    color: #047857;
-}
-
-.manual-message-response-wrapper {
+.manual-message-selection-preview {
     border: 1px solid #d1d5db;
     border-radius: 6px;
-    padding: 12px;
+    padding: 10px;
     background: #fff;
-    max-height: 280px;
-    overflow: auto;
 }
 
-.manual-message-response {
-    margin: 0;
-    font-family: Menlo, Consolas, monospace;
-    white-space: pre-wrap;
-    word-break: break-word;
+.manual-message-selection-preview textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 6px;
+    border: 1px solid #cbd5f5;
+    padding: 10px;
+    font-size: 0.85rem;
+    font-family: "Segoe UI", sans-serif;
+    resize: vertical;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.manual-message-selection-preview {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fff;
+}
+
+.manual-message-selection-preview textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 6px;
+    border: 1px solid #cbd5f5;
+    padding: 10px;
+    font-size: 0.85rem;
+    font-family: "Segoe UI", sans-serif;
+    resize: vertical;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.session-list-card {
+    margin-top: 1rem;
+}
+
+.session-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.session-table th,
+.session-table td {
+    padding: 0.75rem 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+}
+
+.session-table th {
+    font-weight: 600;
+    color: #0f172a;
+    background: #f8fafc;
+}
+
+.session-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.session-link:hover,
+.session-link:focus-visible {
+    text-decoration: underline;
+}
+
+.session-count-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    text-decoration: none;
+    font-weight: 600;
+    color: #1d4ed8;
+}
+
+.session-count-link:hover,
+.session-count-link:focus-visible {
+    text-decoration: underline;
+}
+
+.session-last-entry {
+    color: #475569;
     font-size: 0.95rem;
 }
 
-.manual-message-response h1,
-.manual-message-response h2,
-.manual-message-response h3,
-.manual-message-response h4,
-.manual-message-response h5,
-.manual-message-response h6 {
-    margin: 0.5em 0 0.3em;
-    font-weight: 600;
+/* ---------- Added styles moved from HTML ---------- */
+
+/* Minimal styling for the response preview */
+.response-markdown {
+    white-space: pre-wrap;
+    line-height: 1.45;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+    margin: 8px 0;
 }
 
-.manual-message-response strong {
-    font-weight: 700;
-}
-
-.manual-message-response em {
-    font-style: italic;
-}
-
-.manual-message-response code {
+.response-markdown code {
     background: #f3f4f6;
+    padding: 0.12em 0.28em;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.response-markdown pre {
+    background: #f3f4f6;
+    padding: 0.6em;
     border-radius: 4px;
-    padding: 2px 4px;
-}
-
-.manual-message-response ul {
-    padding-left: 1.2em;
-    margin: 0.5em 0;
-}
-
-.manual-message-response li {
-    margin: 0.2em 0;
-}
-
-.manual-message-response .markdown-code {
-    background: #111827;
-    color: #f9fafb;
-    padding: 12px;
-    border-radius: 6px;
-    margin: 0.5em 0;
     overflow: auto;
 }
 
-.manual-message-selection-preview {
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    padding: 10px;
-    background: #fff;
+/* small inline CSV import/export controls */
+/* Make Export and Import buttons stack vertically and align */
+.terms-csv-controls {
+    margin: 8px 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
 }
 
-.manual-message-selection-preview textarea {
-    width: 100%;
-    min-height: 140px;
-    border-radius: 6px;
-    border: 1px solid #cbd5f5;
-    padding: 10px;
-    font-size: 0.85rem;
-    font-family: "Segoe UI", sans-serif;
-    resize: vertical;
-    background: #f1f5f9;
-    color: #0f172a;
+/* Hide the native file input; Import button will open file chooser */
+.terms-csv-controls input[type="file"] {
+    display: none;
 }
 
-.manual-message-selection-preview {
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    padding: 10px;
-    background: #fff;
+/* Inline-form helper to remove default inline styles from forms in the controls area */
+.terms-csv-controls .inline-form {
+    display: block;
+    margin: 0;
 }
 
-.manual-message-selection-preview textarea {
-    width: 100%;
-    min-height: 140px;
-    border-radius: 6px;
-    border: 1px solid #cbd5f5;
-    padding: 10px;
-    font-size: 0.85rem;
-    font-family: "Segoe UI", sans-serif;
-    resize: vertical;
-    background: #f1f5f9;
-    color: #0f172a;
+/* Small helper: hint text for CSV controls */
+.terms-csv-controls .csv-hint {
+    margin-left: 0;
+    font-size: 0.95em;
 }
+
+/* ---------- End moved styles ---------- */
 
 @media (max-width: 768px) {
     .top-bar {

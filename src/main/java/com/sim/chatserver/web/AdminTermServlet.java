@@ -50,11 +50,15 @@ public class AdminTermServlet extends HttpServlet {
                     .add("status", "ok")
                     .add("terms", arrayBuilder)
                     .build();
-            resp.setContentType("application/json");
+
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write(response.toString());
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to list terms", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load term definitions.\"}");
         }
     }
@@ -65,11 +69,15 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
+        req.setCharacterEncoding("UTF-8");
+
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
             return;
         }
@@ -81,6 +89,8 @@ public class AdminTermServlet extends HttpServlet {
 
         if (name.isEmpty() || description.isEmpty()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Name and description are required.\"}");
             return;
         }
@@ -100,11 +110,15 @@ public class AdminTermServlet extends HttpServlet {
                             .add("matchType", term.getMatchType())
                             .add("isSystem", term.isSystemFlag()))
                     .build();
-            resp.setContentType("application/json");
+
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write(body.toString());
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to create term", e);
             resp.setStatus(HttpServletResponse.SC_CONFLICT);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Term already exists or could not be inserted.\"}");
         }
     }
@@ -114,11 +128,16 @@ public class AdminTermServlet extends HttpServlet {
         if (!isAdmin(req, resp)) {
             return;
         }
+
+        req.setCharacterEncoding("UTF-8");
+
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
             return;
         }
@@ -131,6 +150,8 @@ public class AdminTermServlet extends HttpServlet {
 
         if (id == null || name.isEmpty() || description.isEmpty()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"id, name, and description are required.\"}");
             return;
         }
@@ -139,6 +160,8 @@ public class AdminTermServlet extends HttpServlet {
             TermDefinition updated = termsStore.updateTerm(id, name, description, pattern, type);
             if (updated == null) {
                 resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                resp.setCharacterEncoding("UTF-8");
+                resp.setContentType("application/json;charset=UTF-8");
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"System terms cannot be modified.\"}");
                 return;
             }
@@ -152,11 +175,15 @@ public class AdminTermServlet extends HttpServlet {
                             .add("matchType", updated.getMatchType())
                             .add("isSystem", updated.isSystemFlag()))
                     .build();
-            resp.setContentType("application/json");
+
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write(body.toString());
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to update term", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to update term.\"}");
         }
     }
@@ -169,6 +196,8 @@ public class AdminTermServlet extends HttpServlet {
         String idParam = req.getParameter("id");
         if (idParam == null) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"id is required.\"}");
             return;
         }
@@ -178,14 +207,19 @@ public class AdminTermServlet extends HttpServlet {
             boolean deleted = termsStore.deleteTerm(id);
             if (!deleted) {
                 resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                resp.setCharacterEncoding("UTF-8");
+                resp.setContentType("application/json;charset=UTF-8");
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"System terms cannot be deleted or term not found.\"}");
                 return;
             }
-            resp.setContentType("application/json");
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"ok\"}");
         } catch (NumberFormatException | SQLException e) {
             log.log(Level.WARNING, "Failed to delete term", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to delete term.\"}");
         }
     }
@@ -194,12 +228,16 @@ public class AdminTermServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
             return false;
         }
         String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
         if (!"ADMIN".equalsIgnoreCase(role)) {
             resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Admin role required.\"}");
             return false;
         }

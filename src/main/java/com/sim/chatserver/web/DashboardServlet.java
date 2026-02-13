@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -12,24 +13,36 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermDefinition;
+import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonObject;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -44,6 +57,9 @@ public class DashboardServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
+    private static final int DEFAULT_RANGE_DAYS = 14;
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -75,6 +91,15 @@ public class DashboardServlet extends HttpServlet {
         int totalChats = widgetStats.stream().mapToInt(stat -> stat.count).sum();
         String statsRows = renderWidgetStatsRows(widgetStats, req.getContextPath());
 
+        LocalDate rangeEnd = parseLocalDate(req.getParameter("rangeEnd"))
+                .orElse(LocalDate.now(ZoneId.systemDefault()));
+        LocalDate rangeStart = parseLocalDate(req.getParameter("rangeStart"))
+                .orElse(rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1));
+
+        if (rangeStart.isAfter(rangeEnd)) {
+            rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
+        }
+
         String termChartJson = "[]";
         TermSummary summary = null;
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
@@ -91,6 +116,17 @@ public class DashboardServlet extends HttpServlet {
             session.removeAttribute(TERM_SNAPSHOT_SESSION_KEY);
         }
 
+        String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
+        String sessionChartJson = buildEmptySessionPayload(rangeStart, rangeEnd);
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            SessionOverview sessionOverview = buildSessionOverview(conn, widgets, rangeStart, rangeEnd);
+            sessionRows = renderSessionRows(sessionOverview.topSessions, req.getContextPath());
+            sessionChartJson = buildSessionChartPayload(sessionOverview, rangeStart, rangeEnd);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute session metrics", e);
+            sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">Unable to load session activity.</td></tr>";
+        }
+
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String userName = String.valueOf(session.getAttribute("user"));
         String rendered = template
@@ -100,12 +136,238 @@ public class DashboardServlet extends HttpServlet {
                 .replace("${adminLink}", adminLink)
                 .replace("${totalChats}", escapeHtml(String.valueOf(totalChats)))
                 .replace("${widgetStatsRows}", statsRows)
-                .replace("${termChartData}", termChartJson);
+                .replace("${termChartData}", termChartJson)
+                .replace("${sessionRows}", sessionRows)
+                .replace("${sessionRangeStart}", escapeHtml(rangeStart.format(DATE_FORMATTER)))
+                .replace("${sessionRangeEnd}", escapeHtml(rangeEnd.format(DATE_FORMATTER)))
+                .replace("${sessionChartData}", escapeForJs(sessionChartJson));
 
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
+    }
+
+    private Optional<LocalDate> parseLocalDate(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(LocalDate.parse(value, DATE_FORMATTER));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private String buildSessionChartPayload(SessionOverview overview, LocalDate rangeStart, LocalDate rangeEnd) {
+        JsonArrayBuilder labelBuilder = Json.createArrayBuilder();
+        for (String label : overview.timeline.labels) {
+            labelBuilder.add(label);
+        }
+
+        JsonArrayBuilder seriesBuilder = Json.createArrayBuilder();
+        for (SessionStat session : overview.topSessions) {
+            JsonArrayBuilder countsBuilder = Json.createArrayBuilder();
+            List<Integer> values = overview.timeline.countsBySession.get(session.sessionId);
+            if (values != null) {
+                for (Integer value : values) {
+                    countsBuilder.add(value == null ? 0 : value);
+                }
+            } else {
+                for (int i = 0; i < overview.timeline.labels.size(); i++) {
+                    countsBuilder.add(0);
+                }
+            }
+            seriesBuilder.add(Json.createObjectBuilder()
+                    .add("sessionId", session.sessionId)
+                    .add("counts", countsBuilder));
+        }
+
+        JsonObject payload = Json.createObjectBuilder()
+                .add("labels", labelBuilder)
+                .add("series", seriesBuilder)
+                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
+                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+                .build();
+        return payload.toString();
+    }
+
+    private String buildEmptySessionPayload(LocalDate rangeStart, LocalDate rangeEnd) {
+        JsonObject payload = Json.createObjectBuilder()
+                .add("labels", Json.createArrayBuilder())
+                .add("series", Json.createArrayBuilder())
+                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
+                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+                .build();
+        return payload.toString();
+    }
+
+    private SessionOverview buildSessionOverview(Connection conn, List<WidgetEntry> widgets, LocalDate rangeStart, LocalDate rangeEnd) throws SQLException {
+        Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
+        if (widgets != null) {
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null) {
+                    continue;
+                }
+                String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+                if (!tableExists(conn, tableName)) {
+                    continue;
+                }
+                String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
+                        + quoteIdentifier(tableName)
+                        + " WHERE session_id IS NOT NULL GROUP BY session_id";
+                try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String sessionId = rs.getString("session_id");
+                        if (sessionId == null || sessionId.isBlank()) {
+                            continue;
+                        }
+                        sessionId = sessionId.trim();
+                        SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
+                        acc.count += rs.getInt("total");
+                        Timestamp lastEntry = rs.getTimestamp("last_entry");
+                        if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
+                            acc.lastEntry = lastEntry;
+                        }
+                    }
+                }
+            }
+        }
+
+        List<SessionStat> topSessions = accumulators.entrySet()
+                .stream()
+                .sorted(Map.Entry.<String, SessionAccumulator>comparingByValue(Comparator.comparingInt(a -> -a.count)))
+                .limit(10)
+                .map(entry -> new SessionStat(
+                entry.getKey(),
+                entry.getValue().count,
+                formatTimestamp(entry.getValue().lastEntry)))
+                .collect(Collectors.toList());
+
+        List<String> sessionIds = topSessions.stream()
+                .map(stat -> stat.sessionId)
+                .collect(Collectors.toList());
+
+        SessionTimeline timeline = buildSessionTimeline(conn, widgets, sessionIds, rangeStart, rangeEnd);
+        return new SessionOverview(topSessions, timeline);
+    }
+
+    private String formatTimestamp(Timestamp ts) {
+        if (ts == null) {
+            return "—";
+        }
+        return ts.toInstant()
+                .atZone(ZoneId.systemDefault())
+                .format(ENTRY_FORMATTER);
+    }
+
+    private SessionTimeline buildSessionTimeline(Connection conn, List<WidgetEntry> widgets, List<String> sessionIds, LocalDate rangeStart, LocalDate rangeEnd) throws SQLException {
+        List<LocalDate> labelDates = new ArrayList<>();
+        LocalDate cursor = rangeStart;
+        if (!cursor.isAfter(rangeEnd)) {
+            while (!cursor.isAfter(rangeEnd)) {
+                labelDates.add(cursor);
+                cursor = cursor.plusDays(1);
+            }
+        } else {
+            labelDates.add(rangeStart);
+        }
+
+        List<String> labels = new ArrayList<>();
+        for (LocalDate date : labelDates) {
+            labels.add(date.format(DATE_FORMATTER));
+        }
+
+        Map<String, List<Integer>> countsBySession = new LinkedHashMap<>();
+        for (String sessionId : sessionIds) {
+            countsBySession.put(sessionId, new ArrayList<>(Collections.nCopies(labels.size(), 0)));
+        }
+
+        if (sessionIds.isEmpty() || widgets == null || widgets.isEmpty() || labels.isEmpty()) {
+            return new SessionTimeline(labels, countsBySession);
+        }
+
+        String inClause = sessionIds.stream()
+                .map(id -> "?")
+                .collect(Collectors.joining(", "));
+        String rangeSuffix = " AND created_at >= ? AND created_at < ?";
+
+        Timestamp startTs = Timestamp.valueOf(rangeStart.atStartOfDay());
+        Timestamp endTs = Timestamp.valueOf(rangeEnd.plusDays(1).atStartOfDay());
+
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null) {
+                continue;
+            }
+            String widgetId = widget.getWidgetId();
+            String tableName = sanitizeWidgetTableName(widgetId);
+            if (!tableExists(conn, tableName)) {
+                continue;
+            }
+            String sql = "SELECT session_id, created_at FROM " + quoteIdentifier(tableName)
+                    + " WHERE session_id IN (" + inClause + ")" + rangeSuffix;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                int idx = 1;
+                for (String sessionId : sessionIds) {
+                    ps.setString(idx++, sessionId);
+                }
+                ps.setTimestamp(idx++, startTs);
+                ps.setTimestamp(idx, endTs);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String sessionId = rs.getString("session_id");
+                        Timestamp createdAt = rs.getTimestamp("created_at");
+                        if (sessionId == null || createdAt == null) {
+                            continue;
+                        }
+                        List<Integer> bucket = countsBySession.get(sessionId);
+                        if (bucket == null) {
+                            continue;
+                        }
+                        LocalDate entryDate = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                        long dayIndex = ChronoUnit.DAYS.between(rangeStart, entryDate);
+                        if (dayIndex < 0 || dayIndex >= bucket.size()) {
+                            continue;
+                        }
+                        int position = (int) dayIndex;
+                        bucket.set(position, bucket.get(position) + 1);
+                    }
+                }
+            }
+        }
+
+        return new SessionTimeline(labels, countsBySession);
+    }
+
+    private String renderSessionRows(List<SessionStat> stats, String contextPath) {
+        if (stats == null || stats.isEmpty()) {
+            return "<tr><td colspan=\"4\" class=\"empty-row\">No session activity recorded yet.</td></tr>";
+        }
+        StringBuilder builder = new StringBuilder();
+        int rank = 1;
+        for (SessionStat stat : stats) {
+            String encodedSession = URLEncoder.encode(stat.sessionId, StandardCharsets.UTF_8);
+            String url = contextPath + "/dashboard/session-review?sessionId=" + encodedSession;
+            builder.append("<tr>")
+                    .append("<td>").append(rank++).append("</td>")
+                    .append("<td><span class=\"session-link\">").append(escapeHtml(stat.sessionId)).append("</span></td>")
+                    .append("<td><a class=\"session-count-link\" href=\"").append(url).append("\">")
+                    .append(stat.count).append(" chats</a></td>")
+                    .append("<td><span class=\"session-last-entry\">").append(escapeHtml(stat.lastEntry)).append("</span></td>")
+                    .append("</tr>");
+        }
+        return builder.toString();
+    }
+
+    private String escapeForJs(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     private void storeTermSnapshots(HttpSession session, TermSummary summary) {
@@ -161,18 +423,20 @@ public class DashboardServlet extends HttpServlet {
             return summary;
         }
 
-        List<TermMatcher> matchers = new ArrayList<>();
+        // Build compiled patterns for terms (exclude system terms). Use canonical TermMatcher to ensure parity.
+        List<TermDefinition> activeTerms = new ArrayList<>();
+        List<Pattern> compiledPatterns = new ArrayList<>();
         for (TermDefinition term : terms) {
             if (term == null || term.isSystemFlag()) {
                 continue;
             }
-            matchers.add(new TermMatcher(term));
+            activeTerms.add(term);
+            Pattern p = TermMatcher.buildStrictPattern(term);
+            compiledPatterns.add(p);
             summary.ensureTerm(term.getName());
         }
 
-        String multiLabel = "Multi";
         String otherLabel = "Other Parasoft Match";
-        summary.ensureTerm(multiLabel);
         summary.ensureTerm(otherLabel);
 
         for (WidgetEntry widget : widgets) {
@@ -199,23 +463,33 @@ public class DashboardServlet extends HttpServlet {
                     Timestamp createdAt = rs.getTimestamp("created_at");
                     String sessionId = rs.getString("session_id");
 
-                    int matches = 0;
-                    String matchedTerm = null;
-                    for (TermMatcher matcher : matchers) {
-                        if (matcher.matches(prompt)) {
-                            matches++;
-                            matchedTerm = matcher.term.getName();
-                            if (matches > 1) {
-                                break;
+                    // Sanitize prompt once and search the entire prompt for earliest term occurrence.
+                    final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
+                    TermDefinition bestTerm = null;
+                    int bestStart = Integer.MAX_VALUE;
+
+                    for (int i = 0; i < compiledPatterns.size(); i++) {
+                        Pattern pattern = compiledPatterns.get(i);
+                        try {
+                            Matcher m = pattern.matcher(sanitizedPrompt);
+                            if (m.find()) {
+                                int start = m.start();
+                                if (start < bestStart) {
+                                    bestStart = start;
+                                    bestTerm = activeTerms.get(i);
+                                    if (bestStart == 0) {
+                                        break; // earliest possible, stop scanning
+                                    }
+                                }
                             }
+                        } catch (Exception e) {
+                            log.warning("Pattern match failure for term '" + activeTerms.get(i).getName() + "': " + e.getMessage());
                         }
                     }
 
                     String snapshotTerm = otherLabel;
-                    if (matches > 1) {
-                        snapshotTerm = multiLabel;
-                    } else if (matches == 1) {
-                        snapshotTerm = matchedTerm;
+                    if (bestTerm != null) {
+                        snapshotTerm = bestTerm.getName();
                     }
 
                     TermChatSnapshot snapshot = new TermChatSnapshot(
@@ -317,6 +591,47 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
+    private static final class SessionOverview {
+
+        private final List<SessionStat> topSessions;
+        private final SessionTimeline timeline;
+
+        private SessionOverview(List<SessionStat> topSessions, SessionTimeline timeline) {
+            this.topSessions = List.copyOf(topSessions);
+            this.timeline = timeline;
+        }
+    }
+
+    private static final class SessionStat {
+
+        private final String sessionId;
+        private final int count;
+        private final String lastEntry;
+
+        private SessionStat(String sessionId, int count, String lastEntry) {
+            this.sessionId = sessionId;
+            this.count = count;
+            this.lastEntry = lastEntry;
+        }
+    }
+
+    private static final class SessionTimeline {
+
+        private final List<String> labels;
+        private final Map<String, List<Integer>> countsBySession;
+
+        private SessionTimeline(List<String> labels, Map<String, List<Integer>> countsBySession) {
+            this.labels = List.copyOf(labels);
+            this.countsBySession = new LinkedHashMap<>(countsBySession);
+        }
+    }
+
+    private static final class SessionAccumulator {
+
+        private int count = 0;
+        private Timestamp lastEntry = null;
+    }
+
     private static final class TermSummary {
 
         private final Map<String, Integer> termCounts = new LinkedHashMap<>();
@@ -349,37 +664,6 @@ public class DashboardServlet extends HttpServlet {
                 copies.put(entry.getKey(), new ArrayList<>(entry.getValue()));
             }
             return copies;
-        }
-    }
-
-    private static final class TermMatcher {
-
-        private final TermDefinition term;
-        private final Pattern pattern;
-
-        private TermMatcher(TermDefinition term) {
-            this.term = term;
-            this.pattern = compile(term);
-        }
-
-        private boolean matches(String input) {
-            if (input == null || input.isBlank()) {
-                return false;
-            }
-            return pattern.matcher(input).find();
-        }
-
-        private Pattern compile(TermDefinition term) {
-            String raw = term.getMatchPattern();
-            if (raw == null || raw.isBlank()) {
-                raw = term.getName();
-            }
-            if ("REGEX".equalsIgnoreCase(term.getMatchType())) {
-                return Pattern.compile(raw, Pattern.CASE_INSENSITIVE);
-            }
-            String escaped = Pattern.quote(raw);
-            escaped = escaped.replace("\\*", ".*").replace("\\?", ".");
-            return Pattern.compile(escaped, Pattern.CASE_INSENSITIVE);
         }
     }
 }

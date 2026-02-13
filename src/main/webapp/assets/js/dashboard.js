@@ -9,8 +9,9 @@ if (typeof termSlices === 'string') {
         termSlices = [];
     }
 }
-const ctx = document.getElementById('termChart')?.getContext('2d');
 const palette = ['#1d4ed8', '#047857', '#c0392b', '#d97706', '#0f172a', '#6366f1', '#af7b1b'];
+
+const ctx = document.getElementById('termChart')?.getContext('2d');
 
 function openTermReview(term) {
     if (!term) {
@@ -80,3 +81,4 @@ if (legendEl && termSlices.length) {
         legendEl.appendChild(chip);
     });
 }
+

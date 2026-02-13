@@ -9,17 +9,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.sql.DataSource;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import com.sim.chatserver.startup.AppDataSourceHolder;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import com.sim.chatserver.startup.AppDataSourceHolder;
-
 class ConfigStoreTest {
 
     private AppDataSourceHolder holder;
@@ -164,5 +164,20 @@ class ConfigStoreTest {
     private void stubConnections(Connection... connections) throws SQLException {
         AtomicInteger counter = new AtomicInteger(0);
         when(dataSource.getConnection()).thenAnswer(invocation -> connections[counter.getAndIncrement()]);
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setAppDataSourceHolder(AppDataSourceHolder)
+     *
+     * @see com.sim.chatserver.config.ConfigStore#setAppDataSourceHolder(AppDataSourceHolder)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetAppDataSourceHolder() throws Throwable
+    {
+        // When
+        AppDataSourceHolder holder2 = mock(AppDataSourceHolder.class);
+        ConfigStore.setAppDataSourceHolder(holder2);
+
     }
 }

@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
-import static org.mockito.Mockito.mockConstruction;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.mockConstruction;
 class DataSourceFactoryTest {
 
     private static final Map<String, String> BASE_ENV = Map.of(
@@ -100,4 +100,5 @@ class DataSourceFactoryTest {
             modifiableEnv.putAll(newenv);
         }
     }
+
 }
