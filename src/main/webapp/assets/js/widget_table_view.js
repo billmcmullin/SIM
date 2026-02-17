@@ -170,7 +170,7 @@ function bindControls() {
             }
         };
         reviewBtn.disabled = true;
-        fetch(`${contextPath}/admin/widgets/review/start`, {
+        fetch(`${contextPath}/dashboard/widgets/review/start`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -182,7 +182,7 @@ function bindControls() {
                 if (!response.ok) {
                     throw new Error(data.message || 'Unable to prepare review.');
                 }
-                window.location.href = `${contextPath}/admin/widgets/review?selectionId=${encodeURIComponent(data.selectionId)}`;
+                window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
             })
             .catch(error => {
                 reviewBtn.disabled = false;
@@ -198,7 +198,7 @@ function fetchAllMatchingChatIds() {
     if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
     if (state.filters.response) params.append('filterResponse', state.filters.response);
 
-    return fetch(`${contextPath}/admin/widgets/view/select-ids?${params.toString()}`, {
+    return fetch(`${contextPath}/dashboard/widgets/view/select-ids?${params.toString()}`, {
         headers: { 'Accept': 'application/json' }
     })
         .then(res => res.json())
@@ -221,7 +221,7 @@ function loadTable() {
     if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
     if (state.filters.response) params.append('filterResponse', state.filters.response);
 
-    fetch(`${contextPath}/admin/widgets/view/data?${params.toString()}`, {
+    fetch(`${contextPath}/dashboard/widgets/drilldown/view/data?${params.toString()}`, {
         headers: { 'Accept': 'application/json' }
     })
         .then(res => res.json())
@@ -242,31 +242,79 @@ function loadTable() {
         });
 }
 
+// Updated renderRows: build DOM nodes and put response text into a non-HTML element using textContent
 function renderRows(rows) {
     if (!tableBody) return;
+    tableBody.innerHTML = '';
     if (!rows.length) {
         tableBody.innerHTML = '<tr><td colspan="6" class="empty-row">No entries found.</td></tr>';
         return;
     }
-    tableBody.innerHTML = rows.map(row => {
-        const checked = selectedChats.has(row.chatId) ? 'checked' : '';
-        return `<tr>
-            <td class="select-column">
-                <input type="checkbox" class="row-select" data-chat-id="${escapeHtml(row.chatId)}" ${checked}>
-            </td>
-            <td><div class="text-summary">${escapeHtml(row.chatId)}</div></td>
-            <td><div class="text-summary">${escapeHtml(row.prompt)}</div></td>
-            <td><div class="response-summary">${escapeHtml(truncateResponse(row.response))}</div></td>
-            <td><div class="text-summary">${escapeHtml(formatDate(row.createdAt))}</div></td>
-            <td><div class="text-summary">${escapeHtml(row.sessionId)}</div></td>
-        </tr>`;
-    }).join('');
+
+    const fragment = document.createDocumentFragment();
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+
+        // select checkbox cell
+        const tdSelect = document.createElement('td');
+        tdSelect.className = 'select-column';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'row-select';
+        if (row.chatId !== undefined && row.chatId !== null) input.dataset.chatId = String(row.chatId);
+        input.checked = selectedChats.has(row.chatId);
+        tdSelect.appendChild(input);
+        tr.appendChild(tdSelect);
+
+        // chatId cell
+        const tdId = document.createElement('td');
+        const idDiv = document.createElement('div');
+        idDiv.className = 'text-summary';
+        idDiv.textContent = row.chatId ?? '';
+        tdId.appendChild(idDiv);
+        tr.appendChild(tdId);
+
+        // prompt cell (use textContent to show verbatim)
+        const tdPrompt = document.createElement('td');
+        const promptDiv = document.createElement('div');
+        promptDiv.className = 'text-summary';
+        promptDiv.textContent = row.prompt ?? '';
+        tdPrompt.appendChild(promptDiv);
+        tr.appendChild(tdPrompt);
+
+        // response cell: non-HTML element showing verbatim (but truncated for table)
+        const tdResponse = document.createElement('td');
+        const respDiv = document.createElement('div');
+        respDiv.className = 'response-summary';
+        respDiv.textContent = truncateResponse(row.response);
+        tdResponse.appendChild(respDiv);
+        tr.appendChild(tdResponse);
+
+        // createdAt cell
+        const tdCreated = document.createElement('td');
+        const createdDiv = document.createElement('div');
+        createdDiv.className = 'text-summary';
+        createdDiv.textContent = formatDate(row.createdAt);
+        tdCreated.appendChild(createdDiv);
+        tr.appendChild(tdCreated);
+
+        // sessionId cell
+        const tdSession = document.createElement('td');
+        const sessionDiv = document.createElement('div');
+        sessionDiv.className = 'text-summary';
+        sessionDiv.textContent = row.sessionId ?? '';
+        tdSession.appendChild(sessionDiv);
+        tr.appendChild(tdSession);
+
+        fragment.appendChild(tr);
+    });
+
+    tableBody.appendChild(fragment);
 }
 
 function updateSelectionUI() {
-    if (!reviewBtn) {
-        return;
-    }
+    if (!reviewBtn) return;
     const count = selectedChats.size;
     reviewBtn.textContent = `Review Selected (${count})`;
     reviewBtn.disabled = count === 0;

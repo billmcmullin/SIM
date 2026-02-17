@@ -12,7 +12,7 @@
 
     <servlet>
         <servlet-name>AdminConfigServlet</servlet-name>
-        <servlet-class>com.sim.chatserver.web.AdminConfigServlet</servlet-class>
+        <servlet-class>com.sim.chatserver.web.admin.AdminConfigServlet</servlet-class>
     </servlet>
     <servlet-mapping>
         <servlet-name>AdminConfigServlet</servlet-name>
@@ -21,7 +21,7 @@
 
     <servlet>
         <servlet-name>WidgetApiServlet</servlet-name>
-        <servlet-class>com.sim.chatserver.web.WidgetApiServlet</servlet-class>
+        <servlet-class>com.sim.chatserver.web.dashboard.WidgetApiServlet</servlet-class>
     </servlet>
     <servlet-mapping>
         <servlet-name>WidgetApiServlet</servlet-name>
@@ -30,7 +30,7 @@
 
     <servlet>
         <servlet-name>SaveConfigServlet</servlet-name>
-        <servlet-class>com.sim.chatserver.web.SaveConfigServlet</servlet-class>
+        <servlet-class>com.sim.chatserver.web.admin.SaveConfigServlet</servlet-class>
     </servlet>
     <servlet-mapping>
         <servlet-name>SaveConfigServlet</servlet-name>

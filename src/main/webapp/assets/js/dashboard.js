@@ -124,7 +124,7 @@ if (legendEl && termSlices.length) {
             const count = typeof s.count === 'number' ? s.count : 0;
             const last = s.last || '—';
             const topWidgetName = s.topWidgetName || '—';
-            const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/session-review?sessionId=${encodeURIComponent(sessionId)}`;
+            const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/sessions/drilldown/session-review?sessionId=${encodeURIComponent(sessionId)}`;
             // Escape content minimally
             function esc(v) {
                 if (v === null || typeof v === 'undefined') return '';
