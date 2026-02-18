@@ -12,7 +12,7 @@
     <name>chat-server</name>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>18</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jakarta.version>11.0.0</jakarta.version>
         <hibernate.version>7.2.4.Final</hibernate.version>
@@ -179,9 +179,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
-                <configuration>
-                    <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
-                </configuration>
+
             </plugin>
         </plugins>
     </build>
