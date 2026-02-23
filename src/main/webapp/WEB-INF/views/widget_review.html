@@ -52,7 +52,17 @@
                         <button type="button" id="selectAllEntriesBtn">Select all entries</button>
                         <button type="button" id="deselectAllBtn">Deselect all</button>
                         <button type="button" id="manualMessageToggleBtn">Send manual workspace message</button>
+
+                        <!-- Export controls -->
+                        <label for="exportFormat" style="margin-left:12px; align-self:center;">Export:</label>
+                        <select id="exportFormat" style="margin-left:6px;">
+                            <option value="csv" selected>CSV</option>
+                            <option value="json">JSON</option>
+                            <option value="text">TEXT</option>
+                        </select>
+                        <button type="button" id="exportSelectedBtn" style="margin-left:6px;">Export Selected</button>
                     </div>
+
                 </div>
             </div>
 

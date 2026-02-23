@@ -1,8 +1,3 @@
-// widget-review.js - updated to preserve raw DB response text for display while keeping normalization available.
-// - fetchJsonWithEncoding returns both raw and normalized decoded strings / parsed objects.
-// - loadSelectionData/selectAllEntries use parsedRaw so rows keep DB text exactly.
-// - sendManualMessage displays the raw response text (textContent) and appends diagnostics.
-
 const config = window.widgetReviewConfig || {};
 const contextPath = config.contextPath || '';
 const selectionId = config.selectionId || '';
@@ -32,6 +27,10 @@ const manualMessageResponse = document.getElementById('manualMessageResponse');
 const manualMessageSelectionPreview = document.getElementById('manualMessageSelectionPreview');
 const sessionIndicator = document.getElementById('sessionIndicator');
 const sessionIndicatorValue = document.getElementById('sessionIndicatorValue');
+
+// Export UI elements
+const exportSelectedBtn = document.getElementById('exportSelectedBtn');
+const exportFormatSelect = document.getElementById('exportFormat');
 
 const state = {
     limit: 10,
@@ -151,6 +150,12 @@ function attachHandlers() {
         updateSelectAllCheckbox();
         refreshDetailPanel();
         updateSelectionView();
+    });
+
+    // Export button binding
+    exportSelectedBtn?.addEventListener('click', () => {
+        const format = (exportFormatSelect && exportFormatSelect.value) ? exportFormatSelect.value : 'csv';
+        exportSelected(format);
     });
 
     reviewBody?.addEventListener('change', event => {
@@ -580,7 +585,7 @@ function parseJsonSafe(value) {
     try { return JSON.parse(value); } catch { return null; }
 }
 
-function updateSelectionView() { updateSelectionPreview(); updateSelectionSummary(); }
+function updateSelectionView() { updateSelectionPreview(); updateSelectionSummary(); updateSelectionUI(); }
 
 function updateSelectionPreview() {
     const preview = buildFullSelectionPreview();
@@ -756,4 +761,92 @@ function formatDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/* ---------------------- EXPORT Selected Chats ---------------------- */
+
+async function exportSelected(format = 'csv') {
+    if (!multiSelected.size) {
+        setManualMessageStatus('No selected chats to export.', true);
+        return;
+    }
+    if (!exportSelectedBtn) return;
+    exportSelectedBtn.disabled = true;
+    setManualMessageStatus('Preparing export...');
+    try {
+        const selectedIds = Array.from(multiSelected);
+        const body = { selectionId, selectedChatIds: selectedIds, format };
+        const resp = await fetch(`${contextPath}/dashboard/widgets/drilldown/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
+            body: JSON.stringify(body)
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(`Export failed: ${resp.status} ${text}`);
+        }
+        const blob = await resp.blob();
+        // Get filename from Content-Disposition if present
+        let filename = `export.${format === 'csv' ? 'csv' : format === 'json' ? 'json' : 'txt'}`;
+        const cd = resp.headers.get('Content-Disposition') || '';
+        const m = /filename\*?=.*''([^;\s]+)/i.exec(cd);
+        if (m && m[1]) {
+            try { filename = decodeURIComponent(m[1]); } catch { filename = m[1]; }
+        } else {
+            const m2 = /filename=\"?([^\";]+)\"?/i.exec(cd);
+            if (m2 && m2[1]) filename = m2[1];
+        }
+
+        // Trigger download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        setManualMessageStatus('Export ready. Download started.', false);
+    } catch (err) {
+        console.error('exportSelected error', err);
+        setManualMessageStatus(err.message || 'Export failed.', true);
+    } finally {
+        exportSelectedBtn.disabled = false;
+    }
+}
+
+/* ---------------------- Remaining helpers ---------------------- */
+
+function buildFullSelectionPreview() {
+    const entries = Array.from(selectedEntryDetails.values());
+    if (!entries.length) return '';
+    const sorted = entries.slice().sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+    });
+    return sorted.map(entry => formatEntryPreview(entry)).join('\n\n');
+}
+
+function updateSelectionUI() {
+    // Called whenever selections change; update export/review UI state as well.
+    if (!exportSelectedBtn) {
+        // nothing to update
+    } else {
+        exportSelectedBtn.disabled = multiSelected.size === 0;
+    }
+    if (document.getElementById('reviewSelectedBtn')) {
+        // update Review Selected button if present
+        const reviewBtn = document.getElementById('reviewSelectedBtn');
+        if (reviewBtn) {
+            const count = selectedEntryDetails.size || multiSelected.size;
+            reviewBtn.textContent = `Review Selected (${count})`;
+            reviewBtn.disabled = count === 0;
+            const selectedInfoElem = document.getElementById('selectedInfo');
+            if (selectedInfoElem) {
+                selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';
+            }
+        }
+    }
 }
