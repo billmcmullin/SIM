@@ -13,6 +13,7 @@ const prevBtn = document.getElementById('prevPageBtn');
 const nextBtn = document.getElementById('nextPageBtn');
 const pageInfo = document.getElementById('pageInfo');
 const tableHeaders = document.querySelectorAll('.widget-review-table th[data-column]');
+const selectColumnHeader = document.querySelector('.widget-review-table th.select-column');
 const selectAllCheckbox = document.getElementById('reviewSelectAll');
 const selectAllEntriesBtn = document.getElementById('selectAllEntriesBtn');
 const deselectAllBtn = document.getElementById('deselectAllBtn');
@@ -64,6 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!selectionId) {
         showError('Missing selection reference.');
         return;
+    }
+    if (selectColumnHeader) {
+        selectColumnHeader.textContent = '';
     }
     attachHandlers();
     attachManualMessageHandlers();
@@ -425,7 +429,6 @@ async function sendManualMessage() {
         if (fetchResp.ok) {
             setManualMessageStatus('Message delivered.', false);
             manualMessageTextarea.value = '';
-            // Display EXACT raw DB text (no normalization) by using textContent so characters are shown literally.
             displayManualMessageResponseRaw(chosenTextResponse || '', diagHtml);
         } else {
             const parsedErr = chosen && (chosen.parsedRaw || chosen.parsedNorm);
@@ -441,18 +444,14 @@ async function sendManualMessage() {
     }
 }
 
-// Display raw DB text exactly (no sanitization/normalization) but avoid interpreting as HTML by using textContent.
-// Diagnostics (HTML) appended after the raw text.
 function displayManualMessageResponseRaw(text, diagnosticsHtml) {
     if (!manualMessageResponse) return;
     const raw = (typeof text === 'string') ? text : String(text || '');
-    // Show raw text exactly using textContent (preserves characters as-is, doesn't render HTML)
-    // Use a wrapper so we can append diagnostics below.
-    manualMessageResponse.innerHTML = ''; // clear
+    manualMessageResponse.innerHTML = '';
     const pre = document.createElement('div');
     pre.style.whiteSpace = 'pre-wrap';
     pre.style.fontFamily = 'monospace';
-    pre.textContent = raw; // show exact DB text
+    pre.textContent = raw;
     manualMessageResponse.appendChild(pre);
     if (diagnosticsHtml) {
         const details = document.createElement('details');
@@ -461,7 +460,7 @@ function displayManualMessageResponseRaw(text, diagnosticsHtml) {
         summary.textContent = 'Response diagnostics (click to expand)';
         details.appendChild(summary);
         const diagContainer = document.createElement('div');
-        diagContainer.innerHTML = diagnosticsHtml; // diagnostics HTML built with safeEscapeHtml
+        diagContainer.innerHTML = diagnosticsHtml;
         details.appendChild(diagContainer);
         manualMessageResponse.appendChild(details);
     }
@@ -513,7 +512,6 @@ function ensureWithinLength(text, lengthLimit) {
     return text.slice(0, lengthLimit);
 }
 
-// selectAllEntries uses parsedRaw from fetchJsonWithEncoding
 function selectAllEntries() {
     if (!state.totalRows) {
         setManualMessageStatus('No entries available to select.', true);
@@ -585,7 +583,11 @@ function parseJsonSafe(value) {
     try { return JSON.parse(value); } catch { return null; }
 }
 
-function updateSelectionView() { updateSelectionPreview(); updateSelectionSummary(); updateSelectionUI(); }
+function updateSelectionView() {
+    updateSelectionPreview();
+    updateSelectionSummary();
+    updateSelectionUI();
+}
 
 function updateSelectionPreview() {
     const preview = buildFullSelectionPreview();
@@ -593,7 +595,9 @@ function updateSelectionPreview() {
     if (manualMessageSelectionPreview) manualMessageSelectionPreview.value = selectionPreviewText;
 }
 
-function updateSelectionSummary() { selectionSummaryText = buildSafeSelectionSummary(); }
+function updateSelectionSummary() {
+    selectionSummaryText = buildSafeSelectionSummary();
+}
 
 function buildFullSelectionPreview() {
     const entries = Array.from(selectedEntryDetails.values());
@@ -664,7 +668,6 @@ function renderRows(data) {
     }
     reviewBody.innerHTML = data.map(row => {
         const checked = multiSelected.has(row.chatId) ? 'checked' : '';
-        // keep row.prompt/response exactly as in DB when showing details; table uses escapeHtml to avoid breaking layout
         return `<tr data-chat-id="${escapeHtml(row.chatId)}">
             <td class="select-column">
                 <input type="checkbox" class="row-multi-select" data-chat-id="${escapeHtml(row.chatId)}" ${checked}>
@@ -691,7 +694,6 @@ function refreshDetailPanel() {
         const entry = selectedEntryDetails.get([...multiSelected][0]);
         if (entry) {
             detailTitle.textContent = 'Selected Chat Details';
-            // show DB text exactly (textContent)
             detailPrompt.textContent = entry.prompt || '(no prompt)';
             detailResponse.textContent = entry.response || '(no response)';
             return;

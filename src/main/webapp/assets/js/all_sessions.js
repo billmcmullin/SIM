@@ -256,7 +256,7 @@
         table.appendChild(colgroup);
 
         const thead = document.createElement('thead');
-        thead.innerHTML = '<tr><th class="select-column">Select</th><th class="chat-id-cell">Chat ID</th><th>Prompt</th><th>Created At</th></tr>';
+        thead.innerHTML = '<tr><th class="select-column"></th><th class="chat-id-cell">Chat ID</th><th>Prompt</th><th>Created At</th></tr>';
         table.appendChild(thead);
 
         const tbody = document.createElement('tbody');

@@ -299,11 +299,32 @@ detail-card pre,
     white-space: normal;
 }
 
-.widget-view-table .response-summary {
-    color: #475569;
+.widget-view-table thead th {
+    background: var(--primary-blue);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
 }
 
+.widget-review-table thead th {
+    background: var(--primary-blue);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+}
+
+/*.widget-view-table .response-summary {
+    color: #475569;
+}*/
+
 /* Make chat ID column wide enough for long IDs */
+/* Keep chat ID text in the same style as prompts (allows wrapping/truncation) */
 .widget-view-table th[data-column="widget_chat_id"],
 .widget-view-table td:nth-child(2) {
     min-width: 220px;
@@ -311,7 +332,28 @@ detail-card pre,
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: Menlo, Monaco, "Courier New", monospace;
+}
+
+.widget-view-table td:nth-child(2) .text-summary {
+    font-family: inherit;
+    color: inherit;
+}
+
+/* Ensure created date column shows full timestamp */
+.widget-view-table th[data-column="created_at"],
+.widget-view-table td:nth-child(5) {
+    min-width: 180px;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+/* Ensure session column shows entire identifier in same style as prompt */
+.widget-view-table th[data-column="session_id"],
+.widget-view-table td:nth-child(6) {
+    min-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: inherit;
 }
 
 /* --- SESSION TABLE --- */
@@ -488,15 +530,14 @@ session-table th:nth-child(2),
 
 .inner-chats-table td.select-column,
 .inner-chats-table th.select-column {
-    width: 68px;
-    min-width: 68px;
+    width: 88px;
+    min-width: 88px;
 }
 
 .inner-chats-table td.chat-id-cell,
 .inner-chats-table th.chat-id-cell {
     min-width: 220px;
     max-width: 320px;
-    font-family: Menlo, Monaco, "Courier New", monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
