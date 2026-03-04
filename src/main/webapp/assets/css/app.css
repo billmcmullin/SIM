@@ -286,6 +286,35 @@ detail-card pre,
     color: #475569;
 }
 
+.widget-view-table .text-summary,
+.widget-view-table .response-summary {
+    max-height: 5.25rem;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.widget-view-table .response-summary {
+    color: #475569;
+}
+
+/* Make chat ID column wide enough for long IDs */
+.widget-view-table th[data-column="widget_chat_id"],
+.widget-view-table td:nth-child(2) {
+    min-width: 220px;
+    max-width: 320px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: Menlo, Monaco, "Courier New", monospace;
+}
+
+/* --- SESSION TABLE --- */
 .session-list-card {
     margin-top: 1rem;
 }

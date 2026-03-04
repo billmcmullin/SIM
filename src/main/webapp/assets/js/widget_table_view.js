@@ -24,10 +24,11 @@
     let latestRows = [];
     const selectedChats = new Map();
 
-    // Element refs (resolved after DOMContentLoaded)
+    // Element refs
     let tableBody, globalSearchInput, filterPrompt, filterResponse;
-    let prevBtn, nextBtn, pageInfo, limitSelectBottom;
+    let prevBtn, nextBtn, pageInfo;
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;
+
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
     const fmtDate = v => { if (!v) return ''; try { return new Date(v).toLocaleString(); } catch { return v; } };
     const truncateResponse = (text) => { if (!text) return ''; return text.length <= 220 ? text : text.slice(0, 217) + '…'; };
@@ -60,7 +61,6 @@
         rows.forEach(row => {
             const tr = document.createElement('tr');
 
-            // select checkbox cell
             const tdSelect = document.createElement('td');
             tdSelect.className = 'select-column';
             const input = document.createElement('input');
@@ -71,33 +71,29 @@
             tdSelect.appendChild(input);
             tr.appendChild(tdSelect);
 
-            // widget + chatId cell: show widget display name instead of widget id
             const tdId = document.createElement('td');
             const idDiv = document.createElement('div');
             idDiv.className = 'text-summary';
-            // prefer widgetName (from row -> server), fallback to page widgetDisplayName, fallback to widgetId
-            const widgetLabel = row.widgetName || widgetDisplayName || row.widgetId || widgetId || '';
-            idDiv.textContent = `${widgetLabel} · ${row.chatId ?? ''}`;
-            tdId.appendChild(idDiv);
+            idDiv.textContent = `${row.widgetName || widgetDisplayName || row.widgetId || widgetId || ''} · ${row.chatId ?? ''}`;
             tr.appendChild(tdId);
+            tdId.appendChild(idDiv);
 
-            // prompt cell (use textContent to show verbatim)
             const tdPrompt = document.createElement('td');
             const promptDiv = document.createElement('div');
             promptDiv.className = 'text-summary';
             promptDiv.textContent = row.prompt ?? '';
+            promptDiv.title = row.prompt ?? '';
             tdPrompt.appendChild(promptDiv);
             tr.appendChild(tdPrompt);
 
-            // response cell (truncated)
             const tdResponse = document.createElement('td');
             const respDiv = document.createElement('div');
             respDiv.className = 'response-summary';
             respDiv.textContent = truncateResponse(row.response);
+            respDiv.title = row.response ?? '';
             tdResponse.appendChild(respDiv);
             tr.appendChild(tdResponse);
 
-            // createdAt cell
             const tdCreated = document.createElement('td');
             const createdDiv = document.createElement('div');
             createdDiv.className = 'text-summary';
@@ -105,7 +101,6 @@
             tdCreated.appendChild(createdDiv);
             tr.appendChild(tdCreated);
 
-            // sessionId cell
             const tdSession = document.createElement('td');
             const sessionDiv = document.createElement('div');
             sessionDiv.className = 'text-summary';
@@ -158,15 +153,6 @@
     }
 
     function bindControls() {
-        if (limitSelectBottom) {
-            state.limit = parseInt(limitSelectBottom.value, 10) || state.limit;
-            limitSelectBottom.addEventListener('change', () => {
-                state.limit = parseInt(limitSelectBottom.value, 10);
-                state.page = 1;
-                loadTable();
-            });
-        }
-
         [globalSearchInput, filterPrompt, filterResponse].forEach(input => {
             if (!input) return;
             input.addEventListener('input', () => {
@@ -184,7 +170,6 @@
                 const chatId = event.target.dataset.chatId;
                 if (!chatId) return;
                 if (event.target.checked) {
-                    // record widgetName on the selected row (use existing row value or page-level fallback)
                     const row = latestRows.find(r => r.chatId === chatId);
                     if (row) {
                         row.widgetName = row.widgetName || widgetDisplayName || row.widgetId || widgetId;
@@ -336,7 +321,6 @@
             state.totalPages = payload.totalPages || 1;
             state.page = payload.page || 1;
 
-            // Render rows and update UI
             renderRows(latestRows);
             updatePagination(state.totalPages, state.page);
             updateSelectionUI();
@@ -347,7 +331,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        // resolve DOM refs
         tableBody = document.getElementById('widgetTableBody');
         globalSearchInput = document.getElementById('globalSearchInput');
         filterPrompt = document.getElementById('filterPrompt');
@@ -355,17 +338,11 @@
         prevBtn = document.getElementById('prevPageBtn');
         nextBtn = document.getElementById('nextPageBtn');
         pageInfo = document.getElementById('pageInfo');
-        limitSelectBottom = document.getElementById('limitSelectBottom');
         reviewBtn = document.getElementById('reviewSelectedBtn');
         selectAllPageCheckbox = document.getElementById('selectAllPage');
         selectAllMatchesBtn = document.getElementById('selectAllMatchesBtn');
         deselectAllMatchesBtn = document.getElementById('deselectAllMatchesBtn');
         selectedInfo = document.getElementById('selectedInfo');
-
-        // initialize limit from DOM if present
-        if (limitSelectBottom) {
-            state.limit = parseInt(limitSelectBottom.value, 10) || state.limit;
-        }
 
         bindControls();
         loadTable();

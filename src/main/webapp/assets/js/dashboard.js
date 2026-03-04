@@ -88,8 +88,12 @@ if (legendEl && termSlices.length) {
     const listEl = document.getElementById('topSessionList');
     if (!listEl || !totalEl) return;
 
+    function esc(v) {
+        if (v === null || typeof v === 'undefined') return '';
+        return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    }
+
     try {
-        // Request top 10 sessions sorted by count desc (server sorts full dataset)
         const url = `${contextPath}/dashboard/sessions.json?page=1&pageSize=10&sortBy=count&sortDir=desc`;
         const resp = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
         if (!resp.ok) {
@@ -102,22 +106,18 @@ if (legendEl && termSlices.length) {
             return;
         }
 
-        // total sessions
         if (typeof data.total === 'number') {
             totalEl.textContent = String(data.total);
         } else {
             totalEl.textContent = '—';
         }
 
-        // sessions array
         const sessions = Array.isArray(data.sessions) ? data.sessions : [];
         if (!sessions.length) {
-            // leave server-rendered rows if present; else show no rows
             listEl.innerHTML = '<tr><td colspan="5" class="empty-row">No sessions found.</td></tr>';
             return;
         }
 
-        // Render rows - use topWidgetName for display
         listEl.innerHTML = sessions.map((s, idx) => {
             const rank = idx + 1;
             const sessionId = s.sessionId || '';
@@ -125,16 +125,11 @@ if (legendEl && termSlices.length) {
             const last = s.last || '—';
             const topWidgetName = s.topWidgetName || '—';
             const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/sessions/drilldown/session-review?sessionId=${encodeURIComponent(sessionId)}`;
-            // Escape content minimally
-            function esc(v) {
-                if (v === null || typeof v === 'undefined') return '';
-                return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-            }
             return `<tr>
                 <td>${rank}</td>
                 <td>${esc(sessionId)}</td>
                 <td>${esc(topWidgetName)}</td>
-                <td>${count}</td>
+                <td><a class="session-count-link" href="${reviewUrl}">${count} chats</a></td>
                 <td>${esc(last)}</td>
             </tr>`;
         }).join('');
