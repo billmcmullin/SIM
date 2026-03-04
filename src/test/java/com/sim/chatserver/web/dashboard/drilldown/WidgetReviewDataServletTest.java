@@ -1,26 +1,16 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
-import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-
-import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
-
-import com.sim.chatserver.startup.AppDataSourceHolder;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
-
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 /**
  * Parasoft Jtest UTA: Test class for WidgetReviewDataServlet
  *

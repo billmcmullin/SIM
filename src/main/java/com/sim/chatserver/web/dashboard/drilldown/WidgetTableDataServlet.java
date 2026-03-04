@@ -15,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.SessionIdFormatter;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -129,8 +130,6 @@ public class WidgetTableDataServlet extends HttpServlet {
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            // Return DB column values exactly as stored (including whitespace and special characters).
-                            // Use addNull when the column value is SQL NULL so the JSON represents null instead of empty string.
                             JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
 
                             String chatId = rs.getString("widget_chat_id");
@@ -165,8 +164,10 @@ public class WidgetTableDataServlet extends HttpServlet {
                             String sessionId = rs.getString("session_id");
                             if (sessionId == null) {
                                 rowBuilder.addNull("sessionId");
+                                rowBuilder.add("sessionIdDisplay", "");
                             } else {
                                 rowBuilder.add("sessionId", sessionId);
+                                rowBuilder.add("sessionIdDisplay", SessionIdFormatter.formatForDisplay(sessionId));
                             }
 
                             arrayBuilder.add(rowBuilder.build());

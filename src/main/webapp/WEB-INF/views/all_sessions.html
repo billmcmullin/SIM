@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Review Sessions</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body class="sessions-page">
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <div class="brand">Chat Server</div>
+            <div>
+                <span>Signed in as <strong>${user}</strong></span>
+                <a href="${contextPath}/profile"> Profile </a>
+                <a href="${contextPath}/dashboard"> Dashboard </a>
+                <a href="${contextPath}/logout"> Logout</a>
+            </div>
+        </div>
+    </div>
+
+    <main class="container">
+        <section class="section">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+                <div>
+                    <a class="back-link" href="${contextPath}/dashboard"
+                        style="display:inline-flex; align-items:center; gap:8px;">
+                        ← Back to Dashboard
+                    </a>
+                    <h1 style="margin:8px 0 0 0;">Review Sessions</h1>
+                    <p style="margin:6px 0 0 0; color:#475569;">View and drill into sessions across all widgets. Use the
+                        controls below to search, expand and select chats for review.</p>
+                </div>
+            </div>
+
+            <!-- Controls: Search, Clear, View All, Review Selected, Selection Info -->
+            <div class="widget-view-controls" style="align-items:center; gap:12px; margin-bottom:12px;">
+                <div style="flex:1; display:flex; gap:12px; align-items:center;">
+                    <input id="searchInput" type="search" placeholder="Search prompts & responses"
+                        style="flex:1;padding:10px;border-radius:8px;border:1px solid #cbd5f5">
+                    <button id="searchBtn" class="ghost-btn">Search</button>
+                    <button id="refreshBtn" class="ghost-btn">Clear</button>
+                    <button id="viewAllBtn" class="ghost-btn">View All</button>
+                </div>
+
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <button id="reviewSelectedBtn" class="ghost-btn" disabled>Review Selected</button>
+                    <span id="selectionInfo" style="color:#475569; font-weight:600;"></span>
+                </div>
+            </div>
+
+            <div id="summary" class="search-summary"></div>
+
+            <div class="session-table-wrapper">
+                <div class="widget-review-table">
+                    <table id="sessionsTable" class="session-table">
+                        <colgroup>
+                            <col style="width:40%">
+                            <col style="width:30%">
+                            <col style="width:10%">
+                            <col style="width:15%">
+                            <col style="width:5%">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Session ID</th>
+                                <th>Widgets</th>
+                                <th>Chats</th>
+                                <th>Last Seen</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsBody">
+                            <tr>
+                                <td colspan="5" class="empty-row">Loading sessions…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="sessionsPagination" style="margin-top:12px;"></div>
+
+        </section>
+    </main>
+
+    <script>
+    ${initialScript}
+    </script>
+
+    <script src="${contextPath}/assets/js/all_sessions.js"></script>
+</body>
+
+</html>

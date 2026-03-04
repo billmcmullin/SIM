@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.SessionIdFormatter;
 import com.sim.chatserver.web.dashboard.WidgetReviewStartServlet;
 
 import jakarta.inject.Inject;
@@ -166,23 +167,26 @@ public class WidgetExportServlet extends HttpServlet {
 
             try (OutputStream out = resp.getOutputStream()) {
                 if (format.equals("csv")) {
-                    // header: sessionId,createdAt,prompt,response
-                    String header = "sessionId,createdAt,prompt,response\n";
+                    // header: sessionId,sessionIdDisplay,createdAt,prompt,response
+                    String header = "sessionId,sessionIdDisplay,createdAt,prompt,response\n";
                     out.write(header.getBytes(StandardCharsets.UTF_8));
                     for (TermChatSnapshot row : exportRows) {
                         String sessionId = safe(row.getSessionId());
+                        String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
                         String createdAt = row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString();
                         String prompt = safe(row.getPrompt());
                         String responseText = safe(row.getResponse());
-                        String[] cols = new String[]{sessionId, createdAt, prompt, responseText};
+                        String[] cols = new String[]{sessionId, sessionDisplay, createdAt, prompt, responseText};
                         out.write(csvLine(cols).getBytes(StandardCharsets.UTF_8));
                         out.write('\n');
                     }
                 } else if (format.equals("json")) {
                     JsonArrayBuilder ab = Json.createArrayBuilder();
                     for (TermChatSnapshot row : exportRows) {
+                        String sid = row.getSessionId() == null ? "" : row.getSessionId();
                         ab.add(Json.createObjectBuilder()
-                                .add("sessionId", row.getSessionId() == null ? "" : row.getSessionId())
+                                .add("sessionId", sid)
+                                .add("sessionIdDisplay", SessionIdFormatter.formatForDisplay(sid))
                                 .add("createdAt", row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString())
                                 .add("prompt", row.getPrompt() == null ? "" : row.getPrompt())
                                 .add("response", row.getResponse() == null ? "" : row.getResponse())
@@ -192,10 +196,11 @@ public class WidgetExportServlet extends HttpServlet {
                 } else { // text
                     for (TermChatSnapshot row : exportRows) {
                         String sessionId = safe(row.getSessionId());
+                        String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
                         String createdAt = row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString();
                         String prompt = safe(row.getPrompt());
                         String responseText = safe(row.getResponse());
-                        out.write(("Session: " + sessionId + "\n").getBytes(StandardCharsets.UTF_8));
+                        out.write(("Session: " + sessionId + " (" + sessionDisplay + ")\n").getBytes(StandardCharsets.UTF_8));
                         out.write(("Created At: " + createdAt + "\n").getBytes(StandardCharsets.UTF_8));
                         out.write(("Prompt:\n" + prompt + "\n\n").getBytes(StandardCharsets.UTF_8));
                         out.write(("Response:\n" + responseText + "\n").getBytes(StandardCharsets.UTF_8));
