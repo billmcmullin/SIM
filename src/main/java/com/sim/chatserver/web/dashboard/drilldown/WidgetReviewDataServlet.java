@@ -156,14 +156,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
                             String displaySession = SessionIdFormatter.formatForDisplay(rawSession);
                             String chatId = nullable(rs, "widget_chat_id");
                             String prompt = nullable(rs, "prompt");
-                            String response = nullable(rs, "response_text");
+                            String response = rs.getString("response_text");
                             String createdAt = formatTimestamp(rs.getTimestamp("created_at"));
                             JsonObject row = Json.createObjectBuilder()
                                     .add("chatId", chatId)
                                     .add("widgetId", widgetId == null ? "" : widgetId)
                                     .add("widgetName", widgetDisplayName == null ? "" : widgetDisplayName)
                                     .add("prompt", prompt)
-                                    .add("response", response)
+                                    .add("response", response == null ? "" : response)
                                     .add("createdAt", createdAt)
                                     .add("sessionId", rawSession == null ? "" : rawSession)
                                     .add("sessionIdDisplay", displaySession)

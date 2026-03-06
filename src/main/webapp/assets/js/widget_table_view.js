@@ -24,7 +24,6 @@
     let latestRows = [];
     const selectedChats = new Map();
 
-    // Element refs
     let tableBody, globalSearchInput, filterPrompt, filterResponse;
     let prevBtn, nextBtn, pageInfo;
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;

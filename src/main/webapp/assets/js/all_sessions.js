@@ -1,4 +1,3 @@
-// assets/js/all_sessions.js
 (function () {
     const APP = window.APP_CONTEXT_PATH || '';
     const API_BASE = APP + '/dashboard/sessions';
@@ -9,7 +8,7 @@
 
     // State
     let page = 1, totalPages = 1, totalSessions = 0;
-    let widgetNamesMap = {}; // widgetId -> displayName
+    let widgetNamesMap = {};
     const selectedChatIds = new Set();
 
     // DOM refs
@@ -20,15 +19,19 @@
     let paginationEl = null;
     let searchInput = null;
     let searchBtn = null;
-    let refreshBtn = null; // now Clear
+    let refreshBtn = null;
     let viewAllBtn = null;
     let reviewSelectedBtn = null;
+    let deselectSelectedBtn = null;
     let selectionInfo = null;
     let selectAllAllSessionsBtn = null;
 
-    // helpers
-    const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
-    const fmt = ts => { if (!ts) return ''; try { return new Date(ts).toLocaleString(); } catch { return ts; } };
+    const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+    const fmt = ts => {
+        if (!ts) return '';
+        try { return new Date(ts).toLocaleString(); } catch { return ts; }
+    };
 
     async function safeFetchJson(url, opts = {}) {
         const res = await fetch(url, opts);
@@ -82,13 +85,11 @@
             list.forEach(s => {
                 const tr = document.createElement('tr');
 
-                // Session ID (full)
                 const tdId = document.createElement('td');
                 tdId.className = 'session-id-col';
                 tdId.innerHTML = `<div style="font-weight:700">${esc(s.sessionId)}</div>`;
                 tr.appendChild(tdId);
 
-                // Widgets column (display name from mapping, fallback to widgetId)
                 const tdWidgets = document.createElement('td');
                 tdWidgets.className = 'session-widgets-col';
                 let widgetLabel = '';
@@ -99,22 +100,20 @@
                 if (widgetLabel) tdWidgets.title = widgetLabel;
                 tr.appendChild(tdWidgets);
 
-                // Chats count
                 const tdCount = document.createElement('td');
                 tdCount.className = 'session-chats-col';
                 tdCount.textContent = String(s.totalCount || 0);
                 tr.appendChild(tdCount);
 
-                // Last seen
                 const tdLast = document.createElement('td');
                 tdLast.className = 'session-last-col';
                 tdLast.textContent = s.lastSeen ? fmt(s.lastSeen) : '';
                 tr.appendChild(tdLast);
 
-                // Actions
                 const tdActions = document.createElement('td');
                 tdActions.className = 'session-actions-col';
                 tdActions.style.textAlign = 'right';
+
                 const expandBtn = document.createElement('button');
                 expandBtn.className = 'ghost-btn small';
                 expandBtn.textContent = 'Expand';
@@ -124,7 +123,7 @@
                 const selectAllBtn = document.createElement('button');
                 selectAllBtn.className = 'ghost-btn small';
                 selectAllBtn.style.marginLeft = '8px';
-                selectAllBtn.textContent = 'Select All in Session';
+                selectAllBtn.textContent = 'Select All';
                 selectAllBtn.addEventListener('click', () => selectAllInSession(s.sessionId, tr));
                 tdActions.appendChild(selectAllBtn);
 
@@ -135,7 +134,6 @@
             return;
         }
 
-        // card fallback
         if (sessionsContainerDiv) {
             sessionsContainerDiv.innerHTML = '';
             if (!Array.isArray(list) || list.length === 0) {
@@ -177,7 +175,7 @@
                 actions.appendChild(expandBtn);
                 const selBtn = document.createElement('button');
                 selBtn.className = 'ghost-btn small';
-                selBtn.textContent = 'Select All in Session';
+                selBtn.textContent = 'Select All';
                 selBtn.addEventListener('click', () => selectAllInSession(s.sessionId, card));
                 actions.appendChild(selBtn);
                 right.appendChild(actions);
@@ -195,7 +193,6 @@
         }
     }
 
-    // Use the colspan approach: main cell spans 4 columns, action cell on right
     async function toggleChatsRow(sessionRow, sessionId, btn) {
         const next = sessionRow.nextElementSibling;
         if (next && next.classList.contains('session-chats-row') && next.dataset.for === sessionId) {
@@ -233,8 +230,14 @@
     async function toggleChatsCard(card, sessionId, btn) {
         const chatsEl = card.querySelector('.chats-list');
         if (!chatsEl) return;
-        if (chatsEl.style.display === 'block') { chatsEl.style.display = 'none'; btn.textContent = 'Expand'; return; }
-        chatsEl.innerHTML = '<div class="small-note">Loading chats…</div>'; chatsEl.style.display = 'block'; btn.textContent = 'Collapse';
+        if (chatsEl.style.display === 'block') {
+            chatsEl.style.display = 'none';
+            btn.textContent = 'Expand';
+            return;
+        }
+        chatsEl.innerHTML = '<div class="small-note">Loading chats…</div>';
+        chatsEl.style.display = 'block';
+        btn.textContent = 'Collapse';
         try {
             const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
             renderChatsIntoDiv(chatsEl, json.rows || []);
@@ -277,7 +280,8 @@
                 cb.dataset.chatId = String(row.chatId || '');
                 cb.checked = selectedChatIds.has(row.chatId);
                 cb.addEventListener('change', () => {
-                    const id = cb.dataset.chatId; if (!id) return;
+                    const id = cb.dataset.chatId;
+                    if (!id) return;
                     if (cb.checked) selectedChatIds.add(id); else selectedChatIds.delete(id);
                     updateSelectionInfo();
                 });
@@ -312,7 +316,10 @@
 
     function renderChatsIntoDiv(container, rows) {
         container.innerHTML = '';
-        if (!rows.length) { container.innerHTML = '<div class="empty-row">No chats in this session.</div>'; return; }
+        if (!rows.length) {
+            container.innerHTML = '<div class="empty-row">No chats in this session.</div>';
+            return;
+        }
         rows.forEach(row => {
             const wrap = document.createElement('div');
             wrap.style.display = 'flex';
@@ -321,18 +328,41 @@
             wrap.style.padding = '8px 0';
             wrap.style.borderBottom = '1px solid #f3f4f6';
 
-            const left = document.createElement('div'); left.style.flex = '0 0 80px';
-            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'chat-checkbox'; cb.dataset.chatId = String(row.chatId || '');
+            const left = document.createElement('div');
+            left.style.flex = '0 0 80px';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'chat-checkbox';
+            cb.dataset.chatId = String(row.chatId || '');
             cb.checked = selectedChatIds.has(row.chatId);
-            cb.addEventListener('change', () => { const id = cb.dataset.chatId; if (!id) return; if (cb.checked) selectedChatIds.add(id); else selectedChatIds.delete(id); updateSelectionInfo(); });
-            left.appendChild(cb); wrap.appendChild(left);
+            cb.addEventListener('change', () => {
+                const id = cb.dataset.chatId;
+                if (!id) return;
+                if (cb.checked) selectedChatIds.add(id); else selectedChatIds.delete(id);
+                updateSelectionInfo();
+            });
+            left.appendChild(cb);
+            wrap.appendChild(left);
 
-            const mid = document.createElement('div'); mid.style.flex = '1 1 auto'; mid.style.minWidth = '0';
-            const idDiv = document.createElement('div'); idDiv.style.fontFamily = "Menlo, Monaco, 'Courier New', monospace"; idDiv.style.fontWeight = '600'; idDiv.textContent = row.chatId || '';
-            const promptDiv = document.createElement('div'); promptDiv.className = 'text-summary'; promptDiv.style.marginTop = '4px'; promptDiv.textContent = row.prompt || '';
-            mid.appendChild(idDiv); mid.appendChild(promptDiv); wrap.appendChild(mid);
+            const mid = document.createElement('div');
+            mid.style.flex = '1 1 auto';
+            mid.style.minWidth = '0';
+            const idDiv = document.createElement('div');
+            idDiv.style.fontFamily = "Menlo, Monaco, 'Courier New', monospace";
+            idDiv.style.fontWeight = '600';
+            idDiv.textContent = row.chatId || '';
+            const promptDiv = document.createElement('div');
+            promptDiv.className = 'text-summary';
+            promptDiv.style.marginTop = '4px';
+            promptDiv.textContent = row.prompt || '';
+            mid.appendChild(idDiv);
+            mid.appendChild(promptDiv);
+            wrap.appendChild(mid);
 
-            const right = document.createElement('div'); right.style.flex = '0 0 160px'; right.style.color = '#6b7280'; right.textContent = row.createdAt ? fmt(row.createdAt) : '';
+            const right = document.createElement('div');
+            right.style.flex = '0 0 160px';
+            right.style.color = '#6b7280';
+            right.textContent = row.createdAt ? fmt(row.createdAt) : '';
             wrap.appendChild(right);
 
             container.appendChild(wrap);
@@ -342,11 +372,20 @@
     async function selectAllInSession(sessionId, contextElement) {
         if (!confirm('Select all chats in this session for review?')) return;
         let loading;
-        if (contextElement) { loading = document.createElement('span'); loading.textContent = ' Selecting…'; contextElement.appendChild(loading); }
+        if (contextElement) {
+            loading = document.createElement('span');
+            loading.textContent = ' Selecting…';
+            contextElement.appendChild(loading);
+        }
         try {
             const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
-            (json.rows || []).forEach(r => { if (r && r.chatId) selectedChatIds.add(String(r.chatId)); });
-            document.querySelectorAll('.chat-checkbox').forEach(cb => { const id = cb.dataset.chatId; if (id && selectedChatIds.has(id)) cb.checked = true; });
+            (json.rows || []).forEach(r => {
+                if (r && r.chatId) selectedChatIds.add(String(r.chatId));
+            });
+            document.querySelectorAll('.chat-checkbox').forEach(cb => {
+                const id = cb.dataset.chatId;
+                if (id && selectedChatIds.has(id)) cb.checked = true;
+            });
             updateSelectionInfo();
             alert(`Selected ${json.rows ? json.rows.length : 0} chats from session.`);
         } catch (err) {
@@ -359,27 +398,52 @@
 
     async function selectAllAcrossAllSessions() {
         if (!confirm('Select ALL chats from ALL sessions? This may take a while. Continue?')) return;
-        if (selectAllAllSessionsBtn) { selectAllAllSessionsBtn.disabled = true; selectAllAllSessionsBtn.textContent = 'Selecting…'; }
+        if (selectAllAllSessionsBtn) {
+            selectAllAllSessionsBtn.disabled = true;
+            selectAllAllSessionsBtn.textContent = 'Selecting…';
+        }
         try {
             const sesRes = await safeFetchJson(DATA_URL + '?all=true', { credentials: 'same-origin' });
             const sessions = sesRes.sessions || [];
             for (const s of sessions) {
                 try {
                     const j = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(s.sessionId), { credentials: 'same-origin' });
-                    (j.rows || []).forEach(r => { if (r && r.chatId) selectedChatIds.add(String(r.chatId)); });
+                    (j.rows || []).forEach(r => {
+                        if (r && r.chatId) selectedChatIds.add(String(r.chatId));
+                    });
                 } catch (err) {
                     console.warn('Failed fetch chats for session', s.sessionId, err);
                 }
             }
-            document.querySelectorAll('.chat-checkbox').forEach(cb => { const id = cb.dataset.chatId; if (id && selectedChatIds.has(id)) cb.checked = true; });
+            document.querySelectorAll('.chat-checkbox').forEach(cb => {
+                const id = cb.dataset.chatId;
+                if (id && selectedChatIds.has(id)) cb.checked = true;
+            });
             updateSelectionInfo();
             alert(`Selected ${selectedChatIds.size} chats across ${sessions.length} sessions.`);
         } catch (err) {
             alert('Unable to select all sessions: ' + err.message);
             console.error(err);
         } finally {
-            if (selectAllAllSessionsBtn) { selectAllAllSessionsBtn.disabled = false; selectAllAllSessionsBtn.textContent = 'Select all chats across all sessions'; }
+            if (selectAllAllSessionsBtn) {
+                selectAllAllSessionsBtn.disabled = false;
+                selectAllAllSessionsBtn.textContent = 'Select all chats';
+            }
         }
+    }
+
+    function deselectAllSelected() {
+        selectedChatIds.clear();
+        document.querySelectorAll('.chat-checkbox').forEach(cb => { cb.checked = false; });
+        updateSelectionInfo();
+    }
+
+    function updateSelectionInfo() {
+        if (!selectionInfo) return;
+        const n = selectedChatIds.size;
+        selectionInfo.textContent = n ? `${n} selected` : '';
+        if (reviewSelectedBtn) reviewSelectedBtn.disabled = n === 0;
+        if (deselectSelectedBtn) deselectSelectedBtn.disabled = n === 0;
     }
 
     function renderPagination() {
@@ -395,21 +459,34 @@
 
         const controls = document.createElement('div');
         controls.className = 'pagination-controls';
-        const prev = document.createElement('button'); prev.className = 'ghost-btn small'; prev.textContent = 'Previous'; prev.disabled = page <= 1;
-        prev.addEventListener('click', () => { if (page > 1) { page--; loadSessions(page, searchInput ? (searchInput.value || '') : ''); } });
-        const next = document.createElement('button'); next.className = 'ghost-btn small'; next.textContent = 'Next'; next.disabled = page >= totalPages;
-        next.addEventListener('click', () => { if (page < totalPages) { page++; loadSessions(page, searchInput ? (searchInput.value || '') : ''); } });
-        const info = document.createElement('div'); info.className = 'page-info'; info.style.marginLeft = '12px';
+        const prev = document.createElement('button');
+        prev.className = 'ghost-btn small';
+        prev.textContent = 'Previous';
+        prev.disabled = page <= 1;
+        prev.addEventListener('click', () => {
+            if (page > 1) {
+                page--;
+                loadSessions(page, searchInput ? (searchInput.value || '') : '');
+            }
+        });
+        const next = document.createElement('button');
+        next.className = 'ghost-btn small';
+        next.textContent = 'Next';
+        next.disabled = page >= totalPages;
+        next.addEventListener('click', () => {
+            if (page < totalPages) {
+                page++;
+                loadSessions(page, searchInput ? (searchInput.value || '') : '');
+            }
+        });
+        const info = document.createElement('div');
+        info.className = 'page-info';
+        info.style.marginLeft = '12px';
         info.textContent = `Page ${page} of ${totalPages} (${totalSessions} sessions)`;
-        controls.appendChild(prev); controls.appendChild(next); controls.appendChild(info);
+        controls.appendChild(prev);
+        controls.appendChild(next);
+        controls.appendChild(info);
         paginationEl.appendChild(controls);
-    }
-
-    function updateSelectionInfo() {
-        if (!selectionInfo || !reviewSelectedBtn) return;
-        const n = selectedChatIds.size;
-        selectionInfo.textContent = n ? `${n} selected` : '';
-        reviewSelectedBtn.disabled = n === 0;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -419,15 +496,16 @@
         summaryEl = document.getElementById('summary');
         searchInput = document.getElementById('searchInput');
         searchBtn = document.getElementById('searchBtn');
-        refreshBtn = document.getElementById('refreshBtn'); // Clear button
+        refreshBtn = document.getElementById('refreshBtn');
         viewAllBtn = document.getElementById('viewAllBtn');
         reviewSelectedBtn = document.getElementById('reviewSelectedBtn');
+        deselectSelectedBtn = document.getElementById('deselectSelectedBtn');
         selectionInfo = document.getElementById('selectionInfo');
 
         if (reviewSelectedBtn && reviewSelectedBtn.parentNode) {
             selectAllAllSessionsBtn = document.createElement('button');
             selectAllAllSessionsBtn.className = 'ghost-btn';
-            selectAllAllSessionsBtn.textContent = 'Select all chats across all sessions';
+            selectAllAllSessionsBtn.textContent = 'Select all chats';
             selectAllAllSessionsBtn.style.marginLeft = '8px';
             selectAllAllSessionsBtn.addEventListener('click', selectAllAcrossAllSessions);
             reviewSelectedBtn.parentNode.insertBefore(selectAllAllSessionsBtn, reviewSelectedBtn.nextSibling);
@@ -440,21 +518,25 @@
 
         if (searchBtn && searchInput) {
             searchBtn.addEventListener('click', () => { page = 1; loadSessions(1, searchInput.value.trim()); });
-            searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { page = 1; loadSessions(1, searchInput.value.trim()); } });
+            searchInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { page = 1; loadSessions(1, searchInput.value.trim()); }
+            });
         }
 
-        // Clear button: clears the search input and reloads all sessions
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                if (searchInput) {
-                    searchInput.value = '';
-                }
+                if (searchInput) searchInput.value = '';
                 page = 1;
                 loadSessions(1, '');
             });
         }
 
-        if (viewAllBtn) viewAllBtn.addEventListener('click', () => { page = 1; loadSessions(page, searchInput ? (searchInput.value || '') : ''); });
+        if (viewAllBtn) {
+            viewAllBtn.addEventListener('click', () => {
+                page = 1;
+                loadSessions(page, searchInput ? (searchInput.value || '') : '');
+            });
+        }
 
         if (reviewSelectedBtn) {
             reviewSelectedBtn.addEventListener('click', async () => {
@@ -482,6 +564,10 @@
                     console.error(err);
                 }
             });
+        }
+
+        if (deselectSelectedBtn) {
+            deselectSelectedBtn.addEventListener('click', deselectAllSelected);
         }
 
         const initial = window.ALL_SESSIONS_INITIAL || { all: true, page: 1, limit: PAGE_SIZE };

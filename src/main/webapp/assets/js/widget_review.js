@@ -29,7 +29,6 @@ const manualMessageSelectionPreview = document.getElementById('manualMessageSele
 const sessionIndicator = document.getElementById('sessionIndicator');
 const sessionIndicatorValue = document.getElementById('sessionIndicatorValue');
 
-// Export UI elements
 const exportSelectedBtn = document.getElementById('exportSelectedBtn');
 const exportFormatSelect = document.getElementById('exportFormat');
 
@@ -71,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     attachHandlers();
     attachManualMessageHandlers();
+    hideManualMessageSection();
     loadSelectionData();
 });
 
@@ -156,7 +156,6 @@ function attachHandlers() {
         updateSelectionView();
     });
 
-    // Export button binding
     exportSelectedBtn?.addEventListener('click', () => {
         const format = (exportFormatSelect && exportFormatSelect.value) ? exportFormatSelect.value : 'csv';
         exportSelected(format);
@@ -200,9 +199,10 @@ function attachManualMessageHandlers() {
 function toggleManualMessageSection() {
     if (!manualMessageSection) return;
     const isVisible = manualMessageSection.classList.toggle('is-visible');
+    manualMessageSection.hidden = !isVisible;
     manualMessageSection.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
     if (manualMessageTextarea && isVisible) manualMessageTextarea.focus();
-    if (manualMessageToggleBtn) manualMessageToggleBtn.textContent = isVisible ? 'Hide manual workspace message' : 'Send manual workspace message';
+    if (manualMessageToggleBtn) manualMessageToggleBtn.textContent = isVisible ? 'Hide' : 'Ask IDA?';
     if (!isVisible) displayManualMessageResponseRaw('No response yet.');
 }
 
@@ -210,7 +210,8 @@ function hideManualMessageSection() {
     if (!manualMessageSection) return;
     manualMessageSection.classList.remove('is-visible');
     manualMessageSection.setAttribute('aria-hidden', 'true');
-    if (manualMessageToggleBtn) manualMessageToggleBtn.textContent = 'Send manual workspace message';
+    manualMessageSection.hidden = true;
+    if (manualMessageToggleBtn) manualMessageToggleBtn.textContent = 'Ask IDA?';
     displayManualMessageResponseRaw('No response yet.');
 }
 
@@ -220,8 +221,6 @@ function setManualMessageStatus(message, isError = false) {
     manualMessageStatus.classList.toggle('error', isError);
     manualMessageStatus.classList.toggle('success', !isError && Boolean(message));
 }
-
-/* ---------------------- Normalization helpers (Option B kept but not forced) ---------------------- */
 
 function normalizeSmartPunctuation(s) {
     if (typeof s !== 'string') return s;
@@ -242,8 +241,6 @@ function normalizeObjectStrings(obj) {
     }
     return obj;
 }
-
-/* ---------------------- Diagnostics and decoding helpers ---------------------- */
 
 function bytesToHex(u8) {
     return Array.prototype.slice.call(u8).map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -296,61 +293,6 @@ function scoreDecodedCandidate(decoded, analysis) {
     return { score, punctCount, replCount: analysis.replCount, asciiQuestionCount };
 }
 
-/*
-  fetchJsonWithEncoding returns:
-  - resp: fetch Response
-  - parsedRaw: parsed object from raw decoded string (if parseable)
-  - parsedNorm: parsed object after normalization (if parseable)
-  - decodedRaw: raw decoded string (first successful decoding)
-  - decodedNorm: normalized decoded string
-  - encoding: encoding used
-  - rawBytes: Uint8Array
-  - decodings: diagnostics per-encoding { previewRaw, previewNorm, analysis }
-*/
-async function fetchJsonWithEncoding(url, fetchOpts = {}) {
-    const resp = await fetch(url, fetchOpts);
-    const buf = await resp.arrayBuffer();
-    const u8 = new Uint8Array(buf);
-
-    const encodings = ['utf-8', 'windows-1252', 'iso-8859-1'];
-    let lastErr = null;
-    const decodings = {};
-    for (const enc of encodings) {
-        try {
-            const dec = new TextDecoder(enc, { fatal: false });
-            const rawDecoded = dec.decode(buf);                // raw string
-            const decodedNorm = normalizeSmartPunctuation(rawDecoded); // normalized variant
-            const analysis = analyzeDecodedString(rawDecoded);
-            decodings[enc] = { previewRaw: rawDecoded, previewNorm: decodedNorm, analysis };
-            try {
-                const parsedRaw = JSON.parse(rawDecoded);
-                let parsedNorm = null;
-                try { parsedNorm = normalizeObjectStrings(JSON.parse(decodedNorm)); } catch (_) { parsedNorm = null; }
-                return { resp, parsedRaw, parsedNorm, decodedRaw: rawDecoded, decodedNorm, encoding: enc, rawBytes: u8, decodings };
-            } catch (parseErr) {
-                lastErr = parseErr;
-            }
-        } catch (err) {
-            lastErr = err;
-            decodings[enc] = { previewRaw: `Decoding failed: ${err.message}`, previewNorm: '', analysis: { length: 0, replCount: 0, highCharCount: 0, replPositions: [], highCharPositions: [] } };
-        }
-    }
-
-    // fallback: utf-8 best-effort raw decode
-    try {
-        const rawUtf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-        const decodedNorm = normalizeSmartPunctuation(rawUtf8);
-        const parsedRaw = parseJsonSafe(rawUtf8);
-        const parsedNorm = parseJsonSafe(decodedNorm) ? normalizeObjectStrings(parseJsonSafe(decodedNorm)) : null;
-        decodings['utf-8'] = decodings['utf-8'] || { previewRaw: rawUtf8, previewNorm: decodedNorm, analysis: analyzeDecodedString(rawUtf8) };
-        return { resp, parsedRaw, parsedNorm, decodedRaw: rawUtf8, decodedNorm, encoding: 'utf-8', rawBytes: u8, decodings };
-    } catch (err) {
-        throw lastErr || err;
-    }
-}
-
-/* ---------------------- Manual message send: display raw DB text exactly (textContent) ---------------------- */
-
 async function sendManualMessage() {
     if (!manualMessageTextarea) return;
     const text = manualMessageTextarea.value.trim();
@@ -395,7 +337,6 @@ async function sendManualMessage() {
             }
         }
 
-        // prefer parsedRaw then parsedNorm, else best-scoring candidate
         let chosen = candidates.find(c => c.parsedRaw) || candidates.find(c => c.parsedNorm) || null;
         if (!chosen) {
             candidates.forEach(c => { c.scoreInfo = scoreDecodedCandidate(c.rawDecoded, c.analysis); });
@@ -404,7 +345,6 @@ async function sendManualMessage() {
         }
 
         let chosenTextResponse = '';
-        // Use raw DB text if present (parsedRaw.textResponse or parsedRaw.message), otherwise use rawDecoded
         if (chosen) {
             if (chosen.parsedRaw) {
                 chosenTextResponse = chosen.parsedRaw.textResponse || chosen.parsedRaw.message || chosen.rawDecoded;
@@ -466,8 +406,6 @@ function displayManualMessageResponseRaw(text, diagnosticsHtml) {
     }
 }
 
-/* ---------------------- Remaining original helpers and UI functions (use parsedRaw where appropriate) ---------------------- */
-
 function buildManualMessagePayload(userText) {
     const safeSummary = selectionSummaryText;
     const truncatedSummary = ensureWithinLength(safeSummary, MAX_TOTAL_MESSAGE_CHARS - userText.length);
@@ -526,16 +464,14 @@ function selectAllEntries() {
     if (state.search) params.append('search', state.search);
     const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
 
-    return fetchJsonWithEncoding(url, { headers: { 'Accept': 'application/json' } })
-        .then(({ parsedRaw, decodedRaw, encoding, rawBytes, decodings }) => {
-            if (!parsedRaw) {
-                console.error('selectAllEntries: server response could not be parsed as JSON. Decoded as', encoding);
-                console.debug('Decoded content preview:', decodedRaw && decodedRaw.slice(0, 1000));
-                setManualMessageStatus('Unable to select all entries: invalid JSON response. Check console diagnostics.', true);
-                return;
-            }
-            const payload = parsedRaw;
-            if (payload.status !== 'ok') throw new Error(payload.message || 'Unable to load all entries.');
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(async resp => {
+            if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
+            const payload = await resp.json();
+            if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load all entries.');
+            return payload;
+        })
+        .then(payload => {
             const newEntries = (payload.rows || []).filter(row => row.chatId).map(row => ({ ...row }));
             if (!newEntries.length) {
                 setManualMessageStatus('No chat entries to select.', true);
@@ -631,18 +567,10 @@ async function loadSelectionData() {
     const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
 
     try {
-        const { resp, parsedRaw, decodedRaw, encoding, rawBytes, decodings } = await fetchJsonWithEncoding(url, { headers: { 'Accept': 'application/json' } });
-
-        if (!parsedRaw) {
-            console.error('loadSelectionData: server response could not be parsed as JSON. Decoded as', encoding);
-            console.debug('Decoded content preview:', decodedRaw && decodedRaw.slice(0, 1000));
-            showError('Unable to load selection (invalid JSON response). Check server encoding or console diagnostics.');
-            return;
-        }
-
-        const payload = parsedRaw;
-        if (payload.status !== 'ok') throw new Error(payload.message || 'Unable to load selection.');
-
+        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
+        const payload = await resp.json();
+        if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load selection.');
         rows = payload.rows || [];
         state.totalPages = payload.totalPages || 1;
         state.page = payload.page || 1;
@@ -765,9 +693,7 @@ function formatDate(value) {
     return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/* ---------------------- EXPORT Selected Chats ---------------------- */
-
-async function exportSelected(format = 'csv') {
+function exportSelected(format = 'csv') {
     if (!multiSelected.size) {
         setManualMessageStatus('No selected chats to export.', true);
         return;
@@ -775,71 +701,54 @@ async function exportSelected(format = 'csv') {
     if (!exportSelectedBtn) return;
     exportSelectedBtn.disabled = true;
     setManualMessageStatus('Preparing export...');
-    try {
-        const selectedIds = Array.from(multiSelected);
-        const body = { selectionId, selectedChatIds: selectedIds, format };
-        const resp = await fetch(`${contextPath}/dashboard/widgets/drilldown/export`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
-            body: JSON.stringify(body)
+    fetch(`${contextPath}/dashboard/widgets/drilldown/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
+        body: JSON.stringify({ selectionId, selectedChatIds: Array.from(multiSelected), format })
+    })
+        .then(async resp => {
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(`Export failed: ${resp.status} ${text}`);
+            }
+            return resp.blob().then(blob => ({ resp, blob }));
+        })
+        .then(({ resp, blob }) => {
+            let filename = `export.${format === 'csv' ? 'csv' : format === 'json' ? 'json' : 'txt'}`;
+            const cd = resp.headers.get('Content-Disposition') || '';
+            const m = /filename\*?=.*''([^;\s]+)/i.exec(cd);
+            if (m && m[1]) {
+                try { filename = decodeURIComponent(m[1]); } catch { filename = m[1]; }
+            } else {
+                const m2 = /filename=\"?([^\";]+)\"?/i.exec(cd);
+                if (m2 && m2[1]) filename = m2[1];
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            setManualMessageStatus('Export ready. Download started.', false);
+        })
+        .catch(err => {
+            console.error('exportSelected error', err);
+            setManualMessageStatus(err.message || 'Export failed.', true);
+        })
+        .finally(() => {
+            exportSelectedBtn.disabled = false;
         });
-        if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error(`Export failed: ${resp.status} ${text}`);
-        }
-        const blob = await resp.blob();
-        // Get filename from Content-Disposition if present
-        let filename = `export.${format === 'csv' ? 'csv' : format === 'json' ? 'json' : 'txt'}`;
-        const cd = resp.headers.get('Content-Disposition') || '';
-        const m = /filename\*?=.*''([^;\s]+)/i.exec(cd);
-        if (m && m[1]) {
-            try { filename = decodeURIComponent(m[1]); } catch { filename = m[1]; }
-        } else {
-            const m2 = /filename=\"?([^\";]+)\"?/i.exec(cd);
-            if (m2 && m2[1]) filename = m2[1];
-        }
-
-        // Trigger download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-
-        setManualMessageStatus('Export ready. Download started.', false);
-    } catch (err) {
-        console.error('exportSelected error', err);
-        setManualMessageStatus(err.message || 'Export failed.', true);
-    } finally {
-        exportSelectedBtn.disabled = false;
-    }
-}
-
-/* ---------------------- Remaining helpers ---------------------- */
-
-function buildFullSelectionPreview() {
-    const entries = Array.from(selectedEntryDetails.values());
-    if (!entries.length) return '';
-    const sorted = entries.slice().sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-    });
-    return sorted.map(entry => formatEntryPreview(entry)).join('\n\n');
 }
 
 function updateSelectionUI() {
-    // Called whenever selections change; update export/review UI state as well.
     if (!exportSelectedBtn) {
-        // nothing to update
-    } else {
-        exportSelectedBtn.disabled = multiSelected.size === 0;
+        return;
     }
+    exportSelectedBtn.disabled = multiSelected.size === 0;
     if (document.getElementById('reviewSelectedBtn')) {
-        // update Review Selected button if present
         const reviewBtn = document.getElementById('reviewSelectedBtn');
         if (reviewBtn) {
             const count = selectedEntryDetails.size || multiSelected.size;

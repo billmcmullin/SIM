@@ -21,6 +21,9 @@ body {
     font-size: inherit;
 }
 
+/* ----------------------------------
+   Layout Helpers
+----------------------------------- */
 .top-bar {
     position: sticky;
     top: 0;
@@ -33,7 +36,8 @@ body {
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
 }
 
-.top-bar-inner {
+.top-bar-inner,
+.sessions-page .top-bar-inner {
     max-width: var(--container-max-width);
     margin: 0 auto;
     padding: 0 24px;
@@ -44,114 +48,31 @@ body {
     flex-wrap: wrap;
 }
 
-.top-bar-inner .brand {
-    font-weight: 700;
-}
-
-.container {
+.container,
+.sessions-page .container {
     padding: 24px;
     max-width: var(--container-max-width);
     margin: 0 auto;
 }
 
-.section {
+.section,
+.terms-section,
+.chart-wrapper,
+.widget-review-wrapper,
+.widget-view-wrapper {
     background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    margin-bottom: 20px;
     padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, .08);
-    margin-bottom: 20px;
     word-break: break-word;
-}
-
-.terms-section {
-    background: #fff;
-    padding: 24px;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(15, 23, 42, .1);
-    margin-bottom: 20px;
-}
-
-.terms-section h2 {
-    margin-top: 0;
-}
-
-.terms-section .form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-}
-
-.terms-section .form-group label {
-    color: #334155;
-}
-
-.term-table,
-.widget-table,
-.session-table,
-.widget-review-table table,
-.widget-view-table table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95rem;
-}
-
-.term-table th,
-.term-table td,
-.widget-table th,
-.widget-table td,
-.session-table th,
-.session-table td,
-.widget-review-table th,
-.widget-review-table td,
-.widget-view-table th,
-.widget-view-table td {
-    padding: 10px;
-    border-bottom: 1px solid #e2e8f0;
-    text-align: left;
-}
-
-.term-table th {
-    background: var(--primary-blue);
-    color: #fff;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-}
-
-.term-legend {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-top: 16px;
-    justify-content: center;
-}
-
-.legend-chip {
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.legend-chip::before {
-    content: '';
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
 }
 
 .chart-wrapper,
 .widget-review-wrapper,
 .widget-view-wrapper {
-    background: #fff;
-    border-radius: 14px;
     padding: 28px;
+    border-radius: 14px;
     box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
     margin-bottom: 32px;
 }
@@ -164,12 +85,41 @@ body {
     margin: 0 auto;
 }
 
-hr {
-    border: none;
-    border-top: 1px solid #e2e8f0;
-    margin: 16px 0;
+.card {
+    max-width: 420px;
+    margin: 80px auto;
+    padding: 28px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, .15);
 }
 
+.summary-label {
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 8px;
+}
+
+.detail-card {
+    margin-top: 24px;
+    padding: 18px;
+    border-radius: 12px;
+    background: #f8fafc;
+    box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
+}
+
+detail-card pre,
+.detail-card pre {
+    background: #fff;
+    padding: 16px;
+    border-radius: 10px;
+    /*border: 1px solid #e2e8f0;*/
+    white-space: pre-wrap;
+}
+
+/* ----------------------------------
+   Typography / Form Controls
+----------------------------------- */
 h1,
 h2 {
     color: #0f172a;
@@ -220,6 +170,11 @@ button:disabled {
     cursor: not-allowed;
 }
 
+.helper-note {
+    font-size: .85rem;
+    color: #475569;
+}
+
 .empty-row {
     text-align: center;
     color: #475569;
@@ -237,53 +192,125 @@ button:disabled {
     min-width: 200px;
 }
 
-.card {
-    max-width: 420px;
-    margin: 80px auto;
-    padding: 28px;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, .15);
+/* ----------------------------------
+   Tables (shared rules)
+----------------------------------- */
+.term-table,
+.widget-table,
+.session-table,
+.widget-review-table table,
+.widget-view-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
 }
 
+.term-table th,
+.term-table td,
+.widget-table th,
+.widget-table td,
+.session-table th,
+.session-table td,
+.widget-review-table th,
+.widget-review-table td,
+.widget-view-table th,
+.widget-view-table td {
+    padding: 10px;
+    /*border-bottom: 1px solid #e2e8f0;*/
+    text-align: left;
+}
+
+.select-column {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+    border: none;
+    min-width: 80px;
+}
+
+.select-column input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    accent-color: #4338ca;
+    margin: 0;
+}
+
+.widget-view-table td.select-column,
+.widget-review-table td.select-column,
+.inner-chats-table td.select-column {
+    background: transparent;
+    border: none;
+}
+
+.widget-view-table th.select-column,
+.widget-review-table th.select-column {
+    background: var(--primary-blue);
+    color: #fff;
+    /*border-bottom: 1px solid #e2e8f0;*/
+}
+
+/* Session/Widget table header styling */
+.widget-view-table thead th,
+.widget-review-table thead th,
+.sessions-page .session-table thead th,
+.inner-chats-table thead th {
+    background: var(--primary-blue);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+}
+
+.sessions-page .session-table thead th:nth-child(5) {
+    background: var(--primary-blue);
+    color: #fff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* ----------------------------------
+   Legends
+----------------------------------- */
+.term-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    justify-content: center;
+}
+
+.legend-chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-chip::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* ----------------------------------
+   Widget view specific
+----------------------------------- */
 .widget-view-controls,
 .widget-view-filters {
     display: grid;
     gap: 16px;
     margin-bottom: 16px;
-}
-
-.summary-label {
-    font-weight: 600;
-    color: #0f172a;
-    margin-bottom: 8px;
-}
-
-.detail-card {
-    margin-top: 24px;
-    padding: 18px;
-    border-radius: 12px;
-    background: #f8fafc;
-    box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
-}
-
-detail-card pre,
-.detail-card pre {
-    background: #fff;
-    padding: 16px;
-    border-radius: 10px;
-    border: 1px solid #e2e8f0;
-    white-space: pre-wrap;
-}
-
-.select-column {
-    width: 48px;
-    text-align: center;
-}
-
-.helper-note {
-    font-size: .85rem;
-    color: #475569;
 }
 
 .widget-view-table .text-summary,
@@ -299,32 +326,6 @@ detail-card pre,
     white-space: normal;
 }
 
-.widget-view-table thead th {
-    background: var(--primary-blue);
-    color: #fff;
-    font-weight: 600;
-    line-height: 1.2;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.75rem;
-}
-
-.widget-review-table thead th {
-    background: var(--primary-blue);
-    color: #fff;
-    font-weight: 600;
-    line-height: 1.2;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.75rem;
-}
-
-/*.widget-view-table .response-summary {
-    color: #475569;
-}*/
-
-/* Make chat ID column wide enough for long IDs */
-/* Keep chat ID text in the same style as prompts (allows wrapping/truncation) */
 .widget-view-table th[data-column="widget_chat_id"],
 .widget-view-table td:nth-child(2) {
     min-width: 220px;
@@ -334,31 +335,40 @@ detail-card pre,
     text-overflow: ellipsis;
 }
 
-.widget-view-table td:nth-child(2) .text-summary {
-    font-family: inherit;
-    color: inherit;
-}
-
-/* Ensure created date column shows full timestamp */
 .widget-view-table th[data-column="created_at"],
 .widget-view-table td:nth-child(5) {
     min-width: 180px;
     white-space: nowrap;
-    font-family: inherit;
 }
 
-/* Ensure session column shows entire identifier in same style as prompt */
 .widget-view-table th[data-column="session_id"],
 .widget-view-table td:nth-child(6) {
     min-width: 260px;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: inherit;
 }
 
-/* --- SESSION TABLE --- */
-.session-list-card {
-    margin-top: 1rem;
+/* ----------------------------------
+   Sessions page
+----------------------------------- */
+.sessions-page {
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+.sessions-page * {
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+.sessions-page *:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.sessions-page .session-table-wrapper {
+    overflow-x: visible;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+    position: relative;
 }
 
 .session-table {
@@ -367,6 +377,14 @@ detail-card pre,
     margin-top: 1rem;
     table-layout: auto;
     font-size: 0.95rem;
+}
+
+.session-table th,
+.session-table td {
+    padding: .6rem .5rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
 }
 
 .session-table th:nth-child(1),
@@ -403,14 +421,6 @@ session-table th:nth-child(2),
     text-align: right;
 }
 
-.session-table th,
-.session-table td {
-    padding: .6rem .5rem;
-    text-align: left;
-    border-bottom: 1px solid #e5e7eb;
-    vertical-align: top;
-}
-
 .session-table td.session-widgets-col {
     white-space: normal;
     overflow-wrap: anywhere;
@@ -423,74 +433,8 @@ session-table th:nth-child(2),
     text-overflow: ellipsis;
 }
 
-.sessions-page .session-table-wrapper {
-    overflow-x: visible;
-    -webkit-overflow-scrolling: touch;
-    box-sizing: border-box;
-    position: relative;
-}
-
-.sessions-page .session-table thead th {
-    background: var(--primary-blue) !important;
-    color: #fff !important;
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 4;
-    cursor: default;
-    font-size: 0.95rem;
-    line-height: 1.2;
-}
-
-.sessions-page .session-table thead th:hover,
-.sessions-page .session-table thead th:focus {
-    background: var(--primary-blue) !important;
-    color: #fff !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-.sessions-page .session-table th:nth-child(5) {
-    position: sticky;
-    right: 0;
-    z-index: 6;
-    background: var(--primary-blue) !important;
-    color: #fff !important;
-    min-width: var(--action-col-width);
-    width: var(--action-col-width);
-    white-space: nowrap;
-    box-shadow: -6px 0 10px rgba(0, 0, 0, 0.06);
-}
-
-.sessions-page .session-table td.session-actions-col {
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0px, rgba(255, 255, 255, 0) var(--session-header-height), #f8fafc var(--session-header-height));
-    color: #0d10c9;
-    border-left: 1px solid #e5e7eb;
-    z-index: 2;
-    vertical-align: top;
-    padding: .45rem .4rem;
-    font-size: 0.92rem;
-}
-
-/*.sessions-page a,
-.sessions-page .back-link {
-    color: #111827;
-    text-decoration: none;
-}
-
-.sessions-page a:hover,
-.sessions-page .back-link:hover {
-    color: #111827 !important;
-    text-decoration: underline;
-}*/
-
-.sessions-page .session-table,
-.sessions-page .widget-review-table table {
-    font-size: 0.94rem;
-}
-
-.sessions-page .session-table td.session-actions-col .ghost-btn,
-.sessions-page .session-table td.session-actions-col .btn {
+.session-table td.session-actions-col .ghost-btn,
+.session-table td.session-actions-col .btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -500,14 +444,35 @@ session-table th:nth-child(2),
     white-space: nowrap;
 }
 
-.sessions-page *:focus {
+.sessions-page .session-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    cursor: default;
+    font-size: 0.95rem;
+}
+
+.sessions-page .session-table thead th:hover,
+.sessions-page .session-table thead th:focus {
     outline: none !important;
     box-shadow: none !important;
 }
 
-.sessions-page,
-.sessions-page * {
-    -webkit-tap-highlight-color: transparent !important;
+.sessions-page .session-table th:nth-child(5),
+.sessions-page .session-table td.session-actions-col {
+    position: static;
+    right: auto;
+    z-index: auto;
+    background: #f8fafc;
+    color: #0d10c9;
+    min-width: var(--action-col-width);
+    width: var(--action-col-width);
+    white-space: nowrap;
+    box-shadow: none;
+    border-left: 1px solid #e5e7eb;
+    vertical-align: top;
+    padding: .45rem .4rem;
+    font-size: 0.92rem;
 }
 
 .sessions-page .session-table ::selection {
@@ -515,6 +480,69 @@ session-table th:nth-child(2),
     color: inherit;
 }
 
+.sessions-page .session-table,
+.sessions-page .widget-review-table table {
+    font-size: 0.94rem;
+}
+
+.widget-review-table {
+    table-layout: fixed;
+}
+
+.widget-review-table thead th {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    padding: 10px;
+    white-space: nowrap;
+    height: 48px;
+    box-sizing: border-box;
+}
+
+.widget-review-table thead th.sorted-asc,
+.widget-review-table thead th.sorted-desc {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    padding: 10px;
+    height: 48px;
+    box-sizing: border-box;
+}
+
+.widget-review-table tbody tr,
+.widget-review-table tbody td {
+    line-height: 1.4;
+    padding: 10px;
+    height: 48px;
+}
+
+.widget-review-table thead th[data-column] {
+    white-space: nowrap;
+}
+
+.widget-review-table thead th:nth-child(1) {
+    width: 48px;
+}
+
+.widget-review-table thead th:nth-child(2) {
+    min-width: 180px;
+}
+
+.widget-review-table thead th:nth-child(3) {
+    min-width: 260px;
+}
+
+.widget-review-table thead th:nth-child(4) {
+    min-width: 150px;
+}
+
+.widget-review-table thead th:nth-child(5) {
+    min-width: 200px;
+}
+
+/* ----------------------------------
+   Inner chats table
+----------------------------------- */
 .inner-chats-table {
     width: 100%;
     border-collapse: collapse;
@@ -561,17 +589,42 @@ session-table th:nth-child(2),
     overflow-x: auto;
 }
 
-.inner-chats-table thead th {
-    background: var(--primary-blue);
-    color: #fff;
-    font-weight: 600;
+/* ----------------------------------
+   Miscellaneous
+----------------------------------- */
+.chart-wrapper .chart-area {
+    margin-bottom: 0;
 }
 
-.sessions-page .container,
-.sessions-page .top-bar-inner {
-    max-width: var(--container-max-width);
+hr {
+    border: none;
+    /*border-top: 1px solid #e2e8f0;*/
+    margin: 16px 0;
 }
 
+/* ----------------------------------
+   Manual message helpers
+----------------------------------- */
+.manual-message-box {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    padding: 10px;
+    min-height: 120px;
+    white-space: pre-wrap;
+    font-family: monospace;
+}
+
+#manualMessageText,
+#manualMessageSelectionPreview {
+    resize: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* ----------------------------------
+   Responsive tweaks
+----------------------------------- */
 @media (max-width: 1100px) {
     :root {
         --container-max-width: 1100px;
@@ -615,19 +668,4 @@ session-table th:nth-child(2),
     .top-bar-inner {
         padding: 0 12px;
     }
-}
-
-.session-overview-section .session-table thead th:nth-child(5),
-.session-overview-section .session-table tbody td:nth-child(5),
-.session-overview-section .session-table td.session-last-col {
-    background: #f8fafc !important;
-    color: #0f172a !important;
-    box-shadow: none !important;
-    position: relative !important;
-    z-index: 3 !important;
-}
-
-.session-overview-section .session-table-wrapper::before,
-.session-overview-section .table-scroll::before {
-    display: none !important;
 }
