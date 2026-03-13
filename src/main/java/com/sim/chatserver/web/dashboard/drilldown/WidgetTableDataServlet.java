@@ -9,13 +9,17 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
-import com.sim.chatserver.util.SessionIdFormatter;
+import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -50,7 +54,6 @@ public class WidgetTableDataServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        // Ensure response uses UTF-8 for all outputs (early errors and final JSON)
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("application/json; charset=UTF-8");
 
@@ -128,50 +131,66 @@ public class WidgetTableDataServlet extends HttpServlet {
                     ps.setInt(idx++, limit);
                     ps.setInt(idx, offset);
 
+                    List<ChatRow> rows = new ArrayList<>();
+                    Set<String> sessionIds = new HashSet<>();
+
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
-
-                            String chatId = rs.getString("widget_chat_id");
-                            if (chatId == null) {
-                                rowBuilder.addNull("chatId");
-                            } else {
-                                rowBuilder.add("chatId", chatId);
-                            }
-
-                            String prompt = rs.getString("prompt");
-                            if (prompt == null) {
-                                rowBuilder.addNull("prompt");
-                            } else {
-                                rowBuilder.add("prompt", prompt);
-                            }
-
-                            String response = rs.getString("response_text");
-                            if (response == null) {
-                                rowBuilder.addNull("response");
-                            } else {
-                                rowBuilder.add("response", response);
-                            }
-
-                            Timestamp createdTs = rs.getTimestamp("created_at");
-                            String createdAt = formatTimestampNullable(createdTs); // returns null when ts is null
-                            if (createdAt == null) {
-                                rowBuilder.addNull("createdAt");
-                            } else {
-                                rowBuilder.add("createdAt", createdAt);
-                            }
-
                             String sessionId = rs.getString("session_id");
-                            if (sessionId == null) {
-                                rowBuilder.addNull("sessionId");
-                                rowBuilder.add("sessionIdDisplay", "");
-                            } else {
-                                rowBuilder.add("sessionId", sessionId);
-                                rowBuilder.add("sessionIdDisplay", SessionIdFormatter.formatForDisplay(sessionId));
+                            if (sessionId != null && !sessionId.isBlank()) {
+                                sessionIds.add(sessionId);
                             }
-
-                            arrayBuilder.add(rowBuilder.build());
+                            rows.add(new ChatRow(
+                                    rs.getString("widget_chat_id"),
+                                    rs.getString("prompt"),
+                                    rs.getString("response_text"),
+                                    formatTimestampNullable(rs.getTimestamp("created_at")),
+                                    sessionId
+                            ));
                         }
+                    }
+
+                    Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
+                            ? Collections.emptyMap()
+                            : SessionLabelStore.mapDisplayNames(sessionIds);
+
+                    for (ChatRow row : rows) {
+                        JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
+
+                        if (row.chatId == null) {
+                            rowBuilder.addNull("chatId");
+                        } else {
+                            rowBuilder.add("chatId", row.chatId);
+                        }
+
+                        if (row.prompt == null) {
+                            rowBuilder.addNull("prompt");
+                        } else {
+                            rowBuilder.add("prompt", row.prompt);
+                        }
+
+                        if (row.response == null) {
+                            rowBuilder.addNull("response");
+                        } else {
+                            rowBuilder.add("response", row.response);
+                        }
+
+                        if (row.createdAt == null) {
+                            rowBuilder.addNull("createdAt");
+                        } else {
+                            rowBuilder.add("createdAt", row.createdAt);
+                        }
+
+                        if (row.sessionId == null) {
+                            rowBuilder.addNull("sessionId");
+                        } else {
+                            rowBuilder.add("sessionId", row.sessionId);
+                        }
+
+                        String friendly = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
+                        rowBuilder.add("sessionIdDisplay", friendly);
+
+                        arrayBuilder.add(rowBuilder.build());
                     }
                 }
             }
@@ -185,7 +204,6 @@ public class WidgetTableDataServlet extends HttpServlet {
                     .add("page", page)
                     .build();
 
-            // Stream JSON to client using JsonWriter over the response OutputStream (ensures UTF-8 bytes).
             try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
                 writer.writeObject(body);
             }
@@ -298,6 +316,23 @@ public class WidgetTableDataServlet extends HttpServlet {
             }
         }
         return false;
+    }
+
+    private static final class ChatRow {
+
+        final String chatId;
+        final String prompt;
+        final String response;
+        final String createdAt;
+        final String sessionId;
+
+        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+            this.chatId = chatId;
+            this.prompt = prompt;
+            this.response = response;
+            this.createdAt = createdAt;
+            this.sessionId = sessionId;
+        }
     }
 
     private static final class FilterState {

@@ -106,11 +106,6 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             }
 
             resp.setContentType("application/json");
-            Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("total", chatIds.size())
-                    .add("chatIds", Json.createArrayBuilder(chatIds))
-                    .build();
             resp.getWriter().print(Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("total", chatIds.size())

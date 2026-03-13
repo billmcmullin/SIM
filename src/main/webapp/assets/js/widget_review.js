@@ -50,7 +50,6 @@ let selectionPreviewText = 'No chat selected.';
 let selectionSummaryText = '';
 
 const MAX_SUMMARY_CHARS = 4000;
-const MAX_ENTRIES_IN_SUMMARY = 8;
 const PROMPT_SNIPPET_LENGTH = 280;
 const RESPONSE_SNIPPET_LENGTH = 600;
 const MAX_TOTAL_MESSAGE_CHARS = 8912;
@@ -73,6 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
     hideManualMessageSection();
     loadSelectionData();
 });
+
+function formatSessionDisplay(row) {
+    if (!row) return '';
+    if (row.sessionIdDisplay) return row.sessionIdDisplay;
+    if (row.displayLabel) return row.displayLabel;
+    return row.sessionId || '';
+}
 
 function showSessionIndicator(value) {
     if (!sessionIndicator || !sessionIndicatorValue) {
@@ -432,7 +438,7 @@ function formatEntrySummary(entry) {
         `- Prompt: ${summarizeSentences(entry.prompt, 1)}`,
         `- Response: ${summarizeSentences(entry.response, 1)}`,
         `- Created At: ${entry.createdAt ? formatDate(entry.createdAt) : '(unknown)'}`,
-        `- Session ID: ${entry.sessionId || '(none)'}`
+        `- Session ID: ${formatSessionDisplay(entry) || '(none)'}`
     ].join('\n');
 }
 
@@ -552,7 +558,7 @@ function formatEntryPreview(entry) {
         `- Prompt: ${entry.prompt || '(empty)'}`,
         `- Response: ${entry.response || '(empty)'}`,
         `- Created At: ${entry.createdAt ? formatDate(entry.createdAt) : '(unknown)'}`,
-        `- Session ID: ${entry.sessionId || '(none)'}`
+        `- Session ID: ${formatSessionDisplay(entry) || '(none)'}`
     ].join('\n');
 }
 
@@ -596,6 +602,10 @@ function renderRows(data) {
     }
     reviewBody.innerHTML = data.map(row => {
         const checked = multiSelected.has(row.chatId) ? 'checked' : '';
+        const label = formatSessionDisplay(row);
+        const muted = row.sessionId && row.sessionId !== label
+            ? `<div class="session-id-muted">${escapeHtml(row.sessionId)}</div>`
+            : '';
         return `<tr data-chat-id="${escapeHtml(row.chatId)}">
             <td class="select-column">
                 <input type="checkbox" class="row-multi-select" data-chat-id="${escapeHtml(row.chatId)}" ${checked}>
@@ -603,7 +613,7 @@ function renderRows(data) {
             <td><div class="text-summary">${escapeHtml(row.chatId)}</div></td>
             <td><div class="text-summary">${escapeHtml(truncateText(row.prompt))}</div></td>
             <td><div class="text-summary">${escapeHtml(formatDate(row.createdAt))}</div></td>
-            <td><div class="text-summary">${escapeHtml(row.sessionId)}</div></td>
+            <td><div class="text-summary">${escapeHtml(label)}</div>${muted}</td>
         </tr>`;
     }).join('');
     updateSelectAllCheckbox();
@@ -720,7 +730,7 @@ function exportSelected(format = 'csv') {
             if (m && m[1]) {
                 try { filename = decodeURIComponent(m[1]); } catch { filename = m[1]; }
             } else {
-                const m2 = /filename=\"?([^\";]+)\"?/i.exec(cd);
+                const m2 = /filename="?([^";]+)"?/i.exec(cd);
                 if (m2 && m2[1]) filename = m2[1];
             }
 
@@ -748,16 +758,14 @@ function updateSelectionUI() {
         return;
     }
     exportSelectedBtn.disabled = multiSelected.size === 0;
-    if (document.getElementById('reviewSelectedBtn')) {
-        const reviewBtn = document.getElementById('reviewSelectedBtn');
-        if (reviewBtn) {
-            const count = selectedEntryDetails.size || multiSelected.size;
-            reviewBtn.textContent = `Review Selected (${count})`;
-            reviewBtn.disabled = count === 0;
-            const selectedInfoElem = document.getElementById('selectedInfo');
-            if (selectedInfoElem) {
-                selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';
-            }
+    const reviewBtn = document.getElementById('reviewSelectedBtn');
+    if (reviewBtn) {
+        const count = selectedEntryDetails.size || multiSelected.size;
+        reviewBtn.textContent = `Review Selected (${count})`;
+        reviewBtn.disabled = count === 0;
+        const selectedInfoElem = document.getElementById('selectedInfo');
+        if (selectedInfoElem) {
+            selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';
         }
     }
 }

@@ -7,15 +7,20 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
-import com.sim.chatserver.util.SessionIdFormatter;
+import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.web.dashboard.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -33,9 +38,6 @@ import jakarta.servlet.http.HttpSession;
 
 /**
  * WidgetReviewDataServlet — returns rows for a selection.
- *
- * Adds "widgetName" (display name) to each row so the UI can show the
- * human-friendly widget name instead of the numeric widgetId.
  */
 @WebServlet(name = "WidgetReviewDataServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/review-data"})
 public class WidgetReviewDataServlet extends HttpServlet {
@@ -76,8 +78,6 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
         String widgetId = selection.widgetId;
         String tableName = sanitizeWidgetTableName(widgetId);
-
-        // Attempt to resolve widget display name once for DB-backed path
         String widgetDisplayName = resolveWidgetDisplayName(widgetId);
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
@@ -103,7 +103,6 @@ public class WidgetReviewDataServlet extends HttpServlet {
             if (page < 1) {
                 page = 1;
             }
-            int offset = (page - 1) * limit;
 
             StringBuilder baseWhere = new StringBuilder(" WHERE widget_chat_id IN (" + placeholders + ")");
             List<String> params = new java.util.ArrayList<>();
@@ -142,35 +141,51 @@ public class WidgetReviewDataServlet extends HttpServlet {
                         .append(sortDir)
                         .append(" LIMIT ? OFFSET ?");
 
+                List<ChatRow> rows = new ArrayList<>();
+                Set<String> sessionIds = new HashSet<>();
+
                 try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
                     int idx = 1;
                     for (String param : params) {
                         ps.setString(idx++, param);
                     }
                     ps.setInt(idx++, limit);
-                    ps.setInt(idx, offset);
+                    ps.setInt(idx, (page - 1) * limit);
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String rawSession = nullable(rs, "session_id");
-                            String displaySession = SessionIdFormatter.formatForDisplay(rawSession);
-                            String chatId = nullable(rs, "widget_chat_id");
-                            String prompt = nullable(rs, "prompt");
-                            String response = rs.getString("response_text");
-                            String createdAt = formatTimestamp(rs.getTimestamp("created_at"));
-                            JsonObject row = Json.createObjectBuilder()
-                                    .add("chatId", chatId)
-                                    .add("widgetId", widgetId == null ? "" : widgetId)
-                                    .add("widgetName", widgetDisplayName == null ? "" : widgetDisplayName)
-                                    .add("prompt", prompt)
-                                    .add("response", response == null ? "" : response)
-                                    .add("createdAt", createdAt)
-                                    .add("sessionId", rawSession == null ? "" : rawSession)
-                                    .add("sessionIdDisplay", displaySession)
-                                    .build();
-                            arrayBuilder.add(row);
+                            String sessionId = rs.getString("session_id");
+                            if (sessionId != null && !sessionId.isBlank()) {
+                                sessionIds.add(sessionId);
+                            }
+                            rows.add(new ChatRow(
+                                    nullable(rs, "widget_chat_id"),
+                                    nullable(rs, "prompt"),
+                                    rs.getString("response_text"),
+                                    formatTimestamp(rs.getTimestamp("created_at")),
+                                    sessionId
+                            ));
                         }
                     }
+                }
+
+                Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
+                        ? Collections.emptyMap()
+                        : SessionLabelStore.mapDisplayNames(sessionIds);
+
+                for (ChatRow row : rows) {
+                    String displaySession = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
+                    JsonObject jsonRow = Json.createObjectBuilder()
+                            .add("chatId", row.chatId)
+                            .add("widgetId", widgetId == null ? "" : widgetId)
+                            .add("widgetName", widgetDisplayName == null ? "" : widgetDisplayName)
+                            .add("prompt", row.prompt)
+                            .add("response", row.response == null ? "" : row.response)
+                            .add("createdAt", row.createdAt)
+                            .add("sessionId", row.sessionId == null ? "" : row.sessionId)
+                            .add("sessionIdDisplay", displaySession)
+                            .build();
+                    arrayBuilder.add(jsonRow);
                 }
             }
 
@@ -217,10 +232,23 @@ public class WidgetReviewDataServlet extends HttpServlet {
         int toIndex = Math.min(offset + limit, totalRows);
         List<TermChatSnapshot> pageRows = filtered.subList(fromIndex, toIndex);
 
+        Set<String> sessionIds = pageRows.stream()
+                .map(TermChatSnapshot::getSessionId)
+                .filter(s -> s != null && !s.isBlank())
+                .collect(Collectors.toSet());
+        Map<String, SessionLabelStore.SessionLabel> labels = Collections.emptyMap();
+        if (!sessionIds.isEmpty()) {
+            try {
+                labels = SessionLabelStore.mapDisplayNames(sessionIds);
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to resolve session labels for snapshots", e);
+            }
+        }
+
         JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
         for (TermChatSnapshot snapshot : pageRows) {
             String rawSession = snapshot.getSessionId();
-            String displaySession = SessionIdFormatter.formatForDisplay(rawSession);
+            String displaySession = SessionLabelStore.resolveDisplayLabel(rawSession, labels.get(rawSession));
             String widgetId = snapshot.getWidgetId();
             String widgetName = resolveWidgetDisplayName(widgetId);
             arrayBuilder.add(Json.createObjectBuilder()
@@ -268,29 +296,6 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return false;
         }
         return source.toLowerCase(Locale.ROOT).contains(needle);
-    }
-
-    private void sortSnapshots(List<TermChatSnapshot> data, String column, String direction) {
-        java.util.Comparator<TermChatSnapshot> comparator = switch (column) {
-            case "prompt" ->
-                java.util.Comparator.comparing(snapshot -> snapshot.getPrompt() == null ? "" : snapshot.getPrompt(),
-                String.CASE_INSENSITIVE_ORDER);
-            case "session_id" ->
-                java.util.Comparator.comparing(snapshot -> snapshot.getSessionId() == null ? "" : snapshot.getSessionId(),
-                String.CASE_INSENSITIVE_ORDER);
-            case "widget_chat_id" ->
-                java.util.Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
-                String.CASE_INSENSITIVE_ORDER);
-            case "created_at" ->
-                java.util.Comparator.comparing(snapshot -> snapshot.getCreatedAt() == null ? 0L : snapshot.getCreatedAt().getTime());
-            default ->
-                java.util.Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
-                String.CASE_INSENSITIVE_ORDER);
-        };
-        if ("DESC".equalsIgnoreCase(direction)) {
-            comparator = comparator.reversed();
-        }
-        data.sort(comparator);
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -391,6 +396,46 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return Integer.parseInt(value);
         } catch (NumberFormatException ignored) {
             return fallback;
+        }
+    }
+
+    private void sortSnapshots(List<TermChatSnapshot> data, String column, String direction) {
+        java.util.Comparator<TermChatSnapshot> comparator = switch (column) {
+            case "prompt" ->
+                java.util.Comparator.comparing(snapshot -> snapshot.getPrompt() == null ? "" : snapshot.getPrompt(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "session_id" ->
+                java.util.Comparator.comparing(snapshot -> snapshot.getSessionId() == null ? "" : snapshot.getSessionId(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "widget_chat_id" ->
+                java.util.Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
+                String.CASE_INSENSITIVE_ORDER);
+            case "created_at" ->
+                java.util.Comparator.comparing(snapshot -> snapshot.getCreatedAt() == null ? 0L : snapshot.getCreatedAt().getTime());
+            default ->
+                java.util.Comparator.comparing(snapshot -> snapshot.getChatId() == null ? "" : snapshot.getChatId(),
+                String.CASE_INSENSITIVE_ORDER);
+        };
+        if ("DESC".equalsIgnoreCase(direction)) {
+            comparator = comparator.reversed();
+        }
+        data.sort(comparator);
+    }
+
+    private static final class ChatRow {
+
+        final String chatId;
+        final String prompt;
+        final String response;
+        final String createdAt;
+        final String sessionId;
+
+        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+            this.chatId = chatId;
+            this.prompt = prompt;
+            this.response = response;
+            this.createdAt = createdAt;
+            this.sessionId = sessionId;
         }
     }
 }

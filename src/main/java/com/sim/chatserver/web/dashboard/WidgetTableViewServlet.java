@@ -63,6 +63,10 @@ public class WidgetTableViewServlet extends HttpServlet {
                 : target.getDisplayName();
 
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+        if (template == null) {
+            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Template not found: " + TEMPLATE_PATH);
+            return;
+        }
         String userName = String.valueOf(session.getAttribute("user"));
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
         String rendered = template
@@ -72,7 +76,6 @@ public class WidgetTableViewServlet extends HttpServlet {
                 .replace("${widgetId}", escapeHtml(widgetId))
                 .replace("${widgetName}", escapeHtml(widgetName));
 
-        // Ensure the response uses UTF-8 and the header is set before obtaining the writer.
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
@@ -83,7 +86,7 @@ public class WidgetTableViewServlet extends HttpServlet {
     private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                return null;
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();

@@ -36,10 +36,7 @@ if (ctx && termSlices.length) {
             plugins: {
                 tooltip: {
                     callbacks: {
-                        title: contextRows => {
-                            const slice = termSlices[contextRows[0].dataIndex];
-                            return `Term: ${slice.term}`;
-                        },
+                        title: contextRows => termSlices[contextRows[0].dataIndex]?.term || '',
                         label: context => {
                             const slice = termSlices[context.dataIndex];
                             return `${slice.label}: ${slice.count}`;
@@ -82,7 +79,6 @@ if (legendEl && termSlices.length) {
     });
 }
 
-// --- Added: fetch total sessions count and top 10 sessions with widget column ---
 (async function loadTopSessions() {
     const totalEl = document.getElementById('totalSessions');
     const listEl = document.getElementById('topSessionList');
@@ -106,11 +102,7 @@ if (legendEl && termSlices.length) {
             return;
         }
 
-        if (typeof data.total === 'number') {
-            totalEl.textContent = String(data.total);
-        } else {
-            totalEl.textContent = '—';
-        }
+        totalEl.textContent = typeof data.total === 'number' ? String(data.total) : '—';
 
         const sessions = Array.isArray(data.sessions) ? data.sessions : [];
         if (!sessions.length) {
@@ -121,13 +113,17 @@ if (legendEl && termSlices.length) {
         listEl.innerHTML = sessions.map((s, idx) => {
             const rank = idx + 1;
             const sessionId = s.sessionId || '';
+            const label = s.displayLabel || sessionId;
             const count = typeof s.count === 'number' ? s.count : 0;
             const last = s.last || '—';
             const topWidgetName = s.topWidgetName || '—';
             const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/sessions/drilldown/session-review?sessionId=${encodeURIComponent(sessionId)}`;
             return `<tr>
                 <td>${rank}</td>
-                <td>${esc(sessionId)}</td>
+                <td>
+                    <div>${esc(label)}</div>
+                    ${label !== sessionId && sessionId ? `<div class="session-id-muted">${esc(sessionId)}</div>` : ''}
+                </td>
                 <td>${esc(topWidgetName)}</td>
                 <td><a class="session-count-link" href="${reviewUrl}">${count} chats</a></td>
                 <td>${esc(last)}</td>

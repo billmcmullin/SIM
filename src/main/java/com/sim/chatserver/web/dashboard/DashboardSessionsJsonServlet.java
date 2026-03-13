@@ -18,6 +18,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -61,6 +62,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
+            Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = mapWidgetDisplayNames(widgets);
 
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
@@ -73,11 +75,13 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                         SessionAccumulator acc = entry.getValue();
                         String last = formatTimestamp(acc.lastEntry);
                         String topWidget = pickTopWidgetName(acc.widgetCounts, widgetNames);
+                        String displayLabel = SessionLabelStore.resolveDisplayLabel(sessionId, labels.get(sessionId));
                         String reviewUrl = req.getContextPath()
                                 + "/dashboard/sessions/drilldown/session-review?sessionId="
                                 + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
                         JsonObjectBuilder obj = Json.createObjectBuilder()
                                 .add("sessionId", sessionId)
+                                .add("displayLabel", displayLabel)
                                 .add("count", acc.count)
                                 .add("last", last)
                                 .add("topWidgetName", topWidget)

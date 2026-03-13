@@ -21,9 +21,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -36,6 +38,7 @@ import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
+import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -95,7 +98,6 @@ public class DashboardServlet extends HttpServlet {
                 .orElse(LocalDate.now(ZoneId.systemDefault()));
         LocalDate rangeStart = parseLocalDate(req.getParameter("rangeStart"))
                 .orElse(rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1));
-
         if (rangeStart.isAfter(rangeEnd)) {
             rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
         }
@@ -120,7 +122,8 @@ public class DashboardServlet extends HttpServlet {
         String sessionChartJson = buildEmptySessionPayload(rangeStart, rangeEnd);
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             SessionOverview sessionOverview = buildSessionOverview(conn, widgets, rangeStart, rangeEnd);
-            sessionRows = renderSessionRows(sessionOverview.topSessions, req.getContextPath());
+            Map<String, SessionLabelStore.SessionLabel> sessionLabels = loadSessionLabels(sessionOverview.topSessions);
+            sessionRows = renderSessionRows(sessionOverview.topSessions, sessionLabels, req.getContextPath());
             sessionChartJson = buildSessionChartPayload(sessionOverview, rangeStart, rangeEnd);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to compute session metrics", e);
@@ -145,6 +148,24 @@ public class DashboardServlet extends HttpServlet {
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
+        }
+    }
+
+    private Map<String, SessionLabelStore.SessionLabel> loadSessionLabels(List<SessionStat> stats) {
+        if (stats == null || stats.isEmpty()) {
+            return Map.of();
+        }
+        Set<String> sessionIds = stats.stream()
+                .map(stat -> stat.sessionId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (sessionIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            return SessionLabelStore.mapDisplayNames(sessionIds);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to load session labels for dashboard", e);
+            return Map.of();
         }
     }
 
@@ -252,6 +273,13 @@ public class DashboardServlet extends HttpServlet {
         return new SessionOverview(topSessions, timeline);
     }
 
+    private String formatSessionDisplayLabel(String sessionId, Map<String, SessionLabelStore.SessionLabel> labels) {
+        if (sessionId == null) {
+            return "";
+        }
+        return SessionLabelStore.resolveDisplayLabel(sessionId, labels == null ? null : labels.get(sessionId));
+    }
+
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
             return "—";
@@ -340,18 +368,23 @@ public class DashboardServlet extends HttpServlet {
         return new SessionTimeline(labels, countsBySession);
     }
 
-    private String renderSessionRows(List<SessionStat> stats, String contextPath) {
+    private String renderSessionRows(List<SessionStat> stats, Map<String, SessionLabelStore.SessionLabel> labels, String contextPath) {
         if (stats == null || stats.isEmpty()) {
             return "<tr><td colspan=\"4\" class=\"empty-row\">No session activity recorded yet.</td></tr>";
         }
         StringBuilder builder = new StringBuilder();
         int rank = 1;
         for (SessionStat stat : stats) {
+            String display = formatSessionDisplayLabel(stat.sessionId, labels);
             String encodedSession = URLEncoder.encode(stat.sessionId, StandardCharsets.UTF_8);
             String url = contextPath + "/dashboard/sessions/drilldown/session-review?sessionId=" + encodedSession;
             builder.append("<tr>")
                     .append("<td>").append(rank++).append("</td>")
-                    .append("<td><span class=\"session-link\">").append(escapeHtml(stat.sessionId)).append("</span></td>")
+                    .append("<td><span class=\"session-link\">").append(escapeHtml(display)).append("</span>");
+            if (!stat.sessionId.equals(display)) {
+                builder.append("<div class=\"session-id-muted\">").append(escapeHtml(stat.sessionId)).append("</div>");
+            }
+            builder.append("</td>")
                     .append("<td><a class=\"session-count-link\" href=\"").append(url).append("\">")
                     .append(stat.count).append(" chats</a></td>")
                     .append("<td><span class=\"session-last-entry\">").append(escapeHtml(stat.lastEntry)).append("</span></td>")
@@ -423,7 +456,6 @@ public class DashboardServlet extends HttpServlet {
             return summary;
         }
 
-        // Build compiled patterns for terms (exclude system terms). Use canonical TermMatcher to ensure parity.
         List<TermDefinition> activeTerms = new ArrayList<>();
         List<Pattern> compiledPatterns = new ArrayList<>();
         for (TermDefinition term : terms) {
@@ -463,7 +495,6 @@ public class DashboardServlet extends HttpServlet {
                     Timestamp createdAt = rs.getTimestamp("created_at");
                     String sessionId = rs.getString("session_id");
 
-                    // Sanitize prompt once and search the entire prompt for earliest term occurrence.
                     final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
                     TermDefinition bestTerm = null;
                     int bestStart = Integer.MAX_VALUE;
@@ -478,7 +509,7 @@ public class DashboardServlet extends HttpServlet {
                                     bestStart = start;
                                     bestTerm = activeTerms.get(i);
                                     if (bestStart == 0) {
-                                        break; // earliest possible, stop scanning
+                                        break;
                                     }
                                 }
                             }
@@ -571,7 +602,7 @@ public class DashboardServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
+        return input.replace("&amp;", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")

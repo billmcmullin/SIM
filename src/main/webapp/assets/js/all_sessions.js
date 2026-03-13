@@ -6,12 +6,10 @@
     const SELECT_URL = API_BASE + '/select';
     const PAGE_SIZE = 10;
 
-    // State
     let page = 1, totalPages = 1, totalSessions = 0;
     let widgetNamesMap = {};
     const selectedChatIds = new Set();
 
-    // DOM refs
     let sessionsTableBody = null;
     let sessionsTableEl = null;
     let sessionsContainerDiv = null;
@@ -32,6 +30,20 @@
         if (!ts) return '';
         try { return new Date(ts).toLocaleString(); } catch { return ts; }
     };
+
+    function renderSessionLabel(cell, label, sessionId) {
+        cell.innerHTML = '';
+        const primary = document.createElement('div');
+        primary.style.fontWeight = '700';
+        primary.textContent = label || sessionId || '';
+        cell.appendChild(primary);
+        if (sessionId && label && label !== sessionId) {
+            const secondary = document.createElement('div');
+            secondary.className = 'session-id-muted';
+            secondary.textContent = sessionId;
+            cell.appendChild(secondary);
+        }
+    }
 
     async function safeFetchJson(url, opts = {}) {
         const res = await fetch(url, opts);
@@ -83,11 +95,12 @@
             }
 
             list.forEach(s => {
+                const label = s.sessionIdDisplay || s.displayLabel || s.sessionId || '';
                 const tr = document.createElement('tr');
 
                 const tdId = document.createElement('td');
                 tdId.className = 'session-id-col';
-                tdId.innerHTML = `<div style="font-weight:700">${esc(s.sessionId)}</div>`;
+                renderSessionLabel(tdId, label, s.sessionId);
                 tr.appendChild(tdId);
 
                 const tdWidgets = document.createElement('td');
@@ -141,6 +154,7 @@
                 return;
             }
             list.forEach(s => {
+                const label = s.sessionIdDisplay || s.displayLabel || s.sessionId || '';
                 const card = document.createElement('div');
                 card.className = 'session-card';
 
@@ -149,7 +163,13 @@
 
                 const left = document.createElement('div');
                 left.className = 'session-header-left';
-                left.innerHTML = `<div style="font-weight:700">${esc(s.sessionId)}</div><div class="session-meta">${esc(String(s.totalCount || 0))} chats · Last: ${esc(s.lastSeen ? fmt(s.lastSeen) : '')}</div>`;
+                left.innerHTML = `<div style="font-weight:700">${esc(label)}</div><div class="session-meta">${esc(String(s.totalCount || 0))} chats · Last: ${esc(s.lastSeen ? fmt(s.lastSeen) : '')}</div>`;
+                if (s.sessionId && label !== s.sessionId) {
+                    const muted = document.createElement('div');
+                    muted.className = 'session-id-muted';
+                    muted.textContent = s.sessionId;
+                    left.appendChild(muted);
+                }
                 header.appendChild(left);
 
                 const right = document.createElement('div');

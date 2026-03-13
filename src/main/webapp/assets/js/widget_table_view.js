@@ -5,12 +5,10 @@
     const widgetId = cfg.widgetId || '';
     const widgetDisplayName = cfg.widgetName || '';
 
-    // API endpoints
     const API_DATA = contextPath + '/dashboard/widgets/drilldown/view/data';
     const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
     const API_REVIEW_START = contextPath + '/dashboard/widgets/review/start';
 
-    // State
     let state = {
         limit: 10,
         page: 1,
@@ -31,6 +29,13 @@
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
     const fmtDate = v => { if (!v) return ''; try { return new Date(v).toLocaleString(); } catch { return v; } };
     const truncateResponse = (text) => { if (!text) return ''; return text.length <= 220 ? text : text.slice(0, 217) + '…'; };
+
+    function formatSessionDisplay(row) {
+        if (!row) return '';
+        if (row.sessionIdDisplay) return row.sessionIdDisplay;
+        if (row.displayLabel) return row.displayLabel;
+        return row.sessionId || '';
+    }
 
     async function safeFetchJson(url) {
         const res = await fetch(url, { credentials: 'same-origin' });
@@ -103,8 +108,15 @@
             const tdSession = document.createElement('td');
             const sessionDiv = document.createElement('div');
             sessionDiv.className = 'text-summary';
-            sessionDiv.textContent = row.sessionId ?? '';
+            const sessionLabel = formatSessionDisplay(row);
+            sessionDiv.textContent = sessionLabel;
             tdSession.appendChild(sessionDiv);
+            if (row.sessionId && sessionLabel !== row.sessionId) {
+                const muted = document.createElement('div');
+                muted.className = 'session-id-muted';
+                muted.textContent = row.sessionId;
+                tdSession.appendChild(muted);
+            }
             tr.appendChild(tdSession);
 
             fragment.appendChild(tr);
@@ -219,11 +231,9 @@
                     if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
                     if (state.filters.response) params.append('filterResponse', state.filters.response);
 
-                    const res = await fetch(API_SELECT_IDS + '?' + params.toString(), { credentials: 'same-origin' });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const payload = await res.json();
-                    if (payload.status !== 'ok') throw new Error(payload.message || 'Unable to collect IDs');
-                    payload.chatIds.forEach(chatId => {
+                    const res = await safeFetchJson(API_SELECT_IDS + '?' + params.toString());
+                    if (!res.status || res.status !== 'ok') throw new Error(res.message || 'Unable to collect IDs');
+                    (res.chatIds || []).forEach(chatId => {
                         if (!chatId) return;
                         selectedChats.set(chatId, { chatId, widgetName: widgetDisplayName || widgetId });
                     });
@@ -311,14 +321,12 @@
             if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
             if (state.filters.response) params.append('filterResponse', state.filters.response);
 
-            const res = await fetch(API_DATA + '?' + params.toString(), { credentials: 'same-origin' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const payload = await res.json();
-            if (payload.status !== 'ok') throw new Error(payload.message || 'Unable to load data');
+            const res = await safeFetchJson(API_DATA + '?' + params.toString());
+            if (res.status !== 'ok') throw new Error(res.message || 'Unable to load data');
 
-            latestRows = payload.rows || [];
-            state.totalPages = payload.totalPages || 1;
-            state.page = payload.page || 1;
+            latestRows = res.rows || [];
+            state.totalPages = res.totalPages || 1;
+            state.page = res.page || 1;
 
             renderRows(latestRows);
             updatePagination(state.totalPages, state.page);

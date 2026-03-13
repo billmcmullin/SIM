@@ -37,8 +37,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         @SuppressWarnings("unchecked")
-        Map<String, List<TermChatSnapshot>> map =
-                (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
+        Map<String, List<TermChatSnapshot>> map
+                = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
 
         if (map == null || map.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No term data available.");

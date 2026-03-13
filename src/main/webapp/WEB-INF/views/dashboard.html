@@ -60,12 +60,23 @@
                     <div>
                         <h2>Top 10 Sessions</h2>
                         <p>Most frequent Session IDs across all widget tables.</p>
-                        <!-- NEW: total sessions placeholder -->
                         <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
                     </div>
-                    <div>
-                        <a class="ghost-btn" href="${contextPath}/dashboard/sessions">View all sessions</a>
+                    <div class="button-row">
+                        <div>
+                            <button type="button" class="ghost-btn"
+                                onclick="window.location.href='${contextPath}/dashboard/sessions'">
+                                View all sessions
+                            </button>
+                        </div>
+                        <div>
+                            <button type="button" class="ghost-btn"
+                                onclick="window.location.href='${contextPath}/dashboard/session-names'">
+                                Session catalog
+                            </button>
+                        </div>
                     </div>
+
                 </div>
                 <div class="table-scroll">
                     <table class="session-table">

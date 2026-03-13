@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Session Catalog</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar" data-role="${role}">
+            <div class="top-bar-inner">
+                <div class="brand">Chat Server</div>
+                <div>
+                    <span>Signed in as <strong>${user}</strong></span>
+                    <a href="${contextPath}/profile"> Profile </a>
+                    <a href="${contextPath}/logout"> Logout</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="section">
+            <h1>Session Catalog</h1>
+            <div> <a class="back-link" href="${contextPath}/dashboard"
+                    style="display:inline-flex; align-items:center; gap:8px;">
+                    ← Back to Dashboard
+                </a>
+            </div>
+            <p>This page lists every session ID stored in your widget tables so you can search, review, and assign
+                friendly names &amp; email contacts.</p>
+            <div class="search-row">
+                <input id="sessionSearch" type="search" placeholder="Search session IDs…"
+                    aria-label="Search session IDs">
+                <button id="sessionSearchButton" class="ghost-btn" type="button">Search</button>
+            </div>
+            <div class="list-controls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+                <p class="helper-note" id="sessionListInfo">Loading sessions…</p>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <label for="pageSizeSelect" style="margin:0; font-size:0.9rem;">Show per page:</label>
+                    <select id="pageSizeSelect">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="prevPageBtn" type="button" class="ghost-btn" disabled>Back</button>
+                    <button id="nextPageBtn" type="button" class="ghost-btn" disabled>Next</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="section session-catalog-section">
+            <div class="table-scroll">
+                <table class="session-table">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Assigned Name</th>
+                            <th>Email</th>
+                            <th>Chat Count</th>
+                            <th>Last Entry</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessionNameList">
+                        <tr>
+                            <td colspan="6" class="empty-row">Loading sessions…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <template id="sessionEditTemplate">
+        <tr class="session-edit-row">
+            <td colspan="6">
+                <form class="inline-edit">
+                    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+                        <label>
+                            <span>Session ID</span>
+                            <input type="text" name="sessionId" readonly style="width:360px;">
+                        </label>
+                        <label>
+                            <span>Friendly name</span>
+                            <input type="text" name="displayName" required>
+                        </label>
+                        <label>
+                            <span>Email</span>
+                            <input type="email" name="email">
+                        </label>
+                        <div style="display:flex; gap:8px;">
+                            <button type="submit">Save</button>
+                            <button type="button" class="ghost-btn cancel-button">Cancel</button>
+                        </div>
+                    </div>
+                    <p class="helper-note status-message" aria-live="polite"></p>
+                </form>
+            </td>
+        </tr>
+    </template>
+
+    <script>
+        window.sessionNamesConfig = {
+            contextPath: '${contextPath}'
+        };
+    </script>
+    <script src="${contextPath}/assets/js/session-names.js"></script>
+</body>
+
+</html>
