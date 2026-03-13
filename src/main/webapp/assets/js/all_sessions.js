@@ -4,9 +4,12 @@
     const DATA_URL = API_BASE + '/data';
     const CHATS_URL = API_BASE + '/chats';
     const SELECT_URL = API_BASE + '/select';
-    const PAGE_SIZE = 10;
+    const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-    let page = 1, totalPages = 1, totalSessions = 0;
+    let page = 1;
+    let totalPages = 1;
+    let totalSessions = 0;
+    let pageSize = 10;
     let widgetNamesMap = {};
     const selectedChatIds = new Set();
 
@@ -31,20 +34,6 @@
         try { return new Date(ts).toLocaleString(); } catch { return ts; }
     };
 
-    function renderSessionLabel(cell, label, sessionId) {
-        cell.innerHTML = '';
-        const primary = document.createElement('div');
-        primary.style.fontWeight = '700';
-        primary.textContent = label || sessionId || '';
-        cell.appendChild(primary);
-        if (sessionId && label && label !== sessionId) {
-            const secondary = document.createElement('div');
-            secondary.className = 'session-id-muted';
-            secondary.textContent = sessionId;
-            cell.appendChild(secondary);
-        }
-    }
-
     async function safeFetchJson(url, opts = {}) {
         const res = await fetch(url, opts);
         if (!res.ok) {
@@ -66,7 +55,7 @@
 
         page = Math.max(1, reqPage);
         const params = new URLSearchParams();
-        params.set('limit', String(PAGE_SIZE));
+        params.set('limit', String(pageSize));
         params.set('page', String(page));
         if (search) params.set('search', search);
 
@@ -213,7 +202,7 @@
         }
     }
 
-    async function toggleChatsRow(sessionRow, sessionId, btn) {
+    function toggleChatsRow(sessionRow, sessionId, btn) {
         const next = sessionRow.nextElementSibling;
         if (next && next.classList.contains('session-chats-row') && next.dataset.for === sessionId) {
             next.remove();
@@ -239,15 +228,14 @@
         sessionRow.parentNode.insertBefore(loadingRow, sessionRow.nextSibling);
         btn.textContent = 'Collapse';
 
-        try {
-            const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
-            renderChatsIntoTd(tdMain, json.rows || []);
-        } catch (err) {
-            tdMain.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
-        }
+        safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+            .then(json => renderChatsIntoTd(tdMain, json.rows || []))
+            .catch(err => {
+                tdMain.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
+            });
     }
 
-    async function toggleChatsCard(card, sessionId, btn) {
+    function toggleChatsCard(card, sessionId, btn) {
         const chatsEl = card.querySelector('.chats-list');
         if (!chatsEl) return;
         if (chatsEl.style.display === 'block') {
@@ -258,12 +246,11 @@
         chatsEl.innerHTML = '<div class="small-note">Loading chats…</div>';
         chatsEl.style.display = 'block';
         btn.textContent = 'Collapse';
-        try {
-            const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
-            renderChatsIntoDiv(chatsEl, json.rows || []);
-        } catch (err) {
-            chatsEl.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
-        }
+        safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+            .then(json => renderChatsIntoDiv(chatsEl, json.rows || []))
+            .catch(err => {
+                chatsEl.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
+            });
     }
 
     function renderChatsIntoTd(td, rows) {
@@ -475,13 +462,17 @@
             summaryEl.parentNode.insertBefore(paginationEl, summaryEl.nextSibling);
         }
         paginationEl.innerHTML = '';
-        if (!totalPages || totalPages <= 1) return;
 
         const controls = document.createElement('div');
         controls.className = 'pagination-controls';
+        controls.style.display = 'flex';
+        controls.style.alignItems = 'center';
+        controls.style.gap = '8px';
+        controls.style.flexWrap = 'wrap';
+
         const prev = document.createElement('button');
         prev.className = 'ghost-btn small';
-        prev.textContent = 'Previous';
+        prev.textContent = 'Back';
         prev.disabled = page <= 1;
         prev.addEventListener('click', () => {
             if (page > 1) {
@@ -489,6 +480,7 @@
                 loadSessions(page, searchInput ? (searchInput.value || '') : '');
             }
         });
+
         const next = document.createElement('button');
         next.className = 'ghost-btn small';
         next.textContent = 'Next';
@@ -499,13 +491,38 @@
                 loadSessions(page, searchInput ? (searchInput.value || '') : '');
             }
         });
+
         const info = document.createElement('div');
         info.className = 'page-info';
-        info.style.marginLeft = '12px';
+        info.style.fontWeight = '600';
         info.textContent = `Page ${page} of ${totalPages} (${totalSessions} sessions)`;
+
+        const sizeLabel = document.createElement('label');
+        sizeLabel.textContent = 'Show per page:';
+        sizeLabel.style.margin = '0';
+        sizeLabel.style.fontSize = '0.9rem';
+
+        const sizeSelect = document.createElement('select');
+        sizeSelect.className = 'ghost-btn small';
+        sizeSelect.style.borderRadius = '8px';
+        PAGE_SIZE_OPTIONS.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = String(opt);
+            option.textContent = String(opt);
+            if (opt === pageSize) option.selected = true;
+            sizeSelect.appendChild(option);
+        });
+        sizeSelect.addEventListener('change', () => {
+            pageSize = parseInt(sizeSelect.value, 10) || 10;
+            page = 1;
+            loadSessions(page, searchInput ? (searchInput.value || '') : '');
+        });
+
         controls.appendChild(prev);
         controls.appendChild(next);
         controls.appendChild(info);
+        controls.appendChild(sizeLabel);
+        controls.appendChild(sizeSelect);
         paginationEl.appendChild(controls);
     }
 
@@ -590,8 +607,9 @@
             deselectSelectedBtn.addEventListener('click', deselectAllSelected);
         }
 
-        const initial = window.ALL_SESSIONS_INITIAL || { all: true, page: 1, limit: PAGE_SIZE };
+        const initial = window.ALL_SESSIONS_INITIAL || { all: true, page: 1, limit: pageSize };
         page = initial.page || 1;
+        pageSize = initial.limit || pageSize;
         loadSessions(page, '');
     });
 

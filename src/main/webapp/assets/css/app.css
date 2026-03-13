@@ -668,4 +668,12 @@ hr {
     .top-bar-inner {
         padding: 0 12px;
     }
+
+    .pagination-controls select,
+    .widget-view-controls select {
+        min-width: unset;
+        width: auto;
+        max-width: 160px;
+    }
+
 }

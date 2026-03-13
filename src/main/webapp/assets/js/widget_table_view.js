@@ -1,4 +1,3 @@
-// assets/js/widget_table_view.js
 (function () {
     const cfg = window.widgetTableViewConfig || {};
     const contextPath = cfg.contextPath || '';
@@ -8,6 +7,7 @@
     const API_DATA = contextPath + '/dashboard/widgets/drilldown/view/data';
     const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
     const API_REVIEW_START = contextPath + '/dashboard/widgets/review/start';
+    const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
     let state = {
         limit: 10,
@@ -23,7 +23,7 @@
     const selectedChats = new Map();
 
     let tableBody, globalSearchInput, filterPrompt, filterResponse;
-    let prevBtn, nextBtn, pageInfo;
+    let prevBtn, nextBtn, pageInfo, pageSizeSelect;
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;
 
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
@@ -61,10 +61,8 @@
         }
 
         const fragment = document.createDocumentFragment();
-
         rows.forEach(row => {
             const tr = document.createElement('tr');
-
             const tdSelect = document.createElement('td');
             tdSelect.className = 'select-column';
             const input = document.createElement('input');
@@ -79,8 +77,8 @@
             const idDiv = document.createElement('div');
             idDiv.className = 'text-summary';
             idDiv.textContent = `${row.widgetName || widgetDisplayName || row.widgetId || widgetId || ''} · ${row.chatId ?? ''}`;
-            tr.appendChild(tdId);
             tdId.appendChild(idDiv);
+            tr.appendChild(tdId);
 
             const tdPrompt = document.createElement('td');
             const promptDiv = document.createElement('div');
@@ -152,7 +150,7 @@
     function updatePagination(totalPagesFromServer, currentPage) {
         state.totalPages = totalPagesFromServer || state.totalPages;
         state.page = currentPage || state.page;
-        if (pageInfo) pageInfo.textContent = `Page ${state.page} of ${state.totalPages}`;
+        if (pageInfo) pageInfo.textContent = `Page ${state.page} of ${state.totalPages} (${state.limit} per page)`;
         if (prevBtn) prevBtn.disabled = state.page <= 1;
         if (nextBtn) nextBtn.disabled = state.page >= state.totalPages;
     }
@@ -168,12 +166,23 @@
             if (!input) return;
             input.addEventListener('input', () => {
                 state.page = 1;
-                state.search = globalSearchInput.value.trim();
-                state.filters.prompt = filterPrompt.value.trim();
-                state.filters.response = filterResponse.value.trim();
+                state.search = globalSearchInput ? globalSearchInput.value.trim() : '';
+                state.filters.prompt = filterPrompt ? filterPrompt.value.trim() : '';
+                state.filters.response = filterResponse ? filterResponse.value.trim() : '';
                 loadTable();
             });
         });
+
+        const pageSizeSelectEl = document.getElementById('widgetTablePageSize');
+        if (pageSizeSelectEl) {
+            pageSizeSelectEl.addEventListener('change', () => {
+                const val = parseInt(pageSizeSelectEl.value, 10);
+                if (Number.isNaN(val)) return;
+                state.limit = val;
+                state.page = 1;
+                loadTable();
+            });
+        }
 
         if (tableBody) {
             tableBody.addEventListener('change', event => {

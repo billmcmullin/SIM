@@ -9,6 +9,7 @@ const detailPrompt = document.getElementById('detailPrompt');
 const detailResponse = document.getElementById('detailResponse');
 const detailTitle = document.getElementById('detailTitle');
 const reviewSearchInput = document.getElementById('reviewSearchInput');
+const reviewPageSizeSelect = document.getElementById('reviewPageSize');
 const prevBtn = document.getElementById('prevPageBtn');
 const nextBtn = document.getElementById('nextPageBtn');
 const pageInfo = document.getElementById('pageInfo');
@@ -67,6 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectColumnHeader) {
         selectColumnHeader.textContent = '';
     }
+    reviewPageSizeSelect?.addEventListener('change', () => {
+        const val = parseInt(reviewPageSizeSelect.value, 10);
+        if (Number.isNaN(val)) return;
+        state.limit = val;
+        state.page = 1;
+        loadSelectionData();
+    });
     attachHandlers();
     attachManualMessageHandlers();
     hideManualMessageSection();
@@ -662,7 +670,7 @@ function updateSelectAllEntriesButtonState() {
 
 function updatePagination() {
     if (!pageInfo) return;
-    pageInfo.textContent = `Page ${state.page} of ${state.totalPages}`;
+    pageInfo.textContent = `Page ${state.page} of ${state.totalPages} (${state.limit} per page)`;
     if (prevBtn) prevBtn.disabled = state.page <= 1;
     if (nextBtn) nextBtn.disabled = state.page >= state.totalPages;
 }
