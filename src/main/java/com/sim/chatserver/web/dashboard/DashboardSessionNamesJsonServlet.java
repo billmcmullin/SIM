@@ -9,6 +9,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +38,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
-    private static final int DEFAULT_LIMIT = 300;
+    private static final int DEFAULT_LIMIT = 10;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -51,6 +53,19 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             return;
         }
 
+        String query = req.getParameter("q");
+        if (query == null || query.isBlank()) {
+            query = req.getParameter("search");
+        }
+
+        int limit = parsePositiveInteger(req.getParameter("limit"), DEFAULT_LIMIT);
+        int page = parsePositiveInteger(req.getParameter("page"), 1);
+        int offset = parseNonNegativeInteger(req.getParameter("offset"), -1);
+
+        if (offset >= 0) {
+            page = (offset / limit) + 1;
+        }
+
         List<WidgetEntry> widgets = List.of();
         try {
             widgets = WidgetStore.list(null);
@@ -58,47 +73,60 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to list widgets for session catalog", e);
         }
 
-        String query = req.getParameter("q");
-        int limit = parsePositiveInteger(req.getParameter("limit"), DEFAULT_LIMIT);
-
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets, query);
+
+            // Stable sort once
+            List<Map.Entry<String, SessionAccumulator>> sorted = new ArrayList<>(accumulators.entrySet());
+            sorted.sort(
+                    Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> e.getValue().count).reversed()
+                            .thenComparing(Map.Entry::getKey));
+
+            int totalSessions = sorted.size();
+            int totalPages = Math.max(1, (int) Math.ceil((double) totalSessions / (double) limit));
+
+            if (page > totalPages) {
+                page = totalPages;
+            }
+
+            int start = Math.max(0, (page - 1) * limit);
+            int end = Math.min(start + limit, totalSessions);
+
+            List<Map.Entry<String, SessionAccumulator>> pageSlice = sorted.subList(start, end);
+
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
 
             JsonArrayBuilder sessions = Json.createArrayBuilder();
-            accumulators.entrySet()
-                    .stream()
-                    .sorted((a, b) -> {
-                        int cmp = Integer.compare(b.getValue().count, a.getValue().count);
-                        if (cmp != 0) {
-                            return cmp;
-                        }
-                        return a.getKey().compareTo(b.getKey());
-                    })
-                    .limit(limit)
-                    .forEach(entry -> {
-                        SessionAccumulator acc = entry.getValue();
-                        SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
-                        String displayLabel = formatLabel(entry.getKey(), label);
-                        JsonObjectBuilder builder = Json.createObjectBuilder()
-                                .add("sessionId", entry.getKey())
-                                .add("displayLabel", displayLabel)
-                                .add("count", acc.count)
-                                .add("lastEntry", acc.lastEntry == null ? "—" : acc.lastEntry.toString())
-                                .add("reviewUrl", buildReviewUrl(req, entry.getKey()))
-                                .add("displayName", label == null ? "" : label.getDisplayName())
-                                .add("email", label == null ? "" : label.getEmail());
-                        sessions.add(builder);
-                    });
+            for (Map.Entry<String, SessionAccumulator> entry : pageSlice) {
+                SessionAccumulator acc = entry.getValue();
+                SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
+                String displayLabel = SessionLabelStore.resolveDisplayLabel(entry.getKey(), label);
+
+                JsonObjectBuilder builder = Json.createObjectBuilder()
+                        .add("sessionId", entry.getKey())
+                        .add("displayLabel", displayLabel)
+                        .add("count", acc.count)
+                        .add("lastEntry", acc.lastEntry == null ? "—" : acc.lastEntry.toString())
+                        .add("reviewUrl", buildReviewUrl(req, entry.getKey()))
+                        .add("displayName", label == null ? "" : nullSafe(label.getDisplayName()))
+                        .add("email", label == null ? "" : nullSafe(label.getEmail()));
+                sessions.add(builder);
+            }
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
-                    .add("total", accumulators.size())
+                    .add("total", totalSessions) // legacy key
+                    .add("totalSessions", totalSessions)
+                    .add("page", page)
+                    .add("limit", limit)
+                    .add("totalPages", totalPages)
                     .add("sessions", sessions)
                     .build();
 
             resp.setContentType("application/json");
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
             resp.getWriter().print(payload.toString());
+
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect session catalog", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
@@ -109,6 +137,10 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             resp.setContentType("application/json");
             resp.getWriter().print(error.toString());
         }
+    }
+
+    private String nullSafe(String v) {
+        return v == null ? "" : v;
     }
 
     private String buildReviewUrl(HttpServletRequest req, String sessionId) {
@@ -122,20 +154,26 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         }
         try {
             int parsed = Integer.parseInt(value.trim());
-            if (parsed <= 0) {
-                return fallback;
-            }
-            return parsed;
+            return parsed > 0 ? parsed : fallback;
         } catch (NumberFormatException e) {
             return fallback;
         }
     }
 
-    private String formatLabel(String sessionId, SessionLabelStore.SessionLabel label) {
-        return SessionLabelStore.resolveDisplayLabel(sessionId, label);
+    private int parseNonNegativeInteger(String value, int fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed >= 0 ? parsed : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter) throws SQLException {
+    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter)
+            throws SQLException {
         Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
         if (widgets == null || widgets.isEmpty()) {
             return accumulators;
@@ -145,6 +183,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             if (widget == null || widget.getWidgetId() == null) {
                 continue;
             }
+
             String tableName = sanitizeWidgetTableName(widget.getWidgetId());
             if (!tableExists(conn, tableName)) {
                 continue;
@@ -153,24 +192,29 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             StringBuilder sql = new StringBuilder("SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM ")
                     .append(quoteIdentifier(tableName))
                     .append(" WHERE session_id IS NOT NULL");
+
             if (filter != null && !filter.isBlank()) {
                 sql.append(" AND session_id ILIKE ?");
             }
+
             sql.append(" GROUP BY session_id");
 
             try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
                 if (filter != null && !filter.isBlank()) {
                     ps.setString(1, "%" + filter.trim() + "%");
                 }
+
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         String sessionId = rs.getString("session_id");
                         if (sessionId == null || sessionId.isBlank()) {
                             continue;
                         }
+
                         sessionId = sessionId.trim();
                         SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
                         acc.count += rs.getInt("total");
+
                         Timestamp lastEntry = rs.getTimestamp("last_entry");
                         if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
                             acc.lastEntry = lastEntry;
@@ -199,16 +243,20 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         if (widgetId == null || widgetId.isBlank()) {
             return "widget";
         }
+
         String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
         if (normalized.isEmpty()) {
             normalized = "widget";
         }
+
         if (!Character.isLetter(normalized.charAt(0))) {
             normalized = "w_" + normalized;
         }
+
         if (normalized.length() > 60) {
             normalized = normalized.substring(0, 60);
         }
+
         return normalized;
     }
 

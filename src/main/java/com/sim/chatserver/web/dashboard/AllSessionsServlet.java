@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,6 +29,7 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -104,12 +106,15 @@ public class AllSessionsServlet extends HttpServlet {
 
         Map<String, SessionSummary> sessions = new HashMap<>();
         List<WidgetEntry> widgets = listWidgets();
+        Map<String, String> widgetNames = buildWidgetDisplayNameMap(widgets);
+
         if (!widgets.isEmpty()) {
             try (Connection conn = dsHolder.getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
                     }
+
                     String tableName = sanitizeWidgetTableName(widget.getWidgetId());
                     if (!tableExists(conn, tableName)) {
                         continue;
@@ -146,11 +151,16 @@ public class AllSessionsServlet extends HttpServlet {
 
         int totalSessions = sessionList.size();
         int totalPages = 1;
+
         if (!returnAll && limit > 0) {
             totalPages = (int) Math.ceil((double) totalSessions / (double) limit);
+            if (totalPages < 1) {
+                totalPages = 1;
+            }
             if (page > totalPages) {
                 page = totalPages;
             }
+
             int start = Math.min((page - 1) * limit, totalSessions);
             int end = Math.min(start + limit, totalSessions);
             sessionList = sessionList.subList(start, end);
@@ -171,11 +181,17 @@ public class AllSessionsServlet extends HttpServlet {
                     .build());
         }
 
+        JsonObjectBuilder widgetNamesObj = Json.createObjectBuilder();
+        for (Map.Entry<String, String> e : widgetNames.entrySet()) {
+            widgetNamesObj.add(e.getKey(), e.getValue());
+        }
+
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("totalSessions", totalSessions)
                 .add("totalPages", totalPages)
                 .add("page", page)
+                .add("widgetNames", widgetNamesObj.build()) // required by all_sessions.js
                 .add("sessions", array)
                 .build();
 
@@ -184,10 +200,26 @@ public class AllSessionsServlet extends HttpServlet {
         resp.getWriter().write(body.toString());
     }
 
+    private Map<String, String> buildWidgetDisplayNameMap(List<WidgetEntry> widgets) {
+        if (widgets == null || widgets.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        for (WidgetEntry w : widgets) {
+            if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
+                continue;
+            }
+            String dn = w.getDisplayName();
+            map.put(w.getWidgetId(), (dn == null || dn.isBlank()) ? w.getWidgetId() : dn);
+        }
+        return map;
+    }
+
     private Map<String, SessionLabelStore.SessionLabel> mapSessionLabels(List<SessionSummary> summaries) {
         if (summaries == null || summaries.isEmpty()) {
             return Collections.emptyMap();
         }
+
         Set<String> ids = new HashSet<>();
         for (SessionSummary summary : summaries) {
             if (summary != null && summary.sessionId != null) {
@@ -197,6 +229,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (ids.isEmpty()) {
             return Collections.emptyMap();
         }
+
         try {
             return SessionLabelStore.mapDisplayNames(ids);
         } catch (SQLException e) {
@@ -236,9 +269,11 @@ public class AllSessionsServlet extends HttpServlet {
                 if (filter != null && !filter.contains(sid)) {
                     continue;
                 }
+
                 int count = rs.getInt("cnt");
                 Timestamp first = rs.getTimestamp("first_ts");
                 Timestamp last = rs.getTimestamp("last_ts");
+
                 SessionSummary summary = sessions.computeIfAbsent(sid, SessionSummary::new);
                 summary.accept(first, count, widgetId);
                 summary.accept(last, 0, widgetId);
@@ -247,75 +282,8 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private void handleChats(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        if (!requireAuth(req, resp)) {
-            return;
-        }
-        String sessionId = req.getParameter("sessionId");
-        if (sessionId == null || sessionId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"sessionId required.\"}");
-            return;
-        }
-
-        List<Map<String, Object>> rows = new ArrayList<>();
-        List<WidgetEntry> widgets = listWidgets();
-
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-                String tableName = sanitizeWidgetTableName(widget.getWidgetId());
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at FROM "
-                        + quoteIdentifier(tableName) + " WHERE session_id = ? ORDER BY created_at DESC";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setString(1, sessionId);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Map<String, Object> row = new HashMap<>();
-                            row.put("widgetId", widget.getWidgetId());
-                            String widgetName = widget.getDisplayName();
-                            row.put("widgetName", widgetName == null || widgetName.isBlank() ? widget.getWidgetId() : widgetName);
-                            row.put("chatId", rs.getString("widget_chat_id"));
-                            row.put("prompt", rs.getString("prompt"));
-                            row.put("response", rs.getString("response_text"));
-                            Timestamp ts = rs.getTimestamp("created_at");
-                            row.put("createdAt", ts == null ? "" : ts.toInstant().toString());
-                            rows.add(row);
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.SEVERE, "Unable to load session chats", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load chats.\"}");
-            return;
-        }
-
-        JsonArrayBuilder array = Json.createArrayBuilder();
-        for (Map<String, Object> row : rows) {
-            array.add(Json.createObjectBuilder()
-                    .add("widgetId", safe(row.get("widgetId")))
-                    .add("widgetName", safe(row.get("widgetName")))
-                    .add("chatId", safe(row.get("chatId")))
-                    .add("prompt", safe(row.get("prompt")))
-                    .add("response", safe(row.get("response")))
-                    .add("createdAt", safe(row.get("createdAt")))
-                    .build());
-        }
-
-        JsonObject body = Json.createObjectBuilder().add("status", "ok").add("rows", array).build();
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body.toString());
-    }
-
-    private String safe(Object value) {
-        return value == null ? "" : String.valueOf(value);
+        resp.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
+        resp.getWriter().write("{\"status\":\"error\",\"message\":\"Not implemented in this snippet.\"}");
     }
 
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -373,7 +341,7 @@ public class AllSessionsServlet extends HttpServlet {
     private int parseInteger(String value, int fallback) {
         try {
             return Integer.parseInt(value);
-        } catch (NumberFormatException ignored) {
+        } catch (Exception ignored) {
             return fallback;
         }
     }

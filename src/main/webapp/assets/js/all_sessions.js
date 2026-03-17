@@ -29,10 +29,28 @@
 
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+
     const fmt = ts => {
         if (!ts) return '';
-        try { return new Date(ts).toLocaleString(); } catch { return ts; }
+        try { return new Date(ts).toLocaleString(); } catch (e) { return ts; }
     };
+
+    // FIX: define locally so all_sessions.js does not depend on any other file
+    function renderSessionLabel(cell, label, sessionId) {
+        if (!cell) return;
+        cell.innerHTML = '';
+
+        const primary = document.createElement('div');
+        primary.textContent = label || sessionId || '';
+        cell.appendChild(primary);
+
+        if (sessionId && label && label !== sessionId) {
+            const muted = document.createElement('div');
+            muted.className = 'session-id-muted';
+            muted.textContent = sessionId;
+            cell.appendChild(muted);
+        }
+    }
 
     async function safeFetchJson(url, opts = {}) {
         const res = await fetch(url, opts);

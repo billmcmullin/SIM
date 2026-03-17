@@ -12,10 +12,10 @@ const pageSizeSelect = document.getElementById('pageSizeSelect');
 
 let currentQuery = '';
 let activeEditRow = null;
-let activeRow = null;
 let currentPage = 1;
 let pageSize = 10;
 let totalSessions = 0;
+let totalPages = 1;
 
 function renderSessionLabel(cell, label, sessionId) {
     cell.innerHTML = '';
@@ -31,45 +31,59 @@ function renderSessionLabel(cell, label, sessionId) {
 }
 
 function updatePaginationControls(count) {
-    const totalPages = Math.max(1, Math.ceil((totalSessions || count) / pageSize));
-    prevPageBtn.disabled = currentPage <= 1;
-    nextPageBtn.disabled = currentPage >= totalPages;
-    sessionInfo.textContent = `Showing ${count} of ${totalSessions} sessions · Page ${currentPage} of ${totalPages}`;
+    if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+    if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+    if (sessionInfo) {
+        sessionInfo.textContent = `Showing ${count} of ${totalSessions} sessions · Page ${currentPage} of ${totalPages}`;
+    }
 }
 
 async function loadSessions(query = '') {
     if (!sessionListBody) return;
-    sessionInfo.textContent = 'Loading sessions…';
+
+    if (sessionInfo) sessionInfo.textContent = 'Loading sessions…';
     sessionListBody.innerHTML = '<tr><td colspan="6" class="empty-row">Loading sessions…</td></tr>';
+
     try {
-        const offset = (currentPage - 1) * pageSize;
         const params = new URLSearchParams();
-        params.append('q', query);
-        params.append('limit', pageSize);
-        params.append('offset', offset);
+        if (query && query.trim()) {
+            params.append('q', query.trim()); // backend supports q (and now search)
+        }
+        params.append('limit', String(pageSize));
+        params.append('page', String(currentPage));
 
         const url = `${contextPath}/dashboard/session-names.json?${params.toString()}`;
         const response = await fetch(url, { credentials: 'same-origin' });
+
         if (!response.ok) {
             throw new Error('Unable to fetch session catalog');
         }
+
         const payload = await response.json();
         if (!payload || payload.status !== 'ok') {
             throw new Error(payload && payload.message ? payload.message : 'Unexpected response');
         }
-        totalSessions = payload.total || 0;
+
+        totalSessions = Number(payload.totalSessions ?? payload.total ?? 0);
+        totalPages = Math.max(1, Number(payload.totalPages ?? Math.ceil(totalSessions / pageSize)));
+        currentPage = Math.min(Math.max(1, Number(payload.page ?? currentPage)), totalPages);
 
         if (!Array.isArray(payload.sessions) || payload.sessions.length === 0) {
             sessionListBody.innerHTML = '<tr><td colspan="6" class="empty-row">No sessions found.</td></tr>';
             updatePaginationControls(0);
             return;
         }
+
         sessionListBody.innerHTML = '';
         payload.sessions.forEach(session => {
             const row = document.createElement('tr');
 
             const idCell = document.createElement('td');
-            renderSessionLabel(idCell, session.displayLabel || session.sessionId || '', session.sessionId);
+            renderSessionLabel(
+                idCell,
+                session.displayLabel || session.sessionIdDisplay || session.sessionId || '',
+                session.sessionId
+            );
             row.appendChild(idCell);
 
             const nameCell = document.createElement('td');
@@ -81,7 +95,9 @@ async function loadSessions(query = '') {
             row.appendChild(emailCell);
 
             const countCell = document.createElement('td');
-            countCell.textContent = typeof session.count === 'number' ? `${session.count} chats` : '—';
+            const hasCount = Number.isFinite(session.count);
+            const countValue = hasCount ? session.count : null;
+            countCell.textContent = countValue != null ? `${countValue} chats` : '—';
             row.appendChild(countCell);
 
             const lastCell = document.createElement('td');
@@ -99,19 +115,19 @@ async function loadSessions(query = '') {
 
             sessionListBody.appendChild(row);
         });
+
         updatePaginationControls(payload.sessions.length);
     } catch (error) {
         console.error(error);
-        sessionInfo.textContent = 'Unable to load sessions.';
+        if (sessionInfo) sessionInfo.textContent = 'Unable to load sessions.';
         sessionListBody.innerHTML = '<tr><td colspan="6" class="empty-row">Unable to load sessions.</td></tr>';
-        prevPageBtn.disabled = true;
-        nextPageBtn.disabled = true;
+        if (prevPageBtn) prevPageBtn.disabled = true;
+        if (nextPageBtn) nextPageBtn.disabled = true;
     }
 }
 
 function showEditPanel(row, session) {
     removeEditPanel();
-    activeRow = row;
     const fragment = editTemplate.content.cloneNode(true);
     const editRow = fragment.querySelector('.session-edit-row');
     const form = editRow.querySelector('form');
@@ -162,18 +178,20 @@ async function submitLabel(form, session, row, statusMessage) {
             },
             body: payload.toString()
         });
+
         const result = await response.json();
         if (!response.ok || result.status !== 'ok') {
             throw new Error(result?.message || 'Unable to save session name.');
         }
+
         statusMessage.textContent = 'Saved.';
         row.querySelector('td:nth-child(2)').textContent = displayName || '—';
         row.querySelector('td:nth-child(3)').textContent = email || '—';
         session.displayName = displayName;
         session.email = email;
         session.displayLabel = displayName || email || session.sessionId || '';
-        row.querySelector('td:first-child').innerHTML = '';
         renderSessionLabel(row.querySelector('td:first-child'), session.displayLabel, session.sessionId);
+
         setTimeout(() => {
             statusMessage.textContent = '';
             removeEditPanel();
@@ -185,7 +203,7 @@ async function submitLabel(form, session, row, statusMessage) {
 }
 
 searchButton?.addEventListener('click', () => {
-    currentQuery = searchInput.value.trim();
+    currentQuery = (searchInput?.value || '').trim();
     currentPage = 1;
     loadSessions(currentQuery);
 });
@@ -193,7 +211,7 @@ searchButton?.addEventListener('click', () => {
 searchInput?.addEventListener('keypress', event => {
     if (event.key === 'Enter') {
         event.preventDefault();
-        currentQuery = searchInput.value.trim();
+        currentQuery = (searchInput?.value || '').trim();
         currentPage = 1;
         loadSessions(currentQuery);
     }
@@ -212,7 +230,6 @@ prevPageBtn?.addEventListener('click', () => {
 });
 
 nextPageBtn?.addEventListener('click', () => {
-    const totalPages = Math.max(1, Math.ceil((totalSessions || 0) / pageSize));
     if (currentPage >= totalPages) return;
     currentPage += 1;
     loadSessions(currentQuery);
