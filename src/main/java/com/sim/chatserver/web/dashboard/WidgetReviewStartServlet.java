@@ -186,4 +186,40 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
         return selections.get(selectionId);
     }
+
+    public static String createSelectionFromGlobalChatIds(HttpSession session,
+            List<String> chatIds,
+            String label,
+            String backUrl) {
+        if (session == null || chatIds == null || chatIds.isEmpty()) {
+            return null;
+        }
+
+        LinkedHashSet<String> dedup = new LinkedHashSet<>();
+        for (String id : chatIds) {
+            if (id != null) {
+                String t = id.trim();
+                if (!t.isEmpty()) {
+                    dedup.add(t);
+                }
+            }
+        }
+        if (dedup.isEmpty()) {
+            return null;
+        }
+
+        String safeLabel = (label == null || label.isBlank()) ? "Selected Chats" : label;
+
+        Selection selection = new Selection(
+                safeLabel, // widgetId placeholder for global selections
+                safeLabel, // displayName
+                backUrl, // backUrl
+                new ArrayList<>(dedup), // chatIds
+                null, // snapshots (DB-backed selection)
+                new SearchTerms("", "", "") // search terms
+        );
+
+        return storeSelection(session, selection);
+    }
+
 }

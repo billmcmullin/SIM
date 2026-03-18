@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +31,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonReader;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -88,6 +90,20 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String path = req.getServletPath();
+        if (path != null && path.endsWith("/select")) {
+            handleSelect(req, resp);
+            return;
+        }
+
+        resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.getWriter().write("{\"status\":\"error\",\"message\":\"Method not allowed.\"}");
+    }
+
     private void handleSummary(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         if (!requireAuth(req, resp)) {
             return;
@@ -133,6 +149,8 @@ public class AllSessionsServlet extends HttpServlet {
             } catch (SQLException e) {
                 log.log(Level.SEVERE, "Unable to compute session summary", e);
                 resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                resp.setContentType("application/json; charset=UTF-8");
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load sessions.\"}");
                 return;
             }
@@ -191,8 +209,149 @@ public class AllSessionsServlet extends HttpServlet {
                 .add("totalSessions", totalSessions)
                 .add("totalPages", totalPages)
                 .add("page", page)
-                .add("widgetNames", widgetNamesObj.build()) // required by all_sessions.js
+                .add("widgetNames", widgetNamesObj.build())
                 .add("sessions", array)
+                .build();
+
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.getWriter().write(body.toString());
+    }
+
+    private void handleChats(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (!requireAuth(req, resp)) {
+            return;
+        }
+
+        String sessionId = req.getParameter("sessionId");
+        if (sessionId == null || sessionId.isBlank()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"sessionId required.\"}");
+            return;
+        }
+
+        List<WidgetEntry> widgets = listWidgets();
+        List<ChatRow> rows = new ArrayList<>();
+        String sid = sessionId.trim();
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                    continue;
+                }
+                String widgetId = widget.getWidgetId();
+                String tableName = sanitizeWidgetTableName(widgetId);
+                if (!tableExists(conn, tableName)) {
+                    continue;
+                }
+
+                String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
+                        + " WHERE session_id = ? ORDER BY created_at DESC";
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, sid);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            rows.add(new ChatRow(
+                                    rs.getString("widget_chat_id"),
+                                    rs.getString("prompt"),
+                                    rs.getTimestamp("created_at")
+                            ));
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.log(Level.SEVERE, "Unable to load chats for session", e);
+            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load chats for session.\"}");
+            return;
+        }
+
+        JsonArrayBuilder array = Json.createArrayBuilder();
+        for (ChatRow r : rows) {
+            array.add(Json.createObjectBuilder()
+                    .add("chatId", r.chatId == null ? "" : r.chatId)
+                    .add("prompt", r.prompt == null ? "" : r.prompt)
+                    .add("createdAt", r.createdAt == null ? "" : r.createdAt.toInstant().toString())
+                    .build());
+        }
+
+        JsonObject body = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("rows", array)
+                .build();
+
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.getWriter().write(body.toString());
+    }
+
+    private void handleSelect(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (!requireAuth(req, resp)) {
+            return;
+        }
+
+        JsonObject payload;
+        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+            payload = reader.readObject();
+        } catch (Exception e) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            return;
+        }
+
+        if (!payload.containsKey("selectedChatIds")) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"selectedChatIds required.\"}");
+            return;
+        }
+
+        Set<String> selected = new LinkedHashSet<>();
+        try {
+            payload.getJsonArray("selectedChatIds").forEach(v -> {
+                String val = v == null ? "" : v.toString().replace("\"", "").trim();
+                if (!val.isBlank()) {
+                    selected.add(val);
+                }
+            });
+        } catch (Exception ignored) {
+        }
+
+        if (selected.isEmpty()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No valid chat IDs provided.\"}");
+            return;
+        }
+
+        String selectionId = WidgetReviewStartServlet.createSelectionFromGlobalChatIds(
+                req.getSession(false),
+                new ArrayList<>(selected),
+                "Selected Session Chats",
+                req.getContextPath() + "/dashboard/sessions"
+        );
+
+        if (selectionId == null || selectionId.isBlank()) {
+            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create selection.\"}");
+            return;
+        }
+
+        JsonObject body = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("selectionId", selectionId)
+                .add("count", selected.size())
                 .build();
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -281,15 +440,12 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private void handleChats(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        resp.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
-        resp.getWriter().write("{\"status\":\"error\",\"message\":\"Not implemented in this snippet.\"}");
-    }
-
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
             return false;
         }
@@ -343,6 +499,19 @@ public class AllSessionsServlet extends HttpServlet {
             return Integer.parseInt(value);
         } catch (Exception ignored) {
             return fallback;
+        }
+    }
+
+    private static final class ChatRow {
+
+        final String chatId;
+        final String prompt;
+        final Timestamp createdAt;
+
+        ChatRow(String chatId, String prompt, Timestamp createdAt) {
+            this.chatId = chatId;
+            this.prompt = prompt;
+            this.createdAt = createdAt;
         }
     }
 }
