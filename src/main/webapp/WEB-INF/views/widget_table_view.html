@@ -11,12 +11,18 @@
 
     <div class="top-bar" data-role="${role}">
         <div class="top-bar-inner">
-            <div class="brand">Chat Server</div>
-            <div>
+            <div class="brand"><strong>SIM</strong></div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
-                <a href="${contextPath}/profile"> Profile </a>
-                <a href="${contextPath}/dashboard"> Dashboard </a>
-                <a href="${contextPath}/logout"> Logout</a>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
             </div>
         </div>
     </div>
