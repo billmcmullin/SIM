@@ -1,6 +1,7 @@
 (function () {
     const cfg = window.dashboardConfig || {};
     const contextPath = cfg.contextPath || '';
+    const SELECT_BY_DAY_URL = `${contextPath}/dashboard/trends/select`;
 
     let trendData = window.trendData || '{}';
     if (typeof trendData === 'string') {
@@ -28,6 +29,53 @@
         });
     }
 
+    async function openReviewForDay(dayLabel) {
+        if (!dayLabel) return;
+        try {
+            const res = await fetch(SELECT_BY_DAY_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day: dayLabel })
+            });
+
+            const text = await res.text().catch(() => '');
+            let json = {};
+            try { json = JSON.parse(text); } catch { json = { message: text }; }
+
+            if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+            if (json.status === 'ok' && json.selectionId) {
+                window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(json.selectionId)}`;
+            } else {
+                throw new Error(json.message || 'Unable to create review selection');
+            }
+        } catch (err) {
+            console.error(err);
+            alert(`Unable to open review for selected day: ${err.message}`);
+        }
+    }
+
+    function trendChartOptions() {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            interaction: { mode: 'nearest', intersect: true },
+            onHover: (event, elements, chart) => {
+                if (chart && chart.canvas) {
+                    chart.canvas.style.cursor = (elements && elements.length) ? 'pointer' : 'default';
+                }
+            },
+            onClick: async (event, elements, chart) => {
+                if (!elements || !elements.length) return;
+                const idx = elements[0].index;
+                const dayLabel = chart?.data?.labels?.[idx];
+                if (!dayLabel) return;
+                await openReviewForDay(dayLabel);
+            }
+        };
+    }
+
     const totalCtx = document.getElementById('trendChart')?.getContext('2d');
     if (totalCtx) {
         new Chart(totalCtx, {
@@ -42,10 +90,11 @@
                     fill: true,
                     tension: 0.25,
                     borderWidth: 2,
-                    pointRadius: 3
+                    pointRadius: 3,
+                    pointHoverRadius: 5
                 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            options: trendChartOptions()
         });
     }
 
@@ -89,10 +138,11 @@
                     fill: true,
                     tension: 0.25,
                     borderWidth: 2,
-                    pointRadius: 2
+                    pointRadius: 2,
+                    pointHoverRadius: 5
                 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            options: trendChartOptions()
         });
     });
 })();

@@ -35,7 +35,6 @@
         try { return new Date(ts).toLocaleString(); } catch (e) { return ts; }
     };
 
-    // FIX: define locally so all_sessions.js does not depend on any other file
     function renderSessionLabel(cell, label, sessionId) {
         if (!cell) return;
         cell.innerHTML = '';
@@ -60,10 +59,12 @@
         }
         const ct = res.headers.get('content-type') || '';
         const text = await res.text();
-        if (!ct.includes('application/json')) {
-            try { return JSON.parse(text); } catch (e) { throw new Error('Non-JSON response received'); }
+
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error(`Non-JSON response received (content-type: ${ct || 'unknown'})`);
         }
-        return JSON.parse(text);
     }
 
     async function loadSessions(reqPage = 1, search = '') {

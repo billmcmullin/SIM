@@ -12,19 +12,17 @@
     <div class="top-bar">
         <div class="top-bar-inner">
             <div class="brand"><strong>SIM</strong></div>
-            <div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
-                <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
-                        Profile
-                    </button>
-                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
-                        Dashboard
-                    </button>
-                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
-                        Logout
-                    </button>
-                </div>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
             </div>
         </div>
     </div>
@@ -43,7 +41,6 @@
                 </div>
             </div>
 
-            <!-- Controls: Search, Clear, View All, Review Selected, Selection Info -->
             <div class="widget-view-controls" style="align-items:center; gap:12px; margin-bottom:12px;">
                 <div style="flex:1; display:flex; gap:12px; align-items:center;">
                     <input id="searchInput" type="search" placeholder="Search prompts & responses"
@@ -57,7 +54,6 @@
                     <button id="deselectSelectedBtn" class="ghost-btn" disabled>Deselect all</button>
                     <span id="selectionInfo" style="color:#475569; font-weight:600;"></span>
                 </div>
-
             </div>
 
             <div id="summary" class="search-summary"></div>
@@ -91,12 +87,16 @@
             </div>
 
             <div id="sessionsPagination" style="margin-top:12px;"></div>
-
         </section>
     </main>
 
     <script>
-     ${ initialScript } 
+        window.APP_CONTEXT_PATH = '${contextPath}';
+        window.ALL_SESSIONS_INITIAL = {
+            all: true,
+            page: 1,
+            limit: 10
+        };
     </script>
 
     <script src="${contextPath}/assets/js/all_sessions.js"></script>
