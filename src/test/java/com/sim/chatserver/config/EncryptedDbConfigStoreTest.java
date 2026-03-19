@@ -1,18 +1,16 @@
 package com.sim.chatserver.config;
 
 import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.mock;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 /**
  * Parasoft Jtest UTA: Test class for ConfigStore
  *
  * @see com.sim.chatserver.config.ConfigStore
  * @author bmcmullin
  */
-public class ConfigStoreTest
+public class EncryptedDbConfigStoreTest
 {
 
     /**
@@ -26,7 +24,7 @@ public class ConfigStoreTest
     {
         // When
         AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
-        ConfigStore.setAppDataSourceHolder(holder);
+        EncryptedDbConfigStore.setAppDataSourceHolder(holder);
 
     }
 }

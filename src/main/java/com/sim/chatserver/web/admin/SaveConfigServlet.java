@@ -2,7 +2,7 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
 import jakarta.servlet.ServletException;
@@ -28,7 +28,7 @@ public class SaveConfigServlet extends HttpServlet {
         }
 
         try {
-            ServerConfig existingConfig = ConfigStore.load();
+            ServerConfig existingConfig = EncryptedDbConfigStore.load();
             String apiKey = apiKeyParam;
             if (apiKey == null || apiKey.isBlank()) {
                 apiKey = existingConfig != null ? existingConfig.getApiKey() : "";
@@ -36,7 +36,7 @@ public class SaveConfigServlet extends HttpServlet {
             String workspaceName = existingConfig != null ? existingConfig.getWorkspaceName() : "";
 
             ServerConfig config = new ServerConfig(serverHost, serverPort, connectionInfo, apiKey, workspaceName);
-            ConfigStore.save(config);
+            EncryptedDbConfigStore.save(config);
 
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\"}");

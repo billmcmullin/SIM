@@ -52,7 +52,8 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
             return;
         }
 
-        String day = body.getString("day", "").trim(); // expected yyyy-MM-dd
+        String day = body.getString("day", "").trim();
+        String widgetIdFilter = body.getString("widgetId", "").trim(); // optional
         if (day.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setContentType("application/json; charset=UTF-8");
@@ -78,7 +79,12 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
                 }
+
                 String widgetId = w.getWidgetId();
+                if (!widgetIdFilter.isBlank() && !widgetIdFilter.equals(widgetId)) {
+                    continue; // scoped drilldown for widget chart clicks
+                }
+
                 String tableName = sanitizeWidgetTableName(widgetId);
                 if (!tableExists(conn, tableName)) {
                     continue;
@@ -125,9 +131,13 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
             return;
         }
 
+        String label = widgetIdFilter.isBlank()
+                ? ("Entry Trends " + day)
+                : ("Entry Trends " + widgetIdFilter + " " + day);
+
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
-                "Entry Trends " + day,
+                label,
                 snapshots,
                 req.getContextPath() + "/dashboard/trends"
         );

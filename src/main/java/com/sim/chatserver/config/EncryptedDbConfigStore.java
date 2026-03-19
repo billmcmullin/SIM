@@ -12,7 +12,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.enterprise.inject.spi.CDI;
 
-public final class ConfigStore {
+public final class EncryptedDbConfigStore {
 
     private static final String TABLE_NAME = "server_config";
     private static final String CREATE_TABLE_SQL
@@ -33,7 +33,7 @@ public final class ConfigStore {
 
     private static volatile AppDataSourceHolder dsHolder;
 
-    private ConfigStore() {
+    private EncryptedDbConfigStore() {
     }
 
     public static void setAppDataSourceHolder(AppDataSourceHolder holder) {

@@ -29,14 +29,17 @@
         });
     }
 
-    async function openReviewForDay(dayLabel) {
+    async function openReviewForDay(dayLabel, widgetId) {
         if (!dayLabel) return;
         try {
+            const payload = { day: dayLabel };
+            if (widgetId) payload.widgetId = widgetId;
+
             const res = await fetch(SELECT_BY_DAY_URL, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ day: dayLabel })
+                body: JSON.stringify(payload)
             });
 
             const text = await res.text().catch(() => '');
@@ -55,7 +58,7 @@
         }
     }
 
-    function trendChartOptions() {
+    function trendChartOptions(widgetId) {
         return {
             responsive: true,
             maintainAspectRatio: false,
@@ -71,7 +74,7 @@
                 const idx = elements[0].index;
                 const dayLabel = chart?.data?.labels?.[idx];
                 if (!dayLabel) return;
-                await openReviewForDay(dayLabel);
+                await openReviewForDay(dayLabel, widgetId || null);
             }
         };
     }
@@ -94,7 +97,7 @@
                     pointHoverRadius: 5
                 }]
             },
-            options: trendChartOptions()
+            options: trendChartOptions(null) // total chart => all widgets on selected date
         });
     }
 
@@ -142,7 +145,7 @@
                     pointHoverRadius: 5
                 }]
             },
-            options: trendChartOptions()
+            options: trendChartOptions(series.widgetId || null) // widget chart => only that widget/date
         });
     });
 })();

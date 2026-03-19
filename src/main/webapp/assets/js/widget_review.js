@@ -51,8 +51,6 @@ let selectionPreviewText = 'No chat selected.';
 let selectionSummaryText = '';
 
 const MAX_SUMMARY_CHARS = 4000;
-const PROMPT_SNIPPET_LENGTH = 280;
-const RESPONSE_SNIPPET_LENGTH = 600;
 const MAX_TOTAL_MESSAGE_CHARS = 8912;
 
 const urlSessionId = new URLSearchParams(window.location.search).get('sessionId');
@@ -65,9 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showError('Missing selection reference.');
         return;
     }
-    if (selectColumnHeader) {
-        selectColumnHeader.textContent = '';
-    }
+    if (selectColumnHeader) selectColumnHeader.textContent = '';
+
     reviewPageSizeSelect?.addEventListener('change', () => {
         const val = parseInt(reviewPageSizeSelect.value, 10);
         if (Number.isNaN(val)) return;
@@ -75,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.page = 1;
         loadSelectionData();
     });
+
     attachHandlers();
     attachManualMessageHandlers();
     hideManualMessageSection();
@@ -89,9 +87,7 @@ function formatSessionDisplay(row) {
 }
 
 function showSessionIndicator(value) {
-    if (!sessionIndicator || !sessionIndicatorValue) {
-        return;
-    }
+    if (!sessionIndicator || !sessionIndicatorValue) return;
     sessionIndicatorValue.textContent = value;
     sessionIndicator.removeAttribute('hidden');
 }
@@ -236,75 +232,9 @@ function setManualMessageStatus(message, isError = false) {
     manualMessageStatus.classList.toggle('success', !isError && Boolean(message));
 }
 
-function normalizeSmartPunctuation(s) {
-    if (typeof s !== 'string') return s;
-    return s
-        .replace(/\u2019/g, "'")
-        .replace(/\u201C/g, '"')
-        .replace(/\u201D/g, '"')
-        .replace(/\u2011/g, '-')
-        .replace(/\u2014/g, ' - ');
-}
-
-function normalizeObjectStrings(obj) {
-    if (typeof obj === 'string') return normalizeSmartPunctuation(obj);
-    if (Array.isArray(obj)) return obj.map(normalizeObjectStrings);
-    if (obj && typeof obj === 'object') {
-        for (const k of Object.keys(obj)) obj[k] = normalizeObjectStrings(obj[k]);
-        return obj;
-    }
-    return obj;
-}
-
-function bytesToHex(u8) {
-    return Array.prototype.slice.call(u8).map(b => b.toString(16).padStart(2, '0')).join(' ');
-}
-
-function analyzeDecodedString(s) {
-    const results = { length: 0, replCount: 0, highCharCount: 0, replPositions: [], highCharPositions: [] };
-    if (typeof s !== 'string') return results;
-    for (let i = 0; i < s.length; i++) {
-        const code = s.charCodeAt(i);
-        if (code === 0xfffd) {
-            results.replCount++;
-            if (results.replPositions.length < 10) results.replPositions.push({ index: i, code });
-        }
-        if (code > 127) {
-            results.highCharCount++;
-            if (results.highCharPositions.length < 10) results.highCharPositions.push({ index: i, code, ch: s[i] });
-        }
-    }
-    results.length = s.length;
-    return results;
-}
-
-function safeEscapeHtml(s) {
-    if (s === null || typeof s === 'undefined') return '';
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function buildDiagnosticsHtml(headersObj, bytePreviewHex, decodings) {
-    let html = `<div style="font-family:monospace; font-size:12px;">`;
-    html += `<strong>Response diagnostics</strong><br/>`;
-    html += `<strong>HTTP headers:</strong><br/><pre>${safeEscapeHtml(JSON.stringify(headersObj, null, 2))}</pre>`;
-    html += `<strong>First bytes (hex):</strong><br/><pre>${safeEscapeHtml(bytePreviewHex)}</pre>`;
-    for (const enc of Object.keys(decodings)) {
-        const d = decodings[enc];
-        html += `<hr><strong>Decoded as ${enc} (preview):</strong><br/><pre>${safeEscapeHtml((d.previewRaw || '').slice(0, 2000))}</pre>`;
-        html += `<div>length=${d.analysis.length}, replacementChars=${d.analysis.replCount}, highCharCount=${d.analysis.highCharCount}</div>`;
-        html += `<div>replacement positions: ${safeEscapeHtml(JSON.stringify(d.analysis.replPositions))}</div>`;
-        html += `<div>highChar positions: ${safeEscapeHtml(JSON.stringify(d.analysis.highCharPositions))}</div>`;
-    }
-    html += `</div>`;
-    return html;
-}
-
-function scoreDecodedCandidate(decoded, analysis) {
-    const punctRegex = /[—–‑…“”‘’≈≅≤≥±·]/g;
-    const punctCount = (decoded.match(punctRegex) || []).length;
-    const asciiQuestionCount = (decoded.match(/\?/g) || []).length;
-    const score = (punctCount * 10) - (analysis.replCount * 50) - (asciiQuestionCount * 2) + (analysis.highCharCount * 2);
-    return { score, punctCount, replCount: analysis.replCount, asciiQuestionCount };
+function parseJsonSafe(value) {
+    if (!value) return null;
+    try { return JSON.parse(value); } catch { return null; }
 }
 
 async function sendManualMessage() {
@@ -315,9 +245,11 @@ async function sendManualMessage() {
         return;
     }
     if (!manualMessageSendBtn) return;
+
     manualMessageSendBtn.disabled = true;
     setManualMessageStatus('Sending...');
     updateSelectionView();
+
     try {
         const messagePayload = buildManualMessagePayload(text);
         const fetchResp = await fetch(`${contextPath}/dashboard/widgets/drilldown/review/manual-message`, {
@@ -326,69 +258,17 @@ async function sendManualMessage() {
             body: JSON.stringify({ message: messagePayload })
         });
 
-        const headersObj = {};
-        fetchResp.headers.forEach((v, k) => { headersObj[k] = v; });
-
-        const buf = await fetchResp.arrayBuffer();
-        const u8 = new Uint8Array(buf);
-        const bytePreviewHex = bytesToHex(u8.slice(0, 200));
-
-        const encodingsToTry = ['utf-8', 'windows-1252', 'iso-8859-1'];
-        const decodings = {};
-        const candidates = [];
-        for (const enc of encodingsToTry) {
-            try {
-                const dec = new TextDecoder(enc, { fatal: false });
-                const rawDecoded = dec.decode(buf);
-                const decodedNorm = normalizeSmartPunctuation(rawDecoded);
-                const analysis = analyzeDecodedString(rawDecoded);
-                decodings[enc] = { previewRaw: rawDecoded, previewNorm: decodedNorm, analysis };
-                const parsedRaw = parseJsonSafe(rawDecoded);
-                const parsedNorm = parseJsonSafe(decodedNorm) ? normalizeObjectStrings(parseJsonSafe(decodedNorm)) : null;
-                candidates.push({ enc, rawDecoded, decodedNorm, analysis, parsedRaw, parsedNorm });
-            } catch (err) {
-                decodings[enc] = { previewRaw: `Decoding failed: ${err.message}`, previewNorm: '', analysis: { length: 0, replCount: 0, highCharCount: 0, replPositions: [], highCharPositions: [] } };
-            }
-        }
-
-        let chosen = candidates.find(c => c.parsedRaw) || candidates.find(c => c.parsedNorm) || null;
-        if (!chosen) {
-            candidates.forEach(c => { c.scoreInfo = scoreDecodedCandidate(c.rawDecoded, c.analysis); });
-            candidates.sort((a, b) => (b.scoreInfo.score || 0) - (a.scoreInfo.score || 0));
-            chosen = candidates[0] || null;
-        }
-
-        let chosenTextResponse = '';
-        if (chosen) {
-            if (chosen.parsedRaw) {
-                chosenTextResponse = chosen.parsedRaw.textResponse || chosen.parsedRaw.message || chosen.rawDecoded;
-            } else if (chosen.parsedNorm) {
-                chosenTextResponse = chosen.parsedNorm.textResponse || chosen.parsedNorm.message || chosen.rawDecoded;
-            } else {
-                chosenTextResponse = chosen.rawDecoded;
-            }
-        } else {
-            const fallback = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-            chosenTextResponse = fallback;
-        }
-
-        const diagHtml = buildDiagnosticsHtml(headersObj, bytePreviewHex, decodings);
-        console.group('Manual-message response diagnostics');
-        console.log('headers:', headersObj);
-        console.log('byte preview (hex):', bytePreviewHex);
-        console.log('decodings summary:', Object.keys(decodings).reduce((acc, k) => { acc[k] = decodings[k].analysis; return acc; }, {}));
-        if (chosen) console.log('chosen encoding:', chosen.enc, 'score:', chosen.scoreInfo || null);
-        console.groupEnd();
+        const rawText = await fetchResp.text();
+        const parsed = parseJsonSafe(rawText);
+        const textResponse = parsed?.textResponse || parsed?.message || rawText || '';
 
         if (fetchResp.ok) {
             setManualMessageStatus('Message delivered.', false);
             manualMessageTextarea.value = '';
-            displayManualMessageResponseRaw(chosenTextResponse || '', diagHtml);
+            displayManualMessageResponseRaw(textResponse);
         } else {
-            const parsedErr = chosen && (chosen.parsedRaw || chosen.parsedNorm);
-            const errorText = (parsedErr && (parsedErr.message || parsedErr.error)) || chosenTextResponse || `Unable to send message (status ${fetchResp.status}).`;
-            setManualMessageStatus(errorText, true);
-            displayManualMessageResponseRaw(chosenTextResponse || errorText, diagHtml);
+            setManualMessageStatus(textResponse || `Unable to send message (status ${fetchResp.status}).`, true);
+            displayManualMessageResponseRaw(textResponse || 'No response yet.');
         }
     } catch (error) {
         setManualMessageStatus(`Request failed: ${error.message}`, true);
@@ -398,7 +278,7 @@ async function sendManualMessage() {
     }
 }
 
-function displayManualMessageResponseRaw(text, diagnosticsHtml) {
+function displayManualMessageResponseRaw(text) {
     if (!manualMessageResponse) return;
     const raw = (typeof text === 'string') ? text : String(text || '');
     manualMessageResponse.innerHTML = '';
@@ -407,22 +287,12 @@ function displayManualMessageResponseRaw(text, diagnosticsHtml) {
     pre.style.fontFamily = 'monospace';
     pre.textContent = raw;
     manualMessageResponse.appendChild(pre);
-    if (diagnosticsHtml) {
-        const details = document.createElement('details');
-        details.style.marginTop = '12px';
-        const summary = document.createElement('summary');
-        summary.textContent = 'Response diagnostics (click to expand)';
-        details.appendChild(summary);
-        const diagContainer = document.createElement('div');
-        diagContainer.innerHTML = diagnosticsHtml;
-        details.appendChild(diagContainer);
-        manualMessageResponse.appendChild(details);
-    }
 }
 
 function buildManualMessagePayload(userText) {
     const safeSummary = selectionSummaryText;
-    const truncatedSummary = ensureWithinLength(safeSummary, MAX_TOTAL_MESSAGE_CHARS - userText.length);
+    const room = Math.max(0, MAX_TOTAL_MESSAGE_CHARS - userText.length);
+    const truncatedSummary = ensureWithinLength(safeSummary, room);
     const selectionSummary = truncatedSummary ? `\n\nSelected chats context:\n${truncatedSummary}` : '';
     return `${userText}${selectionSummary}`;
 }
@@ -435,6 +305,7 @@ function buildSafeSelectionSummary() {
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return dateB - dateA;
     }).map(entry => formatEntrySummary(entry));
+
     let combined = summaryBlocks.join('\n\n');
     if (combined.length <= MAX_SUMMARY_CHARS) return combined;
     return ensureWithinLength(combined, MAX_SUMMARY_CHARS);
@@ -469,6 +340,7 @@ function selectAllEntries() {
         setManualMessageStatus('No entries available to select.', true);
         return Promise.resolve();
     }
+
     const params = new URLSearchParams();
     params.append('selectionId', selectionId);
     params.append('limit', state.totalRows);
@@ -476,6 +348,7 @@ function selectAllEntries() {
     params.append('sortColumn', state.sortColumn);
     params.append('sortDir', state.sortDir);
     if (state.search) params.append('search', state.search);
+
     const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
 
     return fetch(url, { headers: { 'Accept': 'application/json' } })
@@ -491,7 +364,10 @@ function selectAllEntries() {
                 setManualMessageStatus('No chat entries to select.', true);
                 return;
             }
-            newEntries.forEach(row => { multiSelected.add(row.chatId); selectedEntryDetails.set(row.chatId, row); });
+            newEntries.forEach(row => {
+                multiSelected.add(row.chatId);
+                selectedEntryDetails.set(row.chatId, row);
+            });
             renderRows(rows);
             updateSelectAllCheckbox();
             refreshDetailPanel();
@@ -502,35 +378,6 @@ function selectAllEntries() {
             console.error('selectAllEntries error:', error);
             setManualMessageStatus(`Unable to select all entries: ${error.message}`, true);
         });
-}
-
-function renderMarkdownIfNeeded(raw) {
-    if (!raw) return '';
-    const hasMarkers = /(#|\*|_|\`)/.test(raw);
-    const escaped = escapeHtml(raw);
-    if (!hasMarkers) return `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
-    let formatted = escaped;
-    formatted = formatted.replace(/```([\s\S]*?)```/g, (_, inner) => `<div class="markdown-code">${inner}</div>`);
-    for (let i = 6; i >= 1; i -= 1) {
-        const pattern = new RegExp(`^${'#'.repeat(i)}\\s+(.+)$`, 'gm');
-        formatted = formatted.replace(pattern, `<h${i}>$1</h${i}>`);
-    }
-    formatted = formatted.replace(/__(.+?)__/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/_(.+?)_/g, '<em>$1</em>');
-    formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    formatted = formatted.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    formatted = formatted.replace(/\n{2,}/g, '[[PARAGRAPH_BREAK]]');
-    return formatted.split('[[PARAGRAPH_BREAK]]').map(part => {
-        const trimmed = part.trim();
-        if (!trimmed) return '';
-        return /^<(h[1-6]|ul|div|pre)/.test(trimmed) ? trimmed : `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
-    }).join('');
-}
-
-function parseJsonSafe(value) {
-    if (!value) return null;
-    try { return JSON.parse(value); } catch { return null; }
 }
 
 function updateSelectionView() {
@@ -578,17 +425,21 @@ async function loadSelectionData() {
     params.append('sortColumn', state.sortColumn);
     params.append('sortDir', state.sortDir);
     if (state.search) params.append('search', state.search);
+
     const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
 
     try {
         const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
+
         const payload = await resp.json();
         if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load selection.');
+
         rows = payload.rows || [];
         state.totalPages = payload.totalPages || 1;
         state.page = payload.page || 1;
         state.totalRows = payload.totalRows || 0;
+
         renderRows(rows);
         renderSearchTerms(payload.searchTerms);
         refreshDetailPanel();
@@ -605,15 +456,20 @@ function renderRows(data) {
     if (!reviewBody) return;
     if (!data.length) {
         reviewBody.innerHTML = '<tr><td colspan="5" class="empty-row">No selected chats available.</td></tr>';
-        selectAllCheckbox && (selectAllCheckbox.checked = false);
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
         return;
     }
+
     reviewBody.innerHTML = data.map(row => {
         const checked = multiSelected.has(row.chatId) ? 'checked' : '';
         const label = formatSessionDisplay(row);
         const muted = row.sessionId && row.sessionId !== label
             ? `<div class="session-id-muted">${escapeHtml(row.sessionId)}</div>`
             : '';
+
         return `<tr data-chat-id="${escapeHtml(row.chatId)}">
             <td class="select-column">
                 <input type="checkbox" class="row-multi-select" data-chat-id="${escapeHtml(row.chatId)}" ${checked}>
@@ -624,18 +480,23 @@ function renderRows(data) {
             <td><div class="text-summary">${escapeHtml(label)}</div>${muted}</td>
         </tr>`;
     }).join('');
+
     updateSelectAllCheckbox();
 }
 
 function refreshDetailPanel() {
-    if (!detailCard || !detailTitle) return;
+    if (!detailCard || !detailTitle || !detailPrompt || !detailResponse) return;
+
+    // Force RAW rendering in detail panel: textContent only (no markdown/html transforms).
     if (!multiSelected.size) {
         detailCard.style.display = 'none';
         detailPrompt.textContent = '';
         detailResponse.textContent = '';
         return;
     }
+
     detailCard.style.display = 'block';
+
     if (multiSelected.size === 1) {
         const entry = selectedEntryDetails.get([...multiSelected][0]);
         if (entry) {
@@ -645,6 +506,7 @@ function refreshDetailPanel() {
             return;
         }
     }
+
     detailTitle.textContent = 'Multiple chats selected';
     detailPrompt.textContent = '';
     detailResponse.textContent = '';
@@ -657,6 +519,7 @@ function updateSelectAllCheckbox() {
         selectAllCheckbox.indeterminate = false;
         return;
     }
+
     const totalRowsOnPage = rows.length;
     const selectedOnPage = rows.filter(row => multiSelected.has(row.chatId)).length;
     selectAllCheckbox.checked = selectedOnPage === totalRowsOnPage && totalRowsOnPage > 0;
@@ -681,6 +544,7 @@ function renderSearchTerms(terms) {
     if (terms.global) entries.push(`Global: "${terms.global}"`);
     if (terms.prompt) entries.push(`Prompt: "${terms.prompt}"`);
     if (terms.response) entries.push(`Response: "${terms.response}"`);
+
     if (!entries.length) {
         searchTermsDisplay.innerHTML = '<span>No search terms were applied.</span>';
         return;
@@ -689,7 +553,9 @@ function renderSearchTerms(terms) {
 }
 
 function showError(message) {
-    if (reviewBody) reviewBody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:#b91c1c;">${escapeHtml(message)}</td></tr>`;
+    if (reviewBody) {
+        reviewBody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:#b91c1c;">${escapeHtml(message)}</td></tr>`;
+    }
     if (detailCard) detailCard.style.display = 'none';
 }
 
@@ -701,14 +567,25 @@ function truncateText(text, length = 160) {
 
 function escapeHtml(value) {
     if (!value && value !== 0) return '';
-    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function formatDate(value) {
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 function exportSelected(format = 'csv') {
@@ -717,8 +594,10 @@ function exportSelected(format = 'csv') {
         return;
     }
     if (!exportSelectedBtn) return;
+
     exportSelectedBtn.disabled = true;
     setManualMessageStatus('Preparing export...');
+
     fetch(`${contextPath}/dashboard/widgets/drilldown/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
@@ -734,6 +613,7 @@ function exportSelected(format = 'csv') {
         .then(({ resp, blob }) => {
             let filename = `export.${format === 'csv' ? 'csv' : format === 'json' ? 'json' : 'txt'}`;
             const cd = resp.headers.get('Content-Disposition') || '';
+
             const m = /filename\*?=.*''([^;\s]+)/i.exec(cd);
             if (m && m[1]) {
                 try { filename = decodeURIComponent(m[1]); } catch { filename = m[1]; }
@@ -750,6 +630,7 @@ function exportSelected(format = 'csv') {
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
+
             setManualMessageStatus('Export ready. Download started.', false);
         })
         .catch(err => {
@@ -762,15 +643,15 @@ function exportSelected(format = 'csv') {
 }
 
 function updateSelectionUI() {
-    if (!exportSelectedBtn) {
-        return;
-    }
+    if (!exportSelectedBtn) return;
     exportSelectedBtn.disabled = multiSelected.size === 0;
+
     const reviewBtn = document.getElementById('reviewSelectedBtn');
     if (reviewBtn) {
         const count = selectedEntryDetails.size || multiSelected.size;
         reviewBtn.textContent = `Review Selected (${count})`;
         reviewBtn.disabled = count === 0;
+
         const selectedInfoElem = document.getElementById('selectedInfo');
         if (selectedInfoElem) {
             selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';

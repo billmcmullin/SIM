@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
@@ -39,7 +39,7 @@ public class AdminConfigServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         try {
-            ConfigStore.ensureTable();
+            EncryptedDbConfigStore.ensureTable();
             termsStore.ensureTable();
         } catch (Exception e) {
             throw new ServletException("Unable to initialize configuration storage", e);
@@ -69,7 +69,7 @@ public class AdminConfigServlet extends HttpServlet {
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         ServerConfig config;
         try {
-            config = ConfigStore.load();
+            config = EncryptedDbConfigStore.load();
         } catch (Exception e) {
             throw new ServletException("Unable to load server configuration", e);
         }

@@ -14,6 +14,10 @@
             <div class="brand"><strong>SIM</strong></div>
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
                     Profile
                 </button>
@@ -29,14 +33,10 @@
 
     <div class="container">
         <section class="section">
-            <a class="back-link" href="${contextPath}/dashboard">
-                &larr; Back to dashboard
-            </a>
             <h1>Widget Chat Entries</h1>
             <p><strong>${widgetName}</strong> (<em>${widgetId}</em>)</p>
             <p class="helper-note">Select multiple rows, keep selections across pages, and review them in detail.</p>
         </section>
-
         <section class="widget-view-wrapper">
             <div class="widget-view-controls">
                 <div class="form-group">

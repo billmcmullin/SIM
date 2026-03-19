@@ -7,7 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
 import jakarta.servlet.ServletException;
@@ -49,7 +49,7 @@ public class TestConnectionServlet extends HttpServlet {
 
         if (apiKey == null || apiKey.isBlank()) {
             try {
-                ServerConfig config = ConfigStore.load();
+                ServerConfig config = EncryptedDbConfigStore.load();
                 apiKey = config != null ? config.getApiKey() : "";
             } catch (Exception e) {
                 resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);

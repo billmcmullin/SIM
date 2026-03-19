@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -200,7 +200,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private List<WidgetSyncStatus> runSync(String requestedWidgetId) throws Exception {
-        ServerConfig config = ConfigStore.load();
+        ServerConfig config = EncryptedDbConfigStore.load();
         if (config == null) {
             throw new IOException("Server configuration is missing.");
         }

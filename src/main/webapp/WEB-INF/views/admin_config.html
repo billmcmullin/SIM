@@ -12,9 +12,12 @@
     <div class="top-bar">
         <div class="top-bar-inner">
             <div class="brand"><strong>SIM Admin page</strong></div>
-
-            <span>Signed in as <strong>${user}</strong></span>
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
                     Profile
                 </button>
@@ -32,9 +35,7 @@
         <section class="section">
             <h1>Admin Configuration</h1>
             <p>Hello, ${user}. Configure the chat server connection below.</p>
-            <p><a href="${contextPath}/dashboard">&larr; Back to Dashboard</a></p>
         </section>
-
         <section class="section">
             <h2>Server Configuration</h2>
             <form id="serverConfigForm">
@@ -316,7 +317,7 @@
     <!-- Admin page modular scripts (load order is important) -->
     <script defer src="${contextPath}/assets/js/admin_utils/utils.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/apis.js"></script>
-    <script defer src="${contextPath}/assets/js/admin_utils/markdown.js"></script>
+    <!-- <script defer src="${contextPath}/assets/js/admin_utils/markdown.js"></script>-->
     <script defer src="${contextPath}/assets/js/admin_utils/users.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/widgets.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/terms.js"></script>

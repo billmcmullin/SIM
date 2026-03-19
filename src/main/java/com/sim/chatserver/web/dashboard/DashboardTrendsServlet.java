@@ -48,7 +48,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             return;
         }
 
-        int days = parseDays(req.getParameter("days")); // default 30
+        int days = parseDays(req.getParameter("days"));
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
@@ -57,7 +57,10 @@ public class DashboardTrendsServlet extends HttpServlet {
             totalDaily.put(start.plusDays(i), 0);
         }
 
+        // key = widget display name, value = daily counts
         Map<String, Map<LocalDate, Integer>> widgetDaily = new LinkedHashMap<>();
+        // map display name -> widgetId so JS can pass precise widget filter
+        Map<String, String> widgetNameToId = new LinkedHashMap<>();
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             List<WidgetEntry> widgets = WidgetStore.list(null);
@@ -109,6 +112,7 @@ public class DashboardTrendsServlet extends HttpServlet {
                 }
 
                 widgetDaily.put(widgetName, series);
+                widgetNameToId.put(widgetName, widgetId);
             }
         } catch (Exception e) {
             throw new ServletException("Unable to load trend data", e);
@@ -123,12 +127,17 @@ public class DashboardTrendsServlet extends HttpServlet {
 
         JsonArrayBuilder widgetSeries = Json.createArrayBuilder();
         for (Map.Entry<String, Map<LocalDate, Integer>> entry : widgetDaily.entrySet()) {
+            String widgetName = entry.getKey();
+            String widgetId = widgetNameToId.getOrDefault(widgetName, widgetName);
+
             JsonArrayBuilder widgetValues = Json.createArrayBuilder();
             for (LocalDate d : totalDaily.keySet()) {
                 widgetValues.add(entry.getValue().getOrDefault(d, 0));
             }
+
             widgetSeries.add(Json.createObjectBuilder()
-                    .add("name", entry.getKey())
+                    .add("name", widgetName)
+                    .add("widgetId", widgetId)
                     .add("values", widgetValues));
         }
 

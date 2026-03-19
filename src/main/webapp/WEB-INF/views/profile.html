@@ -14,8 +14,9 @@
             <div>
                 <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <span>Signed in as <strong>${user}</strong></span>
-                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
-                        Profile
+                    <button type="button" class="ghost-btn"
+                        onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                        Back
                     </button>
                     <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
                         Dashboard

@@ -14,6 +14,10 @@
             <div class="brand"><strong>SIM</strong></div>
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
                     Profile
                 </button>
@@ -31,10 +35,6 @@
         <section class="section">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
                 <div>
-                    <a class="back-link" href="${contextPath}/dashboard"
-                        style="display:inline-flex; align-items:center; gap:8px;">
-                        ← Back to Dashboard
-                    </a>
                     <h1 style="margin:8px 0 0 0;">Review Sessions</h1>
                     <p style="margin:6px 0 0 0; color:#475569;">View and drill into sessions across all widgets. Use the
                         controls below to search, expand and select chats for review.</p>

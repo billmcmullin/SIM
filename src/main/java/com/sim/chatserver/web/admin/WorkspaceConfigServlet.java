@@ -3,7 +3,7 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -39,7 +39,7 @@ public class WorkspaceConfigServlet extends HttpServlet {
         workspaceName = workspaceName.trim();
 
         try {
-            ConfigStore.saveWorkspaceName(workspaceName);
+            EncryptedDbConfigStore.saveWorkspaceName(workspaceName);
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\",\"workspaceName\":\"" + escapeJson(workspaceName) + "\"}");
         } catch (Exception e) {

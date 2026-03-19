@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.config.ConfigStore;
+import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
@@ -67,10 +67,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return;
         }
 
-        ConfigStore.setAppDataSourceHolder(dsHolder);
+        EncryptedDbConfigStore.setAppDataSourceHolder(dsHolder);
         ServerConfig config;
         try {
-            config = ConfigStore.load();
+            config = EncryptedDbConfigStore.load();
         } catch (Exception ex) {
             log.log(Level.SEVERE, "Unable to load server configuration", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration not available.");

@@ -13,6 +13,10 @@
             <div class="brand"><strong>SIM</strong></div>
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
                     Profile
                 </button>
@@ -32,10 +36,6 @@
         </div>
 
         <section class="section">
-            <a class="back-link" href="${contextPath}/dashboard"
-                style="display:inline-flex; align-items:center; gap:8px;">
-                ← Back to Dashboard
-            </a>
             <h1>Review Selected Chats</h1>
             <p class="helper-note">Currently reviewing ${subjectType}: <strong>${subjectLabel}</strong></p>
             <p class="helper-note">Showing all columns except the response. Use the search or sort controls to explore

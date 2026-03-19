@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -43,6 +44,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetReviewDataServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
+    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -59,7 +61,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         String selectionId = req.getParameter("selectionId");
         if (selectionId == null || selectionId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"selectionId required.\"}");
+            writeJson(resp, "{\"status\":\"error\",\"message\":\"selectionId required.\"}");
             return;
         }
 
@@ -67,7 +69,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
             resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Selection not found.\"}");
+            writeJson(resp, "{\"status\":\"error\",\"message\":\"Selection not found.\"}");
             return;
         }
 
@@ -83,14 +85,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Table does not exist.\"}");
+                writeJson(resp, "{\"status\":\"error\",\"message\":\"Table does not exist.\"}");
                 return;
             }
 
             List<String> chatIds = selection.chatIds;
             if (chatIds.isEmpty()) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"No chat IDs specified.\"}");
+                writeJson(resp, "{\"status\":\"error\",\"message\":\"No chat IDs specified.\"}");
                 return;
             }
 
@@ -202,12 +204,11 @@ public class WidgetReviewDataServlet extends HttpServlet {
                     .add("page", page)
                     .build();
 
-            resp.setContentType("application/json");
-            resp.getWriter().write(body.toString());
+            writeJson(resp, body.toString());
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to fetch selected rows", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load selection.\"}");
+            writeJson(resp, "{\"status\":\"error\",\"message\":\"Unable to load selection.\"}");
         }
     }
 
@@ -275,8 +276,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 .add("page", page)
                 .build();
 
-        resp.setContentType("application/json");
-        resp.getWriter().write(body.toString());
+        writeJson(resp, body.toString());
     }
 
     private List<TermChatSnapshot> filterSnapshots(List<TermChatSnapshot> base, String search) {
@@ -302,7 +302,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeJson(resp, "{\"status\":\"error\",\"message\":\"Authentication required.\"}");
             return false;
         }
         return true;
@@ -420,6 +420,12 @@ public class WidgetReviewDataServlet extends HttpServlet {
             comparator = comparator.reversed();
         }
         data.sort(comparator);
+    }
+
+    private void writeJson(HttpServletResponse resp, String body) throws IOException {
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
+        resp.getWriter().write(body);
     }
 
     private static final class ChatRow {
