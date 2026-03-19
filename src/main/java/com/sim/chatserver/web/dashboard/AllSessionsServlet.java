@@ -22,6 +22,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -77,6 +78,19 @@ public class AllSessionsServlet extends HttpServlet {
             if (widgetId != null && !widgetId.isBlank()) {
                 widgetIds.add(widgetId);
             }
+        }
+    }
+
+    private static final class ChatRow {
+
+        final String chatId;
+        final String prompt;
+        final Timestamp createdAt;
+
+        ChatRow(String chatId, String prompt, Timestamp createdAt) {
+            this.chatId = chatId;
+            this.prompt = prompt;
+            this.createdAt = createdAt;
         }
     }
 
@@ -241,6 +255,7 @@ public class AllSessionsServlet extends HttpServlet {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
                 }
+
                 String widgetId = widget.getWidgetId();
                 String tableName = sanitizeWidgetTableName(widgetId);
                 if (!tableExists(conn, tableName)) {
@@ -333,10 +348,70 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = WidgetReviewStartServlet.createSelectionFromGlobalChatIds(
+        List<TermChatSnapshot> snapshots = new ArrayList<>();
+        List<WidgetEntry> widgets = listWidgets();
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                    continue;
+                }
+
+                String widgetId = widget.getWidgetId();
+                String tableName = sanitizeWidgetTableName(widgetId);
+                if (!tableExists(conn, tableName)) {
+                    continue;
+                }
+
+                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                        + quoteIdentifier(tableName)
+                        + " WHERE widget_chat_id = ?";
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    for (String chatId : selected) {
+                        ps.setString(1, chatId);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                String foundChatId = rs.getString("widget_chat_id");
+                                String prompt = rs.getString("prompt");
+                                String responseText = rs.getString("response_text");
+                                Timestamp createdAt = rs.getTimestamp("created_at");
+                                String sessionId = rs.getString("session_id");
+
+                                snapshots.add(new TermChatSnapshot(
+                                        "Selected Session Chats",
+                                        widgetId,
+                                        foundChatId == null ? "" : foundChatId,
+                                        prompt,
+                                        responseText,
+                                        createdAt,
+                                        sessionId
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.log(Level.SEVERE, "Unable to collect selected session chats", e);
+            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create selection.\"}");
+            return;
+        }
+
+        if (snapshots.isEmpty()) {
+            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No matching chats found for selection.\"}");
+            return;
+        }
+
+        String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 req.getSession(false),
-                new ArrayList<>(selected),
                 "Selected Session Chats",
+                snapshots,
                 req.getContextPath() + "/dashboard/sessions"
         );
 
@@ -351,7 +426,7 @@ public class AllSessionsServlet extends HttpServlet {
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("selectionId", selectionId)
-                .add("count", selected.size())
+                .add("count", snapshots.size())
                 .build();
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -363,6 +438,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (widgets == null || widgets.isEmpty()) {
             return Collections.emptyMap();
         }
+
         Map<String, String> map = new LinkedHashMap<>();
         for (WidgetEntry w : widgets) {
             if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -499,19 +575,6 @@ public class AllSessionsServlet extends HttpServlet {
             return Integer.parseInt(value);
         } catch (Exception ignored) {
             return fallback;
-        }
-    }
-
-    private static final class ChatRow {
-
-        final String chatId;
-        final String prompt;
-        final Timestamp createdAt;
-
-        ChatRow(String chatId, String prompt, Timestamp createdAt) {
-            this.chatId = chatId;
-            this.prompt = prompt;
-            this.createdAt = createdAt;
         }
     }
 }
