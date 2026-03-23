@@ -30,10 +30,20 @@ body {
     left: 0;
     width: 100%;
     background: var(--primary-blue);
-    color: #af1414;
+    color: #fff;
     padding: 12px 0;
     z-index: 100;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+/* NEW: match other pages */
+.top-bar .brand,
+.top-bar .button-row>span {
+    color: #af1414;
+}
+
+.top-bar .ghost-btn {
+    color: #fff;
 }
 
 .top-bar-inner,
@@ -573,9 +583,6 @@ hr {
     margin: 16px 0;
 }
 
-/* ----------------------------------
-   Manual message helpers
------------------------------------ */
 .manual-message-box {
     border: 1px solid #d1d5db;
     border-radius: 4px;
@@ -635,9 +642,7 @@ hr {
     cursor: pointer;
 }
 
-/* ==========================================
-   Trends page
-========================================== */
+/* Trends page */
 .trend-period-row {
     display: flex;
     gap: 10px;
@@ -659,9 +664,7 @@ hr {
     min-width: 180px;
 }
 
-/* ----------------------------------
-   Responsive tweaks
------------------------------------ */
+/* Responsive */
 @media (max-width: 1100px) {
     :root {
         --container-max-width: 1100px;

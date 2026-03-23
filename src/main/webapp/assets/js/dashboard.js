@@ -1,4 +1,5 @@
 let termSlices = window.termChartData || [];
+let widgetSlices = window.widgetPieChartData || [];
 const dashboardConfig = window.dashboardConfig || {};
 const contextPath = dashboardConfig.contextPath || '';
 
@@ -9,14 +10,22 @@ if (typeof termSlices === 'string') {
         termSlices = [];
     }
 }
+
+if (typeof widgetSlices === 'string') {
+    try {
+        widgetSlices = JSON.parse(widgetSlices);
+    } catch (error) {
+        widgetSlices = [];
+    }
+}
+
 const palette = ['#1d4ed8', '#047857', '#c0392b', '#d97706', '#0f172a', '#6366f1', '#af7b1b'];
 
 const ctx = document.getElementById('termChart')?.getContext('2d');
+const widgetPieCtx = document.getElementById('widgetOverviewPieChart')?.getContext('2d');
 
 function openTermReview(term) {
-    if (!term) {
-        return;
-    }
+    if (!term) return;
     const target = `${contextPath}/dashboard/term-review?term=${encodeURIComponent(term)}`;
     window.location.href = target;
 }
@@ -43,19 +52,55 @@ if (ctx && termSlices.length) {
                         }
                     }
                 },
-                legend: {
-                    display: false
-                }
+                legend: { display: false }
             },
             responsive: true,
             maintainAspectRatio: false,
             onClick: (event, elements) => {
-                if (!elements.length) {
-                    return;
-                }
+                if (!elements.length) return;
                 const index = elements[0].index;
                 const slice = termSlices[index];
                 openTermReview(slice.term);
+            }
+        }
+    });
+}
+
+if (widgetPieCtx && widgetSlices.length) {
+    const data = {
+        labels: widgetSlices.map(slice => slice.label),
+        datasets: [{
+            data: widgetSlices.map(slice => slice.count),
+            backgroundColor: widgetSlices.map((_, index) => palette[index % palette.length])
+        }]
+    };
+    new Chart(widgetPieCtx, {
+        type: 'pie',
+        data,
+        options: {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const slice = widgetSlices[context.dataIndex];
+                            return `${slice.label}: ${slice.count}`;
+                        }
+                    }
+                },
+                legend: { position: 'bottom' }
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: (event, elements) => {
+                if (!elements || !elements.length) return;
+                const index = elements[0].index;
+                const slice = widgetSlices[index];
+                if (!slice) return;
+
+                const widgetId = slice.widgetId || slice.label;
+                if (!widgetId) return;
+
+                window.location.href = `${contextPath}/dashboard/widgets/view?widgetId=${encodeURIComponent(widgetId)}`;
             }
         }
     });
@@ -71,9 +116,7 @@ if (legendEl && termSlices.length) {
         chip.textContent = `${slice.label} (${slice.count})`;
         chip.addEventListener('click', () => openTermReview(slice.term));
         chip.addEventListener('keypress', event => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                openTermReview(slice.term);
-            }
+            if (event.key === 'Enter' || event.key === ' ') openTermReview(slice.term);
         });
         legendEl.appendChild(chip);
     });
@@ -86,7 +129,12 @@ if (legendEl && termSlices.length) {
 
     function esc(v) {
         if (v === null || typeof v === 'undefined') return '';
-        return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+        return String(v)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 
     try {
@@ -96,6 +144,7 @@ if (legendEl && termSlices.length) {
             totalEl.textContent = 'N/A';
             return;
         }
+
         const data = await resp.json();
         if (!data || data.status !== 'ok') {
             totalEl.textContent = 'N/A';
@@ -110,6 +159,7 @@ if (legendEl && termSlices.length) {
             return;
         }
 
+        // Render with button instead of link; no inline onclick
         listEl.innerHTML = sessions.map((s, idx) => {
             const rank = idx + 1;
             const sessionId = s.sessionId || '';
@@ -118,6 +168,7 @@ if (legendEl && termSlices.length) {
             const last = s.last || '—';
             const topWidgetName = s.topWidgetName || '—';
             const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/sessions/drilldown/session-review?sessionId=${encodeURIComponent(sessionId)}`;
+
             return `<tr>
                 <td>${rank}</td>
                 <td>
@@ -125,10 +176,26 @@ if (legendEl && termSlices.length) {
                     ${label !== sessionId && sessionId ? `<div class="session-id-muted">${esc(sessionId)}</div>` : ''}
                 </td>
                 <td>${esc(topWidgetName)}</td>
-                <td><a class="session-count-link" href="${reviewUrl}">${count} chats</a></td>
+                <td>
+                    <button type="button"
+                            class="ghost-btn session-count-btn"
+                            data-review-url="${esc(reviewUrl)}"
+                            aria-label="Review ${esc(label || sessionId)} chats">
+                        ${count} chats
+                    </button>
+                </td>
                 <td>${esc(last)}</td>
             </tr>`;
         }).join('');
+
+        // Safer delegated event handling
+        listEl.addEventListener('click', event => {
+            const btn = event.target.closest('.session-count-btn');
+            if (!btn) return;
+            const reviewUrl = btn.dataset.reviewUrl;
+            if (!reviewUrl) return;
+            window.location.href = reviewUrl;
+        });
 
     } catch (e) {
         console.warn('Unable to load top sessions:', e);

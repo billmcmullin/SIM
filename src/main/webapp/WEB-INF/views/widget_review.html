@@ -17,11 +17,11 @@
                     onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
                     Back
                 </button>
-                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
-                    Profile
-                </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
                     Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
                 </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
                     Logout
@@ -38,7 +38,8 @@
         <section class="section">
             <h1>Review Selected Chats</h1>
             <p class="helper-note">Currently reviewing ${subjectType}: <strong>${subjectLabel}</strong></p>
-            <p class="helper-note">Showing all columns except the response. Use the search or sort controls to explore
+            <p class="helper-note">Showing all columns except the response. Use the search or sort controls to
+                explore
                 the selection.</p>
         </section>
 
@@ -91,7 +92,8 @@
                 </div>
                 <div class="manual-message-response-wrapper form-group">
                     <label>Workspace response</label>
-                    <div class="manual-message-response manual-message-box" id="manualMessageResponse">No response yet.
+                    <div class="manual-message-response manual-message-box" id="manualMessageResponse">No response
+                        yet.
                     </div>
                 </div>
 

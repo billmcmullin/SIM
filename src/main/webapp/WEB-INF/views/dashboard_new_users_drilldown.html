@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Newest Users Drilldown</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+    <style>
+        #pageSizeSelect {
+            width: 82px;
+            min-width: 82px;
+            max-width: 82px;
+            padding: 4px 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <div class="brand"><strong>SIM</strong></div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="section">
+            <h1>All Session IDs / Users (Newest First)</h1>
+            <p>
+                Total users: <strong>${totalUsers}</strong>
+                &nbsp;|&nbsp;
+                Page <strong>${page}</strong> of <strong>${totalPages}</strong>
+            </p>
+
+            <div class="button-row"
+                style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+                <label for="pageSizeSelect">Show</label>
+                <select id="pageSizeSelect"
+                    onchange="window.location.replace('${contextPath}/dashboard/new-users/drilldown?page=1&pageSize=' + this.value + '${dayQuery}')">
+                    <option value="10" ${selected10}>10</option>
+                    <option value="25" ${selected25}>25</option>
+                    <option value="50" ${selected50}>50</option>
+                </select>
+                <span>entries</span>
+
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="prevPageBtn" type="button" class="ghost-btn" ${prevDisabled}
+                        onclick="if(!this.disabled){ window.location.replace('${prevHref}'); }">Back</button>
+                    <button id="nextPageBtn" type="button" class="ghost-btn" ${nextDisabled}
+                        onclick="if(!this.disabled){ window.location.replace('${nextHref}'); }">Next</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="table-scroll">
+                <table class="session-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Session ID / User</th>
+                            <th>First Seen</th>
+                            <th>Total Chats</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</body>
+
+</html>

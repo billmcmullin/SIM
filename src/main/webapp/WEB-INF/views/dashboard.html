@@ -44,25 +44,39 @@
                     onclick="window.location.href='${contextPath}/dashboard/latest-chats'">
                     Latest Chats
                 </button>
+                <button type="button" class="ghost-btn"
+                    onclick="window.location.href='${contextPath}/dashboard/new-users'">
+                    New Users
+                </button>
             </div>
         </section>
 
         <section class="section stats-section">
             <h2>Widget Chat Overview</h2>
             <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
-            <div class="table-scroll">
-                <table class="widget-table">
-                    <thead>
-                        <tr>
-                            <th>Widget Name</th>
-                            <th>Chat Entries</th>
-                            <th>View</th>
-                        </tr>
-                    </thead>
-                    <tbody id="widgetStatsBody">
-                        ${widgetStatsRows}
-                    </tbody>
-                </table>
+
+            <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
+                <div style="flex:1 1 520px; min-width:420px;">
+                    <div class="table-scroll">
+                        <table class="widget-table">
+                            <thead>
+                                <tr>
+                                    <th>Widget Name</th>
+                                    <th>Chat Entries</th>
+                                </tr>
+                            </thead>
+                            <tbody id="widgetStatsBody">
+                                ${widgetStatsRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div style="flex:0 0 360px; width:360px; max-width:100%;">
+                    <div class="chart-area" style="height:320px; margin:0;">
+                        <canvas id="widgetOverviewPieChart"></canvas>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -113,6 +127,7 @@
 
     <script>
         window.termChartData = '${termChartData}';
+        window.widgetPieChartData = '${widgetPieChartData}';
         window.dashboardConfig = { contextPath: '${contextPath}' };
     </script>
 

@@ -93,6 +93,7 @@ public class DashboardServlet extends HttpServlet {
         List<WidgetStat> widgetStats = buildWidgetStats(widgets);
         int totalChats = widgetStats.stream().mapToInt(stat -> stat.count).sum();
         String statsRows = renderWidgetStatsRows(widgetStats, req.getContextPath());
+        String widgetPieChartData = buildWidgetPieChartData(widgetStats);
 
         LocalDate rangeEnd = parseLocalDate(req.getParameter("rangeEnd"))
                 .orElse(LocalDate.now(ZoneId.systemDefault()));
@@ -139,6 +140,7 @@ public class DashboardServlet extends HttpServlet {
                 .replace("${adminLink}", adminLink)
                 .replace("${totalChats}", escapeHtml(String.valueOf(totalChats)))
                 .replace("${widgetStatsRows}", statsRows)
+                .replace("${widgetPieChartData}", escapeForJs(widgetPieChartData))
                 .replace("${termChartData}", termChartJson)
                 .replace("${sessionRows}", sessionRows)
                 .replace("${sessionRangeStart}", escapeHtml(rangeStart.format(DATE_FORMATTER)))
@@ -149,6 +151,19 @@ public class DashboardServlet extends HttpServlet {
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
+    }
+
+    private String buildWidgetPieChartData(List<WidgetStat> stats) {
+        JsonArrayBuilder arr = Json.createArrayBuilder();
+        if (stats != null) {
+            for (WidgetStat stat : stats) {
+                arr.add(Json.createObjectBuilder()
+                        .add("widgetId", stat.widgetId == null ? "" : stat.widgetId)
+                        .add("label", stat.label == null ? "" : stat.label)
+                        .add("count", stat.count));
+            }
+        }
+        return arr.build().toString();
     }
 
     private Map<String, SessionLabelStore.SessionLabel> loadSessionLabels(List<SessionStat> stats) {
@@ -410,15 +425,21 @@ public class DashboardServlet extends HttpServlet {
 
     private String renderWidgetStatsRows(List<WidgetStat> stats, String contextPath) {
         if (stats.isEmpty()) {
-            return "<tr><td colspan=\"3\" class=\"empty-row\">No widget chats available.</td></tr>";
+            return "<tr><td colspan=\"2\" class=\"empty-row\">No widget chats available.</td></tr>";
         }
         StringBuilder builder = new StringBuilder();
         for (WidgetStat stat : stats) {
+            String widgetUrl = contextPath + "/dashboard/widgets/view?widgetId="
+                    + URLEncoder.encode(stat.widgetId, StandardCharsets.UTF_8);
+
             builder.append("<tr>")
                     .append("<td>").append(escapeHtml(stat.label)).append("</td>")
-                    .append("<td>").append(stat.count).append("</td>")
-                    .append("<td><a href=\"").append(contextPath)
-                    .append("/dashboard/widgets/view?widgetId=").append(stat.widgetId).append("\">View chats</a></td>")
+                    .append("<td>")
+                    .append("<button type=\"button\" class=\"ghost-btn\" ")
+                    .append("onclick=\"window.location.href='").append(escapeHtml(widgetUrl)).append("'\">")
+                    .append(escapeHtml(String.valueOf(stat.count))).append(" chats")
+                    .append("</button>")
+                    .append("</td>")
                     .append("</tr>");
         }
         return builder.toString();
@@ -602,7 +623,7 @@ public class DashboardServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&amp;", "&amp;")
+        return input.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")

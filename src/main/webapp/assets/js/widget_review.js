@@ -50,13 +50,12 @@ const selectedEntryDetails = new Map();
 let selectionPreviewText = 'No chat selected.';
 let selectionSummaryText = '';
 
-const MAX_SUMMARY_CHARS = 4000;
-const MAX_TOTAL_MESSAGE_CHARS = 8912;
+const MAX_SUMMARY_CHARS = 12000;
+const MAX_TOTAL_MESSAGE_CHARS = 16000;
+const BULK_FETCH_PAGE_SIZE = 500;
 
 const urlSessionId = new URLSearchParams(window.location.search).get('sessionId');
-if (urlSessionId) {
-    showSessionIndicator(urlSessionId);
-}
+if (urlSessionId) showSessionIndicator(urlSessionId);
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!selectionId) {
@@ -153,7 +152,7 @@ function attachHandlers() {
     selectAllEntriesBtn?.addEventListener('click', () => {
         selectAllEntriesBtn.disabled = true;
         selectAllEntries().finally(() => {
-            selectAllEntriesBtn.disabled = false;
+            updateSelectAllEntriesButtonState();
         });
     });
 
@@ -164,6 +163,7 @@ function attachHandlers() {
         updateSelectAllCheckbox();
         refreshDetailPanel();
         updateSelectionView();
+        setManualMessageStatus('Cleared all selected entries.', false);
     });
 
     exportSelectedBtn?.addEventListener('click', () => {
@@ -251,11 +251,28 @@ async function sendManualMessage() {
     updateSelectionView();
 
     try {
-        const messagePayload = buildManualMessagePayload(text);
+        const messagePayload = text; // server builds/attaches compressed selected context
+
+        // IMPORTANT: send all selected entries for server-side compression
+        const selectedEntries = Array.from(selectedEntryDetails.values()).map(entry => ({
+            chatId: entry.chatId || '',
+            prompt: entry.prompt || '',
+            response: entry.response || '',
+            createdAt: entry.createdAt || '',
+            sessionId: entry.sessionId || '',
+            sessionIdDisplay: entry.sessionIdDisplay || '',
+            displayLabel: entry.displayLabel || ''
+        }));
+
         const fetchResp = await fetch(`${contextPath}/dashboard/widgets/drilldown/review/manual-message`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ message: messagePayload })
+            body: JSON.stringify({
+                message: messagePayload,
+                selectedEntries,
+                requestReset: true
+            })
+
         });
 
         const rawText = await fetchResp.text();
@@ -300,34 +317,54 @@ function buildManualMessagePayload(userText) {
 function buildSafeSelectionSummary() {
     const entries = Array.from(selectedEntryDetails.values());
     if (!entries.length) return '';
-    const summaryBlocks = entries.slice().sort((a, b) => {
+
+    const sorted = entries.slice().sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return dateB - dateA;
-    }).map(entry => formatEntrySummary(entry));
+    });
 
-    let combined = summaryBlocks.join('\n\n');
-    if (combined.length <= MAX_SUMMARY_CHARS) return combined;
-    return ensureWithinLength(combined, MAX_SUMMARY_CHARS);
+    const blocks = [];
+    let used = 0;
+    let omitted = 0;
+
+    for (const entry of sorted) {
+        const block = formatEntrySummary(entry);
+        const addLen = (blocks.length ? 2 : 0) + block.length;
+        if (used + addLen > MAX_SUMMARY_CHARS) {
+            omitted += 1;
+            continue;
+        }
+        blocks.push(block);
+        used += addLen;
+    }
+
+    let combined = blocks.join('\n\n');
+    if (omitted > 0) {
+        const tail = `\n\n... (${omitted} additional selected chats omitted due to size limits)`;
+        combined = ensureWithinLength(combined + tail, MAX_SUMMARY_CHARS);
+    }
+    return combined;
 }
 
 function formatEntrySummary(entry) {
     return [
         `### Chat ${entry.chatId || '(unknown)'}`,
-        `- Prompt: ${summarizeSentences(entry.prompt, 1)}`,
-        `- Response: ${summarizeSentences(entry.response, 1)}`,
+        `- Prompt: ${summarizeSentences(entry.prompt, 1, 380)}`,
+        `- Response: ${summarizeSentences(entry.response, 1, 380)}`,
         `- Created At: ${entry.createdAt ? formatDate(entry.createdAt) : '(unknown)'}`,
         `- Session ID: ${formatSessionDisplay(entry) || '(none)'}`
     ].join('\n');
 }
 
-function summarizeSentences(text, maxSentences) {
+function summarizeSentences(text, maxSentences, maxChars = 400) {
     if (!text) return '(missing)';
     const normalized = text.replace(/\s+/g, ' ').trim();
     if (!normalized) return '(empty)';
     const sentences = normalized.replace(/\r\n/g, ' ').split(/(?<=[.!?])\s+/).filter(Boolean);
-    if (!sentences.length) return normalized;
-    return sentences.slice(0, maxSentences).join(' ');
+    let out = sentences.length ? sentences.slice(0, maxSentences).join(' ') : normalized;
+    if (out.length > maxChars) out = out.slice(0, maxChars) + '…';
+    return out;
 }
 
 function ensureWithinLength(text, lengthLimit) {
@@ -335,49 +372,65 @@ function ensureWithinLength(text, lengthLimit) {
     return text.slice(0, lengthLimit);
 }
 
-function selectAllEntries() {
-    if (!state.totalRows) {
-        setManualMessageStatus('No entries available to select.', true);
-        return Promise.resolve();
-    }
-
+function buildDataUrl(page, limit) {
     const params = new URLSearchParams();
     params.append('selectionId', selectionId);
-    params.append('limit', state.totalRows);
-    params.append('page', 1);
+    params.append('limit', String(limit));
+    params.append('page', String(page));
     params.append('sortColumn', state.sortColumn);
     params.append('sortDir', state.sortDir);
     if (state.search) params.append('search', state.search);
+    return `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
+}
 
-    const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
+async function fetchPage(page, limit) {
+    const url = buildDataUrl(page, limit);
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
+    const payload = await resp.json();
+    if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load entries.');
+    return payload;
+}
 
-    return fetch(url, { headers: { 'Accept': 'application/json' } })
-        .then(async resp => {
-            if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
-            const payload = await resp.json();
-            if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load all entries.');
-            return payload;
-        })
-        .then(payload => {
-            const newEntries = (payload.rows || []).filter(row => row.chatId).map(row => ({ ...row }));
-            if (!newEntries.length) {
-                setManualMessageStatus('No chat entries to select.', true);
-                return;
-            }
-            newEntries.forEach(row => {
-                multiSelected.add(row.chatId);
-                selectedEntryDetails.set(row.chatId, row);
-            });
-            renderRows(rows);
-            updateSelectAllCheckbox();
-            refreshDetailPanel();
-            updateSelectionView();
-            setManualMessageStatus(`Selected ${newEntries.length} entries.`, false);
-        })
-        .catch(error => {
-            console.error('selectAllEntries error:', error);
-            setManualMessageStatus(`Unable to select all entries: ${error.message}`, true);
+async function selectAllEntries() {
+    if (!state.totalRows) {
+        setManualMessageStatus('No entries available to select.', true);
+        return;
+    }
+
+    try {
+        setManualMessageStatus('Selecting all matching entries...');
+        const first = await fetchPage(1, BULK_FETCH_PAGE_SIZE);
+        const totalPages = Number(first.totalPages || 1);
+
+        const allRows = [];
+        allRows.push(...(first.rows || []));
+
+        for (let p = 2; p <= totalPages; p++) {
+            const pagePayload = await fetchPage(p, BULK_FETCH_PAGE_SIZE);
+            allRows.push(...(pagePayload.rows || []));
+        }
+
+        const validRows = allRows.filter(r => r && r.chatId);
+        if (!validRows.length) {
+            setManualMessageStatus('No chat entries to select.', true);
+            return;
+        }
+
+        validRows.forEach(row => {
+            multiSelected.add(row.chatId);
+            selectedEntryDetails.set(row.chatId, row);
         });
+
+        renderRows(rows);
+        updateSelectAllCheckbox();
+        refreshDetailPanel();
+        updateSelectionView();
+        setManualMessageStatus(`Selected ${validRows.length} entries across all pages.`, false);
+    } catch (error) {
+        console.error('selectAllEntries error:', error);
+        setManualMessageStatus(`Unable to select all entries: ${error.message}`, true);
+    }
 }
 
 function updateSelectionView() {
@@ -418,27 +471,20 @@ function formatEntryPreview(entry) {
 }
 
 async function loadSelectionData() {
-    const params = new URLSearchParams();
-    params.append('selectionId', selectionId);
-    params.append('limit', state.limit);
-    params.append('page', state.page);
-    params.append('sortColumn', state.sortColumn);
-    params.append('sortDir', state.sortDir);
-    if (state.search) params.append('search', state.search);
-
-    const url = `${contextPath}/dashboard/widgets/drilldown/view/review-data?${params.toString()}`;
-
     try {
-        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        if (!resp.ok) throw new Error(`Server responded with ${resp.status}`);
-
-        const payload = await resp.json();
-        if (!payload || payload.status !== 'ok') throw new Error(payload?.message || 'Unable to load selection.');
+        const payload = await fetchPage(state.page, state.limit);
 
         rows = payload.rows || [];
         state.totalPages = payload.totalPages || 1;
         state.page = payload.page || 1;
         state.totalRows = payload.totalRows || 0;
+
+        // keep latest row details in cache for selected ids visible on current page
+        rows.forEach(r => {
+            if (r?.chatId && multiSelected.has(r.chatId)) {
+                selectedEntryDetails.set(r.chatId, r);
+            }
+        });
 
         renderRows(rows);
         renderSearchTerms(payload.searchTerms);
@@ -487,7 +533,6 @@ function renderRows(data) {
 function refreshDetailPanel() {
     if (!detailCard || !detailTitle || !detailPrompt || !detailResponse) return;
 
-    // Force RAW rendering in detail panel: textContent only (no markdown/html transforms).
     if (!multiSelected.size) {
         detailCard.style.display = 'none';
         detailPrompt.textContent = '';
@@ -646,15 +691,9 @@ function updateSelectionUI() {
     if (!exportSelectedBtn) return;
     exportSelectedBtn.disabled = multiSelected.size === 0;
 
-    const reviewBtn = document.getElementById('reviewSelectedBtn');
-    if (reviewBtn) {
-        const count = selectedEntryDetails.size || multiSelected.size;
-        reviewBtn.textContent = `Review Selected (${count})`;
-        reviewBtn.disabled = count === 0;
-
-        const selectedInfoElem = document.getElementById('selectedInfo');
-        if (selectedInfoElem) {
-            selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';
-        }
+    const count = multiSelected.size;
+    const selectedInfoElem = document.getElementById('selectedInfo');
+    if (selectedInfoElem) {
+        selectedInfoElem.textContent = count ? `${count} selected across pages.` : '';
     }
 }
