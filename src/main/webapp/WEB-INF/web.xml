@@ -21,7 +21,7 @@
 
     <servlet>
         <servlet-name>WidgetApiServlet</servlet-name>
-        <servlet-class>com.sim.chatserver.web.dashboard.WidgetApiServlet</servlet-class>
+        <servlet-class>com.sim.chatserver.web.dashboard.widgets.WidgetApiServlet</servlet-class>
     </servlet>
     <servlet-mapping>
         <servlet-name>WidgetApiServlet</servlet-name>

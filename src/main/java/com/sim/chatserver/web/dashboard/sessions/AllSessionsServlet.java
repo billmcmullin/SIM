@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +24,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 

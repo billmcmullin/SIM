@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
 import java.sql.Connection;

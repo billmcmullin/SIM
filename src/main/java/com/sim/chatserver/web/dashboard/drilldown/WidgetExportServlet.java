@@ -18,7 +18,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionIdFormatter;
-import com.sim.chatserver.web.dashboard.WidgetReviewStartServlet;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;

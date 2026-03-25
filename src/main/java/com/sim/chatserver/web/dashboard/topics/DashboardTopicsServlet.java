@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.BufferedReader;
 import java.io.IOException;

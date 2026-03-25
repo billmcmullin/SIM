@@ -16,7 +16,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
-import com.sim.chatserver.web.dashboard.WidgetReviewStartServlet;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 

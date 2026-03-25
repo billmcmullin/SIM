@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

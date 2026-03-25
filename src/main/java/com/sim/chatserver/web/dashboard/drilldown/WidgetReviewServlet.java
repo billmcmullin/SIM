@@ -8,7 +8,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.web.dashboard.WidgetReviewStartServlet;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
