@@ -41,9 +41,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AllSessionsServlet", urlPatterns = {
-    "/dashboard/sessions/data",
-    "/dashboard/sessions/chats",
-    "/dashboard/sessions/select"
+        "/dashboard/sessions/data",
+        "/dashboard/sessions/chats",
+        "/dashboard/sessions/select"
 })
 public class AllSessionsServlet extends HttpServlet {
 
@@ -82,7 +82,6 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private static final class ChatRow {
-
         final String chatId;
         final String prompt;
         final Timestamp createdAt;
@@ -138,27 +137,18 @@ public class AllSessionsServlet extends HttpServlet {
         List<WidgetEntry> widgets = listWidgets();
         Map<String, String> widgetNames = buildWidgetDisplayNameMap(widgets);
 
+        // Build all session summaries first
         if (!widgets.isEmpty()) {
             try (Connection conn = dsHolder.getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
                     }
-
                     String tableName = sanitizeWidgetTableName(widget.getWidgetId());
                     if (!tableExists(conn, tableName)) {
                         continue;
                     }
-
-                    Set<String> matchingIds = null;
-                    if (hasSearch) {
-                        matchingIds = gatherSessionIdsForSearch(conn, tableName, normalizedSearch);
-                        if (matchingIds.isEmpty()) {
-                            continue;
-                        }
-                    }
-
-                    aggregateSessions(conn, tableName, sessions, widget.getWidgetId(), hasSearch ? matchingIds : null);
+                    aggregateSessions(conn, tableName, sessions, widget.getWidgetId(), null);
                 }
             } catch (SQLException e) {
                 log.log(Level.SEVERE, "Unable to compute session summary", e);
@@ -171,6 +161,40 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         List<SessionSummary> sessionList = new ArrayList<>(sessions.values());
+
+        // Apply combined search:
+        // 1) session_id
+        // 2) friendly label/email
+        // 3) prompt/response
+        if (hasSearch && !sessionList.isEmpty()) {
+            Set<String> matchedSessionIds = new HashSet<>();
+
+            // A) direct sessionId match
+            matchedSessionIds.addAll(gatherSessionIdsByIdMatch(sessions, search));
+
+            // B) label/email match
+            Map<String, SessionLabelStore.SessionLabel> allLabels = mapSessionLabels(sessionList);
+            matchedSessionIds.addAll(gatherSessionIdsByLabelMatch(allLabels, search));
+
+            // C) prompt/response match
+            try (Connection conn = dsHolder.getDataSource().getConnection()) {
+                for (WidgetEntry widget : widgets) {
+                    if (widget == null || widget.getWidgetId() == null) {
+                        continue;
+                    }
+                    String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+                    if (!tableExists(conn, tableName)) {
+                        continue;
+                    }
+                    matchedSessionIds.addAll(gatherSessionIdsForSearch(conn, tableName, normalizedSearch));
+                }
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to apply prompt/response search filter", e);
+            }
+
+            sessionList.removeIf(s -> s == null || s.sessionId == null || !matchedSessionIds.contains(s.sessionId));
+        }
+
         sessionList.sort((a, b) -> {
             int cmp = Long.compare(b.totalCount, a.totalCount);
             if (cmp != 0) {
@@ -471,6 +495,46 @@ public class AllSessionsServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to load session labels", e);
             return Collections.emptyMap();
         }
+    }
+
+    private Set<String> gatherSessionIdsByIdMatch(Map<String, SessionSummary> sessions, String search) {
+        if (search == null || search.isBlank() || sessions == null || sessions.isEmpty()) {
+            return Collections.emptySet();
+        }
+        String q = search.trim().toLowerCase();
+        Set<String> out = new HashSet<>();
+        for (SessionSummary s : sessions.values()) {
+            if (s == null || s.sessionId == null) {
+                continue;
+            }
+            if (s.sessionId.toLowerCase().contains(q)) {
+                out.add(s.sessionId);
+            }
+        }
+        return out;
+    }
+
+    private Set<String> gatherSessionIdsByLabelMatch(Map<String, SessionLabelStore.SessionLabel> labels, String search) {
+        if (search == null || search.isBlank() || labels == null || labels.isEmpty()) {
+            return Collections.emptySet();
+        }
+        String q = search.trim().toLowerCase();
+        Set<String> out = new HashSet<>();
+        for (Map.Entry<String, SessionLabelStore.SessionLabel> e : labels.entrySet()) {
+            String sid = e.getKey();
+            SessionLabelStore.SessionLabel label = e.getValue();
+            if (sid == null || label == null) {
+                continue;
+            }
+
+            String displayName = label.getDisplayName() == null ? "" : label.getDisplayName();
+            String email = label.getEmail() == null ? "" : label.getEmail();
+
+            if (displayName.toLowerCase().contains(q) || email.toLowerCase().contains(q)) {
+                out.add(sid);
+            }
+        }
+        return out;
     }
 
     private Set<String> gatherSessionIdsForSearch(Connection conn, String tableName, String pattern) throws SQLException {
