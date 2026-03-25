@@ -445,4 +445,5 @@ public class TermChatSnapshotTest
         });
 
     }
+
 }

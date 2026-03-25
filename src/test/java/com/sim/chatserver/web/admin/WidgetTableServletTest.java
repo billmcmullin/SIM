@@ -1381,4 +1381,5 @@ public class WidgetTableServletTest
         underTest.doPost(req, resp);
 
     }
+
 }

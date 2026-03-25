@@ -357,4 +357,5 @@ public class TermMatcherTest
         boolean result = TermMatcher.matches(term, prompt);
 
     }
+
 }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.model.UserAccount;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -169,4 +170,107 @@ public class AuthServiceTest
         UserAccount result = underTest.authenticate(username, password);
 
     }
+
+    /**
+     * Parasoft Jtest UTA: Test for authenticate(String, String)
+     *
+     * @see com.sim.chatserver.service.AuthService#authenticate(String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testAuthenticate7() throws Throwable
+    {
+        // Given
+        AuthService underTest = new AuthService();
+        UserService userServiceValue = mock(UserService.class);
+        UserAccount findByUsernameResult = mock(UserAccount.class);
+        String getPasswordHashResult = null; // UTA: configured value
+        when(findByUsernameResult.getPasswordHash()).thenReturn(getPasswordHashResult);
+
+        String getRoleResult = null; // UTA: configured value
+        when(findByUsernameResult.getRole()).thenReturn(getRoleResult);
+
+        String getUsernameResult = null; // UTA: configured value
+        when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
+        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        underTest.userService = userServiceValue;
+
+        // When
+        String username = "*"; // UTA: configured value
+        String password = "password"; // UTA: default value
+        UserAccount result = underTest.authenticate(username, password);
+
+        // Then - assertions for result of method authenticate(String, String)
+        assertNull(result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for authenticate(String, String)
+     *
+     * @see com.sim.chatserver.service.AuthService#authenticate(String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testAuthenticate8() throws Throwable
+    {
+        // Given
+        AuthService underTest = new AuthService();
+        UserService userServiceValue = mock(UserService.class);
+        UserAccount findByUsernameResult = mock(UserAccount.class);
+        String getPasswordHashResult = null; // UTA: configured value
+        when(findByUsernameResult.getPasswordHash()).thenReturn(getPasswordHashResult);
+
+        String getRoleResult = null; // UTA: configured value
+        when(findByUsernameResult.getRole()).thenReturn(getRoleResult);
+
+        String getUsernameResult = "*"; // UTA: configured value
+        when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
+        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        underTest.userService = userServiceValue;
+
+        // When
+        String username = "*"; // UTA: configured value
+        String password = "password"; // UTA: default value
+        UserAccount result = underTest.authenticate(username, password);
+
+        // Then - assertions for result of method authenticate(String, String)
+        assertNull(result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for authenticate(String, String)
+     *
+     * @see com.sim.chatserver.service.AuthService#authenticate(String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testAuthenticate9() throws Throwable
+    {
+        // Given
+        AuthService underTest = new AuthService();
+        UserService userServiceValue = mock(UserService.class);
+        UserAccount findByUsernameResult = mock(UserAccount.class);
+        String getPasswordHashResult = null; // UTA: configured value
+        when(findByUsernameResult.getPasswordHash()).thenReturn(getPasswordHashResult);
+
+        String getRoleResult = null; // UTA: configured value
+        when(findByUsernameResult.getRole()).thenReturn(getRoleResult);
+
+        String getUsernameResult = "**"; // UTA: configured value
+        when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
+        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        underTest.userService = userServiceValue;
+
+        // When
+        String username = "*"; // UTA: configured value
+        String password = "password"; // UTA: default value
+        UserAccount result = underTest.authenticate(username, password);
+
+        // Then - assertions for result of method authenticate(String, String)
+        assertNull(result);
+
+    }
+
 }

@@ -27,4 +27,5 @@ public class EncryptedDbConfigStoreTest
         EncryptedDbConfigStore.setAppDataSourceHolder(holder);
 
     }
+
 }

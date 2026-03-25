@@ -378,4 +378,5 @@ public class TextSanitizerTest
         assertEquals("pattern", result);
 
     }
+
 }

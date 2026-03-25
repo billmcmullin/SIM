@@ -180,4 +180,31 @@ public class WorkspaceConfigServletTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.admin.WorkspaceConfigServlet#doPost(HttpServletRequest, HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoPost7() throws Throwable
+    {
+        // Given
+        WorkspaceConfigServlet underTest = new WorkspaceConfigServlet();
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        Object getAttributeResult2 = new Object(); // UTA: default value
+        Object getAttributeResult3 = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult, getAttributeResult2, getAttributeResult3);
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
+        underTest.doPost(req, resp);
+
+    }
+
 }
