@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>${title}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body class="inactive-users-page">
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <div class="brand"><strong>SIM</strong></div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container">
+        <section class="section">
+            <h1>${title}</h1>
+
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                <input id="searchInput" type="search" placeholder="Search Session ID or Friendly Name"
+                    style="max-width:420px;">
+                <button id="searchBtn" type="button" class="ghost-btn">Search</button>
+                <button id="clearSearchBtn" type="button" class="ghost-btn">Clear</button>
+            </div>
+
+            <div id="pagerTop" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"></div>
+            <p class="inactive-meta">Total inactive users: <strong id="totalCount">${total}</strong></p>
+
+            <div class="table-scroll">
+                <table class="session-table">
+                    <thead>
+                        <tr>
+                            <th>Session</th>
+                            <th>Widget</th>
+                            <th>Chat Count</th>
+                            <th>Last Entry</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inactiveListBody">
+                        <tr>
+                            <td colspan="4" class="empty-row">Loading…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        window.inactiveUsersListConfig = {
+            contextPath: '${contextPath}',
+            scope: '${scope}',
+            widgetId: '${widgetId}',
+            days: '${days}',
+            page: '${page}',
+            limit: '${limit}',
+            total: '${total}',
+            totalPages: '${totalPages}',
+            search: '${search}',
+            data: '${rowsJson}'
+        };
+    </script>
+    <script src="${contextPath}/assets/js/inactive_users_list.js"></script>
+</body>
+
+</html>

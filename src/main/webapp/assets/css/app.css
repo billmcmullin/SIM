@@ -725,4 +725,51 @@ hr {
     .trend-period-row select {
         min-width: 220px;
     }
+
+    /* ==========================================
+        Inactive Users Page
+    ========================================== */
+    .inactive-users-page select,
+    .inactive-users-page .inactive-cause-select,
+    .inactive-users-page #daysSelect {
+        color: #0f172a !important;
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        font-weight: 500;
+    }
+
+    .inactive-users-page select option,
+    .inactive-users-page .inactive-cause-select option,
+    .inactive-users-page #daysSelect option {
+        color: #0f172a !important;
+        background-color: #ffffff !important;
+    }
+
+    .inactive-users-page .inactive-toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .inactive-users-page .inactive-widget-section {
+        margin-top: 16px;
+    }
+
+    .inactive-users-page .inactive-meta {
+        color: #475569;
+        font-size: 0.9rem;
+    }
+
+    .inactive-users-page .session-id-muted {
+        color: #64748b;
+        font-size: 0.82rem;
+        margin-top: 2px;
+        font-family: Menlo, Monaco, "Courier New", monospace;
+    }
+
+    .inactive-users-page .table-scroll {
+        overflow-x: auto;
+    }
+
 }
