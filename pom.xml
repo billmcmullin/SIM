@@ -14,6 +14,7 @@
     <properties>
         <maven.compiler.release>18</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
         <jakarta.ws.rs.version>4.0.0</jakarta.ws.rs.version>
         <jakarta.persistence.version>3.2.0</jakarta.persistence.version>
         <jakarta.annotation.version>3.0.0</jakarta.annotation.version>
@@ -28,6 +29,11 @@
 
         <junit.version>5.14.2</junit.version>
         <mockito.version>5.21.0</mockito.version>
+
+        <!-- OWASP Dependency-Check -->
+        <dependency-check.version>10.0.4</dependency-check.version>
+        <!-- Set to true in CI if you want build to fail on CVSS threshold -->
+        <dependency-check.failBuildOnCVSS>0</dependency-check.failBuildOnCVSS>
     </properties>
 
     <dependencies>
@@ -133,6 +139,7 @@
                     <release>${maven.compiler.release}</release>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-war-plugin</artifactId>
@@ -141,10 +148,38 @@
                     <failOnMissingWebXml>false</failOnMissingWebXml>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
+            </plugin>
+
+            <!-- OWASP Dependency-Check plugin -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>${dependency-check.version}</version>
+                <configuration>
+                    <!-- Generates HTML + JSON reports under target/ -->
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                    <!-- keep build non-blocking by default -->
+                    <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                    <!-- Optional: skip provided scope to reduce noise if desired -->
+                    <skipProvidedScope>true</skipProvidedScope>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>dependency-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
