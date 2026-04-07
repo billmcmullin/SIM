@@ -10,25 +10,32 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -57,20 +64,47 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getName());
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+
+    // Tuned HTTP client
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+
     private static final long DEFAULT_INTERVAL_SECONDS = 300L;
+    private static final long MIN_INTERVAL_SECONDS = 30L;
+
+    // Persist lastSynced periodically instead of every run
+    private static final int LAST_SYNC_FLUSH_EVERY_N_RUNS = 5;
+
+    // Parallel fetch pool
+    private static final int DEFAULT_SYNC_PARALLELISM = 4;
+
+    private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile("[^A-Za-z0-9_]");
 
     @Inject
     AppDataSourceHolder dsHolder;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread thread = new Thread(r, "widget-sync-timer");
-        thread.setDaemon(true);
-        return thread;
+        Thread t = new Thread(r, "widget-sync-timer");
+        t.setDaemon(true);
+        return t;
     });
+
+    private final ExecutorService syncPool = Executors.newFixedThreadPool(DEFAULT_SYNC_PARALLELISM, r -> {
+        Thread t = new Thread(r, "widget-sync-worker");
+        t.setDaemon(true);
+        return t;
+    });
+
+    // cache table readiness to avoid repeated DDL/metadata checks
+    private final Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
+
     private ScheduledFuture<?> scheduledFuture;
     private volatile long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
     private volatile Timestamp lastSynced;
+    private final AtomicBoolean syncRunning = new AtomicBoolean(false);
+    private final AtomicInteger runsSinceLastSyncPersist = new AtomicInteger(0);
 
     @Override
     public void init(ServletConfig config) throws ServletException {
@@ -89,11 +123,12 @@ public class WidgetSyncServlet extends HttpServlet {
             scheduledFuture.cancel(false);
         }
         scheduler.shutdownNow();
+        syncPool.shutdownNow();
         super.destroy();
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         if (isTimerRequest(req)) {
             handleTimerStatus(resp);
         } else {
@@ -102,7 +137,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         if (isTimerRequest(req)) {
             handleTimerUpdate(req, resp);
             return;
@@ -112,25 +147,31 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        List<WidgetSyncStatus> statuses;
-        try {
-            statuses = runSync(req.getParameter("widgetId"));
-        } catch (Exception e) {
-            log.log(Level.WARNING, "Widget sync failed", e);
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                    "Widget sync failed: " + e.getMessage());
+        if (!syncRunning.compareAndSet(false, true)) {
+            jsonError(resp, HttpServletResponse.SC_CONFLICT, "Sync already in progress.");
             return;
         }
 
-        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-        statuses.forEach(status -> arrayBuilder.add(status.toJson()));
-        JsonObject responsePayload = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("widgetStatus", arrayBuilder)
-                .build();
+        try {
+            List<WidgetSyncStatus> statuses = runSync(req.getParameter("widgetId"));
+            updateLastSyncedMaybePersist(true);
 
-        resp.setContentType("application/json");
-        resp.getWriter().write(responsePayload.toString());
+            JsonArrayBuilder arr = Json.createArrayBuilder();
+            statuses.forEach(s -> arr.add(s.toJson()));
+
+            JsonObject payload = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("widgetStatus", arr)
+                    .build();
+
+            resp.setContentType("application/json");
+            resp.getWriter().write(payload.toString());
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Widget sync failed", e);
+            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed: " + e.getMessage());
+        } finally {
+            syncRunning.set(false);
+        }
     }
 
     private boolean isTimerRequest(HttpServletRequest req) {
@@ -152,14 +193,14 @@ public class WidgetSyncServlet extends HttpServlet {
         if (!authorizeAdmin(req, resp)) {
             return;
         }
-        String intervalParam = req.getParameter("intervalSeconds");
+
         long intervalSeconds;
         try {
-            intervalSeconds = Long.parseLong(intervalParam);
-            if (intervalSeconds < 30) {
-                intervalSeconds = 30;
+            intervalSeconds = Long.parseLong(req.getParameter("intervalSeconds"));
+            if (intervalSeconds < MIN_INTERVAL_SECONDS) {
+                intervalSeconds = MIN_INTERVAL_SECONDS;
             }
-        } catch (NumberFormatException e) {
+        } catch (Exception e) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid interval specified.");
             return;
         }
@@ -185,17 +226,23 @@ public class WidgetSyncServlet extends HttpServlet {
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
         }
-        scheduledFuture = scheduler.scheduleWithFixedDelay(this::runScheduledSync,
-                syncIntervalSeconds, syncIntervalSeconds, TimeUnit.SECONDS);
+        scheduledFuture = scheduler.scheduleWithFixedDelay(
+                this::runScheduledSync, syncIntervalSeconds, syncIntervalSeconds, TimeUnit.SECONDS);
     }
 
     private void runScheduledSync() {
+        if (!syncRunning.compareAndSet(false, true)) {
+            log.fine("Skipping scheduled sync because another sync is running.");
+            return;
+        }
         try {
             List<WidgetSyncStatus> statuses = runSync(null);
-            updateLastSynced();
+            updateLastSyncedMaybePersist(false);
             log.info("Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
         } catch (Exception e) {
             log.log(Level.WARNING, "Automatic widget sync failed", e);
+        } finally {
+            syncRunning.set(false);
         }
     }
 
@@ -207,42 +254,60 @@ public class WidgetSyncServlet extends HttpServlet {
 
         List<WidgetEntry> widgets = WidgetStore.list(null);
         if (requestedWidgetId != null && !requestedWidgetId.isBlank()) {
-            widgets.removeIf(entry -> entry == null || !requestedWidgetId.equals(entry.getWidgetId()));
+            widgets.removeIf(w -> w == null || !requestedWidgetId.equals(w.getWidgetId()));
         }
 
-        List<WidgetSyncStatus> statuses = new ArrayList<>();
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-                String widgetId = widget.getWidgetId();
-                String tableName = sanitizeWidgetTableName(widgetId);
-                boolean tableExists = ensureTable(conn, tableName);
-                boolean synced = false;
-                String message = tableExists ? "Table ready" : "Table missing and could not be created.";
-                if (tableExists) {
-                    try {
-                        List<JsonObject> chats = fetchWidgetChats(config, widgetId);
-                        insertWidgetChats(conn, tableName, chats);
-                        synced = true;
-                        message = chats.isEmpty() ? "No chat rows returned from server."
-                                : String.format("Synced %d chat(s).", chats.size());
-                    } catch (Exception e) {
-                        log.log(Level.WARNING, "Failed to sync widget " + widgetId, e);
-                        message = "Sync failed: " + e.getMessage();
-                    }
-                }
-                statuses.add(new WidgetSyncStatus(widgetId, tableName, tableExists, synced, message));
+        List<WidgetEntry> valid = widgets.stream()
+                .filter(w -> w != null && w.getWidgetId() != null && !w.getWidgetId().isBlank())
+                .toList();
+
+        List<Callable<WidgetSyncStatus>> tasks = new ArrayList<>();
+        for (WidgetEntry widget : valid) {
+            tasks.add(() -> syncSingleWidget(config, widget.getWidgetId()));
+        }
+
+        List<WidgetSyncStatus> statuses = new ArrayList<>(tasks.size());
+        List<Future<WidgetSyncStatus>> futures = syncPool.invokeAll(tasks);
+
+        for (Future<WidgetSyncStatus> f : futures) {
+            try {
+                statuses.add(f.get());
+            } catch (ExecutionException ee) {
+                Throwable cause = ee.getCause();
+                statuses.add(new WidgetSyncStatus("unknown", "unknown", false, false,
+                        "Sync failed: " + (cause == null ? "unknown error" : cause.getMessage())));
             }
         }
-
         return statuses;
     }
 
-    private void updateLastSynced() {
+    private WidgetSyncStatus syncSingleWidget(ServerConfig config, String widgetId) {
+        String tableName = sanitizeWidgetTableName(widgetId);
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            ensureTable(conn, tableName); // create-if-not-exists + cache
+
+            List<JsonObject> chats = fetchWidgetChats(config, widgetId);
+            int inserted = insertWidgetChats(conn, tableName, chats);
+
+            String message = chats.isEmpty()
+                    ? "No chat rows returned from server."
+                    : String.format("Fetched %d chat(s), inserted %d new chat(s).", chats.size(), inserted);
+
+            return new WidgetSyncStatus(widgetId, tableName, true, true, message);
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Failed to sync widget " + widgetId, e);
+            return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed: " + e.getMessage());
+        }
+    }
+
+    private void updateLastSyncedMaybePersist(boolean forcePersist) {
         lastSynced = Timestamp.from(Instant.now());
-        persistSyncSettings();
+        int n = runsSinceLastSyncPersist.incrementAndGet();
+        if (forcePersist || n >= LAST_SYNC_FLUSH_EVERY_N_RUNS) {
+            runsSinceLastSyncPersist.set(0);
+            persistSyncSettings();
+        }
     }
 
     private synchronized void loadSyncSettings() throws SQLException {
@@ -279,9 +344,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                long interval = rs.getLong(1);
-                Timestamp last = rs.getTimestamp(2);
-                return new SyncSettings(interval, last);
+                return new SyncSettings(rs.getLong(1), rs.getTimestamp(2));
             }
         }
         upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
@@ -289,16 +352,11 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) throws SQLException {
-        String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced) "
-                + "VALUES (1, ?, ?) "
+        String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced) VALUES (1, ?, ?) "
                 + "ON CONFLICT (id) DO UPDATE SET interval_seconds = EXCLUDED.interval_seconds, last_synced = EXCLUDED.last_synced";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, intervalSeconds);
-            if (lastSynced != null) {
-                ps.setTimestamp(2, lastSynced);
-            } else {
-                ps.setTimestamp(2, null);
-            }
+            ps.setTimestamp(2, lastSynced);
             ps.executeUpdate();
         }
     }
@@ -317,40 +375,68 @@ public class WidgetSyncServlet extends HttpServlet {
         return true;
     }
 
-    private boolean ensureTable(Connection conn, String tableName) throws SQLException {
-        if (tableExists(conn, tableName)) {
-            return true;
+    // High-impact: no metadata checks; use IF NOT EXISTS and in-memory cache
+    private void ensureTable(Connection conn, String tableName) throws SQLException {
+        if (ensuredTables.contains(tableName)) {
+            return;
         }
-        createWidgetDataTable(conn, tableName);
-        return tableExists(conn, tableName);
-    }
-
-    private void createWidgetDataTable(Connection conn, String tableName) throws SQLException {
-        String sql = "CREATE TABLE " + quoteIdentifier(tableName)
-                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT UNIQUE, prompt TEXT, response_text TEXT,"
-                + " created_at TIMESTAMP, session_id TEXT, username TEXT)";
+        String sql = "CREATE TABLE IF NOT EXISTS " + quoteIdentifier(tableName)
+                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT UNIQUE, prompt TEXT, response_text TEXT, "
+                + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         }
+        ensuredTables.add(tableName);
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
-                }
-            }
+    // High-impact: DB-level dedupe + transaction/batch
+    private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
+        if (chats == null || chats.isEmpty()) {
+            return 0;
         }
-        return false;
+
+        String sql = "INSERT INTO " + quoteIdentifier(tableName)
+                + " (widget_chat_id, prompt, response_text, created_at, session_id, username) "
+                + "VALUES (?,?,?,?,?,?) ON CONFLICT (widget_chat_id) DO NOTHING";
+
+        boolean originalAutoCommit = conn.getAutoCommit();
+        int attempted = 0;
+
+        conn.setAutoCommit(false);
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (JsonObject chat : chats) {
+                String chatId = getString(chat, "id");
+                if (chatId == null || chatId.isBlank()) {
+                    continue;
+                }
+
+                ps.setString(1, chatId);
+                ps.setString(2, getString(chat, "prompt"));
+                ps.setString(3, formatResponseText(chat));
+                ps.setTimestamp(4, parseCreatedAt(chat));
+                ps.setString(5, getString(chat, "session_id"));
+                ps.setString(6, getString(chat, "username"));
+                ps.addBatch();
+                attempted++;
+            }
+            if (attempted > 0) {
+                ps.executeBatch();
+            }
+            conn.commit();
+        } catch (SQLException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
+        }
+        return attempted;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
             return "widget";
         }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        String normalized = NON_ALNUM_UNDERSCORE.matcher(widgetId.trim()).replaceAll("_");
         if (normalized.isEmpty()) {
             normalized = "widget";
         }
@@ -363,55 +449,13 @@ public class WidgetSyncServlet extends HttpServlet {
         return normalized;
     }
 
-    private void insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
-        if (chats == null || chats.isEmpty()) {
-            return;
-        }
-        Set<String> existingIds = fetchExistingChatIds(conn, tableName);
-        String sql = "INSERT INTO " + quoteIdentifier(tableName)
-                + " (widget_chat_id, prompt, response_text, created_at, session_id, username) "
-                + "VALUES (?,?,?,?,?,?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            int inserted = 0;
-            for (JsonObject chat : chats) {
-                String chatId = getString(chat, "id");
-                if (chatId == null || existingIds.contains(chatId)) {
-                    continue;
-                }
-                ps.setString(1, chatId);
-                ps.setString(2, getString(chat, "prompt"));
-                ps.setString(3, formatResponseText(chat));
-                Timestamp ts = parseCreatedAt(chat);
-                ps.setTimestamp(4, ts);
-                ps.setString(5, getString(chat, "session_id"));
-                ps.setString(6, getString(chat, "username"));
-                ps.addBatch();
-                inserted++;
-            }
-            if (inserted > 0) {
-                ps.executeBatch();
-            }
-        }
-    }
-
-    private Set<String> fetchExistingChatIds(Connection conn, String tableName) throws SQLException {
-        Set<String> existing = new HashSet<>();
-        String sql = "SELECT widget_chat_id FROM " + quoteIdentifier(tableName);
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                existing.add(rs.getString(1));
-            }
-        }
-        return existing;
-    }
-
     private String formatResponseText(JsonObject chat) {
         JsonValue responseValue = chat.get("response");
         String text = extractText(responseValue);
         if (text == null) {
-            JsonValue rawChatValue = chat.get("raw_chat");
-            if (rawChatValue instanceof JsonObject rawChat) {
-                text = extractText(rawChat.get("response"));
+            JsonValue raw = chat.get("raw_chat");
+            if (raw instanceof JsonObject rawObj) {
+                text = extractText(rawObj.get("response"));
             }
         }
         return humanize(normalizeToJsonText(text));
@@ -434,17 +478,19 @@ public class WidgetSyncServlet extends HttpServlet {
         if (raw == null) {
             return null;
         }
-        try (JsonReader reader = Json.createReader(new StringReader(raw))) {
+        String t = raw.trim();
+        if (!(t.startsWith("{") || t.startsWith("["))) {
+            return raw; // fast path
+
+                }try (JsonReader reader = Json.createReader(new StringReader(raw))) {
             JsonStructure structure = reader.read();
             if (structure.getValueType() == JsonValue.ValueType.OBJECT) {
-                JsonObject obj = structure.asJsonObject();
-                String text = getString(obj, "text");
+                String text = getString(structure.asJsonObject(), "text");
                 if (text != null) {
                     return text;
                 }
             }
-        } catch (JsonException e) {
-            // raw is not valid JSON
+        } catch (JsonException ignored) {
         }
         return raw;
     }
@@ -465,8 +511,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         try {
-            OffsetDateTime odt = OffsetDateTime.parse(created);
-            return Timestamp.from(odt.toInstant());
+            return Timestamp.from(OffsetDateTime.parse(created).toInstant());
         } catch (DateTimeParseException e) {
             log.fine("Unable to parse timestamp: " + created);
             return null;
@@ -475,7 +520,9 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private List<JsonObject> fetchWidgetChats(ServerConfig config, String widgetId) throws IOException, InterruptedException {
         URI uri = buildSyncUri(config, widgetId);
+
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json")
                 .GET();
 
@@ -487,24 +534,20 @@ public class WidgetSyncServlet extends HttpServlet {
 
         HttpResponse<String> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         String body = response.body();
+
         if (response.statusCode() >= 300) {
             String message = String.format("Sync API returned %d: %s", response.statusCode(), truncateBody(body));
-            log.warning(() -> "Widget sync failed for " + widgetId + ": " + message);
             throw new IOException(message);
         }
 
         String contentType = response.headers().firstValue("Content-Type").orElse("");
         if (!contentType.toLowerCase().contains("application/json")) {
-            String message = String.format("Unexpected content type '%s' when syncing %s", contentType, widgetId);
-            log.warning(() -> message + " payload: " + truncateBody(body));
-            throw new IOException(message);
+            throw new IOException("Unexpected content type '" + contentType + "'");
         }
 
         try (JsonReader reader = Json.createReader(new StringReader(body))) {
-            JsonStructure root = reader.read();
-            return normalizeResponse(root);
+            return normalizeResponse(reader.read());
         } catch (JsonException je) {
-            log.log(Level.WARNING, "Invalid JSON payload for widget " + widgetId + ": " + truncateBody(body), je);
             throw new IOException("Invalid JSON received from sync API", je);
         }
     }
@@ -522,9 +565,9 @@ public class WidgetSyncServlet extends HttpServlet {
 
         try {
             URI base = new URI(normalizedHost);
-            String path = base.getPath() != null && base.getPath().endsWith("/") ? base.getPath().substring(0, base.getPath().length() - 1) : base.getPath();
-            if (path == null) {
-                path = "";
+            String path = base.getPath() == null ? "" : base.getPath();
+            if (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
             }
             if (!path.contains("/api")) {
                 path = path + "/api";
@@ -541,27 +584,26 @@ public class WidgetSyncServlet extends HttpServlet {
         if (root == null) {
             return normalized;
         }
+
         if (root.getValueType() == JsonValue.ValueType.ARRAY) {
-            var array = root.asJsonArray();
-            array.forEach(value -> {
-                if (value instanceof JsonObject obj) {
-                    normalized.add(obj);
-                }
-            });
+            root.asJsonArray().forEach(v -> {
+                if (v instanceof JsonObject o) {
+                    normalized.add(o);
+            
+                }});
             return normalized;
         }
 
         if (root.getValueType() == JsonValue.ValueType.OBJECT) {
             JsonObject obj = root.asJsonObject();
-            for (String candidate : List.of("items", "data", "results", "chats", "entries")) {
-                JsonValue candidateValue = obj.get(candidate);
-                if (candidateValue != null && candidateValue.getValueType() == JsonValue.ValueType.ARRAY) {
-                    var array = candidateValue.asJsonArray();
-                    array.forEach(value -> {
-                        if (value instanceof JsonObject entry) {
-                            normalized.add(entry);
-                        }
-                    });
+            for (String key : List.of("items", "data", "results", "chats", "entries")) {
+                JsonValue v = obj.get(key);
+                if (v != null && v.getValueType() == JsonValue.ValueType.ARRAY) {
+                    v.asJsonArray().forEach(e -> {
+                        if (e instanceof JsonObject o) {
+                            normalized.add(o);
+                    
+                        }});
                     return normalized;
                 }
             }
@@ -629,8 +671,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
         private JsonObject toJson() {
             return Json.createObjectBuilder()
-                    .add("widgetId", widgetId)
-                    .add("tableName", tableName)
+                    .add("widgetId", widgetId == null ? "" : widgetId)
+                    .add("tableName", tableName == null ? "" : tableName)
                     .add("tableExists", tableExists)
                     .add("synced", synced)
                     .add("message", message == null ? "" : message)

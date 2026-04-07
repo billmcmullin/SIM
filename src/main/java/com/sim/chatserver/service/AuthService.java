@@ -1,5 +1,6 @@
 package com.sim.chatserver.service;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.mindrot.jbcrypt.BCrypt;
@@ -17,41 +18,65 @@ public class AuthService {
 
     private static final Logger log = Logger.getLogger(AuthService.class.getName());
 
+    private static final String UNKNOWN = "UNKNOWN";
+    private static final String LOG_LOOKUP_INIT = "AuthService.authenticate: lookup initiated";
+    private static final String LOG_EMPTY_USERNAME = "AuthService.authenticate: empty username";
+    private static final String LOG_USER_NOT_FOUND = "AuthService.authenticate: user not found";
+    private static final String LOG_BCRYPT_THROW = "AuthService.authenticate: BCrypt check threw: {0}";
+    private static final String LOG_BCRYPT_RESULT = "AuthService.authenticate: bcrypt result={0}";
+    private static final String LOG_FOUND_USER = "AuthService.authenticate: found user={0} role={1}";
+
     @Inject
     UserService userService;
 
     public UserAccount authenticate(String username, String password) {
-        // avoid logging raw username/password; log at FINE level about the lookup
-        log.fine("AuthService.authenticate: lookup initiated");
+        // Avoid work if FINE is disabled
+        if (log.isLoggable(Level.FINE)) {
+            log.fine(LOG_LOOKUP_INIT);
+        }
 
-        if (username == null || username.trim().isEmpty()) {
-            log.warning("AuthService.authenticate: empty username");
+        // Normalize username once
+        String normalizedUsername = normalizeUsername(username);
+        if (normalizedUsername == null) {
+            log.warning(LOG_EMPTY_USERNAME);
             return null;
         }
 
-        UserAccount u = userService.findByUsername(username);
-        if (u == null) {
-            // do not emit the username or any secrets in logs
-            log.info("AuthService.authenticate: user not found");
+        // Single lookup
+        UserAccount user = userService.findByUsername(normalizedUsername);
+        if (user == null) {
+            log.info(LOG_USER_NOT_FOUND);
             return null;
         }
 
-        // Log non-sensitive attributes only; do NOT log password hashes or other secrets.
-        String maskedUsername = maskIdentifier(u.getUsername());
-        log.info("AuthService.authenticate: found user=" + maskedUsername + " role=" + safeToString(u.getRole()));
+        // Log only non-sensitive metadata, lazily/parameterized
+        if (log.isLoggable(Level.INFO)) {
+            log.log(Level.INFO, LOG_FOUND_USER,
+                    new Object[]{maskIdentifier(user.getUsername()), safeToString(user.getRole())});
+        }
 
-        String storedHash = u.getPasswordHash();
+        // Fast fail for obviously invalid inputs to avoid BCrypt cost
+        if (password == null) {
+            if (log.isLoggable(Level.INFO)) {
+                log.log(Level.INFO, LOG_BCRYPT_RESULT, false);
+            }
+            return null;
+        }
+
+        String storedHash = user.getPasswordHash();
         boolean ok = false;
         try {
-            // Do not log the provided password or stored hash
+            // No sensitive data in logs
             ok = storedHash != null && BCrypt.checkpw(password, storedHash);
         } catch (Exception e) {
-            // Log the exception message but avoid including sensitive data
-            log.severe("AuthService.authenticate: BCrypt check threw: " + e.toString());
+            log.log(Level.SEVERE, LOG_BCRYPT_THROW, e.toString());
         }
 
-        log.info("AuthService.authenticate: bcrypt result=" + ok);
-        return ok ? u : null;
+        if (log.isLoggable(Level.INFO)) {
+            log.log(Level.INFO, LOG_BCRYPT_RESULT, ok);
+        }
+
+        return ok ? user : null;
     }
 
     /**
@@ -69,8 +94,7 @@ public class AuthService {
         if (len == 2) {
             return id.charAt(0) + "*";
         }
-        // preserve first and last char, mask the middle
-        return new StringBuilder()
+        return new StringBuilder(5)
                 .append(id.charAt(0))
                 .append("***")
                 .append(id.charAt(len - 1))
@@ -78,6 +102,14 @@ public class AuthService {
     }
 
     private static String safeToString(Object obj) {
-        return obj == null ? "UNKNOWN" : obj.toString();
+        return obj == null ? UNKNOWN : obj.toString();
+    }
+
+    private static String normalizeUsername(String username) {
+        if (username == null) {
+            return null;
+        }
+        String trimmed = username.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

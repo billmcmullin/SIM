@@ -48,31 +48,39 @@ public class UserService {
     }
 
     /**
-     * Authenticate user. Supports bcrypt hashed passwords; falls back to
-     * plaintext compare for legacy entries.
+     * Authenticate and return user in a single lookup. Returns null on failure.
      */
-    public boolean authenticate(String username, String password) {
+    public UserAccount authenticateAndGetUser(String username, String password) {
         UserAccount u = findByUsername(username);
         if (u == null) {
-            return false;
+            return null;
         }
-        String stored = u.getPassword(); // existing field
+
+        String stored = u.getPassword();
         if (stored == null) {
-            return false;
+            return null;
         }
 
         // If stored value looks like a bcrypt hash, verify using BCrypt
         if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
             try {
-                return BCrypt.checkpw(password, stored);
+                return BCrypt.checkpw(password, stored) ? u : null;
             } catch (Exception e) {
                 log.log(Level.WARNING, "BCrypt check failed", e);
-                return false;
+                return null;
             }
         }
 
         // fallback plaintext comparison (dev only)
-        return stored.equals(password);
+        return stored.equals(password) ? u : null;
+    }
+
+    /**
+     * Authenticate user. Supports bcrypt hashed passwords; falls back to
+     * plaintext compare for legacy entries.
+     */
+    public boolean authenticate(String username, String password) {
+        return authenticateAndGetUser(username, password) != null;
     }
 
     /**
@@ -86,7 +94,6 @@ public class UserService {
             em.getTransaction().begin();
             UserAccount u = new UserAccount();
             u.setUsername(username.trim());
-            // Hash password for storage
             String hashed = BCrypt.hashpw(password, BCrypt.gensalt(10));
             u.setPassword(hashed);
             u.setRole(role);
@@ -144,7 +151,8 @@ public class UserService {
         EntityManagerFactory emf = dsHolder.getEmf();
         EntityManager em = emf.createEntityManager();
         try {
-            TypedQuery<UserAccount> query = em.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
+            TypedQuery<UserAccount> query
+                    = em.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
             return query.getResultList();
         } finally {
             em.close();

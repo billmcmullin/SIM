@@ -26,25 +26,35 @@ import jakarta.persistence.Persistence;
 public class AppDataSourceHolder {
 
     private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getName());
+    private static final String DRIVER = "org.postgresql.Driver";
+    private static final String DIALECT = "org.hibernate.dialect.PostgreSQLDialect";
+    private static final String PU_NAME = "ChatsPU-Local";
 
-    private EntityManagerFactory emf;
-    private HikariDataSource ds;
+    // Volatile for fast, thread-safe reads without synchronized getters.
+    private volatile EntityManagerFactory emf;
+    private volatile HikariDataSource ds;
+
+    // Cache env-derived defaults once (startup-time constants for this process).
+    private final String envDbUrl = trimToNull(System.getenv("DB_URL"));
+    private final String envDbHost = trimToNull(System.getenv("DB_HOST"));
+    private final String envDbUser = trimToNull(System.getenv("DB_USER"));
+    private final String envDbPassword = System.getenv("DB_PASSWORD"); // allow empty, but not null
+    private final String envDbName = defaultIfBlank(System.getenv("DB_NAME"), "chat");
+    private final String envDbPort = defaultIfBlank(System.getenv("DB_PORT"), "5432");
 
     @PostConstruct
-    public void init() {
-        String dbUrl = trimToNull(System.getenv("DB_URL"));
-        String host = trimToNull(System.getenv("DB_HOST"));
-        String user = trimToNull(System.getenv("DB_USER"));
-        String pass = System.getenv("DB_PASSWORD"); // allow empty, but not null
-        String name = defaultIfBlank(System.getenv("DB_NAME"), "chat");
-        String port = defaultIfBlank(System.getenv("DB_PORT"), "5432");
+    public synchronized void init() {
+        String dbUrl = envDbUrl;
+        String host = envDbHost;
+        String user = envDbUser;
+        String pass = envDbPassword;
 
         if (dbUrl == null && host == null) {
             throw new IllegalStateException("PostgreSQL required: set DB_URL or DB_HOST.");
         }
 
         if (dbUrl == null) {
-            dbUrl = String.format("jdbc:postgresql://%s:%s/%s", host, port, name);
+            dbUrl = String.format("jdbc:postgresql://%s:%s/%s", host, envDbPort, envDbName);
         }
 
         if (!dbUrl.startsWith("jdbc:postgresql:")) {
@@ -59,30 +69,18 @@ public class AppDataSourceHolder {
         }
 
         try {
-            HikariConfig hc = new HikariConfig();
-            hc.setJdbcUrl(dbUrl);
-            hc.setUsername(user);
-            hc.setPassword(pass);
-            hc.setDriverClassName("org.postgresql.Driver");
-            hc.setMaximumPoolSize(10);
-            hc.setMinimumIdle(2);
-            hc.setConnectionTimeout(15000);
+            HikariDataSource newDs = createHikariDataSource(dbUrl, user, pass, 10, 2, 15000);
 
-            this.ds = new HikariDataSource(hc);
-
-            try (var conn = this.ds.getConnection()) {
-                log.info("PostgreSQL connectivity check succeeded: " + dbUrl);
+            try (var conn = newDs.getConnection()) {
+                log.log(Level.INFO, "PostgreSQL connectivity check succeeded: {0}", dbUrl);
             }
 
-            Map<String, Object> props = new HashMap<>();
-            props.put("jakarta.persistence.jdbc.url", dbUrl);
-            props.put("jakarta.persistence.jdbc.user", user);
-            props.put("jakarta.persistence.jdbc.password", pass);
-            props.put("jakarta.persistence.jdbc.driver", "org.postgresql.Driver");
-            props.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            props.put("hibernate.hbm2ddl.auto", "update");
+            Map<String, Object> props = createJpaPropsWithDataSource(newDs, "update");
+            EntityManagerFactory newEmf = Persistence.createEntityManagerFactory(PU_NAME, props);
 
-            this.emf = Persistence.createEntityManagerFactory("ChatsPU-Local", props);
+            this.ds = newDs;
+            this.emf = newEmf;
+
             log.info("EntityManagerFactory initialized (PostgreSQL only)");
         } catch (Exception e) {
             log.log(Level.SEVERE, "Failed to initialize PostgreSQL datasource/EMF", e);
@@ -90,11 +88,12 @@ public class AppDataSourceHolder {
         }
     }
 
-    public synchronized EntityManagerFactory getEmf() {
-        if (emf == null) {
+    public EntityManagerFactory getEmf() {
+        EntityManagerFactory local = emf;
+        if (local == null) {
             throw new IllegalStateException("EntityManagerFactory not initialized.");
         }
-        return emf;
+        return local;
     }
 
     public synchronized void setDataSource(DataSource dataSource) {
@@ -112,11 +111,12 @@ public class AppDataSourceHolder {
         }
     }
 
-    public synchronized DataSource getDataSource() {
-        if (this.ds == null) {
+    public DataSource getDataSource() {
+        DataSource local = this.ds;
+        if (local == null) {
             throw new IllegalStateException("DataSource not initialized.");
         }
-        return this.ds;
+        return local;
     }
 
     public synchronized void setEmf(EntityManagerFactory emf) {
@@ -124,24 +124,29 @@ public class AppDataSourceHolder {
         log.info("EntityManagerFactory updated on AppDataSourceHolder");
     }
 
-    public synchronized String getActiveJdbcUrl() {
-        if (this.ds != null) {
+    public String getActiveJdbcUrl() {
+        HikariDataSource localDs = this.ds;
+        if (localDs != null) {
             try {
-                return this.ds.getJdbcUrl();
+                return localDs.getJdbcUrl();
             } catch (Exception ignored) {
+                // fall back below
             }
         }
-        return System.getenv("DB_URL");
+        return envDbUrl;
     }
 
-    public synchronized void switchToExternalAndPersist(DbConfig cfg, Consumer<String> callback) {
+    public void switchToExternalAndPersist(DbConfig cfg, Consumer<String> callback) {
         callback.accept("Starting switchToExternalAndPersist...");
+        HikariDataSource newDs = null;
+        EntityManagerFactory newEmf = null;
+
         try {
             String jdbcUrl = cfg.getJdbcUrl();
             if (jdbcUrl == null || jdbcUrl.isBlank()) {
-                String host = cfg.getHost() != null ? cfg.getHost() : defaultIfBlank(System.getenv("DB_HOST"), "localhost");
-                String port = cfg.getPort() != null ? cfg.getPort() : defaultIfBlank(System.getenv("DB_PORT"), "5432");
-                String name = cfg.getDbName() != null ? cfg.getDbName() : defaultIfBlank(System.getenv("DB_NAME"), "chat");
+                String host = cfg.getHost() != null ? cfg.getHost() : defaultIfBlank(envDbHost, "localhost");
+                String port = cfg.getPort() != null ? cfg.getPort() : defaultIfBlank(envDbPort, "5432");
+                String name = cfg.getDbName() != null ? cfg.getDbName() : defaultIfBlank(envDbName, "chat");
                 jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + name;
             }
 
@@ -150,51 +155,38 @@ public class AppDataSourceHolder {
             }
 
             callback.accept("Creating HikariDataSource for: " + jdbcUrl);
-            HikariConfig cfgH = new HikariConfig();
-            cfgH.setJdbcUrl(jdbcUrl);
-            if (cfg.getUsername() != null) {
-                cfgH.setUsername(cfg.getUsername());
-            }
-            if (cfg.getPassword() != null) {
-                cfgH.setPassword(cfg.getPassword());
-            }
-            cfgH.setDriverClassName("org.postgresql.Driver");
-            cfgH.setMaximumPoolSize(cfg.getMaxPoolSize() > 0 ? cfg.getMaxPoolSize() : 10);
 
-            HikariDataSource newDs = new HikariDataSource(cfgH);
+            int maxPool = cfg.getMaxPoolSize() > 0 ? cfg.getMaxPoolSize() : 10;
+            newDs = createHikariDataSource(jdbcUrl, cfg.getUsername(), cfg.getPassword(), maxPool, 2, 15000);
 
             try (var conn = newDs.getConnection()) {
                 callback.accept("Connection test succeeded");
             }
 
-            Map<String, Object> props = new HashMap<>();
-            props.put("jakarta.persistence.jdbc.url", jdbcUrl);
-            props.put("jakarta.persistence.jdbc.user", cfg.getUsername());
-            props.put("jakarta.persistence.jdbc.password", cfg.getPassword());
-            props.put("jakarta.persistence.jdbc.driver", "org.postgresql.Driver");
-            props.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            props.put("hibernate.hbm2ddl.auto", "update");
+            Map<String, Object> props = createJpaPropsWithDataSource(newDs, "update");
+            newEmf = Persistence.createEntityManagerFactory(PU_NAME, props);
 
-            EntityManagerFactory newEmf = Persistence.createEntityManagerFactory("ChatsPU-Local", props);
+            HikariDataSource oldDs;
+            EntityManagerFactory oldEmf;
 
-            if (this.ds != null) {
-                try {
-                    this.ds.close();
-                } catch (Exception ignored) {
-                }
-            }
-            if (this.emf != null) {
-                try {
-                    this.emf.close();
-                } catch (Exception ignored) {
-                }
+            // Minimal critical section: atomic swap only.
+            synchronized (this) {
+                oldDs = this.ds;
+                oldEmf = this.emf;
+                this.ds = newDs;
+                this.emf = newEmf;
             }
 
-            this.ds = newDs;
-            this.emf = newEmf;
+            // Close old resources outside lock.
+            closeQuietly(oldEmf);
+            closeQuietly(oldDs);
 
             callback.accept("switchToExternalAndPersist: success; datasource and EMF updated.");
         } catch (Exception e) {
+            // If partially created, clean up new resources on failure.
+            closeQuietly(newEmf);
+            closeQuietly(newDs);
+
             log.log(Level.SEVERE, "switchToExternalAndPersist failed: " + e.getMessage(), e);
             callback.accept("switchToExternalAndPersist failed: " + e.getMessage());
             throw new RuntimeException(e);
@@ -203,19 +195,68 @@ public class AppDataSourceHolder {
 
     @PreDestroy
     public synchronized void close() {
-        try {
-            if (emf != null) {
-                emf.close();
-            }
-        } catch (Exception ignored) {
-        }
-        try {
-            if (ds != null) {
-                ds.close();
-            }
-        } catch (Exception ignored) {
-        }
+        EntityManagerFactory localEmf = this.emf;
+        HikariDataSource localDs = this.ds;
+        this.emf = null;
+        this.ds = null;
+
+        closeQuietly(localEmf);
+        closeQuietly(localDs);
+
         log.info("AppDataSourceHolder closed resources");
+    }
+
+    private static HikariDataSource createHikariDataSource(
+            String jdbcUrl,
+            String username,
+            String password,
+            int maxPoolSize,
+            int minIdle,
+            long connectionTimeoutMs) {
+
+        HikariConfig hc = new HikariConfig();
+        hc.setJdbcUrl(jdbcUrl);
+        if (username != null) {
+            hc.setUsername(username);
+        }
+        if (password != null) {
+            hc.setPassword(password);
+        }
+        hc.setDriverClassName(DRIVER);
+        hc.setMaximumPoolSize(maxPoolSize);
+        hc.setMinimumIdle(minIdle);
+        hc.setConnectionTimeout(connectionTimeoutMs);
+
+        // Fail fast (preserves "fail fast" behavior intent).
+        hc.setInitializationFailTimeout(1);
+
+        return new HikariDataSource(hc);
+    }
+
+    private static Map<String, Object> createJpaPropsWithDataSource(DataSource dataSource, String hbm2ddl) {
+        Map<String, Object> props = new HashMap<>();
+        props.put("jakarta.persistence.nonJtaDataSource", dataSource);
+        props.put("hibernate.dialect", DIALECT);
+        props.put("hibernate.hbm2ddl.auto", hbm2ddl);
+        return props;
+    }
+
+    private static void closeQuietly(EntityManagerFactory factory) {
+        if (factory != null) {
+            try {
+                factory.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static void closeQuietly(HikariDataSource dataSource) {
+        if (dataSource != null) {
+            try {
+                dataSource.close();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private static String trimToNull(String v) {
