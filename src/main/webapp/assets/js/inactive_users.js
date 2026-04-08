@@ -1,3 +1,4 @@
+// File: src/main/webapp/assets/js/inactive_users.js
 (function () {
     const cfg = window.inactiveUsersConfig || {};
     const contextPath = cfg.contextPath || '';
@@ -42,15 +43,56 @@
         return `${contextPath}/dashboard/inactive-users/list?${params.toString()}`;
     }
 
+    function frLabel(r) {
+        const score = Number(r?.frustrationScore || 0);
+        if (score >= 0.7) return 'High';
+        if (score >= 0.4) return 'Medium';
+        if (score > 0) return 'Low';
+        return 'None';
+    }
+
+    function frClass(label) {
+        if (label === 'Low') return 'fr-badge fr-badge-low';
+        if (label === 'Medium') return 'fr-badge fr-badge-medium';
+        if (label === 'High') return 'fr-badge fr-badge-high';
+        return '';
+    }
+
+    function frTooltip(r, label) {
+        const reasonRaw = String(r?.frustrationReason || '').trim().toLowerCase();
+        if (label === 'None') return '';
+
+        if (!reasonRaw) return `Frustration: ${label}`;
+
+        if (reasonRaw.startsWith('keyword:')) {
+            const kw = reasonRaw.split(':')[1] || '';
+            return `Frustration: ${label} • Keyword: ${kw}`;
+        }
+        if (reasonRaw.startsWith('misunderstood:')) {
+            return `Frustration: ${label} • User feels misunderstood`;
+        }
+        if (reasonRaw === 'punctuation') {
+            return `Frustration: ${label} • Strong punctuation`;
+        }
+        if (reasonRaw === 'all_caps') {
+            return `Frustration: ${label} • Emphasis in ALL CAPS`;
+        }
+
+        return `Frustration: ${label}`;
+    }
+
     function rowsHtml(rows) {
         if (!Array.isArray(rows) || rows.length === 0) {
-            return `<tr><td colspan="3" class="empty-row">No inactive users found.</td></tr>`;
+            return `<tr><td colspan="4" class="empty-row">No inactive users found.</td></tr>`;
         }
 
         return rows.map(r => {
             const sid = r.sessionId || '';
             const label = r.displayLabel || sid;
             const count = Number(r.chatCount ?? r.chats ?? 0);
+            const fr = frLabel(r);
+            const tip = frTooltip(r, fr);
+
             return `<tr>
                 <td>
                     <div>${esc(label)}</div>
@@ -60,6 +102,12 @@
                     <button type="button" class="ghost-btn inactive-count-btn" data-session-id="${esc(sid)}">
                         ${count} chats
                     </button>
+                </td>
+                <td>
+                    ${fr === 'None'
+                    ? `<span title="${esc(tip)}">${esc(fr)}</span>`
+                    : `<span class="${frClass(fr)}" title="${esc(tip)}">${esc(fr)}</span>`
+                }
                 </td>
                 <td>${esc(fmt(r.lastEntry))}</td>
             </tr>`;
@@ -84,6 +132,7 @@
                         <tr>
                             <th>Session</th>
                             <th>Chat Count</th>
+                            <th>Frustration</th>
                             <th>Last Entry</th>
                         </tr>
                     </thead>
@@ -91,14 +140,13 @@
                 </table>
             </div>
         `;
-        widgetTablesContainer.appendChild(section);
+        widgetTablesContainer?.appendChild(section);
     }
 
     function render() {
-        allWidgetsBody.innerHTML = rowsHtml(data.all || []);
+        if (allWidgetsBody) allWidgetsBody.innerHTML = rowsHtml(data.all || []);
 
-        // Add ALL scope button above all table
-        const allSection = allWidgetsBody.closest('.section');
+        const allSection = allWidgetsBody?.closest('.section');
         if (allSection && !allSection.querySelector('.all-view-all-btn')) {
             const wrap = document.createElement('div');
             wrap.style.display = 'flex';
@@ -109,10 +157,10 @@
             if (tableScroll) allSection.insertBefore(wrap, tableScroll);
         }
 
-        widgetTablesContainer.innerHTML = '';
+        if (widgetTablesContainer) widgetTablesContainer.innerHTML = '';
         const widgetIds = Object.keys(data.widgets || {});
         if (!widgetIds.length) {
-            widgetTablesContainer.innerHTML = `<div class="empty-row">No widget data found.</div>`;
+            if (widgetTablesContainer) widgetTablesContainer.innerHTML = `<div class="empty-row">No widget data found.</div>`;
             return;
         }
         widgetIds.forEach(widgetId => renderWidgetSection(widgetId, Array.isArray(data.widgets[widgetId]) ? data.widgets[widgetId] : []));
@@ -143,8 +191,8 @@
 
             const widgetBtn = e.target.closest('.widget-view-all-btn');
             if (widgetBtn) {
-                const widgetId = widgetBtn.dataset.widgetId;
-                window.location.href = fullListUrl('widget', widgetId);
+                const wid = widgetBtn.dataset.widgetId;
+                window.location.href = fullListUrl('widget', wid);
             }
         });
     }

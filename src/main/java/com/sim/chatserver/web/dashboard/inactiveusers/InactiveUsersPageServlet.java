@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
@@ -48,17 +49,47 @@ public class InactiveUsersPageServlet extends HttpServlet {
     private static final int TOP_N = 5;
     private static final String TEMPLATE_PATH = "/WEB-INF/views/inactive_users.html";
 
+    private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
+    private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
+    private static final Pattern LOGGER_TOKEN = Pattern.compile("\\b(INFO|DEBUG|TRACE|WARN|WARNING|ERROR|FATAL)\\b");
+    private static final Pattern PROFANITY_PATTERN = Pattern.compile(
+            "\\b(fuck|fucking|shit|bullshit|damn|wtf|crap|asshole)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern FRUSTRATION_PHRASE_PATTERN = Pattern.compile(
+            "\\b(not what i asked|that is not what i asked|you (didn'?t|do not) understand|wrong answer|incorrect answer|"
+            + "you (are|re) not listening|this (still )?doesn'?t work|not working|still broken|fix this|"
+            + "answer the question|stop ignoring|why is this wrong)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Set<String> SAFE_ACRONYMS = Set.of(
+            "API", "SDK", "CLI", "GUI", "SQL", "JSON", "XML", "HTTP", "HTTPS", "URL", "URI", "JWT", "SSO", "SAML", "OIDC", "TLS", "SSL",
+            "TCP", "UDP", "DNS", "IP", "CPU", "GPU", "RAM", "OS", "DB", "ETL", "CI", "CD", "IDE", "LTS", "JDK", "JVM",
+            "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
+    );
+
     @Inject
     AppDataSourceHolder dsHolder;
 
     private static final class InactiveRow {
 
         String sessionId;
-        String displayLabel;     // friendly session label if present
+        String displayLabel;
         String widgetId;
-        String widgetLabel;      // friendly widget name
+        String widgetLabel;
         Timestamp lastEntry;
         long chats;
+
+        boolean frustrationDetected;
+        double frustrationScore;
+        String frustrationReason;
+    }
+
+    private static final class FrustrationResult {
+
+        boolean detected;
+        double score;
+        String reason;
     }
 
     @Override
@@ -111,6 +142,21 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
                 Map<String, InactiveRow> perWidgetAgg = querySessionAggregateForTable(conn, table, wid, widgetLabel);
 
+                for (InactiveRow row : perWidgetAgg.values()) {
+                    try {
+                        List<String> prompts = loadRecentPromptsForSession(conn, table, row.sessionId, FRUSTRATION_PROMPT_SCAN_LIMIT);
+                        FrustrationResult fr = detectFrustration(prompts);
+                        row.frustrationDetected = fr.detected;
+                        row.frustrationScore = fr.score;
+                        row.frustrationReason = fr.reason;
+                    } catch (Exception ex) {
+                        row.frustrationDetected = false;
+                        row.frustrationScore = 0.0;
+                        row.frustrationReason = "";
+                        log.log(Level.FINE, "Frustration detection skipped for session " + row.sessionId + " table " + table, ex);
+                    }
+                }
+
                 Set<String> widgetSessionIds = perWidgetAgg.keySet();
                 Map<String, SessionLabelStore.SessionLabel> widgetLabels = mapLabelsSafe(widgetSessionIds);
 
@@ -119,7 +165,6 @@ public class InactiveUsersPageServlet extends HttpServlet {
                     if (!isInactive(row.lastEntry, cutoff)) {
                         continue;
                     }
-                    // Friendly session name if available
                     row.displayLabel = SessionLabelStore.resolveDisplayLabel(row.sessionId, widgetLabels.get(row.sessionId));
                     inactiveRows.add(row);
                 }
@@ -129,7 +174,6 @@ public class InactiveUsersPageServlet extends HttpServlet {
                     inactiveRows = inactiveRows.subList(0, TOP_N);
                 }
 
-                // key by widget ID, label included in row payload
                 byWidget.put(wid, inactiveRows);
 
                 for (InactiveRow wr : perWidgetAgg.values()) {
@@ -140,11 +184,19 @@ public class InactiveUsersPageServlet extends HttpServlet {
                         x.widgetLabel = "All Widgets";
                         x.chats = 0;
                         x.lastEntry = null;
+                        x.frustrationDetected = false;
+                        x.frustrationScore = 0.0;
+                        x.frustrationReason = "";
                         return x;
                     });
                     ar.chats += wr.chats;
                     if (ar.lastEntry == null || (wr.lastEntry != null && wr.lastEntry.after(ar.lastEntry))) {
                         ar.lastEntry = wr.lastEntry;
+                    }
+                    if (wr.frustrationScore > ar.frustrationScore) {
+                        ar.frustrationScore = wr.frustrationScore;
+                        ar.frustrationDetected = wr.frustrationDetected;
+                        ar.frustrationReason = wr.frustrationReason;
                     }
                 }
             }
@@ -228,10 +280,241 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 r.widgetLabel = widgetLabel;
                 r.lastEntry = last;
                 r.chats = rs.getLong("total");
+                r.frustrationDetected = false;
+                r.frustrationScore = 0.0;
+                r.frustrationReason = "";
                 out.put(r.sessionId, r);
             }
         }
         return out;
+    }
+
+    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
+        List<String> prompts = new ArrayList<>();
+        if (sessionId == null || sessionId.isBlank() || limit < 1) {
+            return prompts;
+        }
+
+        String[] cols = {"prompt", "prompt_text", "user_prompt"};
+        for (String col : cols) {
+            String sql = "SELECT " + quoteIdentifier(col) + " AS p FROM " + quoteIdentifier(table)
+                    + " WHERE session_id = ? AND " + quoteIdentifier(col) + " IS NOT NULL AND " + quoteIdentifier(col) + " <> ''"
+                    + " ORDER BY created_at DESC";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, sessionId);
+                ps.setMaxRows(limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String p = rs.getString("p");
+                        if (p != null && !p.isBlank()) {
+                            prompts.add(p);
+                        }
+                    }
+                    if (!prompts.isEmpty()) {
+                        return prompts;
+                    }
+                }
+            } catch (Exception ignored) {
+                // try next candidate column
+            }
+        }
+        return prompts;
+    }
+
+    private FrustrationResult detectFrustration(List<String> prompts) {
+        FrustrationResult out = new FrustrationResult();
+        out.detected = false;
+        out.score = 0.0;
+        out.reason = "";
+
+        if (prompts == null || prompts.isEmpty()) {
+            return out;
+        }
+
+        double score = 0.0;
+        String reason = "";
+
+        String[] strong = {"frustrated", "angry", "annoyed", "furious", "ridiculous", "useless", "terrible"};
+        String[] misunderstood = {"you don't understand", "you dont understand", "not what i asked", "wrong again", "not listening", "misunderstood"};
+
+        boolean consistentCapsStyle = isConsistentCapsStyle(prompts);
+
+        for (String raw : prompts) {
+            String t = raw == null ? "" : raw.trim();
+            String lower = t.toLowerCase();
+
+            for (String k : strong) {
+                if (lower.contains(k)) {
+                    score += 0.30;
+                    if (reason.isEmpty()) {
+                        reason = "keyword:" + k;
+                    }
+                }
+            }
+            for (String k : misunderstood) {
+                if (lower.contains(k)) {
+                    score += 0.35;
+                    if (reason.isEmpty()) {
+                        reason = "misunderstood:" + k;
+                    }
+                }
+            }
+            if (lower.contains("!!!") || lower.contains("???")) {
+                score += 0.15;
+                if (reason.isEmpty()) {
+                    reason = "punctuation";
+                }
+            }
+
+            boolean nonFrustrationContext = looksLikeCodeText(t) || looksLikeLogText(t) || containsOnlySafeAcronymCaps(t);
+
+            // ALL CAPS no longer scores by itself; requires explicit frustration language.
+            if (!nonFrustrationContext && hasExplicitFrustrationSignal(t) && !consistentCapsStyle) {
+                score += 0.20;
+                if (reason.isEmpty()) {
+                    reason = "frustration_phrase";
+                }
+            }
+        }
+
+        if (score > 1.0) {
+            score = 1.0;
+        }
+        out.score = score;
+        out.detected = score >= 0.40;
+        out.reason = reason;
+        return out;
+    }
+
+    private boolean looksLikeCodeText(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String s = t;
+        String lower = s.toLowerCase();
+
+        if (s.contains("```")) {
+            return true;
+        }
+
+        int codeHints = 0;
+        String[] keywords = {
+            "select ", " from ", " where ", " join ", "insert ", "update ", "delete ",
+            " function ", " class ", " public ", " private ", " protected ", " return ",
+            " if(", " if (", " for(", " for (", " while(", " while ("
+        };
+        for (String k : keywords) {
+            if (lower.contains(k)) {
+                codeHints++;
+            }
+        }
+
+        if (s.contains("{") || s.contains("}") || s.contains(";") || s.contains("=>") || s.contains("::")) {
+            codeHints++;
+        }
+
+        int sym = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ("{}[]();=<>/_\\|".indexOf(c) >= 0) {
+                sym++;
+            }
+        }
+        double symRatio = s.isEmpty() ? 0.0 : ((double) sym / (double) s.length());
+        if (symRatio > 0.08) {
+            codeHints++;
+        }
+
+        return codeHints >= 2;
+    }
+
+    private boolean looksLikeLogText(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String s = t;
+
+        int hints = 0;
+        if (LOGGER_TOKEN.matcher(s).find()) {
+            hints++;
+        }
+        if (s.matches(".*\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*")) {
+            hints++;
+        }
+        if (s.matches(".*\\b\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\b.*")) {
+            hints++;
+        }
+        if (s.contains(" - ") || s.contains(" | ") || s.contains("::")) {
+            hints++;
+        }
+        if (s.contains("Exception") || s.contains("Stacktrace") || s.contains("at com.")) {
+            hints++;
+        }
+
+        return hints >= 2;
+    }
+
+    private boolean containsOnlySafeAcronymCaps(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String[] tokens = t.split("[^A-Za-z0-9_]+");
+        boolean sawCapsToken = false;
+        for (String tok : tokens) {
+            if (tok == null || tok.isBlank()) {
+                continue;
+            }
+            if (tok.length() < 2) {
+                continue;
+            }
+            boolean isAllCaps = tok.equals(tok.toUpperCase()) && tok.matches("[A-Z0-9_]+");
+            if (!isAllCaps) {
+                continue;
+            }
+            sawCapsToken = true;
+            if (!SAFE_ACRONYMS.contains(tok)) {
+                return false;
+            }
+        }
+        return sawCapsToken;
+    }
+
+    private boolean hasExplicitFrustrationSignal(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        if (PROFANITY_PATTERN.matcher(t).find()) {
+            return true;
+        }
+        return FRUSTRATION_PHRASE_PATTERN.matcher(t).find();
+    }
+
+    private boolean isConsistentCapsStyle(List<String> prompts) {
+        if (prompts == null || prompts.size() < 3) {
+            return false;
+        }
+
+        int capsCount = 0;
+        int nonCodeCount = 0;
+
+        for (String p : prompts) {
+            if (p == null || p.isBlank()) {
+                continue;
+            }
+            if (looksLikeCodeText(p) || looksLikeLogText(p) || containsOnlySafeAcronymCaps(p)) {
+                continue;
+            }
+            nonCodeCount++;
+            if (ALL_CAPS_WORD.matcher(p).find()) {
+                capsCount++;
+            }
+        }
+
+        if (nonCodeCount < 3) {
+            return false;
+        }
+
+        return ((double) capsCount / (double) nonCodeCount) >= 0.60;
     }
 
     private String buildInactiveUsersJson(Map<String, List<InactiveRow>> byWidget, Map<String, String> widgetNameById) {
@@ -275,6 +558,9 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 .add("widgetLabel", nvl(r.widgetLabel))
                 .add("chatCount", r.chats)
                 .add("lastEntry", r.lastEntry == null ? "" : r.lastEntry.toInstant().toString())
+                .add("frustrationDetected", r.frustrationDetected)
+                .add("frustrationScore", r.frustrationScore)
+                .add("frustrationReason", nvl(r.frustrationReason))
                 .build();
     }
 

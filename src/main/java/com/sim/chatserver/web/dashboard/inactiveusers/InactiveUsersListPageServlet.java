@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
@@ -48,6 +49,25 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     private static final int DEFAULT_DAYS = 7;
     private static final int DEFAULT_LIMIT = 10;
 
+    private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
+    private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
+    private static final Pattern LOGGER_TOKEN = Pattern.compile("\\b(INFO|DEBUG|TRACE|WARN|WARNING|ERROR|FATAL)\\b");
+    private static final Pattern PROFANITY_PATTERN = Pattern.compile(
+            "\\b(fuck|fucking|shit|bullshit|damn|wtf|crap|asshole)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern FRUSTRATION_PHRASE_PATTERN = Pattern.compile(
+            "\\b(not what i asked|that is not what i asked|you (didn'?t|do not) understand|wrong answer|incorrect answer|"
+            + "you (are|re) not listening|this (still )?doesn'?t work|not working|still broken|fix this|"
+            + "answer the question|stop ignoring|why is this wrong)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Set<String> SAFE_ACRONYMS = Set.of(
+            "API", "SDK", "CLI", "GUI", "SQL", "JSON", "XML", "HTTP", "HTTPS", "URL", "URI", "JWT", "SSO", "SAML", "OIDC", "TLS", "SSL",
+            "TCP", "UDP", "DNS", "IP", "CPU", "GPU", "RAM", "OS", "DB", "ETL", "CI", "CD", "IDE", "LTS", "JDK", "JVM",
+            "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
+    );
+
     @Inject
     AppDataSourceHolder dsHolder;
 
@@ -59,6 +79,17 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         String widgetLabel;
         long chatCount;
         Timestamp lastEntry;
+
+        boolean frustrationDetected;
+        double frustrationScore;
+        String frustrationReason;
+    }
+
+    private static final class FrustrationResult {
+
+        boolean detected;
+        double score;
+        String reason;
     }
 
     @Override
@@ -121,12 +152,14 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 if (!widgetIdFilter.isBlank()) {
                     String table = sanitizeWidgetTableName(widgetIdFilter);
                     if (tableExists(conn, table)) {
-                        allRows.addAll(loadWidgetRows(
+                        List<Row> rows = loadWidgetRows(
                                 conn,
                                 widgetIdFilter,
                                 widgetNameById.getOrDefault(widgetIdFilter, widgetIdFilter),
                                 cutoff
-                        ));
+                        );
+                        hydrateFrustrationForRows(conn, table, rows);
+                        allRows.addAll(rows);
                     }
                 }
             } else {
@@ -154,11 +187,26 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                                 x.sessionId = k;
                                 x.widgetId = "ALL";
                                 x.widgetLabel = "All Widgets";
+                                x.frustrationDetected = false;
+                                x.frustrationScore = 0.0;
+                                x.frustrationReason = "";
                                 return x;
                             });
                             r.chatCount += rs.getLong("total");
                             if (r.lastEntry == null || last.after(r.lastEntry)) {
                                 r.lastEntry = last;
+                            }
+
+                            try {
+                                List<String> prompts = loadRecentPromptsForSession(conn, table, sid.trim(), FRUSTRATION_PROMPT_SCAN_LIMIT);
+                                FrustrationResult fr = detectFrustration(prompts);
+                                if (fr.score > r.frustrationScore) {
+                                    r.frustrationScore = fr.score;
+                                    r.frustrationDetected = fr.detected;
+                                    r.frustrationReason = fr.reason;
+                                }
+                            } catch (Exception ex) {
+                                log.log(Level.FINE, "Frustration detection skipped for " + sid + " in " + table, ex);
                             }
                         }
                     }
@@ -174,7 +222,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             log.log(Level.SEVERE, "Unable to compute inactive users list", e);
         }
 
-        // resolve session friendly names
         Set<String> ids = allRows.stream().map(r -> r.sessionId).collect(Collectors.toSet());
         Map<String, SessionLabelStore.SessionLabel> labels = Map.of();
         try {
@@ -189,7 +236,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             r.displayLabel = SessionLabelStore.resolveDisplayLabel(r.sessionId, labels.get(r.sessionId));
         }
 
-        // search by session id or friendly name
         if (hasSearch) {
             allRows = allRows.stream().filter(r -> {
                 String sid = r.sessionId == null ? "" : r.sessionId.toLowerCase();
@@ -198,7 +244,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             }).collect(Collectors.toList());
         }
 
-        // most recent inactive first
         allRows.sort(Comparator.comparing((Row r) -> r.lastEntry, Comparator.nullsLast(Comparator.reverseOrder())));
 
         int total = allRows.size();
@@ -239,6 +284,23 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
+    private void hydrateFrustrationForRows(Connection conn, String table, List<Row> rows) {
+        for (Row r : rows) {
+            try {
+                List<String> prompts = loadRecentPromptsForSession(conn, table, r.sessionId, FRUSTRATION_PROMPT_SCAN_LIMIT);
+                FrustrationResult fr = detectFrustration(prompts);
+                r.frustrationDetected = fr.detected;
+                r.frustrationScore = fr.score;
+                r.frustrationReason = fr.reason;
+            } catch (Exception ex) {
+                r.frustrationDetected = false;
+                r.frustrationScore = 0.0;
+                r.frustrationReason = "";
+                log.log(Level.FINE, "Frustration detection skipped for session " + r.sessionId + " table " + table, ex);
+            }
+        }
+    }
+
     private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) throws Exception {
         List<Row> rows = new ArrayList<>();
         String table = sanitizeWidgetTableName(widgetId);
@@ -263,10 +325,240 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 r.widgetLabel = widgetLabel;
                 r.chatCount = rs.getLong("total");
                 r.lastEntry = last;
+                r.frustrationDetected = false;
+                r.frustrationScore = 0.0;
+                r.frustrationReason = "";
                 rows.add(r);
             }
         }
         return rows;
+    }
+
+    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
+        List<String> prompts = new ArrayList<>();
+        if (sessionId == null || sessionId.isBlank() || limit < 1) {
+            return prompts;
+        }
+
+        String[] cols = {"prompt", "prompt_text", "user_prompt"};
+        for (String col : cols) {
+            String sql = "SELECT " + quoteIdentifier(col) + " AS p FROM " + quoteIdentifier(table)
+                    + " WHERE session_id = ? AND " + quoteIdentifier(col) + " IS NOT NULL AND " + quoteIdentifier(col) + " <> ''"
+                    + " ORDER BY created_at DESC";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, sessionId);
+                ps.setMaxRows(limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String p = rs.getString("p");
+                        if (p != null && !p.isBlank()) {
+                            prompts.add(p);
+                        }
+                    }
+                    if (!prompts.isEmpty()) {
+                        return prompts;
+                    }
+                }
+            } catch (Exception ignored) {
+                // try next candidate column
+            }
+        }
+        return prompts;
+    }
+
+    private FrustrationResult detectFrustration(List<String> prompts) {
+        FrustrationResult out = new FrustrationResult();
+        out.detected = false;
+        out.score = 0.0;
+        out.reason = "";
+
+        if (prompts == null || prompts.isEmpty()) {
+            return out;
+        }
+
+        double score = 0.0;
+        String reason = "";
+
+        String[] strong = {"frustrated", "angry", "annoyed", "furious", "ridiculous", "useless", "terrible"};
+        String[] misunderstood = {"you don't understand", "you dont understand", "not what i asked", "wrong again", "not listening", "misunderstood"};
+
+        boolean consistentCapsStyle = isConsistentCapsStyle(prompts);
+
+        for (String raw : prompts) {
+            String t = raw == null ? "" : raw.trim();
+            String lower = t.toLowerCase();
+
+            for (String k : strong) {
+                if (lower.contains(k)) {
+                    score += 0.30;
+                    if (reason.isEmpty()) {
+                        reason = "keyword:" + k;
+                    }
+                }
+            }
+            for (String k : misunderstood) {
+                if (lower.contains(k)) {
+                    score += 0.35;
+                    if (reason.isEmpty()) {
+                        reason = "misunderstood:" + k;
+                    }
+                }
+            }
+            if (lower.contains("!!!") || lower.contains("???")) {
+                score += 0.15;
+                if (reason.isEmpty()) {
+                    reason = "punctuation";
+                }
+            }
+
+            boolean nonFrustrationContext = looksLikeCodeText(t) || looksLikeLogText(t) || containsOnlySafeAcronymCaps(t);
+
+            if (!nonFrustrationContext && hasExplicitFrustrationSignal(t) && !consistentCapsStyle) {
+                score += 0.20;
+                if (reason.isEmpty()) {
+                    reason = "frustration_phrase";
+                }
+            }
+        }
+
+        if (score > 1.0) {
+            score = 1.0;
+        }
+        out.score = score;
+        out.detected = score >= 0.40;
+        out.reason = reason;
+        return out;
+    }
+
+    private boolean looksLikeCodeText(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String s = t;
+        String lower = s.toLowerCase();
+
+        if (s.contains("```")) {
+            return true;
+        }
+
+        int codeHints = 0;
+        String[] keywords = {
+            "select ", " from ", " where ", " join ", "insert ", "update ", "delete ",
+            " function ", " class ", " public ", " private ", " protected ", " return ",
+            " if(", " if (", " for(", " for (", " while(", " while ("
+        };
+        for (String k : keywords) {
+            if (lower.contains(k)) {
+                codeHints++;
+            }
+        }
+
+        if (s.contains("{") || s.contains("}") || s.contains(";") || s.contains("=>") || s.contains("::")) {
+            codeHints++;
+        }
+
+        int sym = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ("{}[]();=<>/_\\|".indexOf(c) >= 0) {
+                sym++;
+            }
+        }
+        double symRatio = s.isEmpty() ? 0.0 : ((double) sym / (double) s.length());
+        if (symRatio > 0.08) {
+            codeHints++;
+        }
+
+        return codeHints >= 2;
+    }
+
+    private boolean looksLikeLogText(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String s = t;
+
+        int hints = 0;
+        if (LOGGER_TOKEN.matcher(s).find()) {
+            hints++;
+        }
+        if (s.matches(".*\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*")) {
+            hints++;
+        }
+        if (s.matches(".*\\b\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\b.*")) {
+            hints++;
+        }
+        if (s.contains(" - ") || s.contains(" | ") || s.contains("::")) {
+            hints++;
+        }
+        if (s.contains("Exception") || s.contains("Stacktrace") || s.contains("at com.")) {
+            hints++;
+        }
+
+        return hints >= 2;
+    }
+
+    private boolean containsOnlySafeAcronymCaps(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        String[] tokens = t.split("[^A-Za-z0-9_]+");
+        boolean sawCapsToken = false;
+        for (String tok : tokens) {
+            if (tok == null || tok.isBlank()) {
+                continue;
+            }
+            if (tok.length() < 2) {
+                continue;
+            }
+            boolean isAllCaps = tok.equals(tok.toUpperCase()) && tok.matches("[A-Z0-9_]+");
+            if (!isAllCaps) {
+                continue;
+            }
+            sawCapsToken = true;
+            if (!SAFE_ACRONYMS.contains(tok)) {
+                return false;
+            }
+        }
+        return sawCapsToken;
+    }
+
+    private boolean hasExplicitFrustrationSignal(String t) {
+        if (t == null || t.isBlank()) {
+            return false;
+        }
+        if (PROFANITY_PATTERN.matcher(t).find()) {
+            return true;
+        }
+        return FRUSTRATION_PHRASE_PATTERN.matcher(t).find();
+    }
+
+    private boolean isConsistentCapsStyle(List<String> prompts) {
+        if (prompts == null || prompts.size() < 3) {
+            return false;
+        }
+
+        int capsCount = 0;
+        int nonCodeCount = 0;
+
+        for (String p : prompts) {
+            if (p == null || p.isBlank()) {
+                continue;
+            }
+            if (looksLikeCodeText(p) || looksLikeLogText(p) || containsOnlySafeAcronymCaps(p)) {
+                continue;
+            }
+            nonCodeCount++;
+            if (ALL_CAPS_WORD.matcher(p).find()) {
+                capsCount++;
+            }
+        }
+
+        if (nonCodeCount < 3) {
+            return false;
+        }
+
+        return ((double) capsCount / (double) nonCodeCount) >= 0.60;
     }
 
     private String buildJson(List<Row> rows) {
@@ -278,7 +570,10 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     .add("widgetId", nvl(r.widgetId))
                     .add("widgetLabel", nvl(r.widgetLabel))
                     .add("chatCount", r.chatCount)
-                    .add("lastEntry", r.lastEntry == null ? "" : r.lastEntry.toInstant().toString()));
+                    .add("lastEntry", r.lastEntry == null ? "" : r.lastEntry.toInstant().toString())
+                    .add("frustrationDetected", r.frustrationDetected)
+                    .add("frustrationScore", r.frustrationScore)
+                    .add("frustrationReason", nvl(r.frustrationReason)));
         }
         JsonObject obj = Json.createObjectBuilder().add("rows", arr).build();
         return obj.toString();
