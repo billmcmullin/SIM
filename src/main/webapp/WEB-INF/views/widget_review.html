@@ -139,10 +139,39 @@
                     <strong>Prompt</strong>
                     <pre id="detailPrompt"></pre>
                 </div>
+
+                <!-- Shared language selector -->
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <label for="translateTargetLang" style="margin:0;">Translate To:</label>
+                    <select id="translateTargetLang" style="width:auto;">
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                    </select>
+                </div>
+
+                <!-- Prompt translate -->
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" id="translatePromptBtn" class="ghost-btn">Detect &amp; Translate
+                        Prompt</button>
+                </div>
+                <div id="promptTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                <pre id="promptTranslationOutput" style="display:none; margin-top:8px;"></pre>
+
                 <div style="margin-top:12px;">
                     <strong>Response</strong>
                     <pre id="detailResponse"></pre>
                 </div>
+
+                <!-- Response translate -->
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" id="translateResponseBtn" class="ghost-btn">Detect &amp; Translate
+                        Response</button>
+                </div>
+                <div id="responseTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                <pre id="responseTranslationOutput" style="display:none; margin-top:8px;"></pre>
             </div>
         </section>
     </div>

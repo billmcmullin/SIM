@@ -33,6 +33,17 @@ const sessionIndicatorValue = document.getElementById('sessionIndicatorValue');
 const exportSelectedBtn = document.getElementById('exportSelectedBtn');
 const exportFormatSelect = document.getElementById('exportFormat');
 
+// Translate feature elements (prompt)
+const translatePromptBtn = document.getElementById('translatePromptBtn');
+const translateTargetLang = document.getElementById('translateTargetLang');
+const promptTranslationMeta = document.getElementById('promptTranslationMeta');
+const promptTranslationOutput = document.getElementById('promptTranslationOutput');
+
+// Translate feature elements (response)
+const translateResponseBtn = document.getElementById('translateResponseBtn');
+const responseTranslationMeta = document.getElementById('responseTranslationMeta');
+const responseTranslationOutput = document.getElementById('responseTranslationOutput');
+
 const state = {
     limit: 10,
     page: 1,
@@ -74,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     attachHandlers();
     attachManualMessageHandlers();
+    attachTranslateHandlers();
     hideManualMessageSection();
     loadSelectionData();
 });
@@ -206,6 +218,70 @@ function attachManualMessageHandlers() {
     manualMessageCloseBtn?.addEventListener('click', hideManualMessageSection);
 }
 
+function attachTranslateHandlers() {
+    translatePromptBtn?.addEventListener('click', () => runTranslation({
+        sourceText: (detailPrompt?.textContent || '').trim(),
+        targetLang: (translateTargetLang?.value || 'en').trim(),
+        button: translatePromptBtn,
+        metaEl: promptTranslationMeta,
+        outEl: promptTranslationOutput,
+        emptyMsg: 'No prompt selected to translate.'
+    }));
+
+    translateResponseBtn?.addEventListener('click', () => runTranslation({
+        sourceText: (detailResponse?.textContent || '').trim(),
+        targetLang: (translateTargetLang?.value || 'en').trim(),
+        button: translateResponseBtn,
+        metaEl: responseTranslationMeta,
+        outEl: responseTranslationOutput,
+        emptyMsg: 'No response selected to translate.'
+    }));
+}
+
+async function runTranslation({ sourceText, targetLang, button, metaEl, outEl, emptyMsg }) {
+    if (!sourceText) {
+        if (metaEl) metaEl.textContent = emptyMsg || 'No text to translate.';
+        if (outEl) {
+            outEl.style.display = 'none';
+            outEl.textContent = '';
+        }
+        return;
+    }
+
+    try {
+        if (button) button.disabled = true;
+        if (metaEl) metaEl.textContent = 'Detecting language and translating...';
+
+        const resp = await fetch(`${contextPath}/dashboard/widgets/drilldown/review/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ text: sourceText, targetLang })
+        });
+
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload.status !== 'ok') {
+            throw new Error(payload.message || `Translate failed (${resp.status})`);
+        }
+
+        if (metaEl) {
+            metaEl.textContent = `Detected: ${payload.sourceLang || 'unknown'} → ${payload.targetLang || targetLang}`;
+        }
+        if (outEl) {
+            outEl.style.display = 'block';
+            outEl.textContent = payload.translatedText || '';
+        }
+    } catch (err) {
+        if (metaEl) metaEl.textContent = `Translation failed: ${err.message}`;
+        if (outEl) {
+            outEl.style.display = 'none';
+            outEl.textContent = '';
+        }
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 function toggleManualMessageSection() {
     if (!manualMessageSection) return;
     const isVisible = manualMessageSection.classList.toggle('is-visible');
@@ -251,9 +327,8 @@ async function sendManualMessage() {
     updateSelectionView();
 
     try {
-        const messagePayload = text; // server builds/attaches compressed selected context
+        const messagePayload = text;
 
-        // IMPORTANT: send all selected entries for server-side compression
         const selectedEntries = Array.from(selectedEntryDetails.values()).map(entry => ({
             chatId: entry.chatId || '',
             prompt: entry.prompt || '',
@@ -272,7 +347,6 @@ async function sendManualMessage() {
                 selectedEntries,
                 requestReset: true
             })
-
         });
 
         const rawText = await fetchResp.text();
@@ -479,7 +553,6 @@ async function loadSelectionData() {
         state.page = payload.page || 1;
         state.totalRows = payload.totalRows || 0;
 
-        // keep latest row details in cache for selected ids visible on current page
         rows.forEach(r => {
             if (r?.chatId && multiSelected.has(r.chatId)) {
                 selectedEntryDetails.set(r.chatId, r);
@@ -537,6 +610,7 @@ function refreshDetailPanel() {
         detailCard.style.display = 'none';
         detailPrompt.textContent = '';
         detailResponse.textContent = '';
+        clearTranslations();
         return;
     }
 
@@ -548,6 +622,7 @@ function refreshDetailPanel() {
             detailTitle.textContent = 'Selected Chat Details';
             detailPrompt.textContent = entry.prompt || '(no prompt)';
             detailResponse.textContent = entry.response || '(no response)';
+            clearTranslations();
             return;
         }
     }
@@ -555,6 +630,20 @@ function refreshDetailPanel() {
     detailTitle.textContent = 'Multiple chats selected';
     detailPrompt.textContent = '';
     detailResponse.textContent = '';
+    clearTranslations();
+}
+
+function clearTranslations() {
+    if (promptTranslationMeta) promptTranslationMeta.textContent = '';
+    if (promptTranslationOutput) {
+        promptTranslationOutput.style.display = 'none';
+        promptTranslationOutput.textContent = '';
+    }
+    if (responseTranslationMeta) responseTranslationMeta.textContent = '';
+    if (responseTranslationOutput) {
+        responseTranslationOutput.style.display = 'none';
+        responseTranslationOutput.textContent = '';
+    }
 }
 
 function updateSelectAllCheckbox() {
