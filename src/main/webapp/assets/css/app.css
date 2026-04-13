@@ -808,4 +808,30 @@ hr {
     .inactive-users-page .table-scroll {
         overflow-x: auto;
     }
+
+    #activityFilterBar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        min-height: 38px;
+        /* reserve space so layout doesn't jump */
+    }
+
+    #activityFilterBadge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        visibility: hidden;
+        /* hidden but still takes space */
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
+
+    #activityFilterBadge.is-visible {
+        visibility: visible;
+        opacity: 1;
+    }
+
 }

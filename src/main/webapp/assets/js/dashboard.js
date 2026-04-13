@@ -1,9 +1,6 @@
 (() => {
     'use strict';
 
-    // -------------------------
-    // Helpers
-    // -------------------------
     function parseSlices(input) {
         if (Array.isArray(input)) return input;
         if (typeof input !== 'string') return [];
@@ -33,10 +30,7 @@
     function esc(v) {
         if (v === null || typeof v === 'undefined') return '';
         const str = String(v);
-
-        // Fast path: no escapable chars
         if (!/[&<>"']/.test(str)) return str;
-
         return str
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -45,9 +39,6 @@
             .replaceAll("'", '&#39;');
     }
 
-    // -------------------------
-    // Inputs
-    // -------------------------
     const dashboardConfig = window.dashboardConfig || {};
     const contextPath = dashboardConfig.contextPath || '';
 
@@ -66,9 +57,6 @@
         window.location.href = `${contextPath}/dashboard/term-review?term=${encodeURIComponent(term)}`;
     }
 
-    // -------------------------
-    // Term pie chart
-    // -------------------------
     if (ctx && termSlices.length) {
         const { labels, values, colors } = buildSeries(termSlices, palette);
 
@@ -76,10 +64,7 @@
             type: 'pie',
             data: {
                 labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: colors
-                }]
+                datasets: [{ data: values, backgroundColor: colors }]
             },
             options: {
                 plugins: {
@@ -109,9 +94,6 @@
         });
     }
 
-    // -------------------------
-    // Widget pie chart
-    // -------------------------
     if (widgetPieCtx && widgetSlices.length) {
         const { labels, values, colors } = buildSeries(widgetSlices, palette);
 
@@ -119,10 +101,7 @@
             type: 'pie',
             data: {
                 labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: colors
-                }]
+                datasets: [{ data: values, backgroundColor: colors }]
             },
             options: {
                 plugins: {
@@ -152,9 +131,6 @@
         });
     }
 
-    // -------------------------
-    // Legend chips (batched DOM write + delegated events)
-    // -------------------------
     const legendEl = document.getElementById('termChartLegend');
     if (legendEl && termSlices.length) {
         const frag = document.createDocumentFragment();
@@ -172,14 +148,12 @@
 
         legendEl.appendChild(frag);
 
-        // One click listener
         legendEl.addEventListener('click', event => {
             const chip = event.target.closest('.legend-chip');
             if (!chip || !legendEl.contains(chip)) return;
             openTermReview(chip.dataset.term);
         });
 
-        // Keep keyboard support; keypress -> keydown
         legendEl.addEventListener('keydown', event => {
             const chip = event.target.closest('.legend-chip');
             if (!chip || !legendEl.contains(chip)) return;
@@ -190,15 +164,16 @@
         });
     }
 
-    // -------------------------
-    // Top sessions
-    // -------------------------
     (async function loadTopSessions() {
         const totalEl = document.getElementById('totalSessions');
         const listEl = document.getElementById('topSessionList');
+
+        const activeDaysEl = document.getElementById('activeDaysLabel');
+        const activeCountLink = document.getElementById('activeSessionsLink');
+        const inactiveCountLink = document.getElementById('inactiveSessionsLink');
+
         if (!listEl || !totalEl) return;
 
-        // Attach delegated listener once
         listEl.addEventListener('click', event => {
             const btn = event.target.closest('.session-count-btn');
             if (!btn || !listEl.contains(btn)) return;
@@ -216,16 +191,35 @@
 
             if (!resp.ok) {
                 totalEl.textContent = 'N/A';
+                if (activeCountLink) activeCountLink.textContent = 'N/A';
+                if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
                 return;
             }
 
             const data = await resp.json();
             if (!data || data.status !== 'ok') {
                 totalEl.textContent = 'N/A';
+                if (activeCountLink) activeCountLink.textContent = 'N/A';
+                if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
                 return;
             }
 
+            const activeDays = Number.isInteger(data.activeDays) && data.activeDays > 0 ? data.activeDays : 7;
+            const activeUsers = typeof data.activeUsers === 'number' ? data.activeUsers : null;
+            const inactiveUsers = typeof data.inactiveUsers === 'number' ? data.inactiveUsers : null;
+
             totalEl.textContent = typeof data.total === 'number' ? String(data.total) : '—';
+            if (activeDaysEl) activeDaysEl.textContent = String(activeDays);
+
+            if (activeCountLink) {
+                activeCountLink.textContent = activeUsers === null ? '—' : String(activeUsers);
+                activeCountLink.href = `${contextPath}/dashboard/sessions?activity=active&activeDays=${encodeURIComponent(String(activeDays))}`;
+            }
+
+            if (inactiveCountLink) {
+                inactiveCountLink.textContent = inactiveUsers === null ? '—' : String(inactiveUsers);
+                inactiveCountLink.href = `${contextPath}/dashboard/inactive-users`;
+            }
 
             const sessions = Array.isArray(data.sessions) ? data.sessions : [];
             if (!sessions.length) {
@@ -233,7 +227,6 @@
                 return;
             }
 
-            // Keep existing HTML rendering behavior/functionality
             let html = '';
             for (let idx = 0; idx < sessions.length; idx++) {
                 const s = sessions[idx] || {};
@@ -268,6 +261,10 @@
         } catch (e) {
             console.warn('Unable to load top sessions:', e);
             totalEl.textContent = 'N/A';
+            const activeCountLink = document.getElementById('activeSessionsLink');
+            const inactiveCountLink = document.getElementById('inactiveSessionsLink');
+            if (activeCountLink) activeCountLink.textContent = 'N/A';
+            if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
         }
     })();
 })();

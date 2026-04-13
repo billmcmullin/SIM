@@ -52,6 +52,10 @@
                     onclick="window.location.href='${contextPath}/dashboard/inactive-users'">
                     Inactive Users
                 </button>
+                <button type="button" class="ghost-btn"
+                    onclick="window.location.href='${contextPath}/dashboard/sessions?activity=active&activeDays=7'">
+                    Active Users
+                </button>
             </div>
         </section>
 
@@ -99,6 +103,15 @@
                         <h2>Top 10 Sessions</h2>
                         <p>Most frequent Session IDs across all widget tables.</p>
                         <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
+                        <p style="margin:4px 0 0 0;">
+                            Active (<span id="activeDaysLabel">7</span> days):
+                            <strong><a id="activeSessionsLink"
+                                    href="${contextPath}/dashboard/sessions?activity=active&activeDays=7">—</a></strong>
+                            &nbsp;|&nbsp;
+                            Inactive:
+                            <strong><a id="inactiveSessionsLink"
+                                    href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">—</a></strong>
+                        </p>
                     </div>
                     <div class="button-row">
                         <div>

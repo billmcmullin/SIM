@@ -13,6 +13,23 @@
     let widgetNamesMap = {};
     const selectedChatIds = new Set();
 
+    const urlParams = new URLSearchParams(window.location.search);
+    let activityFilter = (urlParams.get('activity') || 'all').toLowerCase();
+
+    // Inactive is handled by dedicated page
+    if (activityFilter === 'inactive') {
+        window.location.href = APP + '/dashboard/inactive-users';
+        return;
+    }
+    if (!['all', 'active'].includes(activityFilter)) {
+        activityFilter = 'all';
+    }
+
+    let activeDaysFilter = parseInt(urlParams.get('activeDays') || '7', 10);
+    if (!Number.isFinite(activeDaysFilter) || activeDaysFilter < 1) {
+        activeDaysFilter = 7;
+    }
+
     let sessionsTableBody = null;
     let sessionsTableEl = null;
     let sessionsContainerDiv = null;
@@ -26,6 +43,11 @@
     let deselectSelectedBtn = null;
     let selectionInfo = null;
     let selectAllAllSessionsBtn = null;
+
+    // Filter UI
+    let activityFilterBadge = null;
+    let showAllUsersBtn = null;
+    let showActiveUsersBtn = null;
 
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
@@ -67,6 +89,49 @@
         }
     }
 
+    function activityLabel() {
+        if (activityFilter === 'active') return `Active (last ${activeDaysFilter} days)`;
+        return 'All';
+    }
+    
+    function refreshActivityUi() {
+        if (activityFilterBadge) {
+            if (activityFilter === 'active') {
+                activityFilterBadge.textContent = `Active filter applied (last ${activeDaysFilter} days)`;
+                activityFilterBadge.classList.add('is-visible');
+            } else {
+                activityFilterBadge.textContent = ' '; // keep size stable
+                activityFilterBadge.classList.remove('is-visible');
+            }
+        }
+
+        const activeStyle = '2px solid #1d4ed8';
+        const normalStyle = '1px solid transparent';
+
+        if (showAllUsersBtn) showAllUsersBtn.style.border = activityFilter === 'all' ? activeStyle : normalStyle;
+        if (showActiveUsersBtn) showActiveUsersBtn.style.border = activityFilter === 'active' ? activeStyle : normalStyle;
+    }
+
+
+    function setActivityFilter(next) {
+        if (!['all', 'active'].includes(next)) next = 'all';
+        activityFilter = next;
+
+        const u = new URL(window.location.href);
+        if (activityFilter === 'all') {
+            u.searchParams.delete('activity');
+            u.searchParams.delete('activeDays');
+        } else {
+            u.searchParams.set('activity', activityFilter);
+            u.searchParams.set('activeDays', String(activeDaysFilter));
+        }
+        window.history.replaceState({}, '', u.toString());
+
+        page = 1;
+        refreshActivityUi();
+        loadSessions(1, searchInput ? (searchInput.value || '').trim() : '');
+    }
+
     async function loadSessions(reqPage = 1, search = '') {
         if (!sessionsTableBody && !sessionsContainerDiv) return;
         if (sessionsTableBody) sessionsTableBody.innerHTML = '<tr><td colspan="5" class="small-note">Loading sessions…</td></tr>';
@@ -76,6 +141,8 @@
         const params = new URLSearchParams();
         params.set('limit', String(pageSize));
         params.set('page', String(page));
+        params.set('activity', activityFilter);
+        params.set('activeDays', String(activeDaysFilter));
         if (search) params.set('search', search);
 
         try {
@@ -85,7 +152,10 @@
             totalPages = json.totalPages || 1;
             renderSessions(json.sessions || []);
             renderPagination();
-            if (summaryEl) summaryEl.textContent = `Showing ${json.sessions ? json.sessions.length : 0} sessions (page ${page}/${totalPages}). Total sessions: ${totalSessions}`;
+
+            if (summaryEl) {
+                summaryEl.textContent = `Showing ${json.sessions ? json.sessions.length : 0} sessions (page ${page}/${totalPages}). Total sessions: ${totalSessions}. Filter: ${activityLabel()}`;
+            }
         } catch (err) {
             const msg = `Unable to load sessions: ${err.message}`;
             if (sessionsTableBody) sessionsTableBody.innerHTML = `<tr><td colspan="5" class="empty-row">${esc(msg)}</td></tr>`;
@@ -423,13 +493,21 @@
     }
 
     async function selectAllAcrossAllSessions() {
-        if (!confirm('Select ALL chats from ALL sessions? This may take a while. Continue?')) return;
+        if (!confirm('Select ALL chats from currently filtered sessions? This may take a while. Continue?')) return;
         if (selectAllAllSessionsBtn) {
             selectAllAllSessionsBtn.disabled = true;
             selectAllAllSessionsBtn.textContent = 'Selecting…';
         }
         try {
-            const sesRes = await safeFetchJson(DATA_URL + '?all=true', { credentials: 'same-origin' });
+            const p = new URLSearchParams();
+            p.set('all', 'true');
+            p.set('activity', activityFilter);
+            p.set('activeDays', String(activeDaysFilter));
+            if (searchInput && searchInput.value.trim()) {
+                p.set('search', searchInput.value.trim());
+            }
+
+            const sesRes = await safeFetchJson(DATA_URL + '?' + p.toString(), { credentials: 'same-origin' });
             const sessions = sesRes.sessions || [];
             for (const s of sessions) {
                 try {
@@ -558,6 +636,13 @@
         deselectSelectedBtn = document.getElementById('deselectSelectedBtn');
         selectionInfo = document.getElementById('selectionInfo');
 
+        activityFilterBadge = document.getElementById('activityFilterBadge');
+        showAllUsersBtn = document.getElementById('showAllUsersBtn');
+        showActiveUsersBtn = document.getElementById('showActiveUsersBtn');
+
+        if (showAllUsersBtn) showAllUsersBtn.addEventListener('click', () => setActivityFilter('all'));
+        if (showActiveUsersBtn) showActiveUsersBtn.addEventListener('click', () => setActivityFilter('active'));
+
         if (reviewSelectedBtn && reviewSelectedBtn.parentNode) {
             selectAllAllSessionsBtn = document.createElement('button');
             selectAllAllSessionsBtn.className = 'ghost-btn';
@@ -589,8 +674,7 @@
 
         if (viewAllBtn) {
             viewAllBtn.addEventListener('click', () => {
-                page = 1;
-                loadSessions(page, searchInput ? (searchInput.value || '') : '');
+                setActivityFilter('all');
             });
         }
 
@@ -629,6 +713,8 @@
         const initial = window.ALL_SESSIONS_INITIAL || { all: true, page: 1, limit: pageSize };
         page = initial.page || 1;
         pageSize = initial.limit || pageSize;
+
+        refreshActivityUi();
         loadSessions(page, '');
     });
 

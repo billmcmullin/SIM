@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -42,13 +43,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AllSessionsServlet", urlPatterns = {
-        "/dashboard/sessions/data",
-        "/dashboard/sessions/chats",
-        "/dashboard/sessions/select"
+    "/dashboard/sessions/data",
+    "/dashboard/sessions/chats",
+    "/dashboard/sessions/select"
 })
 public class AllSessionsServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AllSessionsServlet.class.getName());
+    private static final int ACTIVE_DAYS = 7;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -83,6 +85,7 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private static final class ChatRow {
+
         final String chatId;
         final String prompt;
         final Timestamp createdAt;
@@ -128,6 +131,12 @@ public class AllSessionsServlet extends HttpServlet {
         boolean hasSearch = search != null && !search.isBlank();
         String normalizedSearch = hasSearch ? "%" + search.trim() + "%" : null;
 
+        String activity = req.getParameter("activity");
+        if (activity == null || activity.isBlank()) {
+            activity = "all";
+        }
+        activity = activity.trim().toLowerCase();
+
         int limit = parseInteger(req.getParameter("limit"), 10);
         int page = parseInteger(req.getParameter("page"), 1);
         if (page < 1) {
@@ -138,7 +147,6 @@ public class AllSessionsServlet extends HttpServlet {
         List<WidgetEntry> widgets = listWidgets();
         Map<String, String> widgetNames = buildWidgetDisplayNameMap(widgets);
 
-        // Build all session summaries first
         if (!widgets.isEmpty()) {
             try (Connection conn = dsHolder.getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
@@ -163,21 +171,14 @@ public class AllSessionsServlet extends HttpServlet {
 
         List<SessionSummary> sessionList = new ArrayList<>(sessions.values());
 
-        // Apply combined search:
-        // 1) session_id
-        // 2) friendly label/email
-        // 3) prompt/response
         if (hasSearch && !sessionList.isEmpty()) {
             Set<String> matchedSessionIds = new HashSet<>();
 
-            // A) direct sessionId match
             matchedSessionIds.addAll(gatherSessionIdsByIdMatch(sessions, search));
 
-            // B) label/email match
             Map<String, SessionLabelStore.SessionLabel> allLabels = mapSessionLabels(sessionList);
             matchedSessionIds.addAll(gatherSessionIdsByLabelMatch(allLabels, search));
 
-            // C) prompt/response match
             try (Connection conn = dsHolder.getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
@@ -194,6 +195,28 @@ public class AllSessionsServlet extends HttpServlet {
             }
 
             sessionList.removeIf(s -> s == null || s.sessionId == null || !matchedSessionIds.contains(s.sessionId));
+        }
+
+        List<SessionSummary> allSessionsForCounts = new ArrayList<>(sessionList);
+        Instant cutoffForCounts = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
+        int totalUsers = allSessionsForCounts.size();
+        int inactiveUsers = 0;
+        for (SessionSummary s : allSessionsForCounts) {
+            // Match InactiveUsersPageServlet rule: inactive only if lastSeen != null and older than cutoff
+            if (s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoffForCounts)) {
+                inactiveUsers++;
+            }
+        }
+        int activeUsers = Math.max(0, totalUsers - inactiveUsers);
+
+        Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
+        if ("inactive".equals(activity)) {
+            sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
+        } else if ("active".equals(activity)) {
+            // Active = leftovers from inactive
+            sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
+        } else {
+            activity = "all";
         }
 
         sessionList.sort((a, b) -> {
@@ -245,6 +268,11 @@ public class AllSessionsServlet extends HttpServlet {
 
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "ok")
+                .add("activeDays", ACTIVE_DAYS)
+                .add("activity", activity)
+                .add("totalUsers", totalUsers)
+                .add("activeUsers", activeUsers)
+                .add("inactiveUsers", inactiveUsers)
                 .add("totalSessions", totalSessions)
                 .add("totalPages", totalPages)
                 .add("page", page)

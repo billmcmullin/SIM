@@ -8,8 +8,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +41,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardSessionsJsonServlet.class.getName());
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final int ACTIVE_DAYS = 7;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -64,6 +67,19 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = mapWidgetDisplayNames(widgets);
+
+            int totalUsers = accumulators.size();
+            Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
+
+            int inactiveUsers = 0;
+            for (SessionAccumulator acc : accumulators.values()) {
+                // Match inactive-users page rule:
+                // inactive only if lastEntry exists and is older than cutoff
+                if (acc != null && acc.lastEntry != null && acc.lastEntry.toInstant().isBefore(cutoff)) {
+                    inactiveUsers++;
+                }
+            }
+            int activeUsers = Math.max(0, totalUsers - inactiveUsers);
 
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
             accumulators.entrySet()
@@ -91,7 +107,10 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
-                    .add("total", accumulators.size())
+                    .add("total", totalUsers)
+                    .add("activeDays", ACTIVE_DAYS)
+                    .add("activeUsers", activeUsers)
+                    .add("inactiveUsers", inactiveUsers)
                     .add("sessions", sessionsArray)
                     .build();
 

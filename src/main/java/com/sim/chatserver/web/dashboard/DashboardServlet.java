@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -69,6 +70,7 @@ public class DashboardServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
     private static final int DEFAULT_RANGE_DAYS = 14;
+    private static final int DEFAULT_ACTIVE_DAYS = 7;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -145,6 +147,7 @@ public class DashboardServlet extends HttpServlet {
             rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
         }
 
+        final int activeDays = DEFAULT_ACTIVE_DAYS;
         final List<WidgetEntry> widgetsFinal = widgets;
         final LocalDate rangeStartFinal = rangeStart;
         final LocalDate rangeEndFinal = rangeEnd;
@@ -156,7 +159,7 @@ public class DashboardServlet extends HttpServlet {
                 () -> getTermSummaryCached(widgetsFinal), DASHBOARD_EXECUTOR);
 
         CompletableFuture<SessionOverview> sessionOverviewFuture = CompletableFuture.supplyAsync(
-                () -> getSessionOverviewCached(widgetsFinal, rangeStartFinal, rangeEndFinal), DASHBOARD_EXECUTOR);
+                () -> getSessionOverviewCached(widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays), DASHBOARD_EXECUTOR);
 
         List<WidgetStat> widgetStats = safeJoin(widgetStatsFuture, List.of(), "widget stats");
         int totalChats = widgetStats.stream().mapToInt(stat -> stat.count).sum();
@@ -174,11 +177,18 @@ public class DashboardServlet extends HttpServlet {
         String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
         String sessionChartJson = buildEmptySessionPayload(rangeStart, rangeEnd);
 
+        int totalUsers = 0;
+        int activeUsers = 0;
+        int inactiveUsers = 0;
+
         SessionOverview sessionOverview = safeJoin(sessionOverviewFuture, null, "session overview");
         if (sessionOverview != null) {
             Map<String, SessionLabelStore.SessionLabel> sessionLabels = loadSessionLabels(sessionOverview.topSessions);
             sessionRows = renderSessionRows(sessionOverview.topSessions, sessionLabels, req.getContextPath());
             sessionChartJson = buildSessionChartPayload(sessionOverview, rangeStart, rangeEnd);
+            totalUsers = sessionOverview.totalUsers;
+            activeUsers = sessionOverview.activeUsers;
+            inactiveUsers = sessionOverview.inactiveUsers;
         } else {
             sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">Unable to load session activity.</td></tr>";
         }
@@ -186,7 +196,6 @@ public class DashboardServlet extends HttpServlet {
         String template = loadTemplateCached(req.getServletContext(), TEMPLATE_PATH);
         String userName = String.valueOf(session.getAttribute("user"));
 
-        // OPTION A FIX: use Map.ofEntries (supports more than 10 pairs)
         String rendered = renderTemplate(template, Map.ofEntries(
                 Map.entry("user", escapeHtml(userName)),
                 Map.entry("contextPath", req.getContextPath()),
@@ -199,7 +208,12 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("sessionRows", sessionRows),
                 Map.entry("sessionRangeStart", escapeHtml(rangeStart.format(DATE_FORMATTER))),
                 Map.entry("sessionRangeEnd", escapeHtml(rangeEnd.format(DATE_FORMATTER))),
-                Map.entry("sessionChartData", escapeForJs(sessionChartJson))
+                Map.entry("sessionChartData", escapeForJs(sessionChartJson)),
+                Map.entry("activeDays", escapeHtml(String.valueOf(activeDays))),
+                Map.entry("totalUsers", escapeHtml(String.valueOf(totalUsers))),
+                Map.entry("activeUsers", escapeHtml(String.valueOf(activeUsers))),
+                Map.entry("inactiveUsers", escapeHtml(String.valueOf(inactiveUsers))),
+                Map.entry("activeUsersUrl", req.getContextPath() + "/dashboard/sessions?activity=active&activeDays=" + activeDays)
         ));
 
         resp.setContentType("text/html;charset=UTF-8");
@@ -248,8 +262,8 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    private SessionOverview getSessionOverviewCached(List<WidgetEntry> widgets, LocalDate rangeStart, LocalDate rangeEnd) {
-        String key = rangeStart + "|" + rangeEnd;
+    private SessionOverview getSessionOverviewCached(List<WidgetEntry> widgets, LocalDate rangeStart, LocalDate rangeEnd, int activeDays) {
+        String key = rangeStart + "|" + rangeEnd + "|" + activeDays;
         long now = System.currentTimeMillis();
 
         synchronized (SESSION_CACHE_LOCK) {
@@ -260,7 +274,7 @@ public class DashboardServlet extends HttpServlet {
         }
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
-            SessionOverview fresh = buildSessionOverview(conn, widgets, rangeStart, rangeEnd);
+            SessionOverview fresh = buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
             synchronized (SESSION_CACHE_LOCK) {
                 sessionOverviewCache.put(key, new CacheValue<>(fresh, now + SESSION_OVERVIEW_TTL_MILLIS));
                 if (sessionOverviewCache.size() > 32) {
@@ -372,7 +386,7 @@ public class DashboardServlet extends HttpServlet {
         return payload.toString();
     }
 
-    private SessionOverview buildSessionOverview(Connection conn, List<WidgetEntry> widgets, LocalDate rangeStart, LocalDate rangeEnd) throws SQLException {
+    private SessionOverview buildSessionOverview(Connection conn, List<WidgetEntry> widgets, LocalDate rangeStart, LocalDate rangeEnd, int activeDays) throws SQLException {
         Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
         Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
 
@@ -407,6 +421,23 @@ public class DashboardServlet extends HttpServlet {
             }
         }
 
+        // Match InactiveUsersPageServlet behavior:
+        // inactive => lastEntry != null && lastEntry < cutoff
+        // active   => total - inactive (leftovers)
+        int totalUsers = accumulators.size();
+        Instant cutoff = Instant.now().minus(activeDays, ChronoUnit.DAYS);
+
+        int inactiveUsers = 0;
+        for (SessionAccumulator acc : accumulators.values()) {
+            if (acc == null) {
+                continue;
+            }
+            if (acc.lastEntry != null && acc.lastEntry.toInstant().toEpochMilli() < cutoff.toEpochMilli()) {
+                inactiveUsers++;
+            }
+        }
+        int activeUsers = Math.max(0, totalUsers - inactiveUsers);
+
         final int limit = 10;
         PriorityQueue<Map.Entry<String, SessionAccumulator>> pq
                 = new PriorityQueue<>(Comparator.comparingInt(e -> e.getValue().count));
@@ -436,7 +467,7 @@ public class DashboardServlet extends HttpServlet {
                 .collect(Collectors.toList());
 
         SessionTimeline timeline = buildSessionTimeline(conn, widgets, sessionIds, rangeStart, rangeEnd, tableExistsCache);
-        return new SessionOverview(topSessions, timeline);
+        return new SessionOverview(topSessions, timeline, totalUsers, activeUsers, inactiveUsers, activeDays);
     }
 
     private String formatSessionDisplayLabel(String sessionId, Map<String, SessionLabelStore.SessionLabel> labels) {
@@ -861,10 +892,19 @@ public class DashboardServlet extends HttpServlet {
 
         private final List<SessionStat> topSessions;
         private final SessionTimeline timeline;
+        private final int totalUsers;
+        private final int activeUsers;
+        private final int inactiveUsers;
+        private final int activeDays;
 
-        private SessionOverview(List<SessionStat> topSessions, SessionTimeline timeline) {
+        private SessionOverview(List<SessionStat> topSessions, SessionTimeline timeline,
+                int totalUsers, int activeUsers, int inactiveUsers, int activeDays) {
             this.topSessions = List.copyOf(topSessions);
             this.timeline = timeline;
+            this.totalUsers = totalUsers;
+            this.activeUsers = activeUsers;
+            this.inactiveUsers = inactiveUsers;
+            this.activeDays = activeDays;
         }
     }
 
