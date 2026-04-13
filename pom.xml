@@ -165,6 +165,7 @@
                     <formats>
                         <format>HTML</format>
                         <format>JSON</format>
+                        <format>XML</format>
                     </formats>
                     <!-- keep build non-blocking by default -->
                     <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
