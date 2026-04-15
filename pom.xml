@@ -31,7 +31,7 @@
         <mockito.version>5.21.0</mockito.version>
 
         <!-- OWASP Dependency-Check -->
-        <dependency-check.version>12.2.0</dependency-check.version>
+        <dependency-check.version>12.2.1</dependency-check.version>
         <!-- Set to true in CI if you want build to fail on CVSS threshold -->
         <dependency-check.failBuildOnCVSS>0</dependency-check.failBuildOnCVSS>
     </properties>
