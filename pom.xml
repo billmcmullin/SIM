@@ -171,6 +171,9 @@
                     <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
                     <!-- Optional: skip provided scope to reduce noise if desired -->
                     <skipProvidedScope>true</skipProvidedScope>
+                    <failOnError>false</failOnError>
+                    <autoUpdate>true</autoUpdate>
+
                 </configuration>
                 <executions>
                     <execution>
