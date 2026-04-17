@@ -21,6 +21,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -73,8 +74,6 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
 
             int inactiveUsers = 0;
             for (SessionAccumulator acc : accumulators.values()) {
-                // Match inactive-users page rule:
-                // inactive only if lastEntry exists and is older than cutoff
                 if (acc != null && acc.lastEntry != null && acc.lastEntry.toInstant().isBefore(cutoff)) {
                     inactiveUsers++;
                 }
@@ -156,7 +155,8 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     int total = rs.getInt("total");
                     acc.count += total;
                     acc.widgetCounts.merge(widgetId, total, Integer::sum);
-                    Timestamp lastEntry = rs.getTimestamp("last_entry");
+
+                    Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                     if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
                         acc.lastEntry = lastEntry;
                     }

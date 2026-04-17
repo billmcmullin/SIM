@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Customer Profile</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+    <div class="top-bar" data-role="${role}">
+        <div class="top-bar-inner">
+            <div class="brand"><strong>SIM</strong></div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn"
+                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    Back
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                    Profile
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container customer-profile-container">
+        <section class="section">
+            <h1>Customer Profile</h1>
+            <p class="helper-note">Profile and linked sessions for this customer identity.</p>
+        </section>
+
+        <section class="section">
+            <h2>Customer</h2>
+            <table class="customer-profile-table" aria-label="Customer identity">
+                <tbody>
+                    <tr>
+                        <th>Session ID</th>
+                        <td id="cpSessionId">${sessionId}</td>
+                    </tr>
+                    <tr>
+                        <th>Friendly Name</th>
+                        <td id="cpFriendlyName">${friendlyName}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <input type="hidden" id="cpSessionIdInput" value="${sessionId}">
+        </section>
+
+        <section class="section">
+            <h2>Cached Salesforce Profile</h2>
+            <table class="customer-profile-table" aria-label="Cached profile data">
+                <tbody>
+                    <tr>
+                        <th>Email</th>
+                        <td id="cpEmail">${email}</td>
+                    </tr>
+                    <tr>
+                        <th>Phone</th>
+                        <td id="cpPhone">${phone}</td>
+                    </tr>
+                    <tr>
+                        <th>Title</th>
+                        <td id="cpTitle">${title}</td>
+                    </tr>
+                    <tr>
+                        <th>Department</th>
+                        <td id="cpDepartment">${department}</td>
+                    </tr>
+                    <tr>
+                        <th>Salesforce Contact ID</th>
+                        <td id="cpSalesforceContactId">${salesforceContactId}</td>
+                    </tr>
+                    <tr>
+                        <th>Salesforce Account ID</th>
+                        <td id="cpSalesforceAccountId">${salesforceAccountId}</td>
+                    </tr>
+                    <tr>
+                        <th>Last Synced (UTC)</th>
+                        <td id="cpLastSyncedAt">${lastSyncedAt}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="button-row"
+                style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button type="button" id="syncCustomerProfileBtn">Sync from Salesforce</button>
+                <div id="customerProfileSyncStatus" class="helper-note" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Linked Sessions</h2>
+            <div class="table-scroll">
+                <table class="session-table customer-profile-linked-table" aria-label="Linked sessions">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Display Name</th>
+                            <th>Email</th>
+                            <th>Last Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${linkedSessionsRows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        window.customerProfileConfig = {
+            contextPath: '${contextPath}',
+            sessionId: '${sessionId}',
+            friendlyName: '${friendlyName}'
+        };
+    </script>
+    <script src="${contextPath}/assets/js/customer_profile.js"></script>
+</body>
+
+</html>

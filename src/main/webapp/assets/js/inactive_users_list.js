@@ -134,9 +134,16 @@
 
             return `<tr>
                 <td>
-                    <div>${esc(label)}</div>
-                    ${label !== sid ? `<div class="session-id-muted">${esc(sid)}</div>` : ''}
+                    <div>
+                    ${customerProfileUrl(sid, label)
+                    ? `<a class="customer-profile-link" href="${esc(customerProfileUrl(sid, label))}">${esc(label)}</a>`
+                    : esc(label)}
+                    </div>
+                    ${label !== sid && sid
+                    ? `<div class="session-id-muted"><a class="customer-profile-link" href="${esc(customerProfileUrl(sid, label))}">${esc(sid)}</a></div>`
+                    : ''}
                 </td>
+
                 <td>${esc(widget)}</td>
                 <td><button type="button" class="ghost-btn count-btn" data-sid="${esc(sid)}">${count} chats</button></td>
                 <td>

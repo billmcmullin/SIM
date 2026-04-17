@@ -6,6 +6,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -23,6 +24,7 @@ import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -60,7 +62,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         String q = req.getParameter("q");
         String limitRaw = req.getParameter("limit");
-        int limit = parseLimit(limitRaw, 5); // default Top 5
+        int limit = parseLimit(limitRaw, 5);
 
         List<WidgetEntry> widgets;
         try {
@@ -76,9 +78,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             allTerms = List.of();
         }
 
-        // Visible topics exclude OTHER from display
         List<TopicPattern> visibleTopics = new ArrayList<>();
-        // Full topic patterns include OTHER for classification support
         List<TopicPattern> allTopicPatterns = new ArrayList<>();
 
         for (TermDefinition t : allTerms) {
@@ -126,9 +126,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
                 Map<String, Set<String>> widgetTopicChatIds = byWidgetChatIds.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
 
-                String sql = "SELECT widget_chat_id, prompt FROM " + quoteIdentifier(tableName);
+                String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName);
                 try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-
                     while (rs.next()) {
                         String chatId = rs.getString("widget_chat_id");
                         String prompt = rs.getString("prompt");
@@ -140,9 +139,18 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                             prompt = "";
                         }
 
+                        // Defensive read for mixed timestamp representations after import.
+                        try {
+                            Timestamp ignored = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            if (ignored == null) {
+                                // keep going; timestamp is not needed for topic classification itself
+                            }
+                        } catch (SQLException ignored) {
+                            // Continue processing prompt-based topic matching.
+                        }
+
                         String chosenTopic = resolveTopic(prompt, visibleTopics, allTopicPatterns);
 
-                        // Do not show OTHER at all
                         if (chosenTopic == null || chosenTopic.isBlank() || OTHER_LABEL.equalsIgnoreCase(chosenTopic)) {
                             continue;
                         }
@@ -237,10 +245,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         resp.getWriter().print(payload.toString());
     }
 
-    /**
-     * Dashboard-aligned classification: 1) first strict visible match (earliest
-     * start) 2) otherwise OTHER / fallback path (hidden from output)
-     */
     private String resolveTopic(String prompt, List<TopicPattern> visibleTopics, List<TopicPattern> allTopicPatterns) {
         String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
 

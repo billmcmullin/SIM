@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -65,7 +66,6 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
             return;
         }
 
-        // Create a selection for review (assumes WidgetReviewStartServlet.createSnapshotSelection exists)
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
                 "Session " + sessionId,
@@ -110,7 +110,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             String chatId = rs.getString("widget_chat_id");
-                            Timestamp createdAt = rs.getTimestamp("created_at");
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
                             snapshots.add(new TermChatSnapshot(
                                     sessionId,
                                     widgetId,
@@ -123,7 +123,6 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                         }
                     }
                 } catch (SQLException e) {
-                    // log and continue with other widgets
                     log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + e.getMessage(), e);
                 }
             }
@@ -140,10 +139,8 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
     }
 
-    // Proper tableExists implementation using DatabaseMetaData
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
-        // query possible name forms to be robust to case sensitivity
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
                 if (rs.next()) {

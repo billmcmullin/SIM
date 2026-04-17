@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -16,6 +15,7 @@ import java.util.Set;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -35,6 +35,8 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTopicsSelectServlet", urlPatterns = {"/dashboard/topics/select"})
 public class DashboardTopicsSelectServlet extends HttpServlet {
 
+    private static final int IN_CLAUSE_BATCH_SIZE = 200;
+
     @Inject
     AppDataSourceHolder dsHolder;
 
@@ -49,7 +51,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(new StringReader(req.getReader().lines().reduce("", (a, b) -> a + b)))) {
+        try (JsonReader reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (Exception ex) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -95,6 +97,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            List<String> idList = new ArrayList<>(requestedIds);
+
             for (Map.Entry<String, WidgetEntry> e : widgetById.entrySet()) {
                 String widgetId = e.getKey();
                 String tableName = sanitizeWidgetTableName(widgetId);
@@ -102,39 +106,44 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                     continue;
                 }
 
-                String inClause = String.join(",", requestedIds.stream().map(id -> "?").toList());
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + quoteIdentifier(tableName)
-                        + " WHERE widget_chat_id IN (" + inClause + ")";
+                for (int from = 0; from < idList.size(); from += IN_CLAUSE_BATCH_SIZE) {
+                    int to = Math.min(from + IN_CLAUSE_BATCH_SIZE, idList.size());
+                    List<String> chunk = idList.subList(from, to);
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    int idx = 1;
-                    for (String id : requestedIds) {
-                        ps.setString(idx++, id);
-                    }
+                    String inClause = String.join(",", chunk.stream().map(id -> "?").toList());
+                    String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                            + quoteIdentifier(tableName)
+                            + " WHERE widget_chat_id IN (" + inClause + ")";
 
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            if (chatId == null || chatId.isBlank()) {
-                                continue;
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        int idx = 1;
+                        for (String id : chunk) {
+                            ps.setString(idx++, id);
+                        }
+
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                String chatId = rs.getString("widget_chat_id");
+                                if (chatId == null || chatId.isBlank()) {
+                                    continue;
+                                }
+
+                                String prompt = rs.getString("prompt");
+                                String responseText = rs.getString("response_text");
+                                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                                String sessionId = rs.getString("session_id");
+
+                                snapshots.add(new TermChatSnapshot(
+                                        "Popular Topics",
+                                        widgetId,
+                                        chatId,
+                                        prompt,
+                                        responseText,
+                                        createdAt,
+                                        sessionId
+                                ));
+                                foundIds.add(chatId);
                             }
-
-                            String prompt = rs.getString("prompt");
-                            String responseText = rs.getString("response_text");
-                            Timestamp createdAt = rs.getTimestamp("created_at");
-                            String sessionId = rs.getString("session_id");
-
-                            snapshots.add(new TermChatSnapshot(
-                                    "Popular Topics",
-                                    widgetId,
-                                    chatId,
-                                    prompt,
-                                    responseText,
-                                    createdAt,
-                                    sessionId
-                            ));
-                            foundIds.add(chatId);
                         }
                     }
                 }

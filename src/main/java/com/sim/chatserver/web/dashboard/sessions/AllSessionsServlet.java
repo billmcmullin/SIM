@@ -25,6 +25,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -202,7 +203,6 @@ public class AllSessionsServlet extends HttpServlet {
         int totalUsers = allSessionsForCounts.size();
         int inactiveUsers = 0;
         for (SessionSummary s : allSessionsForCounts) {
-            // Match InactiveUsersPageServlet rule: inactive only if lastSeen != null and older than cutoff
             if (s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoffForCounts)) {
                 inactiveUsers++;
             }
@@ -213,7 +213,6 @@ public class AllSessionsServlet extends HttpServlet {
         if ("inactive".equals(activity)) {
             sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
         } else if ("active".equals(activity)) {
-            // Active = leftovers from inactive
             sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
         } else {
             activity = "all";
@@ -324,7 +323,7 @@ public class AllSessionsServlet extends HttpServlet {
                             rows.add(new ChatRow(
                                     rs.getString("widget_chat_id"),
                                     rs.getString("prompt"),
-                                    rs.getTimestamp("created_at")
+                                    SqlTimeUtil.safeTimestamp(rs, "created_at")
                             ));
                         }
                     }
@@ -427,7 +426,7 @@ public class AllSessionsServlet extends HttpServlet {
                                 String foundChatId = rs.getString("widget_chat_id");
                                 String prompt = rs.getString("prompt");
                                 String responseText = rs.getString("response_text");
-                                Timestamp createdAt = rs.getTimestamp("created_at");
+                                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
                                 String sessionId = rs.getString("session_id");
 
                                 snapshots.add(new TermChatSnapshot(
@@ -599,8 +598,8 @@ public class AllSessionsServlet extends HttpServlet {
                 }
 
                 int count = rs.getInt("cnt");
-                Timestamp first = rs.getTimestamp("first_ts");
-                Timestamp last = rs.getTimestamp("last_ts");
+                Timestamp first = SqlTimeUtil.safeTimestamp(rs, "first_ts");
+                Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_ts");
 
                 SessionSummary summary = sessions.computeIfAbsent(sid, SessionSummary::new);
                 summary.accept(first, count, widgetId);

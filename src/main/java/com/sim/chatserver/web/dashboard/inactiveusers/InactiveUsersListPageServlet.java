@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -177,7 +178,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             String sid = rs.getString("session_id");
-                            Timestamp last = rs.getTimestamp("last_entry");
+                            Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                             if (sid == null || sid.isBlank() || last == null) {
                                 continue;
                             }
@@ -311,7 +312,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 String sid = rs.getString("session_id");
-                Timestamp last = rs.getTimestamp("last_entry");
+                Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                 if (sid == null || sid.isBlank() || last == null) {
                     continue;
                 }

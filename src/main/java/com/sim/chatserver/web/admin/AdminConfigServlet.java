@@ -8,6 +8,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -20,13 +21,11 @@ import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-@WebServlet(name = "AdminConfigServlet", urlPatterns = {"/admin"})
 public class AdminConfigServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
@@ -39,77 +38,148 @@ public class AdminConfigServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         try {
+            log.info("AdminConfigServlet.init: starting initialization");
             EncryptedDbConfigStore.ensureTable();
+            log.info("AdminConfigServlet.init: EncryptedDbConfigStore.ensureTable OK");
+
+            if (termsStore == null) {
+                log.severe("AdminConfigServlet.init: TermsStore injection is null");
+                throw new ServletException("TermsStore injection failed (null)");
+            }
+
             termsStore.ensureTable();
+            log.info("AdminConfigServlet.init: termsStore.ensureTable OK");
+            log.info("AdminConfigServlet.init: initialization completed");
         } catch (Exception e) {
+            log.log(Level.SEVERE, "AdminConfigServlet init failed", e);
             throw new ServletException("Unable to initialize configuration storage", e);
         }
     }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            log.info("Redirecting to login because no valid session/user is present.");
-            resp.sendRedirect(req.getContextPath() + "/login");
-            return;
-        }
+        final String rid = UUID.randomUUID().toString().substring(0, 8);
+        log.info(() -> "[RID " + rid + "] GET /admin start");
 
-        String username = String.valueOf(session.getAttribute("user"));
-        Object roleAttr = session.getAttribute("role");
-        String role = roleAttr == null ? "UNKNOWN" : roleAttr.toString();
-        log.info(() -> String.format("User '%s' with role '%s' requested /admin", username, role));
-
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            log.warning(() -> String.format("User '%s' with role '%s' denied access to /admin; redirecting to dashboard.", username, role));
-            resp.sendRedirect(req.getContextPath() + "/dashboard");
-            return;
-        }
-
-        String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
-        ServerConfig config;
         try {
-            config = EncryptedDbConfigStore.load();
+            HttpSession session = req.getSession(false);
+            if (session == null || session.getAttribute("user") == null) {
+                log.info(() -> "[RID " + rid + "] Redirecting to login because no valid session/user is present.");
+                resp.sendRedirect(req.getContextPath() + "/login");
+                return;
+            }
+
+            String username = String.valueOf(session.getAttribute("user"));
+            Object roleAttr = session.getAttribute("role");
+            String role = roleAttr == null ? "UNKNOWN" : roleAttr.toString();
+            log.info(() -> String.format("[RID %s] User '%s' with role '%s' requested /admin", rid, username, role));
+
+            if (!"ADMIN".equalsIgnoreCase(role)) {
+                log.warning(() -> String.format("[RID %s] User '%s' with role '%s' denied access to /admin; redirecting to dashboard.", rid, username, role));
+                resp.sendRedirect(req.getContextPath() + "/dashboard");
+                return;
+            }
+
+            log.info(() -> "[RID " + rid + "] Loading template: " + TEMPLATE_PATH);
+            String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+            log.info(() -> "[RID " + rid + "] Template loaded, size=" + template.length());
+
+            ServerConfig config;
+            try {
+                config = EncryptedDbConfigStore.load();
+                log.info(() -> "[RID " + rid + "] EncryptedDbConfigStore.load OK");
+            } catch (Exception e) {
+                log.log(Level.SEVERE, "[RID " + rid + "] Unable to load server configuration", e);
+                throw new ServletException("Unable to load server configuration", e);
+            }
+
+            String widgetListJson = "[]";
+            try {
+                List<WidgetEntry> widgets = WidgetStore.list(null);
+                widgetListJson = serializeWidgets(widgets);
+                log.info(() -> "[RID " + rid + "] Loaded widgets count=" + (widgets == null ? 0 : widgets.size()));
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "[RID " + rid + "] Unable to load widget entries", e);
+            }
+
+            String termsListJson = "[]";
+            try {
+                if (termsStore == null) {
+                    throw new IllegalStateException("termsStore is null in doGet");
+                }
+                List<TermDefinition> terms = termsStore.listAll();
+                termsListJson = serializeTerms(terms);
+                log.info(() -> "[RID " + rid + "] Loaded terms count=" + (terms == null ? 0 : terms.size()));
+            } catch (Exception e) {
+                log.log(Level.WARNING, "[RID " + rid + "] Unable to load term definitions", e);
+            }
+
+            boolean apiKeyStored = config != null && config.getApiKey() != null && !config.getApiKey().isBlank();
+            String apiKeyForJs = escapeJs(apiKeyStored ? config.getApiKey() : "");
+            String workspaceName = config != null ? config.getWorkspaceName() : "";
+
+            boolean salesforceApiKeyStored = config != null
+                    && config.getSalesforceApiKey() != null
+                    && !config.getSalesforceApiKey().isBlank();
+            String salesforceApiKeyForJs = escapeJs(salesforceApiKeyStored ? config.getSalesforceApiKey() : "");
+            String salesforceInstanceUrl = config != null ? config.getSalesforceInstanceUrl() : "";
+
+            boolean salesforceClientSecretStored = config != null
+                    && config.getSalesforceClientSecret() != null
+                    && !config.getSalesforceClientSecret().isBlank();
+
+            boolean salesforceRefreshTokenStored = config != null
+                    && config.getSalesforceRefreshToken() != null
+                    && !config.getSalesforceRefreshToken().isBlank();
+
+            String salesforceLoginUrl = config != null ? config.getSalesforceLoginUrl() : "";
+            String salesforceClientId = config != null ? config.getSalesforceClientId() : "";
+
+            String salesforceOAuthStatus = req.getParameter("salesforceOAuthStatus");
+            String salesforceOAuthMessage = req.getParameter("salesforceOAuthMessage");
+            if (salesforceOAuthStatus == null) {
+                salesforceOAuthStatus = "";
+            }
+            if (salesforceOAuthMessage == null) {
+                salesforceOAuthMessage = "";
+            }
+
+            String rendered = template
+                    .replace("${user}", escapeHtml(username))
+                    .replace("${contextPath}", req.getContextPath())
+                    .replace("${serverHost}", escapeAttribute(config != null ? config.getServerHost() : ""))
+                    .replace("${serverPort}", config != null ? String.valueOf(config.getServerPort()) : "")
+                    .replace("${connectionInfo}", escapeAttribute(config != null ? config.getConnectionInfo() : ""))
+                    .replace("${workspaceName}", escapeHtml(workspaceName))
+                    .replace("${apiKey}", "")
+                    .replace("${apiKeyStored}", Boolean.toString(apiKeyStored))
+                    .replace("${apiKeyForJs}", apiKeyForJs)
+                    .replace("${salesforceInstanceUrl}", escapeAttribute(salesforceInstanceUrl))
+                    .replace("${salesforceApiKey}", "")
+                    .replace("${salesforceApiKeyStored}", Boolean.toString(salesforceApiKeyStored))
+                    .replace("${salesforceApiKeyForJs}", salesforceApiKeyForJs)
+                    .replace("${salesforceLoginUrl}", escapeAttribute(salesforceLoginUrl))
+                    .replace("${salesforceClientId}", escapeAttribute(salesforceClientId))
+                    .replace("${salesforceClientSecret}", "")
+                    .replace("${salesforceClientSecretStored}", Boolean.toString(salesforceClientSecretStored))
+                    .replace("${salesforceRefreshToken}", "")
+                    .replace("${salesforceRefreshTokenStored}", Boolean.toString(salesforceRefreshTokenStored))
+                    .replace("${salesforceOAuthStatus}", escapeJs(salesforceOAuthStatus))
+                    .replace("${salesforceOAuthMessage}", escapeJs(salesforceOAuthMessage))
+                    .replace("${widgetListJson}", widgetListJson)
+                    .replace("${termsListJson}", termsListJson);
+
+            log.info(() -> "[RID " + rid + "] Rendered admin page size=" + rendered.length());
+
+            resp.setContentType("text/html;charset=UTF-8");
+            try (PrintWriter out = resp.getWriter()) {
+                out.print(rendered);
+            }
+
+            log.info(() -> "[RID " + rid + "] GET /admin completed successfully");
         } catch (Exception e) {
-            throw new ServletException("Unable to load server configuration", e);
-        }
-
-        String widgetListJson = "[]";
-        try {
-            List<WidgetEntry> widgets = WidgetStore.list(null);
-            widgetListJson = serializeWidgets(widgets);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load widget entries", e);
-        }
-
-        String termsListJson = "[]";
-        try {
-            List<TermDefinition> terms = termsStore.listAll();
-            termsListJson = serializeTerms(terms);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load term definitions", e);
-        }
-
-        boolean apiKeyStored = config != null && config.getApiKey() != null && !config.getApiKey().isBlank();
-        String apiKeyForJs = escapeJs(apiKeyStored ? config.getApiKey() : "");
-        String workspaceName = config != null ? config.getWorkspaceName() : "";
-
-        String rendered = template
-                .replace("${user}", escapeHtml(username))
-                .replace("${contextPath}", req.getContextPath())
-                .replace("${serverHost}", escapeAttribute(config != null ? config.getServerHost() : ""))
-                .replace("${serverPort}", config != null ? String.valueOf(config.getServerPort()) : "")
-                .replace("${connectionInfo}", escapeAttribute(config != null ? config.getConnectionInfo() : ""))
-                .replace("${workspaceName}", escapeHtml(workspaceName))
-                .replace("${apiKey}", "")
-                .replace("${apiKeyStored}", Boolean.toString(apiKeyStored))
-                .replace("${apiKeyForJs}", apiKeyForJs)
-                .replace("${widgetListJson}", widgetListJson)
-                .replace("${termsListJson}", termsListJson);
-
-        resp.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+            log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
+            throw e;
         }
     }
 

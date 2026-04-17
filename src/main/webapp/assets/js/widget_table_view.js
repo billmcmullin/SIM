@@ -37,6 +37,36 @@
         return row.sessionId || '';
     }
 
+    function buildCustomerProfileUrl(sessionId, friendlyName) {
+        const p = new URLSearchParams();
+        const sid = sessionId == null ? '' : String(sessionId).trim();
+        const fname = friendlyName == null ? '' : String(friendlyName).trim();
+
+        if (sid) p.set('sessionId', sid);
+        else if (fname) p.set('friendlyName', fname);
+        else return '';
+
+        return `${contextPath}/customer-profile?${p.toString()}`;
+    }
+
+    function appendProfileLink(container, text, sessionId, friendlyName) {
+        const label = text == null ? '' : String(text).trim();
+        if (!label) return;
+
+        const href = buildCustomerProfileUrl(sessionId, friendlyName);
+        if (!href) {
+            container.textContent = label;
+            return;
+        }
+
+        const a = document.createElement('a');
+        a.href = href;
+        a.className = 'customer-profile-link';
+        a.textContent = label;
+        a.title = sessionId ? `Open customer profile (${sessionId})` : 'Open customer profile';
+        container.appendChild(a);
+    }
+
     async function safeFetchJson(url) {
         const res = await fetch(url, { credentials: 'same-origin' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -107,12 +137,27 @@
             const sessionDiv = document.createElement('div');
             sessionDiv.className = 'text-summary';
             const sessionLabel = formatSessionDisplay(row);
-            sessionDiv.textContent = sessionLabel;
+
+            appendProfileLink(
+                sessionDiv,
+                sessionLabel,
+                row.sessionId,
+                row.displayLabel || row.sessionIdDisplay || sessionLabel
+            );
+
             tdSession.appendChild(sessionDiv);
+
             if (row.sessionId && sessionLabel !== row.sessionId) {
                 const muted = document.createElement('div');
                 muted.className = 'session-id-muted';
-                muted.textContent = row.sessionId;
+
+                appendProfileLink(
+                    muted,
+                    row.sessionId,
+                    row.sessionId,
+                    row.displayLabel || row.sessionIdDisplay || sessionLabel
+                );
+
                 tdSession.appendChild(muted);
             }
             tr.appendChild(tdSession);

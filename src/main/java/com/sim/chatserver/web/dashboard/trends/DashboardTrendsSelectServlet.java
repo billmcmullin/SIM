@@ -12,6 +12,7 @@ import java.util.List;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -54,7 +55,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         }
 
         String day = body.getString("day", "").trim();
-        String widgetIdFilter = body.getString("widgetId", "").trim(); // optional
+        String widgetIdFilter = body.getString("widgetId", "").trim();
         if (day.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setContentType("application/json; charset=UTF-8");
@@ -83,7 +84,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
 
                 String widgetId = w.getWidgetId();
                 if (!widgetIdFilter.isBlank() && !widgetIdFilter.equals(widgetId)) {
-                    continue; // scoped drilldown for widget chart clicks
+                    continue;
                 }
 
                 String tableName = sanitizeWidgetTableName(widgetId);
@@ -102,7 +103,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                             String chatId = rs.getString("widget_chat_id");
                             String prompt = rs.getString("prompt");
                             String responseText = rs.getString("response_text");
-                            Timestamp createdAt = rs.getTimestamp("created_at");
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
                             String sessionId = rs.getString("session_id");
 
                             snapshots.add(new TermChatSnapshot(

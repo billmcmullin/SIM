@@ -25,6 +25,7 @@ import java.util.Set;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -195,7 +196,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String sid = rs.getString("session_id");
-                    Timestamp ts = rs.getTimestamp("first_seen");
+                    Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
                     if (sid == null || sid.isBlank() || ts == null) {
                         continue;
                     }

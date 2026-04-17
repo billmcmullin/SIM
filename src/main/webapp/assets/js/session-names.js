@@ -17,17 +17,68 @@ let pageSize = 10;
 let totalSessions = 0;
 let totalPages = 1;
 
-function renderSessionLabel(cell, label, sessionId) {
+function buildCustomerProfileUrl(sessionId, fallbackFriendlyName) {
+    const params = new URLSearchParams();
+    const sid = (sessionId || '').trim();
+    const fname = (fallbackFriendlyName || '').trim();
+
+    if (sid) {
+        params.set('sessionId', sid);
+    } else if (fname) {
+        params.set('friendlyName', fname);
+    } else {
+        return '';
+    }
+
+    return `${contextPath}/customer-profile?${params.toString()}`;
+}
+
+function appendProfileLink(container, textValue, sessionId, friendlyName) {
+    const text = (textValue || '').trim();
+    if (!text) {
+        container.textContent = '';
+        return;
+    }
+
+    const href = buildCustomerProfileUrl(sessionId, friendlyName);
+    if (!href) {
+        container.textContent = text;
+        return;
+    }
+
+    const a = document.createElement('a');
+    a.href = href;
+    a.className = 'customer-profile-link';
+    a.textContent = text;
+    a.title = sessionId ? `Open customer profile (${sessionId})` : 'Open customer profile';
+    container.appendChild(a);
+}
+
+function renderSessionLabel(cell, label, sessionId, friendlyName) {
     cell.innerHTML = '';
+
     const primary = document.createElement('div');
-    primary.textContent = label || sessionId || '';
+    appendProfileLink(primary, label || sessionId || '', sessionId, friendlyName);
     cell.appendChild(primary);
+
     if (sessionId && label && label !== sessionId) {
         const muted = document.createElement('div');
         muted.className = 'session-id-muted';
-        muted.textContent = sessionId;
+        appendProfileLink(muted, sessionId, sessionId, friendlyName);
         cell.appendChild(muted);
     }
+}
+
+function renderFriendlyNameCell(cell, displayName, sessionId, fallbackFriendlyName) {
+    cell.innerHTML = '';
+    const value = displayName || '—';
+
+    if (value === '—') {
+        cell.textContent = value;
+        return;
+    }
+
+    appendProfileLink(cell, value, sessionId, fallbackFriendlyName || displayName || '');
 }
 
 function updatePaginationControls(count) {
@@ -78,16 +129,17 @@ async function loadSessions(query = '') {
         payload.sessions.forEach(session => {
             const row = document.createElement('tr');
 
+            const sessionId = session.sessionId || '';
+            const displayLabel = session.displayLabel || session.sessionIdDisplay || sessionId || '';
+            const displayName = session.displayName || '';
+            const fallbackFriendly = displayName || session.email || displayLabel || '';
+
             const idCell = document.createElement('td');
-            renderSessionLabel(
-                idCell,
-                session.displayLabel || session.sessionIdDisplay || session.sessionId || '',
-                session.sessionId
-            );
+            renderSessionLabel(idCell, displayLabel, sessionId, fallbackFriendly);
             row.appendChild(idCell);
 
             const nameCell = document.createElement('td');
-            nameCell.textContent = session.displayName || '—';
+            renderFriendlyNameCell(nameCell, displayName, sessionId, fallbackFriendly);
             row.appendChild(nameCell);
 
             const emailCell = document.createElement('td');
@@ -185,12 +237,23 @@ async function submitLabel(form, session, row, statusMessage) {
         }
 
         statusMessage.textContent = 'Saved.';
-        row.querySelector('td:nth-child(2)').textContent = displayName || '—';
-        row.querySelector('td:nth-child(3)').textContent = email || '—';
+
+        // Update row display and preserve profile links
         session.displayName = displayName;
         session.email = email;
         session.displayLabel = displayName || email || session.sessionId || '';
-        renderSessionLabel(row.querySelector('td:first-child'), session.displayLabel, session.sessionId);
+
+        const nameCell = row.querySelector('td:nth-child(2)');
+        renderFriendlyNameCell(nameCell, displayName, sessionId, displayName || email || '');
+
+        row.querySelector('td:nth-child(3)').textContent = email || '—';
+
+        renderSessionLabel(
+            row.querySelector('td:first-child'),
+            session.displayLabel,
+            session.sessionId,
+            session.displayName || session.email || ''
+        );
 
         setTimeout(() => {
             statusMessage.textContent = '';

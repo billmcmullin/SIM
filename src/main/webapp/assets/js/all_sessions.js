@@ -57,18 +57,41 @@
         try { return new Date(ts).toLocaleString(); } catch (e) { return ts; }
     };
 
+    function customerProfileUrl(sessionId, friendlyName) {
+        const p = new URLSearchParams();
+        if (sessionId) p.set('sessionId', String(sessionId));
+        else if (friendlyName) p.set('friendlyName', String(friendlyName));
+        else return '';
+        return APP + '/customer-profile?' + p.toString();
+    }
+
+    function appendProfileLink(container, text, sessionId, friendlyName) {
+        const label = text == null ? '' : String(text).trim();
+        if (!label) return;
+        const href = customerProfileUrl(sessionId, friendlyName);
+        if (!href) {
+            container.textContent = label;
+            return;
+        }
+        const a = document.createElement('a');
+        a.href = href;
+        a.className = 'customer-profile-link';
+        a.textContent = label;
+        container.appendChild(a);
+    }
+
     function renderSessionLabel(cell, label, sessionId) {
         if (!cell) return;
         cell.innerHTML = '';
 
         const primary = document.createElement('div');
-        primary.textContent = label || sessionId || '';
+        appendProfileLink(primary, label || sessionId || '', sessionId, label);
         cell.appendChild(primary);
 
         if (sessionId && label && label !== sessionId) {
             const muted = document.createElement('div');
             muted.className = 'session-id-muted';
-            muted.textContent = sessionId;
+            appendProfileLink(muted, sessionId, sessionId, label);
             cell.appendChild(muted);
         }
     }
@@ -93,14 +116,14 @@
         if (activityFilter === 'active') return `Active (last ${activeDaysFilter} days)`;
         return 'All';
     }
-    
+
     function refreshActivityUi() {
         if (activityFilterBadge) {
             if (activityFilter === 'active') {
                 activityFilterBadge.textContent = `Active filter applied (last ${activeDaysFilter} days)`;
                 activityFilterBadge.classList.add('is-visible');
             } else {
-                activityFilterBadge.textContent = ' '; // keep size stable
+                activityFilterBadge.textContent = ' ';
                 activityFilterBadge.classList.remove('is-visible');
             }
         }
@@ -111,7 +134,6 @@
         if (showAllUsersBtn) showAllUsersBtn.style.border = activityFilter === 'all' ? activeStyle : normalStyle;
         if (showActiveUsersBtn) showActiveUsersBtn.style.border = activityFilter === 'active' ? activeStyle : normalStyle;
     }
-
 
     function setActivityFilter(next) {
         if (!['all', 'active'].includes(next)) next = 'all';
@@ -241,11 +263,21 @@
 
                 const left = document.createElement('div');
                 left.className = 'session-header-left';
-                left.innerHTML = `<div style="font-weight:700">${esc(label)}</div><div class="session-meta">${esc(String(s.totalCount || 0))} chats · Last: ${esc(s.lastSeen ? fmt(s.lastSeen) : '')}</div>`;
+
+                const title = document.createElement('div');
+                title.style.fontWeight = '700';
+                appendProfileLink(title, label, s.sessionId, label);
+                left.appendChild(title);
+
+                const meta = document.createElement('div');
+                meta.className = 'session-meta';
+                meta.textContent = `${String(s.totalCount || 0)} chats · Last: ${s.lastSeen ? fmt(s.lastSeen) : ''}`;
+                left.appendChild(meta);
+
                 if (s.sessionId && label !== s.sessionId) {
                     const muted = document.createElement('div');
                     muted.className = 'session-id-muted';
-                    muted.textContent = s.sessionId;
+                    appendProfileLink(muted, s.sessionId, s.sessionId, label);
                     left.appendChild(muted);
                 }
                 header.appendChild(left);
@@ -374,7 +406,7 @@
                 cb.type = 'checkbox';
                 cb.className = 'chat-checkbox';
                 cb.dataset.chatId = String(row.chatId || '');
-                cb.checked = selectedChatIds.has(row.chatId);
+                cb.checked = selectedChatIds.has(String(row.chatId || ''));
                 cb.addEventListener('change', () => {
                     const id = cb.dataset.chatId;
                     if (!id) return;
@@ -430,7 +462,7 @@
             cb.type = 'checkbox';
             cb.className = 'chat-checkbox';
             cb.dataset.chatId = String(row.chatId || '');
-            cb.checked = selectedChatIds.has(row.chatId);
+            cb.checked = selectedChatIds.has(String(row.chatId || ''));
             cb.addEventListener('change', () => {
                 const id = cb.dataset.chatId;
                 if (!id) return;

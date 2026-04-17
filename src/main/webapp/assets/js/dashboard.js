@@ -241,9 +241,16 @@
                 html += `<tr>
                     <td>${rank}</td>
                     <td>
-                        <div>${esc(label)}</div>
-                        ${label !== sessionId && sessionId ? `<div class="session-id-muted">${esc(sessionId)}</div>` : ''}
+                    <div>
+                        ${sessionId
+                        ? `<a class="customer-profile-link" href="${contextPath}/customer-profile?sessionId=${encodeURIComponent(sessionId)}">${esc(label)}</a>`
+                        : esc(label)}
+                    </div>
+                        ${label !== sessionId && sessionId
+                        ? `<div class="session-id-muted"><a class="customer-profile-link" href="${contextPath}/customer-profile?sessionId=${encodeURIComponent(sessionId)}">${esc(sessionId)}</a></div>`
+                        : ''}
                     </td>
+
                     <td>${esc(topWidgetName)}</td>
                     <td>
                         <button type="button"

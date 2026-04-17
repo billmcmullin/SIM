@@ -36,4 +36,42 @@
         <servlet-name>SaveConfigServlet</servlet-name>
         <url-pattern>/admin/save-config</url-pattern>
     </servlet-mapping>
+
+    <servlet>
+        <servlet-name>DatabaseBackupServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.DatabaseBackupServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>DatabaseBackupServlet</servlet-name>
+        <url-pattern>/admin/db/backup</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>SalesforceOAuthStartServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.salesforce.SalesforceOAuthStartServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>SalesforceOAuthStartServlet</servlet-name>
+        <url-pattern>/admin/salesforce/oauth/start</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>SalesforceOAuthCallbackServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.salesforce.SalesforceOAuthCallbackServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>SalesforceOAuthCallbackServlet</servlet-name>
+        <url-pattern>/admin/salesforce/oauth/callback</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>DatabaseImportServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.DatabaseImportServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>DatabaseImportServlet</servlet-name>
+        <url-pattern>/admin/db/import</url-pattern>
+    </servlet-mapping>
+
+
 </web-app>

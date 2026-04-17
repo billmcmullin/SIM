@@ -20,6 +20,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -140,11 +141,14 @@ public class WidgetTableDataServlet extends HttpServlet {
                             if (sessionId != null && !sessionId.isBlank()) {
                                 sessionIds.add(sessionId);
                             }
+
+                            Timestamp createdAtTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+
                             rows.add(new ChatRow(
                                     rs.getString("widget_chat_id"),
                                     rs.getString("prompt"),
                                     rs.getString("response_text"),
-                                    formatTimestampNullable(rs.getTimestamp("created_at")),
+                                    formatTimestampNullable(createdAtTs),
                                     sessionId
                             ));
                         }

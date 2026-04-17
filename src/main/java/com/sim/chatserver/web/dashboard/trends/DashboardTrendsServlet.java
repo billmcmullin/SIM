@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -57,9 +58,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             totalDaily.put(start.plusDays(i), 0);
         }
 
-        // key = widget display name, value = daily counts
         Map<String, Map<LocalDate, Integer>> widgetDaily = new LinkedHashMap<>();
-        // map display name -> widgetId so JS can pass precise widget filter
         Map<String, String> widgetNameToId = new LinkedHashMap<>();
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
@@ -95,7 +94,7 @@ public class DashboardTrendsServlet extends HttpServlet {
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            Timestamp ts = rs.getTimestamp("created_at");
+                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
                             if (ts == null) {
                                 continue;
                             }
