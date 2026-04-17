@@ -19,6 +19,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -76,7 +77,6 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets, query);
 
-            // Stable sort once
             List<Map.Entry<String, SessionAccumulator>> sorted = new ArrayList<>(accumulators.entrySet());
             sorted.sort(
                     Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> e.getValue().count).reversed()
@@ -115,7 +115,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
-                    .add("total", totalSessions) // legacy key
+                    .add("total", totalSessions)
                     .add("totalSessions", totalSessions)
                     .add("page", page)
                     .add("limit", limit)
@@ -215,7 +215,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                         SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
                         acc.count += rs.getInt("total");
 
-                        Timestamp lastEntry = rs.getTimestamp("last_entry");
+                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                         if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
                             acc.lastEntry = lastEntry;
                         }

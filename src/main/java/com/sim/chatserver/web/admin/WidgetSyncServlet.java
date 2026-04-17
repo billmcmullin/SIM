@@ -285,7 +285,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
-            ensureTable(conn, tableName); // create-if-not-exists + cache
+            ensureTable(conn, tableName); // create-if-not-exists + ensure unique index + cache
 
             List<JsonObject> chats = fetchWidgetChats(config, widgetId);
             int inserted = insertWidgetChats(conn, tableName, chats);
@@ -375,21 +375,70 @@ public class WidgetSyncServlet extends HttpServlet {
         return true;
     }
 
-    // High-impact: no metadata checks; use IF NOT EXISTS and in-memory cache
+    // Enhancement:
+    // - Ensure table exists
+    // - Ensure unique index exists for ON CONFLICT(widget_chat_id)
+    // - Best-effort dedupe when legacy/imported tables contain duplicate widget_chat_id
+    // - Cache readiness to avoid repeated DDL checks
     private void ensureTable(Connection conn, String tableName) throws SQLException {
         if (ensuredTables.contains(tableName)) {
             return;
         }
-        String sql = "CREATE TABLE IF NOT EXISTS " + quoteIdentifier(tableName)
-                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT UNIQUE, prompt TEXT, response_text TEXT, "
+
+        String quotedTable = quoteIdentifier(tableName);
+
+        // Ensure base table exists (allow imported legacy schema to remain)
+        String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
+                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
                 + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
         try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
+            stmt.execute(createTableSql);
         }
+
+        // Ensure unique index for ON CONFLICT(widget_chat_id)
+        String idxName = (tableName + "_widget_chat_id_uidx");
+        if (idxName.length() > 63) {
+            idxName = idxName.substring(0, 63);
+        }
+        String quotedIdx = quoteIdentifier(idxName);
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
+                    + " ON " + quotedTable + " (widget_chat_id)");
+        } catch (SQLException uniqueErr) {
+            // Likely duplicates already present; dedupe then retry index creation once
+            dedupeByWidgetChatId(conn, tableName);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
+                        + " ON " + quotedTable + " (widget_chat_id)");
+            }
+        }
+
         ensuredTables.add(tableName);
     }
 
-    // High-impact: DB-level dedupe + transaction/batch
+    private void dedupeByWidgetChatId(Connection conn, String tableName) throws SQLException {
+        String quoted = quoteIdentifier(tableName);
+
+        // Keep newest row by created_at/db_id per widget_chat_id, delete older duplicates.
+        String sql = "DELETE FROM " + quoted + " a "
+                + "USING " + quoted + " b "
+                + "WHERE a.widget_chat_id = b.widget_chat_id "
+                + "AND a.widget_chat_id IS NOT NULL "
+                + "AND (a.created_at < b.created_at "
+                + "     OR (a.created_at = b.created_at AND a.db_id < b.db_id) "
+                + "     OR (a.created_at IS NULL AND b.created_at IS NOT NULL) "
+                + "     OR (a.created_at IS NULL AND b.created_at IS NULL AND a.db_id < b.db_id))";
+
+        try (Statement stmt = conn.createStatement()) {
+            int removed = stmt.executeUpdate(sql);
+            if (removed > 0) {
+                log.info("Removed " + removed + " duplicate rows from " + tableName + " before creating unique index.");
+            }
+        }
+    }
+
+    // DB-level dedupe + transaction/batch
     private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
         if (chats == null || chats.isEmpty()) {
             return 0;
@@ -481,8 +530,9 @@ public class WidgetSyncServlet extends HttpServlet {
         String t = raw.trim();
         if (!(t.startsWith("{") || t.startsWith("["))) {
             return raw; // fast path
+        }
 
-                }try (JsonReader reader = Json.createReader(new StringReader(raw))) {
+        try (JsonReader reader = Json.createReader(new StringReader(raw))) {
             JsonStructure structure = reader.read();
             if (structure.getValueType() == JsonValue.ValueType.OBJECT) {
                 String text = getString(structure.asJsonObject(), "text");
@@ -589,8 +639,8 @@ public class WidgetSyncServlet extends HttpServlet {
             root.asJsonArray().forEach(v -> {
                 if (v instanceof JsonObject o) {
                     normalized.add(o);
-            
-                }});
+                }
+            });
             return normalized;
         }
 
@@ -602,8 +652,8 @@ public class WidgetSyncServlet extends HttpServlet {
                     v.asJsonArray().forEach(e -> {
                         if (e instanceof JsonObject o) {
                             normalized.add(o);
-                    
-                        }});
+                        }
+                    });
                     return normalized;
                 }
             }

@@ -11,6 +11,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -26,6 +27,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -73,7 +75,6 @@ public class DashboardTopicsServlet extends HttpServlet {
             terms = List.of();
         }
 
-        // Prepare active terms (exclude system flags + "Other Parasoft Match")
         List<TopicPattern> activeTopics = buildActiveTopicPatterns(terms);
 
         Map<String, Integer> globalCounts = new LinkedHashMap<>();
@@ -96,10 +97,22 @@ public class DashboardTopicsServlet extends HttpServlet {
 
                 Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
 
-                String sql = "SELECT prompt FROM " + quoteIdentifier(tableName);
+                // created_at included intentionally so SqlTimeUtil can absorb malformed/imported timestamp values
+                // and prevent result-set decode failures from aborting the page.
+                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName);
                 try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
 
                     while (rs.next()) {
+                        try {
+                            Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            // no-op; this call is defensive to avoid row decode crashes on bad timestamp values
+                            if (ignoredTs == null) {
+                                // still allow topic matching from prompt text
+                            }
+                        } catch (SQLException ignored) {
+                            // If timestamp can't be parsed even by fallback, continue with prompt-only logic.
+                        }
+
                         String prompt = rs.getString("prompt");
                         if (prompt == null || prompt.isBlank()) {
                             continue;

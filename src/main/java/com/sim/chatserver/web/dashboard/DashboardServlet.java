@@ -48,6 +48,7 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -412,7 +413,7 @@ public class DashboardServlet extends HttpServlet {
                         sessionId = sessionId.trim();
                         SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
                         acc.count += rs.getInt("total");
-                        Timestamp lastEntry = rs.getTimestamp("last_entry");
+                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                         if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
                             acc.lastEntry = lastEntry;
                         }
@@ -421,9 +422,6 @@ public class DashboardServlet extends HttpServlet {
             }
         }
 
-        // Match InactiveUsersPageServlet behavior:
-        // inactive => lastEntry != null && lastEntry < cutoff
-        // active   => total - inactive (leftovers)
         int totalUsers = accumulators.size();
         Instant cutoff = Instant.now().minus(activeDays, ChronoUnit.DAYS);
 
@@ -698,7 +696,7 @@ public class DashboardServlet extends HttpServlet {
                         prompt = "";
                     }
                     String response = rs.getString("response_text");
-                    Timestamp createdAt = rs.getTimestamp("created_at");
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
                     String sessionId = rs.getString("session_id");
 
                     final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);

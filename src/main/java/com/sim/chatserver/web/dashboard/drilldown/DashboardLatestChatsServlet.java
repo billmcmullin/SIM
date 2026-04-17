@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -12,6 +14,7 @@ import java.util.List;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -26,8 +29,6 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardLatestChatsServlet", urlPatterns = {"/dashboard/latest-chats"})
 public class DashboardLatestChatsServlet extends HttpServlet {
-
-    private static final String REVIEW_TEMPLATE = "/WEB-INF/views/widget_review.html";
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -44,7 +45,8 @@ public class DashboardLatestChatsServlet extends HttpServlet {
 
         List<TermChatSnapshot> snapshots = collectLatestChats(limit);
         if (snapshots.isEmpty()) {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found.");
+            // Keep UX smooth: redirect back to dashboard instead of 404 page.
+            resp.sendRedirect(req.getContextPath() + "/dashboard?latestChats=empty");
             return;
         }
 
@@ -60,7 +62,10 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             return;
         }
 
-        resp.sendRedirect(req.getContextPath() + "/dashboard/widgets/drilldown/review?selectionId=" + selectionId);
+        String redirectUrl = req.getContextPath()
+                + "/dashboard/widgets/drilldown/review?selectionId="
+                + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
+        resp.sendRedirect(redirectUrl);
     }
 
     private List<TermChatSnapshot> collectLatestChats(int limit) {
@@ -95,7 +100,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                             String chatId = rs.getString("widget_chat_id");
                             String prompt = rs.getString("prompt");
                             String response = rs.getString("response_text");
-                            Timestamp createdAt = rs.getTimestamp("created_at");
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
                             String sessionId = rs.getString("session_id");
 
                             all.add(new TermChatSnapshot(

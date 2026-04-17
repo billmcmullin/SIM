@@ -36,7 +36,6 @@ body {
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
 }
 
-/* NEW: match other pages */
 .top-bar .brand,
 .top-bar .button-row>span {
     color: #af1414;
@@ -118,7 +117,6 @@ body {
     box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
 }
 
-detail-card pre,
 .detail-card pre {
     background: #fff;
     padding: 16px;
@@ -680,28 +678,217 @@ hr {
     border: 1px solid transparent;
 }
 
-/* Low = Blue bubble */
 .fr-badge-low {
     background: #dbeafe;
     color: #1d4ed8;
     border-color: #93c5fd;
 }
 
-/* Medium = Yellow/Orange bubble */
 .fr-badge-medium {
     background: #ffedd5;
     color: #c2410c;
     border-color: #fdba74;
 }
 
-/* High = Red bubble */
 .fr-badge-high {
     background: #fee2e2;
     color: #b91c1c;
     border-color: #fca5a5;
 }
 
-/* Responsive */
+/* ==========================================
+   Inactive Users Page
+========================================== */
+.inactive-users-page select,
+.inactive-users-page .inactive-cause-select,
+.inactive-users-page #daysSelect {
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    font-weight: 500;
+}
+
+.inactive-users-page select option,
+.inactive-users-page .inactive-cause-select option,
+.inactive-users-page #daysSelect option {
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+}
+
+.inactive-users-page .inactive-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.inactive-users-page .inactive-widget-section {
+    margin-top: 16px;
+}
+
+.inactive-users-page .inactive-meta {
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+.inactive-users-page .session-id-muted {
+    color: #64748b;
+    font-size: 0.82rem;
+    margin-top: 2px;
+    font-family: Menlo, Monaco, "Courier New", monospace;
+}
+
+.inactive-users-page .table-scroll {
+    overflow-x: auto;
+}
+
+#activityFilterBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-height: 38px;
+}
+
+#activityFilterBadge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+#activityFilterBadge.is-visible {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* ==========================================
+   Customer Profile Page
+========================================== */
+
+.customer-profile-container {
+    max-width: 1100px;
+}
+
+.customer-profile-hero {
+    margin-bottom: 16px;
+}
+
+.customer-profile-hero-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.customer-profile-back-link {
+    color: #334155;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.customer-profile-back-link:hover,
+.customer-profile-back-link:focus {
+    text-decoration: underline;
+}
+
+.customer-profile-table,
+.customer-profile-linked-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.customer-profile-table th,
+.customer-profile-table td,
+.customer-profile-linked-table th,
+.customer-profile-linked-table td {
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.customer-profile-table th {
+    width: 240px;
+    color: #334155;
+    font-weight: 600;
+}
+
+.customer-profile-table td {
+    color: #111827;
+    word-break: break-word;
+}
+
+.customer-profile-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+#syncCustomerProfileBtn {
+    margin-right: 0;
+}
+
+#customerProfileSyncStatus {
+    min-height: 20px;
+}
+
+.customer-profile-table-wrap {
+    overflow-x: auto;
+}
+
+.customer-profile-linked-table thead th {
+    background: var(--primary-blue);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+}
+
+.customer-profile-linked-table td a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.customer-profile-linked-table td a:hover,
+.customer-profile-linked-table td a:focus {
+    text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+    .customer-profile-table th {
+        width: 160px;
+    }
+
+    .customer-profile-table th,
+    .customer-profile-table td,
+    .customer-profile-linked-table th,
+    .customer-profile-linked-table td {
+        padding: 8px;
+        font-size: 0.92rem;
+    }
+}
+
+@media (max-width: 720px) {
+    .customer-profile-table th {
+        width: 140px;
+    }
+}
+
+
+/* ----------------------------------
+   Responsive
+----------------------------------- */
 @media (max-width: 1100px) {
     :root {
         --container-max-width: 1100px;
@@ -763,75 +950,27 @@ hr {
         min-width: 220px;
     }
 
-    /* ==========================================
-        Inactive Users Page
-    ========================================== */
-    .inactive-users-page select,
-    .inactive-users-page .inactive-cause-select,
-    .inactive-users-page #daysSelect {
-        color: #0f172a !important;
-        background-color: #ffffff !important;
-        border: 1px solid #cbd5e1 !important;
-        font-weight: 500;
+    .customer-profile-wrap {
+        max-width: 100%;
     }
 
-    .inactive-users-page select option,
-    .inactive-users-page .inactive-cause-select option,
-    .inactive-users-page #daysSelect option {
-        color: #0f172a !important;
-        background-color: #ffffff !important;
+    .cp-card {
+        padding: 16px;
     }
 
-    .inactive-users-page .inactive-toolbar {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
+    .cp-table th {
+        width: 160px;
     }
 
-    .inactive-users-page .inactive-widget-section {
-        margin-top: 16px;
+    .cp-table th,
+    .cp-table td {
+        padding: 8px;
+        font-size: 0.92rem;
     }
+}
 
-    .inactive-users-page .inactive-meta {
-        color: #475569;
-        font-size: 0.9rem;
+@media (max-width: 720px) {
+    .cp-table th {
+        width: 140px;
     }
-
-    .inactive-users-page .session-id-muted {
-        color: #64748b;
-        font-size: 0.82rem;
-        margin-top: 2px;
-        font-family: Menlo, Monaco, "Courier New", monospace;
-    }
-
-    .inactive-users-page .table-scroll {
-        overflow-x: auto;
-    }
-
-    #activityFilterBar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        min-height: 38px;
-        /* reserve space so layout doesn't jump */
-    }
-
-    #activityFilterBadge {
-        display: inline-flex;
-        align-items: center;
-        min-height: 28px;
-        visibility: hidden;
-        /* hidden but still takes space */
-        opacity: 0;
-        transition: opacity 120ms ease;
-    }
-
-    #activityFilterBadge.is-visible {
-        visibility: visible;
-        opacity: 1;
-    }
-
 }

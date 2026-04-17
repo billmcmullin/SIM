@@ -90,6 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSelectionData();
 });
 
+function buildCustomerProfileUrl(sessionId, friendlyName) {
+    const p = new URLSearchParams();
+    const sid = (sessionId || '').trim();
+    const fname = (friendlyName || '').trim();
+    if (sid) p.set('sessionId', sid);
+    else if (fname) p.set('friendlyName', fname);
+    else return '';
+    return `${contextPath}/customer-profile?${p.toString()}`;
+}
+
 function formatSessionDisplay(row) {
     if (!row) return '';
     if (row.sessionIdDisplay) return row.sessionIdDisplay;
@@ -99,7 +109,12 @@ function formatSessionDisplay(row) {
 
 function showSessionIndicator(value) {
     if (!sessionIndicator || !sessionIndicatorValue) return;
-    sessionIndicatorValue.textContent = value;
+    const v = (value || '').trim();
+    if (!v) return;
+    const href = buildCustomerProfileUrl(v, '');
+    sessionIndicatorValue.innerHTML = href
+        ? `<a class="customer-profile-link" href="${escapeHtml(href)}">${escapeHtml(v)}</a>`
+        : escapeHtml(v);
     sessionIndicator.removeAttribute('hidden');
 }
 
@@ -586,8 +601,13 @@ function renderRows(data) {
         const checked = multiSelected.has(row.chatId) ? 'checked' : '';
         const label = formatSessionDisplay(row);
         const muted = row.sessionId && row.sessionId !== label
-            ? `<div class="session-id-muted">${escapeHtml(row.sessionId)}</div>`
+            ? `<div class="session-id-muted"><a class="customer-profile-link" href="${escapeHtml(buildCustomerProfileUrl(row.sessionId, label))}">${escapeHtml(row.sessionId)}</a></div>`
             : '';
+
+        const sessionHref = buildCustomerProfileUrl(row.sessionId, label);
+        const sessionHtml = sessionHref
+            ? `<a class="customer-profile-link" href="${escapeHtml(sessionHref)}">${escapeHtml(label)}</a>`
+            : `${escapeHtml(label)}`;
 
         return `<tr data-chat-id="${escapeHtml(row.chatId)}">
             <td class="select-column">
@@ -596,7 +616,7 @@ function renderRows(data) {
             <td><div class="text-summary">${escapeHtml(row.chatId)}</div></td>
             <td><div class="text-summary">${escapeHtml(truncateText(row.prompt))}</div></td>
             <td><div class="text-summary">${escapeHtml(formatDate(row.createdAt))}</div></td>
-            <td><div class="text-summary">${escapeHtml(label)}</div>${muted}</td>
+            <td><div class="text-summary">${sessionHtml}</div>${muted}</td>
         </tr>`;
     }).join('');
 

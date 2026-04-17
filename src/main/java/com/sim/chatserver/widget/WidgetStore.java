@@ -17,6 +17,9 @@ import com.sim.chatserver.config.Database;
 
 public final class WidgetStore {
 
+    private static final String SQL_STATE_UNDEFINED_TABLE = "42P01";
+    private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
+
     private WidgetStore() {
         // utility class
     }
@@ -41,6 +44,8 @@ public final class WidgetStore {
     }
 
     public static List<WidgetEntry> list(String filter) throws SQLException {
+        ensureTableExists();
+
         StringBuilder sql = new StringBuilder(
                 "SELECT id, widget_id, display_name, created_at FROM widget_entries");
         boolean hasFilter = filter != null && !filter.isBlank();
@@ -64,35 +69,45 @@ public final class WidgetStore {
                 }
                 return widgets;
             }
+        } catch (SQLException e) {
+            if (isUndefinedTable(e)) {
+                ensureTableExists();
+                return list(filter); // one-shot retry through fresh call path
+            }
+            throw e;
         }
     }
 
     public static WidgetEntry create(String widgetId, String displayName) throws SQLException {
+        ensureTableExists();
+
         String normalizedWidgetId = normalizeRequired(widgetId, "widgetId");
         String normalizedDisplayName = normalizeRequired(displayName, "displayName");
 
-        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO widget_entries (widget_id, display_name) "
-                + "VALUES (?, ?) RETURNING id, widget_id, display_name, created_at")) {
-            statement.setString(1, normalizedWidgetId);
-            statement.setString(2, normalizedDisplayName);
-
-            try (ResultSet rs = statement.executeQuery()) {
-                if (rs.next()) {
-                    return mapRow(rs);
-                }
-            }
+        try {
+            return doCreate(normalizedWidgetId, normalizedDisplayName);
         } catch (SQLException e) {
-            if ("23505".equals(e.getSQLState())) {
+            if (isUniqueViolation(e)) {
                 throw new DuplicateWidgetIdException(normalizedWidgetId, e);
+            }
+            if (isUndefinedTable(e)) {
+                ensureTableExists();
+                try {
+                    return doCreate(normalizedWidgetId, normalizedDisplayName);
+                } catch (SQLException retryEx) {
+                    if (isUniqueViolation(retryEx)) {
+                        throw new DuplicateWidgetIdException(normalizedWidgetId, retryEx);
+                    }
+                    throw retryEx;
+                }
             }
             throw e;
         }
-
-        throw new IllegalStateException("Unable to persist widget entry.");
     }
 
     public static WidgetEntry update(int id, String widgetId, String displayName) throws SQLException {
+        ensureTableExists();
+
         if (id <= 0) {
             throw new IllegalArgumentException("id must be > 0");
         }
@@ -100,28 +115,25 @@ public final class WidgetStore {
         String normalizedWidgetId = normalizeRequired(widgetId, "widgetId");
         String normalizedDisplayName = normalizeRequired(displayName, "displayName");
 
-        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(
-                "UPDATE widget_entries "
-                + "SET widget_id = ?, display_name = ? "
-                + "WHERE id = ? "
-                + "RETURNING id, widget_id, display_name, created_at")) {
-            statement.setString(1, normalizedWidgetId);
-            statement.setString(2, normalizedDisplayName);
-            statement.setInt(3, id);
-
-            try (ResultSet rs = statement.executeQuery()) {
-                if (rs.next()) {
-                    return mapRow(rs);
-                }
-            }
+        try {
+            return doUpdate(id, normalizedWidgetId, normalizedDisplayName);
         } catch (SQLException e) {
-            if ("23505".equals(e.getSQLState())) {
+            if (isUniqueViolation(e)) {
                 throw new DuplicateWidgetIdException(normalizedWidgetId, e);
+            }
+            if (isUndefinedTable(e)) {
+                ensureTableExists();
+                try {
+                    return doUpdate(id, normalizedWidgetId, normalizedDisplayName);
+                } catch (SQLException retryEx) {
+                    if (isUniqueViolation(retryEx)) {
+                        throw new DuplicateWidgetIdException(normalizedWidgetId, retryEx);
+                    }
+                    throw retryEx;
+                }
             }
             throw e;
         }
-
-        throw new IllegalStateException("No widget entry found for id " + id);
     }
 
     /**
@@ -130,6 +142,8 @@ public final class WidgetStore {
      */
     @Deprecated(forRemoval = true)
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
+        ensureTableExists();
+
         if (id == null || id <= 0) {
             return create(widgetId, displayName);
         }
@@ -137,6 +151,8 @@ public final class WidgetStore {
     }
 
     public static int deleteBulk(Collection<Integer> ids) throws SQLException {
+        ensureTableExists();
+
         if (ids == null || ids.isEmpty()) {
             return 0;
         }
@@ -151,14 +167,70 @@ public final class WidgetStore {
         }
 
         String placeholders = validIds.stream().map(i -> "?").collect(Collectors.joining(","));
-        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(
-                "DELETE FROM widget_entries WHERE id IN (" + placeholders + ")")) {
+        String sql = "DELETE FROM widget_entries WHERE id IN (" + placeholders + ")";
+
+        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
             for (Integer value : validIds) {
                 statement.setInt(index++, value);
             }
             return statement.executeUpdate();
+        } catch (SQLException e) {
+            if (isUndefinedTable(e)) {
+                ensureTableExists();
+                try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+                    int index = 1;
+                    for (Integer value : validIds) {
+                        statement.setInt(index++, value);
+                    }
+                    return statement.executeUpdate();
+                }
+            }
+            throw e;
         }
+    }
+
+    private static WidgetEntry doCreate(String widgetId, String displayName) throws SQLException {
+        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO widget_entries (widget_id, display_name) "
+                + "VALUES (?, ?) RETURNING id, widget_id, display_name, created_at")) {
+            statement.setString(1, widgetId);
+            statement.setString(2, displayName);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        throw new IllegalStateException("Unable to persist widget entry.");
+    }
+
+    private static WidgetEntry doUpdate(int id, String widgetId, String displayName) throws SQLException {
+        try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(
+                "UPDATE widget_entries "
+                + "SET widget_id = ?, display_name = ? "
+                + "WHERE id = ? "
+                + "RETURNING id, widget_id, display_name, created_at")) {
+            statement.setString(1, widgetId);
+            statement.setString(2, displayName);
+            statement.setInt(3, id);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        throw new IllegalStateException("No widget entry found for id " + id);
+    }
+
+    private static boolean isUndefinedTable(SQLException e) {
+        return SQL_STATE_UNDEFINED_TABLE.equals(e.getSQLState());
+    }
+
+    private static boolean isUniqueViolation(SQLException e) {
+        return SQL_STATE_UNIQUE_VIOLATION.equals(e.getSQLState());
     }
 
     private static WidgetEntry mapRow(ResultSet rs) throws SQLException {

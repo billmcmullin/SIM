@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -268,7 +269,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 String sid = rs.getString("session_id");
-                Timestamp last = rs.getTimestamp("last_entry");
+                Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                 if (sid == null || sid.isBlank()) {
                     continue;
                 }
@@ -368,7 +369,6 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
             boolean nonFrustrationContext = looksLikeCodeText(t) || looksLikeLogText(t) || containsOnlySafeAcronymCaps(t);
 
-            // ALL CAPS no longer scores by itself; requires explicit frustration language.
             if (!nonFrustrationContext && hasExplicitFrustrationSignal(t) && !consistentCapsStyle) {
                 score += 0.20;
                 if (reason.isEmpty()) {

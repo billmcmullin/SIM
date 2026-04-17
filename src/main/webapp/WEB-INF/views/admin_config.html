@@ -36,6 +36,57 @@
             <h1>Admin Configuration</h1>
             <p>Hello, ${user}. Configure the chat server connection below.</p>
         </section>
+
+        <section class="section">
+            <h2>Database Data Export</h2>
+            <p>Download raw table data as a ZIP (CSV files + manifest.json).</p>
+            <div class="actions">
+                <button type="button" id="backupDbBtn">Export Data Backup</button>
+            </div>
+            <div id="backupDbMessage" class="widget-message"></div>
+        </section>
+
+        <section class="section">
+            <h2>Database Data Import</h2>
+            <p>Upload a backup ZIP, run precheck, then import data.</p>
+
+            <form id="dbImportForm" enctype="multipart/form-data" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="dbImportFile">Backup ZIP File</label>
+                    <input type="file" id="dbImportFile" name="file" accept=".zip,application/zip" required>
+                </div>
+
+                <div class="actions">
+                    <button type="button" id="precheckImportBtn">Precheck Import</button>
+                    <button type="button" id="runImportBtn" disabled>Run Import</button>
+                </div>
+            </form>
+
+            <div id="dbImportMessage" class="widget-message" style="margin-top:10px;"></div>
+
+            <div id="dbImportSummary" style="margin-top:10px; display:none;">
+                <h3>Import Precheck Summary</h3>
+                <div id="dbImportSummaryBody"></div>
+            </div>
+
+            <div style="overflow-x:auto; margin-top:10px;">
+                <table class="widget-table" id="widgetImportPreviewTable">
+                    <thead>
+                        <tr>
+                            <th>Widget Table</th>
+                            <th>Rows To Import</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetImportPreviewBody">
+                        <tr>
+                            <td colspan="2" class="empty-row">Run precheck to see widget table import counts.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+
         <section class="section">
             <h2>Server Configuration</h2>
             <form id="serverConfigForm">
@@ -66,6 +117,70 @@
         </section>
 
         <section class="section">
+            <h2>Salesforce Configuration</h2>
+            <form id="salesforceConfigForm">
+                <div class="form-group">
+                    <label for="salesforceInstanceUrl">Salesforce Instance URL</label>
+                    <input type="text" id="salesforceInstanceUrl" name="salesforceInstanceUrl"
+                        placeholder="https://yourInstance.my.salesforce.com" value="${salesforceInstanceUrl}">
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceApiKey">Salesforce API Key / Access Token</label>
+                    <input type="password" id="salesforceApiKey" name="salesforceApiKey"
+                        placeholder="Enter token to set or replace">
+                    <div class="small-note">
+                        <span id="salesforceApiKeyStoredNote" style="display:none;">
+                            A Salesforce API key is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceLoginUrl">Salesforce Login URL</label>
+                    <input type="text" id="salesforceLoginUrl" name="salesforceLoginUrl"
+                        placeholder="https://login.salesforce.com or https://test.salesforce.com"
+                        value="${salesforceLoginUrl}">
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceClientId">Salesforce Client ID</label>
+                    <input type="text" id="salesforceClientId" name="salesforceClientId"
+                        placeholder="Connected App Consumer Key" value="${salesforceClientId}">
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceClientSecret">Salesforce Client Secret</label>
+                    <input type="password" id="salesforceClientSecret" name="salesforceClientSecret"
+                        placeholder="Enter Salesforce Connected App client secret">
+                    <div class="small-note">
+                        <span id="salesforceClientSecretStoredNote" style="display:none;">
+                            A client secret is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceRefreshToken">Salesforce Refresh Token</label>
+                    <input type="password" id="salesforceRefreshToken" name="salesforceRefreshToken"
+                        placeholder="Enter refresh token to set or replace">
+                    <div class="small-note">
+                        <span id="salesforceRefreshTokenStoredNote" style="display:none;">
+                            A refresh token is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="button" id="testSalesforceConnectionBtn">Test Salesforce Connection</button>
+                    <button type="button" id="saveSalesforceConfigBtn">Save Salesforce Configuration</button>
+                    <button type="button" id="connectSalesforceOAuthBtn">Connect Salesforce (OAuth)</button>
+                </div>
+                <div id="salesforceTestResult" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+            </form>
+        </section>
+
+        <section class="section">
             <h2>Workspace Management</h2>
             <form id="workspaceForm">
                 <div class="form-group">
@@ -79,12 +194,6 @@
                 <div id="workspaceMessage" class="widget-message"></div>
             </form>
         </section>
-
-        <!--<section class="section">
-            <h2>API Response Preview</h2>
-            <p>Preview the API's response_text (Markdown) rendered safely below.</p>
-            <div id="responseText" class="response-markdown" aria-live="polite"></div>
-        </section>-->
 
         <section class="section widget-section">
             <h2>Widget Registry</h2>
@@ -176,7 +285,6 @@
             <h2>Term Definitions</h2>
             <p>Define how prompts/responses should match saved terms. You can specify a regex or a wildcard pattern.</p>
 
-            <!-- Term create/edit FORM (ends before CSV import/export controls) -->
             <form id="termCreateForm">
                 <input type="hidden" id="termId">
                 <div class="form-grid">
@@ -208,18 +316,13 @@
                 </div>
             </form>
 
-            <!-- CSV import / export controls (moved outside the term form to avoid nested forms) -->
             <div class="terms-csv-controls" aria-hidden="false">
-                <!-- Export button handled client-side to present save dialog -->
                 <button type="button" id="exportTermsBtn">Export terms (CSV)</button>
 
-                <!-- Import form (multipart) - NOT nested inside termCreateForm -->
                 <form id="termsImportForm" method="post" action="${contextPath}/admin/terms/import"
                     enctype="multipart/form-data" class="inline-form" style="display:inline-block; margin:0;">
-                    <!-- Hidden file input - will be triggered by the Import button -->
                     <input id="termsCsvFile" name="file" type="file" accept=".csv,text/csv"
                         aria-label="Choose CSV file to import" />
-                    <!-- Import button now triggers the hidden file chooser -->
                     <button type="button" id="importTermsBtn">Import terms (CSV)</button>
                 </form>
 
@@ -299,32 +402,36 @@
     </div>
 
     <script>
-        // The server-side must produce safely escaped/valid JSON for widgetListJson and termsListJson.
-        // It's fine if widgetListJson / termsListJson are JSON strings; the bootstrap code will try to parse them.
         window.adminPageConfig = {
             contextPath: '${contextPath}',
             widgetListJson: '${widgetListJson}',
             termsListJson: '${termsListJson}',
             apiKeyStored: '${apiKeyStored}',
-            workspaceName: '${workspaceName}'
+            workspaceName: '${workspaceName}',
+
+            salesforceApiKeyStored: '${salesforceApiKeyStored}',
+            salesforceInstanceUrl: '${salesforceInstanceUrl}',
+            salesforceLoginUrl: '${salesforceLoginUrl}',
+            salesforceClientId: '${salesforceClientId}',
+            salesforceClientSecretStored: '${salesforceClientSecretStored}',
+            salesforceRefreshTokenStored: '${salesforceRefreshTokenStored}',
+            salesforceOAuthStatus: '${salesforceOAuthStatus}',
+            salesforceOAuthMessage: '${salesforceOAuthMessage}'
         };
     </script>
 
-    <!-- Third-party libs required by markdown module -->
     <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
 
-    <!-- Admin page modular scripts (load order is important) -->
     <script defer src="${contextPath}/assets/js/admin_utils/utils.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/apis.js"></script>
-    <!-- <script defer src="${contextPath}/assets/js/admin_utils/markdown.js"></script>-->
     <script defer src="${contextPath}/assets/js/admin_utils/users.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/widgets.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/terms.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/workspace.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/sync.js"></script>
-
-    <!-- Bootstrap that initializes modules -->
+    <script defer src="${contextPath}/assets/js/admin_utils/salesforce.js"></script>
+    <script defer src="${contextPath}/assets/js/admin_utils/db_import.js"></script>
     <script defer src="${contextPath}/assets/js/admin_page.js"></script>
 </body>
 

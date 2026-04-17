@@ -1,0 +1,193 @@
+package com.sim.chatserver.web.profile;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import com.sim.chatserver.model.CustomerIdentity;
+import com.sim.chatserver.model.CustomerIdentitySessionLink;
+import com.sim.chatserver.model.CustomerProfile;
+import com.sim.chatserver.model.CustomerProfileStore;
+import com.sim.chatserver.service.CustomerIdentityService;
+
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+
+@WebServlet(name = "CustomerProfileServlet", urlPatterns = {"/customer-profile"})
+public class CustomerProfileServlet extends HttpServlet {
+
+    private static final String TEMPLATE_PATH = "/WEB-INF/views/customer_profile.html";
+    private final CustomerIdentityService identityService = new CustomerIdentityService();
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        HttpSession session = req.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
+            resp.sendRedirect(req.getContextPath() + "/login");
+            return;
+        }
+
+        String sessionId = trimToNull(req.getParameter("sessionId"));
+        String friendlyNameParam = trimToNull(req.getParameter("friendlyName"));
+
+        if (sessionId == null && friendlyNameParam == null) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "sessionId or friendlyName is required.");
+            return;
+        }
+
+        try {
+            // Resolve a sessionId if only friendlyName was passed (best effort)
+            String resolvedSessionId = sessionId;
+            if (resolvedSessionId == null && friendlyNameParam != null) {
+                // Current identity service is sessionId-centric; keep old behavior for now
+                resolvedSessionId = "friendly:" + friendlyNameParam;
+            }
+
+            CustomerIdentity identity = null;
+            List<CustomerIdentitySessionLink> linkedSessions = List.of();
+
+            if (sessionId != null) {
+                identity = identityService.resolveOrCreateBySessionId(sessionId);
+                if (identity != null && identity.getIdentityId() != null) {
+                    linkedSessions = identityService.listLinkedSessions(identity.getIdentityId());
+                }
+            }
+
+            CustomerProfile profile = null;
+            if (sessionId != null) {
+                profile = CustomerProfileStore.loadBySessionId(sessionId);
+            }
+
+            String friendlyName = firstNonBlank(
+                    profile != null ? profile.getFriendlyName() : null,
+                    identity != null ? identity.getCanonicalName() : null,
+                    friendlyNameParam
+            );
+
+            String linkedSessionsHtml = buildLinkedSessionsRows(linkedSessions, req.getContextPath());
+
+            String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+
+            String rendered = template
+                    .replace("${contextPath}", req.getContextPath())
+                    .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+                    .replace("${sessionId}", escapeHtml(nullToDash(resolvedSessionId)))
+                    .replace("${friendlyName}", escapeHtml(nullToDash(friendlyName)))
+                    .replace("${email}", escapeHtml(nullToDash(profile != null ? profile.getEmail() : (identity != null ? identity.getCanonicalEmail() : null))))
+                    .replace("${phone}", escapeHtml(nullToDash(profile != null ? profile.getPhone() : null)))
+                    .replace("${title}", escapeHtml(nullToDash(profile != null ? profile.getTitle() : null)))
+                    .replace("${department}", escapeHtml(nullToDash(profile != null ? profile.getDepartment() : null)))
+                    .replace("${salesforceContactId}", escapeHtml(nullToDash(profile != null ? profile.getSalesforceContactId() : (identity != null ? identity.getSalesforceContactId() : null))))
+                    .replace("${salesforceAccountId}", escapeHtml(nullToDash(profile != null ? profile.getSalesforceAccountId() : (identity != null ? identity.getSalesforceAccountId() : null))))
+                    .replace("${lastSyncedAt}", escapeHtml(profile != null && profile.getLastSyncedAt() != null
+                            ? profile.getLastSyncedAt().toString()
+                            : (identity != null && identity.getLastSyncedAt() != null ? identity.getLastSyncedAt().toString() : "Never")))
+                    // Add this placeholder to your HTML where you want the related sessions table body/rows
+                    .replace("${linkedSessionsRows}", linkedSessionsHtml);
+
+            resp.setContentType("text/html;charset=UTF-8");
+            try (PrintWriter out = resp.getWriter()) {
+                out.print(rendered);
+            }
+        } catch (Exception e) {
+            log("CustomerProfileServlet error", e);
+            throw new ServletException("Unable to load customer profile.", e);
+        }
+    }
+
+    private String buildLinkedSessionsRows(List<CustomerIdentitySessionLink> links, String contextPath) {
+        if (links == null || links.isEmpty()) {
+            return "<tr><td colspan=\"4\" class=\"empty-row\">No linked sessions found.</td></tr>";
+        }
+
+        return links.stream().map(link -> {
+            String sid = nullToEmpty(link.getSessionId());
+            String display = nullToEmpty(link.getDisplayNameSnapshot());
+            String email = nullToEmpty(link.getContactEmailSnapshot());
+            String updated = link.getUpdatedAt() == null ? "—" : link.getUpdatedAt().toString();
+
+            String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
+
+            return "<tr>"
+                    + "<td><a href=\"" + escapeHtml(profileHref) + "\">" + escapeHtml(sid) + "</a></td>"
+                    + "<td>" + escapeHtml(display.isBlank() ? "—" : display) + "</td>"
+                    + "<td>" + escapeHtml(email.isBlank() ? "—" : email) + "</td>"
+                    + "<td>" + escapeHtml(updated) + "</td>"
+                    + "</tr>";
+        }).collect(Collectors.joining());
+    }
+
+    private String loadTemplate(ServletContext context, String path) throws IOException {
+        try (InputStream stream = context.getResourceAsStream(path)) {
+            if (stream == null) {
+                throw new IOException("Template not found: " + path);
+            }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                StringBuilder builder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    builder.append(line).append('\n');
+                }
+                return builder.toString();
+            }
+        }
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String v = value.trim();
+        return v.isEmpty() ? null : v;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String nullToDash(String value) {
+        String v = trimToNull(value);
+        return v == null ? "—" : v;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v.trim();
+            }
+        }
+        return null;
+    }
+
+    private String escapeHtml(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+    private String urlEncode(String input) {
+        try {
+            return java.net.URLEncoder.encode(input == null ? "" : input, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+}
