@@ -296,26 +296,32 @@ public final class EncryptedDbConfigStore {
 
         String trimmed = secret.trim();
 
-        // Preferred: Base64-encoded 32-byte key
+        // Try Base64 first
         try {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
-            if (decoded.length == AES_KEY_BYTES) {
-                log.fine("getAesKeyBytes: using Base64 32-byte key from env");
-                return decoded;
-            } else {
-                log.warning("getAesKeyBytes: env decodes as Base64 but length is " + decoded.length
-                        + " (expected " + AES_KEY_BYTES + "), falling back to SHA-256");
-            }
-        } catch (IllegalArgumentException ignored) {
-            log.fine("getAesKeyBytes: env not valid Base64, falling back to SHA-256");
-        }
 
-        // Fallback: SHA-256(passphrase) => 32-byte key
-        try {
+            // Accept valid AES key sizes directly
+            if (decoded.length == 16 || decoded.length == 24 || decoded.length == 32) {
+                log.fine("getAesKeyBytes: using Base64-decoded AES key length=" + decoded.length);
+                return decoded;
+            }
+
+            // Compatibility path: derive 32-byte key deterministically
+            log.fine("getAesKeyBytes: Base64 decoded length=" + decoded.length
+                    + ", deriving AES-256 key via SHA-256");
             MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            byte[] key = sha256.digest(trimmed.getBytes(StandardCharsets.UTF_8));
-            log.fine("getAesKeyBytes: using SHA-256 derived key");
-            return key;
+            return sha256.digest(decoded);
+
+        } catch (IllegalArgumentException notBase64) {
+            // Not Base64: derive from raw env string (legacy-compatible behavior)
+            try {
+                log.fine("getAesKeyBytes: env not Base64, deriving AES-256 key via SHA-256 of UTF-8 string");
+                MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+                return sha256.digest(trimmed.getBytes(StandardCharsets.UTF_8));
+            } catch (GeneralSecurityException e) {
+                log.log(Level.SEVERE, "getAesKeyBytes: key derivation failed", e);
+                throw new IllegalStateException("Unable to derive encryption key", e);
+            }
         } catch (GeneralSecurityException e) {
             log.log(Level.SEVERE, "getAesKeyBytes: key derivation failed", e);
             throw new IllegalStateException("Unable to derive encryption key", e);

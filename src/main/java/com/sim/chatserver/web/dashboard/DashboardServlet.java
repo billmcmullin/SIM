@@ -75,6 +75,10 @@ public class DashboardServlet extends HttpServlet {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final int TOP_TOPIC_LIMIT = 3;
+    private static final int OTHER_PARASOFT_LATEST_LIMIT = 5;
+
     private static final Object TEMPLATE_LOCK = new Object();
     private static volatile String cachedDashboardTemplate;
 
@@ -85,6 +89,10 @@ public class DashboardServlet extends HttpServlet {
     private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
     private static final long TERM_SUMMARY_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
     private static final long SESSION_OVERVIEW_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
+    private static final long CHAT_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    private static final long NEW_USER_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    private static final long TOP_TOPICS_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    private static final long OTHER_PARASOFT_LATEST_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
 
     private static final Object WIDGET_CACHE_LOCK = new Object();
     private static volatile CacheValue<List<WidgetStat>> widgetStatsCache;
@@ -94,6 +102,18 @@ public class DashboardServlet extends HttpServlet {
 
     private static final Object SESSION_CACHE_LOCK = new Object();
     private static final Map<String, CacheValue<SessionOverview>> sessionOverviewCache = new LinkedHashMap<>();
+
+    private static final Object CHAT_PROGRESSION_CACHE_LOCK = new Object();
+    private static volatile CacheValue<ProgressStat> chatProgressionCache;
+
+    private static final Object NEW_USER_PROGRESSION_CACHE_LOCK = new Object();
+    private static volatile CacheValue<ProgressStat> newUserProgressionCache;
+
+    private static final Object TOP_TOPICS_CACHE_LOCK = new Object();
+    private static volatile CacheValue<List<TopTopic>> topTopicsCache;
+
+    private static final Object OTHER_PARASOFT_LATEST_CACHE_LOCK = new Object();
+    private static volatile CacheValue<List<OtherParasoftEntry>> otherParasoftLatestCache;
 
     private static final ExecutorService DASHBOARD_EXECUTOR = Executors.newFixedThreadPool(
             Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors())),
@@ -162,10 +182,28 @@ public class DashboardServlet extends HttpServlet {
         CompletableFuture<SessionOverview> sessionOverviewFuture = CompletableFuture.supplyAsync(
                 () -> getSessionOverviewCached(widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays), DASHBOARD_EXECUTOR);
 
+        CompletableFuture<ProgressStat> chatProgressionFuture = CompletableFuture.supplyAsync(
+                () -> getChatProgressionCached(widgetsFinal), DASHBOARD_EXECUTOR);
+
+        CompletableFuture<ProgressStat> newUserProgressionFuture = CompletableFuture.supplyAsync(
+                () -> getNewUserProgressionCached(widgetsFinal), DASHBOARD_EXECUTOR);
+
+        CompletableFuture<List<TopTopic>> topTopicsFuture = CompletableFuture.supplyAsync(
+                () -> getTopTopicsCached(widgetsFinal), DASHBOARD_EXECUTOR);
+
+        CompletableFuture<List<OtherParasoftEntry>> otherParasoftFuture = CompletableFuture.supplyAsync(
+                () -> getOtherParasoftLatestCached(widgetsFinal, OTHER_PARASOFT_LATEST_LIMIT), DASHBOARD_EXECUTOR);
+
         List<WidgetStat> widgetStats = safeJoin(widgetStatsFuture, List.of(), "widget stats");
         int totalChats = widgetStats.stream().mapToInt(stat -> stat.count).sum();
         String statsRows = renderWidgetStatsRows(widgetStats, req.getContextPath());
         String widgetPieChartData = buildWidgetPieChartData(widgetStats);
+
+        ProgressStat chatProgression = safeJoin(chatProgressionFuture, new ProgressStat(0, 0), "chat progression");
+        String chatProgressionHtml = formatProgressionHtml(chatProgression);
+
+        ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
+        String newUserProgressionHtml = formatProgressionHtml(newUserProgression);
 
         TermSummary summary = safeJoin(termSummaryFuture, null, "term summary");
         String termChartJson = summary == null ? "[]" : summary.toJson();
@@ -174,6 +212,14 @@ public class DashboardServlet extends HttpServlet {
         } else {
             session.removeAttribute(TERM_SNAPSHOT_SESSION_KEY);
         }
+
+        TermUsage mostUsedTerm = findMostUsedTerm(summary);
+
+        List<TopTopic> topTopics = safeJoin(topTopicsFuture, List.of(), "top topics");
+        String topTopicsRows = renderTopTopicsRows(topTopics);
+
+        List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
+        String otherParasoftLatestRows = renderOtherParasoftLatestRows(otherParasoftLatest, req.getContextPath());
 
         String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
         String sessionChartJson = buildEmptySessionPayload(rangeStart, rangeEnd);
@@ -203,6 +249,18 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("role", escapeHtml(role)),
                 Map.entry("adminLink", adminLink),
                 Map.entry("totalChats", escapeHtml(String.valueOf(totalChats))),
+                Map.entry("todayChats", escapeHtml(String.valueOf(chatProgression.today))),
+                Map.entry("yesterdayChats", escapeHtml(String.valueOf(chatProgression.yesterday))),
+                Map.entry("chatProgression", chatProgressionHtml),
+                Map.entry("chatProgressionDirection", escapeHtml(chatProgression.direction)),
+                Map.entry("newUsersToday", escapeHtml(String.valueOf(newUserProgression.today))),
+                Map.entry("newUsersYesterday", escapeHtml(String.valueOf(newUserProgression.yesterday))),
+                Map.entry("newUsersProgression", newUserProgressionHtml),
+                Map.entry("newUsersProgressionDirection", escapeHtml(newUserProgression.direction)),
+                Map.entry("mostUsedTerm", escapeHtml(mostUsedTerm.label)),
+                Map.entry("mostUsedTermCount", escapeHtml(String.valueOf(mostUsedTerm.count))),
+                Map.entry("topTopicsRows", topTopicsRows),
+                Map.entry("otherParasoftLatestRows", otherParasoftLatestRows),
                 Map.entry("widgetStatsRows", statsRows),
                 Map.entry("widgetPieChartData", escapeForJs(widgetPieChartData)),
                 Map.entry("termChartData", termChartJson),
@@ -236,6 +294,74 @@ public class DashboardServlet extends HttpServlet {
             }
             List<WidgetStat> fresh = buildWidgetStats(widgets);
             widgetStatsCache = new CacheValue<>(fresh, now + WIDGET_STATS_TTL_MILLIS);
+            return fresh;
+        }
+    }
+
+    private ProgressStat getChatProgressionCached(List<WidgetEntry> widgets) {
+        long now = System.currentTimeMillis();
+        CacheValue<ProgressStat> cached = chatProgressionCache;
+        if (cached != null && !cached.isExpired(now)) {
+            return cached.value;
+        }
+        synchronized (CHAT_PROGRESSION_CACHE_LOCK) {
+            cached = chatProgressionCache;
+            if (cached != null && !cached.isExpired(now)) {
+                return cached.value;
+            }
+            ProgressStat fresh = buildChatProgression(widgets);
+            chatProgressionCache = new CacheValue<>(fresh, now + CHAT_PROGRESSION_TTL_MILLIS);
+            return fresh;
+        }
+    }
+
+    private ProgressStat getNewUserProgressionCached(List<WidgetEntry> widgets) {
+        long now = System.currentTimeMillis();
+        CacheValue<ProgressStat> cached = newUserProgressionCache;
+        if (cached != null && !cached.isExpired(now)) {
+            return cached.value;
+        }
+        synchronized (NEW_USER_PROGRESSION_CACHE_LOCK) {
+            cached = newUserProgressionCache;
+            if (cached != null && !cached.isExpired(now)) {
+                return cached.value;
+            }
+            ProgressStat fresh = buildNewUserProgression(widgets);
+            newUserProgressionCache = new CacheValue<>(fresh, now + NEW_USER_PROGRESSION_TTL_MILLIS);
+            return fresh;
+        }
+    }
+
+    private List<TopTopic> getTopTopicsCached(List<WidgetEntry> widgets) {
+        long now = System.currentTimeMillis();
+        CacheValue<List<TopTopic>> cached = topTopicsCache;
+        if (cached != null && !cached.isExpired(now)) {
+            return cached.value;
+        }
+        synchronized (TOP_TOPICS_CACHE_LOCK) {
+            cached = topTopicsCache;
+            if (cached != null && !cached.isExpired(now)) {
+                return cached.value;
+            }
+            List<TopTopic> fresh = buildTopTopicsTodayVsYesterday(widgets);
+            topTopicsCache = new CacheValue<>(fresh, now + TOP_TOPICS_TTL_MILLIS);
+            return fresh;
+        }
+    }
+
+    private List<OtherParasoftEntry> getOtherParasoftLatestCached(List<WidgetEntry> widgets, int limit) {
+        long now = System.currentTimeMillis();
+        CacheValue<List<OtherParasoftEntry>> cached = otherParasoftLatestCache;
+        if (cached != null && !cached.isExpired(now)) {
+            return cached.value;
+        }
+        synchronized (OTHER_PARASOFT_LATEST_CACHE_LOCK) {
+            cached = otherParasoftLatestCache;
+            if (cached != null && !cached.isExpired(now)) {
+                return cached.value;
+            }
+            List<OtherParasoftEntry> fresh = buildLatestOtherParasoftEntries(widgets, limit);
+            otherParasoftLatestCache = new CacheValue<>(fresh, now + OTHER_PARASOFT_LATEST_TTL_MILLIS);
             return fresh;
         }
     }
@@ -300,6 +426,446 @@ public class DashboardServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to compute " + label, ex);
             return fallback;
         }
+    }
+
+    private String formatProgressionHtml(ProgressStat p) {
+        if (p == null) {
+            return "<span class=\"progression progression-flat\">0 (0.0%) vs yesterday</span>";
+        }
+        String cls = switch (p.direction) {
+            case "up" ->
+                "progression-up";
+            case "down" ->
+                "progression-down";
+            default ->
+                "progression-flat";
+        };
+
+        String text = String.format("%+d (%.1f%%) vs yesterday", p.delta, p.pctDelta);
+        return "<span class=\"progression " + cls + "\">" + escapeHtml(text) + "</span>";
+    }
+
+    private int countChatsForDate(Connection conn, List<WidgetEntry> widgets, LocalDate date, Map<String, Boolean> tableExistsCache) throws SQLException {
+        if (widgets == null || widgets.isEmpty()) {
+            return 0;
+        }
+
+        Timestamp start = Timestamp.valueOf(date.atStartOfDay());
+        Timestamp end = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
+
+        int total = 0;
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null) {
+                continue;
+            }
+
+            String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+            if (!tableExistsCached(conn, tableName, tableExistsCache)) {
+                continue;
+            }
+
+            String sql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName)
+                    + " WHERE created_at >= ? AND created_at < ?";
+
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setTimestamp(1, start);
+                ps.setTimestamp(2, end);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        total += rs.getInt(1);
+                    }
+                }
+            }
+        }
+        return total;
+    }
+
+    private ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        LocalDate yesterday = today.minusDays(1);
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
+            int todayCount = countChatsForDate(conn, widgets, today, tableExistsCache);
+            int yesterdayCount = countChatsForDate(conn, widgets, yesterday, tableExistsCache);
+            return new ProgressStat(todayCount, yesterdayCount);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute chat progression", e);
+            return new ProgressStat(0, 0);
+        }
+    }
+
+    private ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        LocalDate yesterday = today.minusDays(1);
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            int todayCount = countDistinctSessionsFirstSeenOnDate(conn, widgets, today);
+            int yesterdayCount = countDistinctSessionsFirstSeenOnDate(conn, widgets, yesterday);
+            return new ProgressStat(todayCount, yesterdayCount);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute new user progression", e);
+            return new ProgressStat(0, 0);
+        }
+    }
+
+    private int countDistinctSessionsFirstSeenOnDate(Connection conn, List<WidgetEntry> widgets, LocalDate date) throws SQLException {
+        if (date == null || widgets == null || widgets.isEmpty()) {
+            return 0;
+        }
+
+        Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
+        Map<String, Timestamp> earliestBySession = new LinkedHashMap<>();
+
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                continue;
+            }
+
+            String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+            if (!tableExistsCached(conn, tableName, tableExistsCache)) {
+                continue;
+            }
+
+            String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM " + quoteIdentifier(tableName)
+                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
+
+            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String sessionId = rs.getString("session_id");
+                    Timestamp firstSeen = SqlTimeUtil.safeTimestamp(rs, "first_seen");
+
+                    if (sessionId == null || sessionId.isBlank() || firstSeen == null) {
+                        continue;
+                    }
+
+                    sessionId = sessionId.trim();
+                    Timestamp prev = earliestBySession.get(sessionId);
+                    if (prev == null || firstSeen.before(prev)) {
+                        earliestBySession.put(sessionId, firstSeen);
+                    }
+                }
+            }
+        }
+
+        int count = 0;
+        ZoneId zone = ZoneId.systemDefault();
+        for (Timestamp ts : earliestBySession.values()) {
+            LocalDate firstDay = ts.toInstant().atZone(zone).toLocalDate();
+            if (date.equals(firstDay)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+        if (widgets == null || widgets.isEmpty()) {
+            return List.of();
+        }
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        LocalDate yesterday = today.minusDays(1);
+
+        List<TermDefinition> terms;
+        try {
+            terms = termsStore.listAll();
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to load terms for top topics", e);
+            return List.of();
+        }
+
+        if (terms == null || terms.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermDefinition> activeTerms = new ArrayList<>();
+        List<Pattern> compiledPatterns = new ArrayList<>();
+        for (TermDefinition term : terms) {
+            if (term == null || term.isSystemFlag()) {
+                continue;
+            }
+            activeTerms.add(term);
+            compiledPatterns.add(TermMatcher.buildStrictPattern(term));
+        }
+
+        if (activeTerms.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, TermDayCount> counts = new LinkedHashMap<>();
+        for (TermDefinition t : activeTerms) {
+            String name = t.getName();
+            if (name != null && !name.isBlank() && !OTHER_PARASOFT_LABEL.equalsIgnoreCase(name)) {
+                counts.put(name, new TermDayCount());
+            }
+        }
+
+        if (counts.isEmpty()) {
+            return List.of();
+        }
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
+            Timestamp startTs = Timestamp.valueOf(yesterday.atStartOfDay());
+            Timestamp endTs = Timestamp.valueOf(today.plusDays(1).atStartOfDay());
+
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null) {
+                    continue;
+                }
+
+                String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+                if (!tableExistsCached(conn, tableName, tableExistsCache)) {
+                    continue;
+                }
+
+                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
+                        + " WHERE created_at >= ? AND created_at < ?";
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setTimestamp(1, startTs);
+                    ps.setTimestamp(2, endTs);
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String prompt = rs.getString("prompt");
+                            if (prompt == null) {
+                                prompt = "";
+                            }
+
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            if (createdAt == null) {
+                                continue;
+                            }
+
+                            LocalDate d = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                            if (!d.equals(today) && !d.equals(yesterday)) {
+                                continue;
+                            }
+
+                            String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
+
+                            TermDefinition bestTerm = null;
+                            int bestStart = Integer.MAX_VALUE;
+
+                            for (int i = 0; i < compiledPatterns.size(); i++) {
+                                Pattern p = compiledPatterns.get(i);
+                                try {
+                                    Matcher m = p.matcher(sanitizedPrompt);
+                                    if (m.find()) {
+                                        int s = m.start();
+                                        if (s < bestStart) {
+                                            bestStart = s;
+                                            bestTerm = activeTerms.get(i);
+                                            if (bestStart == 0) {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                } catch (Exception ex) {
+                                    log.fine("Pattern match error: " + ex.getMessage());
+                                }
+                            }
+
+                            if (bestTerm == null) {
+                                continue;
+                            }
+
+                            String label = bestTerm.getName();
+                            if (label == null || label.isBlank() || OTHER_PARASOFT_LABEL.equalsIgnoreCase(label)) {
+                                continue;
+                            }
+
+                            TermDayCount c = counts.get(label);
+                            if (c == null) {
+                                continue;
+                            }
+
+                            if (d.equals(today)) {
+                                c.today++;
+                            } else {
+                                c.yesterday++;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute top topics today vs yesterday", e);
+            return List.of();
+        }
+
+        return counts.entrySet().stream()
+                .map(e -> new TopTopic(e.getKey(), e.getValue().today, e.getValue().yesterday))
+                .filter(t -> t.total > 0)
+                .sorted(Comparator
+                        .comparingInt((TopTopic t) -> t.total).reversed()
+                        .thenComparingInt((TopTopic t) -> t.today).reversed()
+                        .thenComparing(t -> t.label, String.CASE_INSENSITIVE_ORDER))
+                .limit(TOP_TOPIC_LIMIT)
+                .collect(Collectors.toList());
+    }
+
+    private List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+        if (widgets == null || widgets.isEmpty() || limit <= 0) {
+            return List.of();
+        }
+
+        List<TermDefinition> terms;
+        try {
+            terms = termsStore.listAll();
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to load terms for Other Parasoft Match", e);
+            return List.of();
+        }
+
+        List<TermDefinition> activeTerms = new ArrayList<>();
+        List<Pattern> compiledPatterns = new ArrayList<>();
+        for (TermDefinition term : terms) {
+            if (term == null || term.isSystemFlag()) {
+                continue;
+            }
+            activeTerms.add(term);
+            compiledPatterns.add(TermMatcher.buildStrictPattern(term));
+        }
+
+        List<OtherParasoftEntry> all = new ArrayList<>();
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
+
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null) {
+                    continue;
+                }
+
+                String widgetId = widget.getWidgetId();
+                String widgetName = widget.getDisplayName() == null || widget.getDisplayName().isBlank()
+                        ? widgetId : widget.getDisplayName();
+                String tableName = sanitizeWidgetTableName(widgetId);
+
+                if (!tableExistsCached(conn, tableName, tableExistsCache)) {
+                    continue;
+                }
+
+                String sql = "SELECT prompt, session_id, created_at FROM " + quoteIdentifier(tableName)
+                        + " ORDER BY created_at DESC LIMIT 500";
+
+                try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+
+                    while (rs.next()) {
+                        String prompt = rs.getString("prompt");
+                        String sessionId = rs.getString("session_id");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        if (createdAt == null) {
+                            continue;
+                        }
+
+                        String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
+
+                        boolean matchedKnownTerm = false;
+                        for (Pattern p : compiledPatterns) {
+                            try {
+                                Matcher m = p.matcher(sanitized);
+                                if (m.find()) {
+                                    matchedKnownTerm = true;
+                                    break;
+                                }
+                            } catch (Exception ignore) {
+                            }
+                        }
+
+                        if (!matchedKnownTerm) {
+                            all.add(new OtherParasoftEntry(
+                                    widgetId,
+                                    widgetName,
+                                    prompt == null ? "" : prompt,
+                                    sessionId == null ? "" : sessionId,
+                                    createdAt
+                            ));
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to compute latest Other Parasoft Match entries", e);
+            return List.of();
+        }
+
+        all.sort(Comparator.comparing((OtherParasoftEntry e) -> e.createdAt).reversed());
+        return all.stream().limit(limit).collect(Collectors.toList());
+    }
+
+    private String renderTopTopicsRows(List<TopTopic> topics) {
+        if (topics == null || topics.isEmpty()) {
+            return "<tr><td colspan=\"5\" class=\"empty-row\">No topic activity for today/yesterday.</td></tr>";
+        }
+
+        StringBuilder b = new StringBuilder(Math.max(256, topics.size() * 140));
+        int rank = 1;
+        for (TopTopic t : topics) {
+            b.append("<tr>")
+                    .append("<td>").append(rank++).append("</td>")
+                    .append("<td>").append(escapeHtml(t.label)).append("</td>")
+                    .append("<td>").append(t.today).append("</td>")
+                    .append("<td>").append(t.yesterday).append("</td>")
+                    .append("<td>").append(t.total).append("</td>")
+                    .append("</tr>");
+        }
+        return b.toString();
+    }
+
+    private String renderOtherParasoftLatestRows(List<OtherParasoftEntry> rows, String contextPath) {
+        if (rows == null || rows.isEmpty()) {
+            return "<tr><td colspan=\"5\" class=\"empty-row\">No recent \"Other Parasoft Match\" entries.</td></tr>";
+        }
+
+        StringBuilder b = new StringBuilder(Math.max(256, rows.size() * 180));
+        int rank = 1;
+        for (OtherParasoftEntry r : rows) {
+            String sessionLink = (r.sessionId == null || r.sessionId.isBlank())
+                    ? "—"
+                    : "<a class=\"customer-profile-link\" href=\"" + contextPath + "/customer-profile?sessionId="
+                    + URLEncoder.encode(r.sessionId, StandardCharsets.UTF_8) + "\">"
+                    + escapeHtml(r.sessionId) + "</a>";
+
+            b.append("<tr>")
+                    .append("<td>").append(rank++).append("</td>")
+                    .append("<td>").append(escapeHtml(r.widgetName)).append("</td>")
+                    .append("<td>").append(escapeHtml(r.prompt)).append("</td>")
+                    .append("<td>").append(sessionLink).append("</td>")
+                    .append("<td>").append(escapeHtml(formatTimestamp(r.createdAt))).append("</td>")
+                    .append("</tr>");
+        }
+        return b.toString();
+    }
+
+    private TermUsage findMostUsedTerm(TermSummary summary) {
+        if (summary == null || summary.termCounts.isEmpty()) {
+            return new TermUsage("N/A", 0);
+        }
+
+        String bestLabel = "N/A";
+        int bestCount = 0;
+
+        for (Map.Entry<String, Integer> e : summary.termCounts.entrySet()) {
+            String label = e.getKey();
+            if (label == null || label.isBlank()) {
+                continue;
+            }
+            if (OTHER_PARASOFT_LABEL.equalsIgnoreCase(label)) {
+                continue;
+            }
+
+            int c = e.getValue() == null ? 0 : e.getValue();
+            if (c > bestCount) {
+                bestCount = c;
+                bestLabel = label;
+            }
+        }
+
+        return new TermUsage(bestLabel, bestCount);
     }
 
     private String buildWidgetPieChartData(List<WidgetStat> stats) {
@@ -669,8 +1235,7 @@ public class DashboardServlet extends HttpServlet {
             summary.ensureTerm(term.getName());
         }
 
-        String otherLabel = "Other Parasoft Match";
-        summary.ensureTerm(otherLabel);
+        summary.ensureTerm(OTHER_PARASOFT_LABEL);
 
         Map<String, Boolean> tableExistsCache = new LinkedHashMap<>();
 
@@ -722,7 +1287,7 @@ public class DashboardServlet extends HttpServlet {
                         }
                     }
 
-                    String snapshotTerm = bestTerm != null ? bestTerm.getName() : otherLabel;
+                    String snapshotTerm = bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
 
                     TermChatSnapshot snapshot = new TermChatSnapshot(
                             snapshotTerm,
@@ -883,6 +1448,81 @@ public class DashboardServlet extends HttpServlet {
             this.widgetId = widgetId;
             this.label = label;
             this.count = count;
+        }
+    }
+
+    private static final class ProgressStat {
+
+        private final int today;
+        private final int yesterday;
+        private final int delta;
+        private final double pctDelta;
+        private final String direction; // up | down | flat
+
+        private ProgressStat(int today, int yesterday) {
+            this.today = today;
+            this.yesterday = yesterday;
+            this.delta = today - yesterday;
+            this.pctDelta = yesterday == 0
+                    ? (today > 0 ? 100.0 : 0.0)
+                    : ((today - yesterday) * 100.0) / yesterday;
+
+            if (delta > 0) {
+                this.direction = "up";
+            } else if (delta < 0) {
+                this.direction = "down";
+            } else {
+                this.direction = "flat";
+            }
+        }
+    }
+
+    private static final class TermUsage {
+
+        private final String label;
+        private final int count;
+
+        private TermUsage(String label, int count) {
+            this.label = label;
+            this.count = count;
+        }
+    }
+
+    private static final class TermDayCount {
+
+        private int today = 0;
+        private int yesterday = 0;
+    }
+
+    private static final class TopTopic {
+
+        private final String label;
+        private final int today;
+        private final int yesterday;
+        private final int total;
+
+        private TopTopic(String label, int today, int yesterday) {
+            this.label = label;
+            this.today = today;
+            this.yesterday = yesterday;
+            this.total = today + yesterday;
+        }
+    }
+
+    private static final class OtherParasoftEntry {
+
+        private final String widgetId;
+        private final String widgetName;
+        private final String prompt;
+        private final String sessionId;
+        private final Timestamp createdAt;
+
+        private OtherParasoftEntry(String widgetId, String widgetName, String prompt, String sessionId, Timestamp createdAt) {
+            this.widgetId = widgetId;
+            this.widgetName = widgetName;
+            this.prompt = prompt;
+            this.sessionId = sessionId;
+            this.createdAt = createdAt;
         }
     }
 

@@ -15,6 +15,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
+import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 
@@ -85,6 +86,9 @@ public class UserService {
 
     /**
      * Create a user with a bcrypt-hashed password and given role.
+     *
+     * Includes sequence self-heal for PostgreSQL to avoid: duplicate key value
+     * violates unique constraint "user_account_pkey"
      */
     @Transactional
     public UserAccount createUser(String username, String password, String role) {
@@ -92,12 +96,17 @@ public class UserService {
         EntityManager em = emf.createEntityManager();
         try {
             em.getTransaction().begin();
+
+            // Optional safety guard for sequence drift (PostgreSQL)
+            syncUserAccountIdSequence(em);
+
             UserAccount u = new UserAccount();
             u.setUsername(username.trim());
             String hashed = BCrypt.hashpw(password, BCrypt.gensalt(10));
             u.setPassword(hashed);
             u.setRole(role);
             u.setCreatedAt(Instant.now());
+
             em.persist(u);
             em.getTransaction().commit();
             return u;
@@ -203,6 +212,28 @@ public class UserService {
             }
         } catch (Exception e) {
             log.log(Level.WARNING, "ensureAdminExists failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * PostgreSQL sequence drift self-heal: aligns user_account.id sequence with
+     * MAX(id) to prevent duplicate PK on insert.
+     *
+     * Non-fatal if DB is not PostgreSQL or query is unsupported.
+     */
+    private void syncUserAccountIdSequence(EntityManager em) {
+        try {
+            Query q = em.createNativeQuery(
+                    "SELECT setval("
+                    + "pg_get_serial_sequence('user_account','id'), "
+                    + "COALESCE((SELECT MAX(id) FROM user_account), 1), "
+                    + "true)"
+            );
+            q.getSingleResult();
+            log.fine("syncUserAccountIdSequence: sequence synchronized");
+        } catch (Exception e) {
+            // Keep this non-fatal for portability (H2/tests/non-Postgres)
+            log.log(Level.FINE, "syncUserAccountIdSequence: skipped/failed (non-fatal): " + e.getMessage(), e);
         }
     }
 }

@@ -59,9 +59,140 @@
             </div>
         </section>
 
+        <!-- Daily Progress Section -->
+        <section id="dailyProgressSection" class="section daily-progress-section">
+            <div class="section-header">
+                <h2>Daily Progress</h2>
+                <p>Comparison of today vs yesterday across key metrics.</p>
+            </div>
+
+            <div class="daily-progress-grid"
+                style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
+                <!-- Chats -->
+                <article class="progress-card">
+                    <h3 style="margin-top:0;">Chats</h3>
+                    <p style="margin:6px 0;">
+                        Today:
+                        <strong id="dpTodayChats" data-value="${todayChats}"
+                            data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                            ${todayChats}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">
+                        Yesterday:
+                        <strong id="dpYesterdayChats" data-value="${yesterdayChats}"
+                            data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                            ${yesterdayChats}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">Change: <span id="dpChatDelta">${chatProgression}</span></p>
+                </article>
+
+                <!-- Most used term -->
+                <article class="progress-card">
+                    <h3 style="margin-top:0;">Most Used Term (Overall)</h3>
+                    <p style="margin:6px 0;">
+                        Term:
+                        <strong id="dpTopTerm">${mostUsedTerm}</strong>
+                    </p>
+                    <p style="margin:6px 0;">
+                        Asked similarly:
+                        <strong id="dpTopTermCount" data-value="${mostUsedTermCount}"
+                            data-link-base="${contextPath}/dashboard/term-review" data-link-param="term"
+                            data-link-term="${mostUsedTerm}">
+                            ${mostUsedTermCount}
+                        </strong>
+                    </p>
+                </article>
+
+                <!-- New users -->
+                <article class="progress-card">
+                    <h3 style="margin-top:0;">New Users</h3>
+                    <p style="margin:6px 0;">
+                        Today:
+                        <strong id="dpTodayUsers" data-value="${newUsersToday}"
+                            data-link-base="${contextPath}/dashboard/new-users/day" data-link-param="day">
+                            ${newUsersToday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">
+                        Yesterday:
+                        <strong id="dpYesterdayUsers" data-value="${newUsersYesterday}"
+                            data-link-base="${contextPath}/dashboard/new-users/day" data-link-param="day">
+                            ${newUsersYesterday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
+                </article>
+            </div>
+
+            <!-- Top 3 topics by Today+Yesterday -->
+            <div class="section" style="margin-top:16px; padding:0;">
+                <h3 style="margin:0 0 8px 0;">Top 3 Most Talked Topics (Today vs Yesterday)</h3>
+                <div class="table-scroll">
+                    <table class="widget-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Topic</th>
+                                <th>Today</th>
+                                <th>Yesterday</th>
+                                <th>Total (2d)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topTopicsBody">
+                            ${topTopicsRows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Latest 5 Other Parasoft Match -->
+            <div class="section" style="margin-top:16px; padding:0;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
+                    <!-- Reuse existing DashboardTermSelectionServlet -> /dashboard/widgets/drilldown/review -->
+                    <a class="metric-link"
+                        href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match">Show all</a>
+                </div>
+                <div class="table-scroll">
+                    <table class="widget-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Widget</th>
+                                <th>Prompt</th>
+                                <th>Session</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody id="otherParasoftLatestBody">
+                            ${otherParasoftLatestRows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <section class="section stats-section">
             <h2>Widget Chat Overview</h2>
             <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
+
+            <p class="chat-progression-summary">
+                Today:
+                <strong id="summaryTodayChats" data-value="${todayChats}"
+                    data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                    ${todayChats}
+                </strong>
+                |
+                Yesterday:
+                <strong id="summaryYesterdayChats" data-value="${yesterdayChats}"
+                    data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                    ${yesterdayChats}
+                </strong>
+                |
+                Change: ${chatProgression}
+            </p>
 
             <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
                 <div style="flex:1 1 520px; min-width:420px;">
@@ -146,6 +277,23 @@
         window.termChartData = '${termChartData}';
         window.widgetPieChartData = '${widgetPieChartData}';
         window.dashboardConfig = { contextPath: '${contextPath}' };
+        window.chatProgressionDirection = '${chatProgressionDirection}';
+        window.newUsersProgressionDirection = '${newUsersProgressionDirection}';
+        window.dashboardDates = {
+            today: '${sessionRangeEnd}',
+            yesterday: (() => {
+                try {
+                    const d = new Date('${sessionRangeEnd}T00:00:00');
+                    d.setDate(d.getDate() - 1);
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                } catch {
+                    return '';
+                }
+            })()
+        };
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
