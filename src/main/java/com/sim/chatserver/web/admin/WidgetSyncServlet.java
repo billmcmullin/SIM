@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -65,22 +66,22 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getName());
 
-    // Tuned HTTP client
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
+            .connectTimeout(Duration.ofSeconds(15))
             .version(HttpClient.Version.HTTP_1_1)
             .build();
 
     private static final long DEFAULT_INTERVAL_SECONDS = 300L;
     private static final long MIN_INTERVAL_SECONDS = 30L;
-
-    // Persist lastSynced periodically instead of every run
     private static final int LAST_SYNC_FLUSH_EVERY_N_RUNS = 5;
-
-    // Parallel fetch pool
     private static final int DEFAULT_SYNC_PARALLELISM = 4;
-
     private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile("[^A-Za-z0-9_]");
+
+    // HTTP resiliency settings
+    private static final int HTTP_MAX_ATTEMPTS = 3;
+    private static final long HTTP_RETRY_BASE_MS = 500L;
+    private static final long HTTP_RETRY_MAX_MS = 5000L;
+    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(90);
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -97,7 +98,6 @@ public class WidgetSyncServlet extends HttpServlet {
         return t;
     });
 
-    // cache table readiness to avoid repeated DDL/metadata checks
     private final Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
 
     private ScheduledFuture<?> scheduledFuture;
@@ -285,9 +285,9 @@ public class WidgetSyncServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
-            ensureTable(conn, tableName); // create-if-not-exists + ensure unique index + cache
+            ensureTable(conn, tableName);
 
-            List<JsonObject> chats = fetchWidgetChats(config, widgetId);
+            List<JsonObject> chats = fetchWidgetChatsWithRetry(config, widgetId);
             int inserted = insertWidgetChats(conn, tableName, chats);
 
             String message = chats.isEmpty()
@@ -299,6 +299,103 @@ public class WidgetSyncServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to sync widget " + widgetId, e);
             return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed: " + e.getMessage());
         }
+    }
+
+    private List<JsonObject> fetchWidgetChatsWithRetry(ServerConfig config, String widgetId) throws IOException, InterruptedException {
+        IOException lastIo = null;
+        InterruptedException lastInterrupted = null;
+
+        for (int attempt = 1; attempt <= HTTP_MAX_ATTEMPTS; attempt++) {
+            long start = System.nanoTime();
+            try {
+                List<JsonObject> result = fetchWidgetChatsOnce(config, widgetId);
+                long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                if (attempt > 1) {
+                    log.info("Widget " + widgetId + " sync fetch succeeded on retry attempt " + attempt + " in " + ms + "ms");
+                }
+                return result;
+            } catch (InterruptedException ie) {
+                lastInterrupted = ie;
+                Thread.currentThread().interrupt();
+                break;
+            } catch (IOException ioe) {
+                lastIo = ioe;
+                boolean retryable = isRetryable(ioe);
+                if (!retryable || attempt == HTTP_MAX_ATTEMPTS) {
+                    break;
+                }
+
+                long backoff = computeBackoffWithJitterMs(attempt);
+                log.log(Level.WARNING, "Transient sync fetch failure for widget " + widgetId
+                        + " (attempt " + attempt + "/" + HTTP_MAX_ATTEMPTS + "), retrying in "
+                        + backoff + "ms: " + ioe.getMessage());
+                Thread.sleep(backoff);
+            }
+        }
+
+        if (lastInterrupted != null) {
+            throw lastInterrupted;
+        }
+        throw lastIo == null ? new IOException("Sync fetch failed with unknown IO error") : lastIo;
+    }
+
+    private List<JsonObject> fetchWidgetChatsOnce(ServerConfig config, String widgetId) throws IOException, InterruptedException {
+        URI uri = buildSyncUri(config, widgetId);
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(HTTP_REQUEST_TIMEOUT)
+                .header("Accept", "application/json")
+                .GET();
+
+        String apiKey = config.getApiKey();
+        if (apiKey != null && !apiKey.isBlank()) {
+            builder.header("Authorization", "Bearer " + apiKey);
+            builder.header("X-API-Key", apiKey);
+        }
+
+        HttpResponse<String> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        String body = response.body();
+
+        if (response.statusCode() >= 500) {
+            throw new IOException("Sync API transient server error " + response.statusCode() + ": " + truncateBody(body));
+        }
+        if (response.statusCode() >= 300) {
+            throw new IOException("Sync API returned " + response.statusCode() + ": " + truncateBody(body));
+        }
+
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        if (!contentType.toLowerCase().contains("application/json")) {
+            throw new IOException("Unexpected content type '" + contentType + "'");
+        }
+
+        try (JsonReader reader = Json.createReader(new StringReader(body))) {
+            return normalizeResponse(reader.read());
+        } catch (JsonException je) {
+            throw new IOException("Invalid JSON received from sync API", je);
+        }
+    }
+
+    private boolean isRetryable(IOException e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            return true;
+        }
+        String m = msg.toLowerCase();
+        return m.contains("fixed content-length")
+                || m.contains("bytes received")
+                || m.contains("buffer_underflow")
+                || m.contains("connection reset")
+                || m.contains("broken pipe")
+                || m.contains("timed out")
+                || m.contains("transient")
+                || m.contains("server error 5");
+    }
+
+    private long computeBackoffWithJitterMs(int attempt) {
+        long exp = HTTP_RETRY_BASE_MS * (1L << Math.max(0, attempt - 1));
+        long capped = Math.min(exp, HTTP_RETRY_MAX_MS);
+        long jitter = ThreadLocalRandom.current().nextLong(100, 350);
+        return Math.min(capped + jitter, HTTP_RETRY_MAX_MS + 500);
     }
 
     private void updateLastSyncedMaybePersist(boolean forcePersist) {
@@ -375,19 +472,12 @@ public class WidgetSyncServlet extends HttpServlet {
         return true;
     }
 
-    // Enhancement:
-    // - Ensure table exists
-    // - Ensure unique index exists for ON CONFLICT(widget_chat_id)
-    // - Best-effort dedupe when legacy/imported tables contain duplicate widget_chat_id
-    // - Cache readiness to avoid repeated DDL checks
     private void ensureTable(Connection conn, String tableName) throws SQLException {
         if (ensuredTables.contains(tableName)) {
             return;
         }
 
         String quotedTable = quoteIdentifier(tableName);
-
-        // Ensure base table exists (allow imported legacy schema to remain)
         String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
                 + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
                 + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
@@ -395,7 +485,6 @@ public class WidgetSyncServlet extends HttpServlet {
             stmt.execute(createTableSql);
         }
 
-        // Ensure unique index for ON CONFLICT(widget_chat_id)
         String idxName = (tableName + "_widget_chat_id_uidx");
         if (idxName.length() > 63) {
             idxName = idxName.substring(0, 63);
@@ -406,7 +495,6 @@ public class WidgetSyncServlet extends HttpServlet {
             stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
                     + " ON " + quotedTable + " (widget_chat_id)");
         } catch (SQLException uniqueErr) {
-            // Likely duplicates already present; dedupe then retry index creation once
             dedupeByWidgetChatId(conn, tableName);
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
@@ -420,7 +508,6 @@ public class WidgetSyncServlet extends HttpServlet {
     private void dedupeByWidgetChatId(Connection conn, String tableName) throws SQLException {
         String quoted = quoteIdentifier(tableName);
 
-        // Keep newest row by created_at/db_id per widget_chat_id, delete older duplicates.
         String sql = "DELETE FROM " + quoted + " a "
                 + "USING " + quoted + " b "
                 + "WHERE a.widget_chat_id = b.widget_chat_id "
@@ -438,7 +525,6 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    // DB-level dedupe + transaction/batch
     private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
         if (chats == null || chats.isEmpty()) {
             return 0;
@@ -529,7 +615,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         String t = raw.trim();
         if (!(t.startsWith("{") || t.startsWith("["))) {
-            return raw; // fast path
+            return raw;
         }
 
         try (JsonReader reader = Json.createReader(new StringReader(raw))) {
@@ -565,40 +651,6 @@ public class WidgetSyncServlet extends HttpServlet {
         } catch (DateTimeParseException e) {
             log.fine("Unable to parse timestamp: " + created);
             return null;
-        }
-    }
-
-    private List<JsonObject> fetchWidgetChats(ServerConfig config, String widgetId) throws IOException, InterruptedException {
-        URI uri = buildSyncUri(config, widgetId);
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(30))
-                .header("Accept", "application/json")
-                .GET();
-
-        String apiKey = config.getApiKey();
-        if (apiKey != null && !apiKey.isBlank()) {
-            builder.header("Authorization", "Bearer " + apiKey);
-            builder.header("X-API-Key", apiKey);
-        }
-
-        HttpResponse<String> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        String body = response.body();
-
-        if (response.statusCode() >= 300) {
-            String message = String.format("Sync API returned %d: %s", response.statusCode(), truncateBody(body));
-            throw new IOException(message);
-        }
-
-        String contentType = response.headers().firstValue("Content-Type").orElse("");
-        if (!contentType.toLowerCase().contains("application/json")) {
-            throw new IOException("Unexpected content type '" + contentType + "'");
-        }
-
-        try (JsonReader reader = Json.createReader(new StringReader(body))) {
-            return normalizeResponse(reader.read());
-        } catch (JsonException je) {
-            throw new IOException("Invalid JSON received from sync API", je);
         }
     }
 

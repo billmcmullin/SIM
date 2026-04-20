@@ -319,11 +319,9 @@
             <div class="terms-csv-controls" aria-hidden="false">
                 <button type="button" id="exportTermsBtn">Export terms (CSV)</button>
 
-                <form id="termsImportForm" method="post" action="${contextPath}/admin/terms/import"
-                    enctype="multipart/form-data" class="inline-form" style="display:inline-block; margin:0;">
-                    <input id="termsCsvFile" name="file" type="file" accept=".csv,text/csv"
-                        aria-label="Choose CSV file to import" />
-                    <button type="button" id="importTermsBtn">Import terms (CSV)</button>
+                <form id="termsImportForm" action="/admin/terms/import" method="post" enctype="multipart/form-data">
+                    <input id="termsCsvFile" name="file" type="file" accept=".csv,text/csv" style="display:none;">
+                    <button id="importTermsBtn" type="button">Import Terms CSV</button>
                 </form>
 
                 <div class="csv-hint small-note" style="display:inline-block; margin-left:12px;">

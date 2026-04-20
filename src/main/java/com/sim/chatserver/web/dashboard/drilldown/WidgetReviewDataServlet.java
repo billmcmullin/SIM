@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -164,7 +165,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                                     nullable(rs, "widget_chat_id"),
                                     nullable(rs, "prompt"),
                                     rs.getString("response_text"),
-                                    formatTimestamp(rs.getTimestamp("created_at")),
+                                    formatTimestamp(SqlTimeUtil.safeTimestamp(rs, "created_at")),
                                     sessionId
                             ));
                         }

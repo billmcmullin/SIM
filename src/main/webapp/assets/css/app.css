@@ -202,7 +202,6 @@ button:disabled {
 /* ----------------------------------
    Tables (shared rules)
 ----------------------------------- */
-.term-table,
 .widget-table,
 .session-table,
 .widget-review-table table,
@@ -212,8 +211,6 @@ button:disabled {
     font-size: 0.95rem;
 }
 
-.term-table th,
-.term-table td,
 .widget-table th,
 .widget-table td,
 .session-table th,
@@ -225,6 +222,66 @@ button:disabled {
     padding: 10px;
     text-align: left;
 }
+
+/* ----------------------------------
+   Terms table (#termTable)
+----------------------------------- */
+.terms-section>div {
+    overflow-x: auto;
+}
+
+#termTable {
+    table-layout: fixed;
+}
+
+#termTable th,
+#termTable td {
+    vertical-align: top;
+}
+
+/* Column sizing */
+#termTable th:nth-child(1),
+#termTable td:nth-child(1) {
+    width: 14%;
+}
+
+/* Term */
+#termTable th:nth-child(2),
+#termTable td:nth-child(2) {
+    /* Description */
+    width: 22%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#termTable th:nth-child(3),
+#termTable td:nth-child(3) {
+    /* Pattern */
+    width: 44%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#termTable th:nth-child(4),
+#termTable td:nth-child(4) {
+    /* Type */
+    width: 120px;
+    min-width: 120px;
+    white-space: nowrap;
+    text-align: center;
+    font-weight: 600;
+}
+
+#termTable th:nth-child(5),
+#termTable td:nth-child(5) {
+    /* Actions */
+    width: 170px;
+    min-width: 170px;
+    white-space: nowrap;
+}
+
+
 
 .select-column {
     min-width: 56px;
@@ -261,14 +318,29 @@ button:disabled {
 }
 
 .legend-chip {
-    padding: 6px 14px;
+    /* normalized size */
+    flex: 0 0 220px;
+    min-width: 220px;
+    max-width: 220px;
+    min-height: 44px;
+
+    padding: 8px 12px;
     border-radius: 999px;
     font-weight: 600;
     font-size: 0.85rem;
     color: #fff;
+    line-height: 1.2;
+
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: flex-start;
+    gap: 8px;
+
+    /* show full text */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-align: left;
 }
 
 .legend-chip::before {
@@ -277,7 +349,9 @@ button:disabled {
     height: 10px;
     border-radius: 50%;
     display: inline-block;
+    flex: 0 0 10px;
 }
+
 
 /* ----------------------------------
    Widget view specific
@@ -764,6 +838,85 @@ hr {
     visibility: visible;
     opacity: 1;
 }
+
+/* ==========================================
+   Dashboard Metric Enhancements
+========================================== */
+
+/* Positive / negative / neutral progression */
+.progression {
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.progression-up {
+    color: #15803d !important;
+    /* green */
+}
+
+.progression-down {
+    color: #b91c1c !important;
+    /* red */
+}
+
+.progression-flat {
+    color: #475569 !important;
+    /* neutral slate */
+}
+
+/* Optional arrows (visual cue) */
+.progression-up::before {
+    content: "▲";
+    font-size: 0.75em;
+    line-height: 1;
+}
+
+.progression-down::before {
+    content: "▼";
+    font-size: 0.75em;
+    line-height: 1;
+}
+
+.progression-flat::before {
+    content: "■";
+    font-size: 0.55em;
+    line-height: 1;
+    opacity: 0.65;
+}
+
+/* Links for non-zero metrics */
+.metric-link {
+    color: #1d4ed8;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.metric-link:hover,
+.metric-link:focus {
+    color: #1e40af;
+}
+
+/* Cards in daily progress for readability */
+.daily-progress-section .progress-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px;
+    background: #ffffff;
+}
+
+.daily-progress-section .progress-card h3 {
+    color: #0f172a;
+}
+
+/* Make links inside cards stand out but remain clean */
+.daily-progress-section .progress-card .metric-link {
+    text-decoration-thickness: 2px;
+}
+
 
 /* ==========================================
    Customer Profile Page
