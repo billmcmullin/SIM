@@ -6,6 +6,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,6 +31,7 @@ public class WidgetTableViewServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetTableViewServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/widget_table_view.html";
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -43,6 +48,18 @@ public class WidgetTableViewServlet extends HttpServlet {
         if (widgetId == null || widgetId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
+        }
+
+        // Optional date filter from dashboard links
+        String dateRaw = req.getParameter("date");
+        LocalDate selectedDate = null;
+        if (dateRaw != null && !dateRaw.isBlank()) {
+            try {
+                selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
+            } catch (DateTimeParseException ex) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date format. Expected YYYY-MM-DD.");
+                return;
+            }
         }
 
         WidgetEntry target = null;
@@ -62,19 +79,38 @@ public class WidgetTableViewServlet extends HttpServlet {
                 ? widgetId
                 : target.getDisplayName();
 
+        String selectedDateText = selectedDate == null ? "" : selectedDate.format(DATE_FMT);
+        String selectedDateLabel;
+        if (selectedDate == null) {
+            selectedDateLabel = "All dates";
+        } else {
+            LocalDate today = LocalDate.now(ZoneId.systemDefault());
+            if (selectedDate.equals(today)) {
+                selectedDateLabel = "Today (" + selectedDateText + ")";
+            } else if (selectedDate.equals(today.minusDays(1))) {
+                selectedDateLabel = "Yesterday (" + selectedDateText + ")";
+            } else {
+                selectedDateLabel = selectedDateText;
+            }
+        }
+
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         if (template == null) {
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Template not found: " + TEMPLATE_PATH);
             return;
         }
+
         String userName = String.valueOf(session.getAttribute("user"));
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
+
         String rendered = template
                 .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role))
                 .replace("${contextPath}", req.getContextPath())
                 .replace("${widgetId}", escapeHtml(widgetId))
-                .replace("${widgetName}", escapeHtml(widgetName));
+                .replace("${widgetName}", escapeHtml(widgetName))
+                .replace("${selectedDate}", escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
+                .replace("${selectedDateLabel}", escapeHtml(selectedDateLabel));   // human display label
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");

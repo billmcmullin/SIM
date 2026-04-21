@@ -15,9 +15,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.term.TermDefinition;
+import com.sim.chatserver.term.TermMatcher;
+import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -32,16 +38,22 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 /**
- * Optional convenience endpoint for "today" and "yesterday":
+ * Convenience endpoint for relative day drilldowns:
  * /dashboard/sessions/drilldown/date-review-relative?day=today|yesterday
+ * Optional term filtering:
+ * /dashboard/sessions/drilldown/date-review-relative?day=today&term=Your%20Term
  */
 @WebServlet(name = "DashboardRelativeDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review-relative"})
 public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getName());
+    private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
     @Inject
     AppDataSourceHolder dsHolder;
+
+    @Inject
+    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -70,6 +82,9 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                 return;
         }
 
+        String rawTerm = req.getParameter("term");
+        String requestedTerm = (rawTerm == null) ? "" : rawTerm.trim();
+
         List<TermChatSnapshot> snapshots;
         try {
             snapshots = collectDateEntries(date);
@@ -84,9 +99,28 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
+        if (!requestedTerm.isBlank()) {
+            try {
+                snapshots = filterSnapshotsByTerm(snapshots, requestedTerm);
+            } catch (Exception e) {
+                log.log(Level.WARNING, "Unable to filter day entries by term", e);
+                resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to filter chats by term.");
+                return;
+            }
+
+            if (snapshots.isEmpty()) {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day and term.");
+                return;
+            }
+        }
+
+        String selectionLabel = requestedTerm.isBlank()
+                ? ("Date " + date)
+                : ("Date " + date + " • " + requestedTerm);
+
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
-                "Date " + date,
+                selectionLabel,
                 snapshots,
                 req.getContextPath() + "/dashboard"
         );
@@ -96,13 +130,18 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String redirectUrl = req.getContextPath()
-                + "/dashboard/widgets/drilldown/review?selectionId="
-                + URLEncoder.encode(selectionId, StandardCharsets.UTF_8)
-                + "&date="
-                + URLEncoder.encode(date.toString(), StandardCharsets.UTF_8);
+        StringBuilder redirect = new StringBuilder()
+                .append(req.getContextPath())
+                .append("/dashboard/widgets/drilldown/review?selectionId=")
+                .append(URLEncoder.encode(selectionId, StandardCharsets.UTF_8))
+                .append("&date=")
+                .append(URLEncoder.encode(date.toString(), StandardCharsets.UTF_8));
 
-        resp.sendRedirect(redirectUrl);
+        if (!requestedTerm.isBlank()) {
+            redirect.append("&term=").append(URLEncoder.encode(requestedTerm, StandardCharsets.UTF_8));
+        }
+
+        resp.sendRedirect(redirect.toString());
     }
 
     private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {
@@ -120,6 +159,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;
                 }
+
                 String widgetId = widget.getWidgetId();
                 String tableName = sanitizeWidgetTableName(widgetId);
                 if (!tableExists(conn, tableName)) {
@@ -133,6 +173,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setTimestamp(1, startTs);
                     ps.setTimestamp(2, endTs);
+
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             String chatId = rs.getString("widget_chat_id");
@@ -157,6 +198,78 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         return snapshots;
+    }
+
+    private List<TermChatSnapshot> filterSnapshotsByTerm(List<TermChatSnapshot> source, String requestedTerm) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermDefinition> allTerms;
+        try {
+            allTerms = termsStore.listAll();
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to load term definitions for date+term filtering", e);
+            return List.of();
+        }
+
+        if (allTerms == null || allTerms.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermDefinition> activeTerms = new ArrayList<>();
+        List<Pattern> compiledPatterns = new ArrayList<>();
+
+        for (TermDefinition term : allTerms) {
+            if (term == null || term.isSystemFlag()) {
+                continue;
+            }
+            activeTerms.add(term);
+            compiledPatterns.add(TermMatcher.buildStrictPattern(term));
+        }
+
+        if (activeTerms.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermChatSnapshot> out = new ArrayList<>();
+        String target = requestedTerm.trim();
+
+        for (TermChatSnapshot snap : source) {
+            String prompt = snap == null || snap.getPrompt() == null ? "" : snap.getPrompt();
+            String sanitized = TextSanitizer.sanitizeForMatching(prompt);
+
+            TermDefinition bestTerm = null;
+            int bestStart = Integer.MAX_VALUE;
+
+            for (int i = 0; i < compiledPatterns.size(); i++) {
+                try {
+                    Matcher m = compiledPatterns.get(i).matcher(sanitized);
+                    if (m.find()) {
+                        int start = m.start();
+                        if (start < bestStart) {
+                            bestStart = start;
+                            bestTerm = activeTerms.get(i);
+                            if (bestStart == 0) {
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception ignore) {
+                    // skip broken regex
+                }
+            }
+
+            String classified = (bestTerm != null && bestTerm.getName() != null && !bestTerm.getName().isBlank())
+                    ? bestTerm.getName()
+                    : OTHER_PARASOFT_LABEL;
+
+            if (classified.equalsIgnoreCase(target)) {
+                out.add(snap);
+            }
+        }
+
+        return out;
     }
 
     private List<WidgetEntry> listWidgets() {

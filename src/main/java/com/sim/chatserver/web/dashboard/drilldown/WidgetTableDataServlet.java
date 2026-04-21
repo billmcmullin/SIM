@@ -8,6 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,6 +43,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableDataServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetTableDataServlet.class.getName());
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private static final String[] COLUMNS = {
         "widget_chat_id",
@@ -61,11 +64,25 @@ public class WidgetTableDataServlet extends HttpServlet {
         if (!isLoggedIn(req, resp)) {
             return;
         }
+
         String widgetId = req.getParameter("widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"widgetId required.\"}");
             return;
+        }
+
+        // NEW: optional date filter
+        LocalDate selectedDate = null;
+        String dateRaw = req.getParameter("date");
+        if (dateRaw != null && !dateRaw.isBlank()) {
+            try {
+                selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
+            } catch (Exception ex) {
+                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
+                return;
+            }
         }
 
         WidgetEntry plugin = findWidget(widgetId);
@@ -93,19 +110,17 @@ public class WidgetTableDataServlet extends HttpServlet {
             FilterState filters = new FilterState(
                     req.getParameter("filterPrompt"),
                     req.getParameter("filterResponse"),
-                    search
+                    search,
+                    selectedDate
             );
 
             String whereClause = filters.buildWhereClause();
-            List<String> whereParams = filters.params();
+            List<Object> whereParams = filters.params();
 
             String countSql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName) + whereClause;
             int totalRows;
             try (PreparedStatement countPs = conn.prepareStatement(countSql)) {
-                int idx = 1;
-                for (String param : whereParams) {
-                    countPs.setString(idx++, param);
-                }
+                bindParams(countPs, whereParams);
                 try (ResultSet rs = countPs.executeQuery()) {
                     rs.next();
                     totalRows = rs.getInt(1);
@@ -125,10 +140,7 @@ public class WidgetTableDataServlet extends HttpServlet {
                         .append(" LIMIT ? OFFSET ?");
 
                 try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
-                    int idx = 1;
-                    for (String param : whereParams) {
-                        ps.setString(idx++, param);
-                    }
+                    int idx = bindParams(ps, whereParams);
                     ps.setInt(idx++, limit);
                     ps.setInt(idx, offset);
 
@@ -162,32 +174,32 @@ public class WidgetTableDataServlet extends HttpServlet {
                         JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
 
                         if (row.chatId == null) {
-                            rowBuilder.addNull("chatId");
-                        } else {
+                            rowBuilder.addNull("chatId"); 
+                        }else {
                             rowBuilder.add("chatId", row.chatId);
                         }
 
                         if (row.prompt == null) {
-                            rowBuilder.addNull("prompt");
-                        } else {
+                            rowBuilder.addNull("prompt"); 
+                        }else {
                             rowBuilder.add("prompt", row.prompt);
                         }
 
                         if (row.response == null) {
-                            rowBuilder.addNull("response");
-                        } else {
+                            rowBuilder.addNull("response"); 
+                        }else {
                             rowBuilder.add("response", row.response);
                         }
 
                         if (row.createdAt == null) {
-                            rowBuilder.addNull("createdAt");
-                        } else {
+                            rowBuilder.addNull("createdAt"); 
+                        }else {
                             rowBuilder.add("createdAt", row.createdAt);
                         }
 
                         if (row.sessionId == null) {
-                            rowBuilder.addNull("sessionId");
-                        } else {
+                            rowBuilder.addNull("sessionId"); 
+                        }else {
                             rowBuilder.add("sessionId", row.sessionId);
                         }
 
@@ -252,7 +264,7 @@ public class WidgetTableDataServlet extends HttpServlet {
     private int parseLimit(String limitParam) {
         try {
             int limit = Integer.parseInt(limitParam);
-            if (limit == 10 || limit == 25 || limit == 50 || limit == 100) {
+            if (limit == 10 || limit == 20 || limit == 25 || limit == 50 || limit == 100) {
                 return limit;
             }
         } catch (NumberFormatException ignored) {
@@ -287,6 +299,20 @@ public class WidgetTableDataServlet extends HttpServlet {
             return "DESC";
         }
         return "asc".equalsIgnoreCase(direction) ? "ASC" : "DESC";
+    }
+
+    private int bindParams(PreparedStatement ps, List<Object> params) throws SQLException {
+        int idx = 1;
+        for (Object p : params) {
+            if (p instanceof String s) {
+                ps.setString(idx++, s); 
+            }else if (p instanceof Timestamp ts) {
+                ps.setTimestamp(idx++, ts); 
+            }else {
+                ps.setObject(idx++, p);
+            }
+        }
+        return idx;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
@@ -344,11 +370,13 @@ public class WidgetTableDataServlet extends HttpServlet {
         private final String prompt;
         private final String response;
         private final String global;
+        private final LocalDate date; // NEW
 
-        private FilterState(String prompt, String response, String global) {
+        private FilterState(String prompt, String response, String global, LocalDate date) {
             this.prompt = prompt;
             this.response = response;
             this.global = global;
+            this.date = date;
         }
 
         private String buildWhereClause() {
@@ -362,14 +390,18 @@ public class WidgetTableDataServlet extends HttpServlet {
             if (hasValue(global)) {
                 pieces.add("(prompt ILIKE ? OR response_text ILIKE ? OR session_id ILIKE ?)");
             }
+            if (date != null) {
+                pieces.add("created_at >= ? AND created_at < ?");
+            }
+
             if (pieces.isEmpty()) {
                 return "";
             }
             return " WHERE " + String.join(" AND ", pieces);
         }
 
-        private List<String> params() {
-            List<String> params = new ArrayList<>();
+        private List<Object> params() {
+            List<Object> params = new ArrayList<>();
             if (hasValue(prompt)) {
                 params.add(pattern(prompt));
             }
@@ -381,6 +413,10 @@ public class WidgetTableDataServlet extends HttpServlet {
                 for (int i = 0; i < 3; i++) {
                     params.add(globalPattern);
                 }
+            }
+            if (date != null) {
+                params.add(Timestamp.valueOf(date.atStartOfDay()));
+                params.add(Timestamp.valueOf(date.plusDays(1).atStartOfDay()));
             }
             return params;
         }

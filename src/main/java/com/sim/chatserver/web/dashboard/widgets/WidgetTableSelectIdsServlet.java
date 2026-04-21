@@ -6,6 +6,9 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -26,6 +29,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableSelectIdsServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -47,6 +51,24 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         String search = normalize(req.getParameter("search"));
         String filterPrompt = normalize(req.getParameter("filterPrompt"));
         String filterResponse = normalize(req.getParameter("filterResponse"));
+
+        // NEW: optional date filter (YYYY-MM-DD)
+        LocalDate selectedDate = null;
+        String dateRaw = req.getParameter("date");
+        if (dateRaw != null && !dateRaw.isBlank()) {
+            try {
+                selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
+            } catch (Exception ex) {
+                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                resp.setContentType("application/json");
+                resp.getWriter().print(Json.createObjectBuilder()
+                        .add("status", "error")
+                        .add("message", "Invalid date. Expected YYYY-MM-DD.")
+                        .build()
+                        .toString());
+                return;
+            }
+        }
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             String tableName = sanitizeWidgetTableName(widgetId);
@@ -81,6 +103,15 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
                 values.add("%" + filterResponse + "%");
             }
 
+            // NEW: date condition
+            Timestamp startTs = null;
+            Timestamp endTs = null;
+            if (selectedDate != null) {
+                conditions.add("created_at >= ? AND created_at < ?");
+                startTs = Timestamp.valueOf(selectedDate.atStartOfDay());
+                endTs = Timestamp.valueOf(selectedDate.plusDays(1).atStartOfDay());
+            }
+
             StringBuilder sql = new StringBuilder("SELECT widget_chat_id FROM ")
                     .append(quoteIdentifier(tableName));
             if (!conditions.isEmpty()) {
@@ -95,6 +126,13 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
                 for (String value : values) {
                     ps.setString(idx++, value);
                 }
+
+                // bind date params after string params
+                if (selectedDate != null) {
+                    ps.setTimestamp(idx++, startTs);
+                    ps.setTimestamp(idx++, endTs);
+                }
+
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         String chatId = rs.getString("widget_chat_id");
