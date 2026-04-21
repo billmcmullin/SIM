@@ -36,23 +36,31 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final List<String> chatIds;
         public final SearchTerms searchTerms;
         public final List<TermChatSnapshot> snapshots;
+        public final String date; // NEW: optional YYYY-MM-DD scope
 
         private Selection(String widgetId,
                 String displayName,
                 String backUrl,
                 List<String> chatIds,
                 List<TermChatSnapshot> snapshots,
-                SearchTerms searchTerms) {
+                SearchTerms searchTerms,
+                String date) {
             this.widgetId = widgetId;
             this.displayName = displayName;
             this.backUrl = backUrl;
             this.chatIds = chatIds;
             this.searchTerms = searchTerms;
             this.snapshots = snapshots;
+            this.date = date;
         }
 
+        static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
+            return new Selection(widgetId, widgetId, null, new ArrayList<>(chatIds), null, searchTerms, normalizeDate(date));
+        }
+
+        // backward-compatible helper
         static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
-            return new Selection(widgetId, widgetId, null, new ArrayList<>(chatIds), null, searchTerms);
+            return fromWidget(widgetId, chatIds, searchTerms, null);
         }
 
         static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
@@ -62,7 +70,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
                     .stream()
                     .toList();
             return new Selection(displayName, displayName, backUrl, chatIds, new ArrayList<>(snapshots),
-                    new SearchTerms("", "", ""));
+                    new SearchTerms("", "", ""), null);
         }
 
         public boolean hasSnapshots() {
@@ -71,6 +79,10 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         public String getBackUrl() {
             return backUrl;
+        }
+
+        public String getDate() {
+            return date;
         }
     }
 
@@ -132,10 +144,14 @@ public class WidgetReviewStartServlet extends HttpServlet {
         String prompt = search == null ? "" : search.getString("prompt", "");
         String responseText = search == null ? "" : search.getString("response", "");
 
+        // NEW: optional date passed from widget table page
+        String date = payload.getString("date", "");
+
         Selection selection = Selection.fromWidget(
                 widgetId,
                 new ArrayList<>(chatSet),
-                new SearchTerms(global, prompt, responseText)
+                new SearchTerms(global, prompt, responseText),
+                date
         );
 
         String selectionId = storeSelection(session, selection);
@@ -176,6 +192,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return newMap;
     }
 
+    @SuppressWarnings("unchecked")
     public static Selection fetchSelection(HttpSession session, String selectionId) {
         if (session == null || selectionId == null) {
             return null;
@@ -216,10 +233,18 @@ public class WidgetReviewStartServlet extends HttpServlet {
                 backUrl, // backUrl
                 new ArrayList<>(dedup), // chatIds
                 null, // snapshots (DB-backed selection)
-                new SearchTerms("", "", "") // search terms
+                new SearchTerms("", "", ""), // search terms
+                null // date scope
         );
 
         return storeSelection(session, selection);
     }
 
+    private static String normalizeDate(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        return t.isEmpty() ? null : t;
+    }
 }

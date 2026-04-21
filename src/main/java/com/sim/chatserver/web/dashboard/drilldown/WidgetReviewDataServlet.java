@@ -8,6 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -46,6 +48,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -66,12 +69,34 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return;
         }
 
+        // Optional date filter (YYYY-MM-DD)
+        String dateRaw = req.getParameter("date");
+        LocalDate selectedDate = null;
+        if (dateRaw != null && !dateRaw.isBlank()) {
+            try {
+                selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
+            } catch (Exception ex) {
+                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                writeJson(resp, "{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
+                return;
+            }
+        }
+
         HttpSession session = req.getSession(false);
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
             resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"Selection not found.\"}");
             return;
+        }
+
+        // FIX: fallback to stored selection date when request date is absent
+        if (selectedDate == null && selection.date != null && !selection.date.isBlank()) {
+            try {
+                selectedDate = LocalDate.parse(selection.date.trim(), DATE_FMT);
+            } catch (Exception ignore) {
+                // ignore invalid stored date and continue without date filter
+            }
         }
 
         if (selection.hasSnapshots()) {
@@ -108,7 +133,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             }
 
             StringBuilder baseWhere = new StringBuilder(" WHERE widget_chat_id IN (" + placeholders + ")");
-            List<String> params = new java.util.ArrayList<>();
+            List<Object> params = new ArrayList<>();
             params.addAll(chatIds);
 
             if (search != null && !search.isBlank()) {
@@ -119,12 +144,16 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 params.add(pattern);
             }
 
+            if (selectedDate != null) {
+                baseWhere.append(" AND created_at >= ? AND created_at < ?");
+                params.add(Timestamp.valueOf(selectedDate.atStartOfDay()));
+                params.add(Timestamp.valueOf(selectedDate.plusDays(1).atStartOfDay()));
+            }
+
             String countSql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName) + baseWhere;
             int totalRows = 0;
             try (PreparedStatement countPs = conn.prepareStatement(countSql)) {
-                for (int i = 0; i < params.size(); i++) {
-                    countPs.setString(i + 1, params.get(i));
-                }
+                bindParams(countPs, params);
                 try (ResultSet rs = countPs.executeQuery()) {
                     if (rs.next()) {
                         totalRows = rs.getInt(1);
@@ -148,10 +177,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 Set<String> sessionIds = new HashSet<>();
 
                 try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
-                    int idx = 1;
-                    for (String param : params) {
-                        ps.setString(idx++, param);
-                    }
+                    int idx = bindParams(ps, params);
                     ps.setInt(idx++, limit);
                     ps.setInt(idx, (page - 1) * limit);
 
@@ -398,6 +424,20 @@ public class WidgetReviewDataServlet extends HttpServlet {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private int bindParams(PreparedStatement ps, List<Object> params) throws SQLException {
+        int idx = 1;
+        for (Object p : params) {
+            if (p instanceof String s) {
+                ps.setString(idx++, s);
+            } else if (p instanceof Timestamp ts) {
+                ps.setTimestamp(idx++, ts);
+            } else {
+                ps.setObject(idx++, p);
+            }
+        }
+        return idx;
     }
 
     private void sortSnapshots(List<TermChatSnapshot> data, String column, String direction) {

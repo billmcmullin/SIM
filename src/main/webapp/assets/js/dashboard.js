@@ -43,12 +43,7 @@
         const t = Number.isFinite(today) ? today : 0;
         const y = Number.isFinite(yesterday) ? yesterday : 0;
         const delta = t - y;
-        let pct = 0;
-        if (y === 0) {
-            pct = t > 0 ? 100 : 0;
-        } else {
-            pct = (delta * 100) / y;
-        }
+        const pct = y === 0 ? (t > 0 ? 100 : 0) : (delta * 100) / y;
         const direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
         return { today: t, yesterday: y, delta, pct, direction };
     }
@@ -101,51 +96,10 @@
         const t1 = document.getElementById('serverNewUsersToday');
         const y1 = document.getElementById('serverNewUsersYesterday');
 
-        if (t1 || y1) {
-            return {
-                today: parseIntFromText(t1?.textContent),
-                yesterday: parseIntFromText(y1?.textContent)
-            };
-        }
-
-        const candidates = Array.from(document.querySelectorAll('p, div, span, li'));
-        for (const el of candidates) {
-            const txt = el.textContent || '';
-            if (/new users/i.test(txt) || (/today:/i.test(txt) && /yesterday:/i.test(txt))) {
-                const todayMatch = txt.match(/Today:\s*([0-9]+)/i);
-                const yMatch = txt.match(/Yesterday:\s*([0-9]+)/i);
-                if (todayMatch || yMatch) {
-                    return {
-                        today: todayMatch ? parseInt(todayMatch[1], 10) : null,
-                        yesterday: yMatch ? parseInt(yMatch[1], 10) : null
-                    };
-                }
-            }
-        }
-
-        return { today: null, yesterday: null };
-    }
-
-    function getMostUsedTerm(termSlices) {
-        const EXCLUDED = 'other parasoft match';
-
-        if (!Array.isArray(termSlices) || !termSlices.length) {
-            return { label: 'N/A', count: null };
-        }
-
-        let best = null;
-        for (const s of termSlices) {
-            const label = (s?.label || s?.term || '').trim();
-            if (!label) continue;
-            if (label.toLowerCase() === EXCLUDED) continue;
-
-            const c = typeof s?.count === 'number' ? s.count : 0;
-            if (!best || c > best.count) {
-                best = { label, count: c };
-            }
-        }
-
-        return best || { label: 'N/A', count: null };
+        return {
+            today: parseIntFromText(t1?.textContent),
+            yesterday: parseIntFromText(y1?.textContent)
+        };
     }
 
     function applyProgressionDirectionStyling() {
@@ -181,8 +135,8 @@
         return { today: toYmd(today), yesterday: toYmd(yesterday) };
     }
 
-    async function buildWidgetReviewSelectionLink(dateYmd, contextPath) {
-        return `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dateYmd)}`;
+    async function buildWidgetReviewSelectionLink(dayToken, contextPath) {
+        return `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=${encodeURIComponent(dayToken)}`;
     }
 
     function setConditionalMetricLink(el, value, hrefOrBuilder) {
@@ -238,7 +192,7 @@
         });
     }
 
-    function hydrateDailyProgressSection(termSlices, contextPath) {
+    function hydrateDailyProgressSection(contextPath) {
         const section = document.getElementById('dailyProgressSection');
         if (!section) return;
 
@@ -246,29 +200,16 @@
         const yesterdayChatsEl = document.getElementById('dpYesterdayChats');
         const chatDeltaEl = document.getElementById('dpChatDelta');
 
-        const topTermEl = document.getElementById('dpTopTerm');
-        const topTermCountEl = document.getElementById('dpTopTermCount');
-
         const todayUsersEl = document.getElementById('dpTodayUsers');
         const yesterdayUsersEl = document.getElementById('dpYesterdayUsers');
         const usersDeltaEl = document.getElementById('dpUsersDelta');
-
-        const dates = getTodayYesterday();
 
         const chatVals = parseChatSummaryValues();
         if (Number.isFinite(chatVals.today) && Number.isFinite(chatVals.yesterday)) {
             const d = computeDelta(chatVals.today, chatVals.yesterday);
 
-            setConditionalMetricLink(
-                todayChatsEl,
-                d.today,
-                () => buildWidgetReviewSelectionLink(dates.today, contextPath)
-            );
-            setConditionalMetricLink(
-                yesterdayChatsEl,
-                d.yesterday,
-                () => buildWidgetReviewSelectionLink(dates.yesterday, contextPath)
-            );
+            setConditionalMetricLink(todayChatsEl, d.today, () => buildWidgetReviewSelectionLink('today', contextPath));
+            setConditionalMetricLink(yesterdayChatsEl, d.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
 
             if (chatDeltaEl) {
                 const forcedDir = (window.chatProgressionDirection || d.direction || 'flat').toLowerCase();
@@ -280,38 +221,20 @@
             if (chatDeltaEl) chatDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
         }
 
-        const bestTerm = getMostUsedTerm(termSlices);
-        if (topTermEl) {
-            const termLabel = bestTerm.label || 'N/A';
-            if (termLabel !== 'N/A') {
-                topTermEl.innerHTML = `<a class="metric-link" href="${esc(`${contextPath}/dashboard/term-review?term=${encodeURIComponent(termLabel)}`)}">${esc(termLabel)}</a>`;
-            } else {
-                topTermEl.textContent = 'N/A';
-            }
-        }
-
-        if (topTermCountEl) {
-            const term = (bestTerm.label || '').trim();
-            const href = term && term !== 'N/A'
-                ? `${contextPath}/dashboard/term-review?term=${encodeURIComponent(term)}`
-                : '';
-            setConditionalMetricLink(topTermCountEl, Number(bestTerm.count ?? 0), href);
-        }
-
         const newUserVals = parseNewUsersFromServerRenderedDom();
         if (Number.isFinite(newUserVals.today) && Number.isFinite(newUserVals.yesterday)) {
             const d = computeDelta(newUserVals.today, newUserVals.yesterday);
+            const dates = getTodayYesterday();
 
-            // Updated: New Users now use same date-review drilldown flow
             setConditionalMetricLink(
                 todayUsersEl,
                 d.today,
-                () => buildWidgetReviewSelectionLink(dates.today, contextPath)
+                `${contextPath}/dashboard/new-users/day?day=${encodeURIComponent(dates.today)}`
             );
             setConditionalMetricLink(
                 yesterdayUsersEl,
                 d.yesterday,
-                () => buildWidgetReviewSelectionLink(dates.yesterday, contextPath)
+                `${contextPath}/dashboard/new-users/day?day=${encodeURIComponent(dates.yesterday)}`
             );
 
             if (usersDeltaEl) {
@@ -328,21 +251,56 @@
         const summaryYesterday = document.getElementById('summaryYesterdayChats');
 
         if (Number.isFinite(chatVals.today)) {
-            setConditionalMetricLink(
-                summaryToday,
-                chatVals.today,
-                () => buildWidgetReviewSelectionLink(dates.today, contextPath)
-            );
+            setConditionalMetricLink(summaryToday, chatVals.today, () => buildWidgetReviewSelectionLink('today', contextPath));
         }
         if (Number.isFinite(chatVals.yesterday)) {
-            setConditionalMetricLink(
-                summaryYesterday,
-                chatVals.yesterday,
-                () => buildWidgetReviewSelectionLink(dates.yesterday, contextPath)
-            );
+            setConditionalMetricLink(summaryYesterday, chatVals.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
         }
 
         applyDeltaClasses(section);
+    }
+
+    function renderActiveUsersDelta(data) {
+        const deltaEl = document.getElementById('activeUsersDelta');
+        if (!deltaEl) return;
+
+        const activeUsers = typeof data.activeUsers === 'number' ? data.activeUsers : null;
+        const activeUsersYesterday = typeof data.activeUsersYesterday === 'number' ? data.activeUsersYesterday : null;
+
+        let delta = typeof data.activeUsersDelta === 'number' ? data.activeUsersDelta : null;
+        let pct = typeof data.activeUsersDeltaPct === 'number' ? data.activeUsersDeltaPct : null;
+        let direction = (data.activeUsersDirection || '').toLowerCase();
+
+        if (delta === null && activeUsers !== null && activeUsersYesterday !== null) {
+            const d = computeDelta(activeUsers, activeUsersYesterday);
+            delta = d.delta;
+            pct = d.pct;
+            direction = d.direction;
+        }
+
+        if (delta === null) {
+            deltaEl.className = 'progression progression-flat';
+            deltaEl.textContent = '—';
+            deltaEl.setAttribute('data-direction', 'flat');
+            return;
+        }
+
+        if (!Number.isFinite(pct)) {
+            pct = 0;
+        }
+
+        if (!direction) {
+            direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+        }
+
+        deltaEl.classList.remove('progression-up', 'progression-down', 'progression-flat');
+        deltaEl.classList.add(
+            direction === 'up' ? 'progression-up' :
+                direction === 'down' ? 'progression-down' :
+                    'progression-flat'
+        );
+        deltaEl.setAttribute('data-direction', direction);
+        deltaEl.textContent = `${formatSignedInt(delta)} (${formatPct(pct)}%) vs yesterday`;
     }
 
     const dashboardConfig = window.dashboardConfig || {};
@@ -480,14 +438,6 @@
 
         if (!listEl || !totalEl) return;
 
-        listEl.addEventListener('click', event => {
-            const btn = event.target.closest('.session-count-btn');
-            if (!btn || !listEl.contains(btn)) return;
-            const reviewUrl = btn.dataset.reviewUrl;
-            if (!reviewUrl) return;
-            window.location.href = reviewUrl;
-        });
-
         try {
             const url = `${contextPath}/dashboard/sessions.json?page=1&pageSize=10&sortBy=count&sortDir=desc`;
             const resp = await fetch(url, {
@@ -499,6 +449,7 @@
                 totalEl.textContent = 'N/A';
                 if (activeCountLink) activeCountLink.textContent = 'N/A';
                 if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+                renderActiveUsersDelta({});
                 return;
             }
 
@@ -507,6 +458,7 @@
                 totalEl.textContent = 'N/A';
                 if (activeCountLink) activeCountLink.textContent = 'N/A';
                 if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+                renderActiveUsersDelta({});
                 return;
             }
 
@@ -527,9 +479,12 @@
                 inactiveCountLink.href = `${contextPath}/dashboard/inactive-users`;
             }
 
+            // NEW: apply active-users day-over-day delta (green/red/flat)
+            renderActiveUsersDelta(data);
+
             const sessions = Array.isArray(data.sessions) ? data.sessions : [];
             if (!sessions.length) {
-                listEl.innerHTML = '<tr><td colspan="5" class="empty-row">No sessions found.</td></tr>';
+                listEl.innerHTML = '<tr><td colspan="4" class="empty-row">No sessions found.</td></tr>';
                 return;
             }
 
@@ -541,7 +496,6 @@
                 const label = s.displayLabel || sessionId;
                 const count = typeof s.count === 'number' ? s.count : 0;
                 const last = s.last || '—';
-                const topWidgetName = s.topWidgetName || '—';
                 const reviewUrl = s.reviewUrl || `${contextPath}/dashboard/sessions/drilldown/session-review?sessionId=${encodeURIComponent(sessionId)}`;
 
                 html += `<tr>
@@ -556,15 +510,8 @@
                         ? `<div class="session-id-muted"><a class="customer-profile-link" href="${contextPath}/customer-profile?sessionId=${encodeURIComponent(sessionId)}">${esc(sessionId)}</a></div>`
                         : ''}
                     </td>
-
-                    <td>${esc(topWidgetName)}</td>
                     <td>
-                        <button type="button"
-                                class="ghost-btn session-count-btn"
-                                data-review-url="${esc(reviewUrl)}"
-                                aria-label="Review ${esc(label || sessionId)} chats">
-                            ${count} chats
-                        </button>
+                        <a class="session-count-link" href="${esc(reviewUrl)}">${count} chats</a>
                     </td>
                     <td>${esc(last)}</td>
                 </tr>`;
@@ -576,11 +523,12 @@
             totalEl.textContent = 'N/A';
             if (activeCountLink) activeCountLink.textContent = 'N/A';
             if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+            renderActiveUsersDelta({});
         }
     })();
 
     wireDynamicLinks();
     applyProgressionDirectionStyling();
-    hydrateDailyProgressSection(termSlices, contextPath);
+    hydrateDailyProgressSection(contextPath);
     applyDeltaClasses(document);
 })();

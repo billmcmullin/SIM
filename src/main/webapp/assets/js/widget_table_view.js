@@ -3,6 +3,7 @@
     const contextPath = cfg.contextPath || '';
     const widgetId = cfg.widgetId || '';
     const widgetDisplayName = cfg.widgetName || '';
+    const selectedDate = (cfg.selectedDate || '').trim(); // NEW
 
     const API_DATA = contextPath + '/dashboard/widgets/drilldown/view/data';
     const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
@@ -281,6 +282,7 @@
                 try {
                     const params = new URLSearchParams();
                     params.append('widgetId', widgetId);
+                    if (selectedDate) params.append('date', selectedDate); // NEW
                     if (state.search) params.append('search', state.search);
                     if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
                     if (state.filters.response) params.append('filterResponse', state.filters.response);
@@ -338,7 +340,8 @@
                         global: state.search,
                         prompt: state.filters.prompt,
                         response: state.filters.response
-                    }
+                    },
+                    date: selectedDate || '' // NEW: preserve scope in review flow
                 };
                 reviewBtn.disabled = true;
                 try {
@@ -354,7 +357,11 @@
                     }
                     const data = await res.json();
                     if (!data.selectionId) throw new Error(data.message || 'No selectionId returned');
-                    window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
+
+                    // keep date on navigation too
+                    const nav = new URLSearchParams({ selectionId: data.selectionId });
+                    if (selectedDate) nav.append('date', selectedDate);
+                    window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?${nav.toString()}`;
                 } catch (err) {
                     showError(err.message || String(err));
                     reviewBtn.disabled = false;
@@ -367,6 +374,7 @@
         try {
             const params = new URLSearchParams();
             params.append('widgetId', widgetId);
+            if (selectedDate) params.append('date', selectedDate); // NEW
             params.append('limit', state.limit);
             params.append('page', state.page);
             params.append('sortColumn', state.sortColumn);
