@@ -21,7 +21,14 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTermSelectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardTermSelectionServlet.class.getName());
+
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
+
+    // New key for enhancement: increase-only drilldown selection snapshots.
+    // This should be populated by DashboardServlet for the current selected range.
+    private static final String TERM_INCREASE_SNAPSHOT_SESSION_KEY = "termDistributionIncreaseSnapshots";
+
+    private static final String MODE_INCREASE_ONLY = "increaseOnly";
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -37,24 +44,48 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
+        String mode = normalize(req.getParameter("mode"));
+        boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
+
         @SuppressWarnings("unchecked")
-        Map<String, List<TermChatSnapshot>> map
+        Map<String, List<TermChatSnapshot>> allSnapshotsByTerm
                 = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
 
-        if (map == null || map.isEmpty()) {
+        if (allSnapshotsByTerm == null || allSnapshotsByTerm.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No term data available.");
             return;
         }
 
-        List<TermChatSnapshot> snapshots = map.get(rawTerm);
-        if (snapshots == null || snapshots.isEmpty()) {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
-            return;
+        List<TermChatSnapshot> snapshots;
+
+        if (increaseOnly) {
+            @SuppressWarnings("unchecked")
+            Map<String, List<TermChatSnapshot>> increasedSnapshotsByTerm
+                    = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_INCREASE_SNAPSHOT_SESSION_KEY);
+
+            if (increasedSnapshotsByTerm == null || increasedSnapshotsByTerm.isEmpty()) {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
+                return;
+            }
+
+            snapshots = increasedSnapshotsByTerm.get(rawTerm);
+            if (snapshots == null || snapshots.isEmpty()) {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for the selected term.");
+                return;
+            }
+        } else {
+            snapshots = allSnapshotsByTerm.get(rawTerm);
+            if (snapshots == null || snapshots.isEmpty()) {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
+                return;
+            }
         }
+
+        String selectionLabel = increaseOnly ? rawTerm + " (Increase Only)" : rawTerm;
 
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
-                rawTerm,
+                selectionLabel,
                 snapshots,
                 req.getContextPath() + "/dashboard"
         );
@@ -67,5 +98,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         String redirectUrl = req.getContextPath() + "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
         resp.sendRedirect(redirectUrl);
+    }
+
+    private String normalize(String s) {
+        return s == null ? "" : s.trim();
     }
 }

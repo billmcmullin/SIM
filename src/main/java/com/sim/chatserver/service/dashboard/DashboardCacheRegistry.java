@@ -1,6 +1,8 @@
 package com.sim.chatserver.service.dashboard;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Supplier;
@@ -14,25 +16,22 @@ import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
 import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
 
 /**
- * Compilation-safe, thread-safe cache registry for dashboard data. - Simple TTL
- * caching - Stale-while-revalidate grace window - Bounded session-overview
- * keyed cache
+ * Thread-safe dashboard cache registry with: - TTL caching -
+ * Stale-while-revalidate grace window - Bounded keyed session-overview cache -
+ * Day-keyed refresh behavior for "today/yesterday" sensitive metrics
  */
 public class DashboardCacheRegistry {
 
-    // TTLs
-    private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    // TTLs (shorter for day-sensitive metrics)
+    private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
     private static final long TERM_SUMMARY_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
     private static final long SESSION_OVERVIEW_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long CHAT_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
-    private static final long NEW_USER_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
-    private static final long TOP_TOPICS_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    private static final long CHAT_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
+    private static final long NEW_USER_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
+    private static final long TOP_TOPICS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
     private static final long OTHER_PARASOFT_LATEST_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
+    private static final long DASHBOARD_PROGRESS_TTL_MILLIS = Duration.ofSeconds(15).toMillis();
 
-    // NEW: combined dashboard progress metrics TTL
-    private static final long DASHBOARD_PROGRESS_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
-
-    // Grace period to serve stale value while refresh happens
     private static final long STALE_GRACE_MILLIS = Duration.ofSeconds(8).toMillis();
 
     private static final int SESSION_OVERVIEW_CACHE_MAX = 64;
@@ -56,7 +55,6 @@ public class DashboardCacheRegistry {
     private final Object otherParasoftLock = new Object();
     private volatile Entry<List<OtherParasoftEntry>> otherParasoftLatestCache;
 
-    // NEW: combined dashboard progress cache
     private final Object dashboardProgressLock = new Object();
     private volatile Entry<DashboardProgressMetrics> dashboardProgressCache;
 
@@ -65,7 +63,24 @@ public class DashboardCacheRegistry {
     private final LinkedHashMap<String, Entry<SessionOverview>> sessionOverviewCache
             = new LinkedHashMap<>(16, 0.75f, true);
 
+    // Day keys so stale "today/yesterday" values are dropped when date rolls over.
+    private final Object dayKeyLock = new Object();
+    private volatile String chatProgressionDayKey;
+    private volatile String newUserProgressionDayKey;
+    private volatile String topTopicsDayKey;
+    private volatile String dashboardProgressDayKey;
+    private volatile String widgetStatsDayKey;
+
     public List<WidgetStat> getWidgetStats(Supplier<List<WidgetStat>> loader) {
+        String dayKey = currentDayKey();
+        synchronized (dayKeyLock) {
+            if (widgetStatsDayKey == null || !widgetStatsDayKey.equals(dayKey)) {
+                synchronized (widgetLock) {
+                    widgetStatsCache = null;
+                }
+                widgetStatsDayKey = dayKey;
+            }
+        }
         return getSingle(widgetLock, () -> widgetStatsCache, v -> widgetStatsCache = v, WIDGET_STATS_TTL_MILLIS, loader);
     }
 
@@ -74,14 +89,41 @@ public class DashboardCacheRegistry {
     }
 
     public ProgressStat getChatProgression(Supplier<ProgressStat> loader) {
+        String dayKey = currentDayKey();
+        synchronized (dayKeyLock) {
+            if (chatProgressionDayKey == null || !chatProgressionDayKey.equals(dayKey)) {
+                synchronized (chatProgLock) {
+                    chatProgressionCache = null;
+                }
+                chatProgressionDayKey = dayKey;
+            }
+        }
         return getSingle(chatProgLock, () -> chatProgressionCache, v -> chatProgressionCache = v, CHAT_PROGRESSION_TTL_MILLIS, loader);
     }
 
     public ProgressStat getNewUserProgression(Supplier<ProgressStat> loader) {
+        String dayKey = currentDayKey();
+        synchronized (dayKeyLock) {
+            if (newUserProgressionDayKey == null || !newUserProgressionDayKey.equals(dayKey)) {
+                synchronized (newUserProgLock) {
+                    newUserProgressionCache = null;
+                }
+                newUserProgressionDayKey = dayKey;
+            }
+        }
         return getSingle(newUserProgLock, () -> newUserProgressionCache, v -> newUserProgressionCache = v, NEW_USER_PROGRESSION_TTL_MILLIS, loader);
     }
 
     public List<TopTopic> getTopTopics(Supplier<List<TopTopic>> loader) {
+        String dayKey = currentDayKey();
+        synchronized (dayKeyLock) {
+            if (topTopicsDayKey == null || !topTopicsDayKey.equals(dayKey)) {
+                synchronized (topTopicsLock) {
+                    topTopicsCache = null;
+                }
+                topTopicsDayKey = dayKey;
+            }
+        }
         return getSingle(topTopicsLock, () -> topTopicsCache, v -> topTopicsCache = v, TOP_TOPICS_TTL_MILLIS, loader);
     }
 
@@ -89,8 +131,17 @@ public class DashboardCacheRegistry {
         return getSingle(otherParasoftLock, () -> otherParasoftLatestCache, v -> otherParasoftLatestCache = v, OTHER_PARASOFT_LATEST_TTL_MILLIS, loader);
     }
 
-    // NEW
     public DashboardProgressMetrics getDashboardProgressMetrics(Supplier<DashboardProgressMetrics> loader) {
+        String dayKey = currentDayKey();
+        synchronized (dayKeyLock) {
+            if (dashboardProgressDayKey == null || !dashboardProgressDayKey.equals(dayKey)) {
+                synchronized (dashboardProgressLock) {
+                    dashboardProgressCache = null;
+                }
+                dashboardProgressDayKey = dayKey;
+            }
+        }
+
         return getSingle(
                 dashboardProgressLock,
                 () -> dashboardProgressCache,
@@ -164,6 +215,13 @@ public class DashboardCacheRegistry {
         }
         synchronized (sessionLock) {
             sessionOverviewCache.clear();
+        }
+        synchronized (dayKeyLock) {
+            chatProgressionDayKey = null;
+            newUserProgressionDayKey = null;
+            topTopicsDayKey = null;
+            dashboardProgressDayKey = null;
+            widgetStatsDayKey = null;
         }
     }
 
@@ -297,6 +355,10 @@ public class DashboardCacheRegistry {
             K eldest = map.keySet().iterator().next();
             map.remove(eldest);
         }
+    }
+
+    private static String currentDayKey() {
+        return LocalDate.now(ZoneId.systemDefault()).toString();
     }
 
     private static final class Entry<T> {

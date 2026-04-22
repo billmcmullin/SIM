@@ -12,6 +12,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -19,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -44,6 +48,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
     private static final String EXCLUDED_TOPIC = "Other Parasoft Match";
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -60,6 +65,10 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
 
         String user = String.valueOf(session.getAttribute("user"));
+        String q = safeTrim(req.getParameter("q"));
+        boolean includeOther = parseBooleanFlag(req.getParameter("includeOther"));
+
+        DateWindow window = resolveDateWindow(req);
 
         List<WidgetEntry> widgets;
         try {
@@ -75,7 +84,7 @@ public class DashboardTopicsServlet extends HttpServlet {
             terms = List.of();
         }
 
-        List<TopicPattern> activeTopics = buildActiveTopicPatterns(terms);
+        List<TopicPattern> activeTopics = buildActiveTopicPatterns(terms, includeOther);
 
         Map<String, Integer> globalCounts = new LinkedHashMap<>();
         Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
@@ -97,31 +106,33 @@ public class DashboardTopicsServlet extends HttpServlet {
 
                 Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
 
-                // created_at included intentionally so SqlTimeUtil can absorb malformed/imported timestamp values
-                // and prevent result-set decode failures from aborting the page.
-                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName);
-                try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
+                        + " WHERE created_at >= ? AND created_at < ?";
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
+                    ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
 
-                    while (rs.next()) {
-                        try {
-                            Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            // no-op; this call is defensive to avoid row decode crashes on bad timestamp values
-                            if (ignoredTs == null) {
-                                // still allow topic matching from prompt text
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            try {
+                                Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                                if (ignoredTs == null) {
+                                    // still allow topic matching from prompt text
+                                }
+                            } catch (SQLException ignored) {
+                                // Continue prompt-only matching
                             }
-                        } catch (SQLException ignored) {
-                            // If timestamp can't be parsed even by fallback, continue with prompt-only logic.
-                        }
 
-                        String prompt = rs.getString("prompt");
-                        if (prompt == null || prompt.isBlank()) {
-                            continue;
-                        }
+                            String prompt = rs.getString("prompt");
+                            if (prompt == null || prompt.isBlank()) {
+                                continue;
+                            }
 
-                        Set<String> matchedTopics = matchTopics(prompt, activeTopics);
-                        for (String topic : matchedTopics) {
-                            globalCounts.merge(topic, 1, Integer::sum);
-                            widgetMap.merge(topic, 1, Integer::sum);
+                            Set<String> matchedTopics = matchTopics(prompt, activeTopics);
+                            for (String topic : matchedTopics) {
+                                globalCounts.merge(topic, 1, Integer::sum);
+                                widgetMap.merge(topic, 1, Integer::sum);
+                            }
                         }
                     }
                 }
@@ -130,8 +141,17 @@ public class DashboardTopicsServlet extends HttpServlet {
             throw new ServletException("Unable to build popular topics report", e);
         }
 
-        String globalRows = renderTopicRows(globalCounts, 20);
-        String perWidgetTables = renderPerWidgetTables(byWidgetCounts);
+        Map<String, Integer> filteredGlobalCounts = filterTopicMap(globalCounts, q);
+        Map<String, Map<String, Integer>> filteredByWidget = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
+            Map<String, Integer> filtered = filterTopicMap(e.getValue(), q);
+            if (!filtered.isEmpty()) {
+                filteredByWidget.put(e.getKey(), filtered);
+            }
+        }
+
+        String globalRows = renderTopicRows(filteredGlobalCounts, 20);
+        String perWidgetTables = renderPerWidgetTables(filteredByWidget);
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
@@ -147,7 +167,51 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
     }
 
-    private List<TopicPattern> buildActiveTopicPatterns(List<TermDefinition> terms) {
+    private DateWindow resolveDateWindow(HttpServletRequest req) {
+        Optional<LocalDate> dayOpt = parseLocalDate(req.getParameter("day"));
+        if (dayOpt.isPresent()) {
+            LocalDate d = dayOpt.get();
+            return new DateWindow(d, d.plusDays(1));
+        }
+
+        Optional<LocalDate> startOpt = parseLocalDate(req.getParameter("start"));
+        Optional<LocalDate> endOpt = parseLocalDate(req.getParameter("end"));
+
+        if (startOpt.isPresent() || endOpt.isPresent()) {
+            LocalDate s = startOpt.orElseGet(endOpt::get);
+            LocalDate e = endOpt.orElseGet(startOpt::get);
+            if (e.isBefore(s)) {
+                LocalDate tmp = s;
+                s = e;
+                e = tmp;
+            }
+            return new DateWindow(s, e.plusDays(1));
+        }
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        return new DateWindow(today, today.plusDays(1));
+    }
+
+    private Optional<LocalDate> parseLocalDate(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private boolean parseBooleanFlag(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String v = raw.trim().toLowerCase(Locale.ROOT);
+        return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
+    }
+
+    private List<TopicPattern> buildActiveTopicPatterns(List<TermDefinition> terms, boolean includeOther) {
         List<TopicPattern> list = new ArrayList<>();
         if (terms == null) {
             return list;
@@ -164,7 +228,7 @@ public class DashboardTopicsServlet extends HttpServlet {
             if (name == null || name.isBlank()) {
                 continue;
             }
-            if (EXCLUDED_TOPIC.equalsIgnoreCase(name.trim())) {
+            if (!includeOther && EXCLUDED_TOPIC.equalsIgnoreCase(name.trim())) {
                 continue;
             }
 
@@ -188,6 +252,25 @@ public class DashboardTopicsServlet extends HttpServlet {
             }
         }
         return matched;
+    }
+
+    private Map<String, Integer> filterTopicMap(Map<String, Integer> source, String q) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        if (q == null || q.isBlank()) {
+            return source;
+        }
+
+        String needle = q.toLowerCase(Locale.ROOT);
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : source.entrySet()) {
+            String k = e.getKey();
+            if (k != null && k.toLowerCase(Locale.ROOT).contains(needle)) {
+                out.put(k, e.getValue());
+            }
+        }
+        return out;
     }
 
     private String renderTopicRows(Map<String, Integer> counts, int limit) {
@@ -285,6 +368,10 @@ public class DashboardTopicsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
+    private String safeTrim(String input) {
+        return input == null ? "" : input.trim();
+    }
+
     private String escapeHtml(String input) {
         if (input == null) {
             return "";
@@ -304,6 +391,17 @@ public class DashboardTopicsServlet extends HttpServlet {
         private TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
+        }
+    }
+
+    private static final class DateWindow {
+
+        private final LocalDate startInclusive;
+        private final LocalDate endExclusive;
+
+        private DateWindow(LocalDate startInclusive, LocalDate endExclusive) {
+            this.startInclusive = startInclusive;
+            this.endExclusive = endExclusive;
         }
     }
 }

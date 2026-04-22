@@ -59,6 +59,8 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             query = req.getParameter("search");
         }
 
+        boolean labeledOnly = "true".equalsIgnoreCase(req.getParameter("labeledOnly"));
+
         int limit = parsePositiveInteger(req.getParameter("limit"), DEFAULT_LIMIT);
         int page = parsePositiveInteger(req.getParameter("page"), 1);
         int offset = parseNonNegativeInteger(req.getParameter("offset"), -1);
@@ -77,10 +79,27 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets, query);
 
+            Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
+
             List<Map.Entry<String, SessionAccumulator>> sorted = new ArrayList<>(accumulators.entrySet());
             sorted.sort(
                     Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> e.getValue().count).reversed()
                             .thenComparing(Map.Entry::getKey));
+
+            if (labeledOnly) {
+                sorted.removeIf(entry -> {
+                    if (entry == null || entry.getKey() == null) {
+                        return true;
+                    }
+                    SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
+                    if (label == null) {
+                        return true;
+                    }
+                    boolean hasName = label.getDisplayName() != null && !label.getDisplayName().isBlank();
+                    boolean hasEmail = label.getEmail() != null && !label.getEmail().isBlank();
+                    return !(hasName || hasEmail);
+                });
+            }
 
             int totalSessions = sorted.size();
             int totalPages = Math.max(1, (int) Math.ceil((double) totalSessions / (double) limit));
@@ -93,8 +112,6 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             int end = Math.min(start + limit, totalSessions);
 
             List<Map.Entry<String, SessionAccumulator>> pageSlice = sorted.subList(start, end);
-
-            Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
 
             JsonArrayBuilder sessions = Json.createArrayBuilder();
             for (Map.Entry<String, SessionAccumulator> entry : pageSlice) {
@@ -115,6 +132,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
+                    .add("labeledOnly", labeledOnly)
                     .add("total", totalSessions)
                     .add("totalSessions", totalSessions)
                     .add("page", page)

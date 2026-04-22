@@ -44,10 +44,6 @@ public class DashboardMetricsService {
         this.topTopicLimit = topTopicLimit;
     }
 
-    /**
-     * Enhancement summary object for dashboard cards: - Widget Chat Overview
-     * (today vs yesterday) - Terms section (today vs yesterday)
-     */
     public static final class DashboardProgressMetrics {
 
         private final int chatsToday;
@@ -126,7 +122,6 @@ public class DashboardMetricsService {
                 int todayCount = countRowsBetween(conn, tableName, todayStart, tomorrowStart);
                 int yesterdayCount = countRowsBetween(conn, tableName, yesterdayStart, todayStart);
 
-                // Uses enhanced WidgetStat constructor:
                 stats.add(new WidgetStat(widgetId, displayName, totalCount, todayCount, yesterdayCount));
             }
         } catch (SQLException e) {
@@ -163,10 +158,6 @@ public class DashboardMetricsService {
         }
     }
 
-    /**
-     * New enhancement entrypoint: Aggregates both widget chat and terms
-     * progress metrics.
-     */
     public DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
@@ -177,7 +168,9 @@ public class DashboardMetricsService {
             int chatsToday = countChatsForDate(conn, widgets, today, tableExistsCache);
             int chatsYesterday = countChatsForDate(conn, widgets, yesterday, tableExistsCache);
 
-            TermDayCount termCounts = countTermMatchesForDays(conn, widgets, today, yesterday, tableExistsCache);
+            // Enhancement: term counts use best-topic-per-chat semantics (same as topics data endpoint),
+            // so dashboard termsToday/termsYesterday match "new entries categorized in terms".
+            TermDayCount termCounts = countTermAssignmentsForDays(conn, widgets, today, yesterday, tableExistsCache);
 
             return new DashboardProgressMetrics(
                     chatsToday,
@@ -476,10 +469,11 @@ public class DashboardMetricsService {
     }
 
     /**
-     * Counts total term-matched chats for today and yesterday (excluding Other
-     * Parasoft Match).
+     * Counts assigned term entries for today and yesterday (excluding Other
+     * Parasoft Match). Uses "best first match" logic so each chat contributes
+     * to at most one term.
      */
-    private TermDayCount countTermMatchesForDays(Connection conn,
+    private TermDayCount countTermAssignmentsForDays(Connection conn,
             List<WidgetEntry> widgets,
             LocalDate today,
             LocalDate yesterday,
@@ -496,6 +490,7 @@ public class DashboardMetricsService {
             return out;
         }
 
+        List<TermDefinition> activeTerms = new ArrayList<>();
         List<Pattern> patterns = new ArrayList<>();
         for (TermDefinition t : terms) {
             if (t == null || t.isSystemFlag()) {
@@ -507,6 +502,7 @@ public class DashboardMetricsService {
             }
             Pattern p = TermMatcher.buildStrictPattern(t);
             if (p != null) {
+                activeTerms.add(t);
                 patterns.add(p);
             }
         }
@@ -547,18 +543,24 @@ public class DashboardMetricsService {
                             continue;
                         }
 
-                        String prompt = TextSanitizer.sanitizeForMatching(rs.getString("prompt"));
-                        if (prompt == null) {
-                            prompt = "";
-                        }
+                        String promptRaw = rs.getString("prompt");
+                        String prompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
 
+                        int bestStart = Integer.MAX_VALUE;
                         boolean matched = false;
+
                         for (Pattern p : patterns) {
                             try {
                                 Matcher m = p.matcher(prompt);
                                 if (m.find()) {
-                                    matched = true;
-                                    break;
+                                    int s = m.start();
+                                    if (s < bestStart) {
+                                        bestStart = s;
+                                        matched = true;
+                                        if (bestStart == 0) {
+                                            break;
+                                        }
+                                    }
                                 }
                             } catch (Exception ignore) {
                             }
@@ -643,5 +645,4 @@ public class DashboardMetricsService {
             }
         }
     }
-
 }

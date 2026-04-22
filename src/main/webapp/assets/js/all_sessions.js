@@ -16,6 +16,11 @@
     const urlParams = new URLSearchParams(window.location.search);
     let activityFilter = (urlParams.get('activity') || 'all').toLowerCase();
 
+    // Single toggle filter (requested behavior):
+    // OFF => show all sessions
+    // ON  => show only sessions that have friendly name and/or email
+    let labeledOnly = (urlParams.get('labeledOnly') || 'false').toLowerCase() === 'true';
+
     // Inactive is handled by dedicated page
     if (activityFilter === 'inactive') {
         window.location.href = APP + '/dashboard/inactive-users';
@@ -48,6 +53,7 @@
     let activityFilterBadge = null;
     let showAllUsersBtn = null;
     let showActiveUsersBtn = null;
+    let toggleLabeledOnlyBtn = null;
 
     const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
@@ -117,29 +123,55 @@
         return 'All';
     }
 
-    function refreshActivityUi() {
-        if (activityFilterBadge) {
-            if (activityFilter === 'active') {
-                activityFilterBadge.textContent = `Active filter applied (last ${activeDaysFilter} days)`;
-                activityFilterBadge.classList.add('is-visible');
-            } else {
-                activityFilterBadge.textContent = ' ';
-                activityFilterBadge.classList.remove('is-visible');
-            }
-        }
-
-        const activeStyle = '2px solid #1d4ed8';
-        const normalStyle = '1px solid transparent';
-
-        if (showAllUsersBtn) showAllUsersBtn.style.border = activityFilter === 'all' ? activeStyle : normalStyle;
-        if (showActiveUsersBtn) showActiveUsersBtn.style.border = activityFilter === 'active' ? activeStyle : normalStyle;
+    function labeledOnlyLabel() {
+        return labeledOnly ? 'Only labeled users' : 'All users';
     }
 
-    function setActivityFilter(next) {
-        if (!['all', 'active'].includes(next)) next = 'all';
-        activityFilter = next;
+    function refreshActivityUi() {
+        if (activityFilterBadge) {
+            const parts = [];
+            if (activityFilter === 'active') {
+                parts.push(`Active filter applied (last ${activeDaysFilter} days)`);
+            }
+            if (labeledOnly) {
+                parts.push('Only labeled users');
+            }
 
+            if (parts.length) {
+                activityFilterBadge.textContent = parts.join(' • ');
+                activityFilterBadge.style.visibility = 'visible';
+            } else {
+                activityFilterBadge.textContent = 'Filters applied';
+                activityFilterBadge.style.visibility = 'hidden';
+            }
+
+        }
+
+        // FIX: keep border width constant so buttons do not shift layout when toggled
+        const activeColor = '#1d4ed8';
+        const inactiveColor = 'transparent';
+
+        if (showAllUsersBtn) {
+            showAllUsersBtn.style.border = '1px solid';
+            showAllUsersBtn.style.borderColor = activityFilter === 'all' ? activeColor : inactiveColor;
+        }
+
+        if (showActiveUsersBtn) {
+            showActiveUsersBtn.style.border = '1px solid';
+            showActiveUsersBtn.style.borderColor = activityFilter === 'active' ? activeColor : inactiveColor;
+        }
+
+        if (toggleLabeledOnlyBtn) {
+            toggleLabeledOnlyBtn.textContent = `Only labeled users: ${labeledOnly ? 'On' : 'Off'}`;
+            toggleLabeledOnlyBtn.setAttribute('aria-pressed', labeledOnly ? 'true' : 'false');
+            toggleLabeledOnlyBtn.style.border = '1px solid';
+            toggleLabeledOnlyBtn.style.borderColor = labeledOnly ? activeColor : inactiveColor;
+        }
+    }
+
+    function syncFiltersToUrl() {
         const u = new URL(window.location.href);
+
         if (activityFilter === 'all') {
             u.searchParams.delete('activity');
             u.searchParams.delete('activeDays');
@@ -147,8 +179,27 @@
             u.searchParams.set('activity', activityFilter);
             u.searchParams.set('activeDays', String(activeDaysFilter));
         }
-        window.history.replaceState({}, '', u.toString());
 
+        if (labeledOnly) u.searchParams.set('labeledOnly', 'true');
+        else u.searchParams.delete('labeledOnly');
+
+        window.history.replaceState({}, '', u.toString());
+    }
+
+    function setActivityFilter(next) {
+        if (!['all', 'active'].includes(next)) next = 'all';
+        activityFilter = next;
+
+        syncFiltersToUrl();
+        page = 1;
+        refreshActivityUi();
+        loadSessions(1, searchInput ? (searchInput.value || '').trim() : '');
+    }
+
+    function setLabeledOnly(next) {
+        labeledOnly = !!next;
+
+        syncFiltersToUrl();
         page = 1;
         refreshActivityUi();
         loadSessions(1, searchInput ? (searchInput.value || '').trim() : '');
@@ -165,6 +216,7 @@
         params.set('page', String(page));
         params.set('activity', activityFilter);
         params.set('activeDays', String(activeDaysFilter));
+        params.set('labeledOnly', labeledOnly ? 'true' : 'false');
         if (search) params.set('search', search);
 
         try {
@@ -176,7 +228,7 @@
             renderPagination();
 
             if (summaryEl) {
-                summaryEl.textContent = `Showing ${json.sessions ? json.sessions.length : 0} sessions (page ${page}/${totalPages}). Total sessions: ${totalSessions}. Filter: ${activityLabel()}`;
+                summaryEl.textContent = `Showing ${json.sessions ? json.sessions.length : 0} sessions (page ${page}/${totalPages}). Total sessions: ${totalSessions}. Filter: ${activityLabel()} · ${labeledOnlyLabel()}`;
             }
         } catch (err) {
             const msg = `Unable to load sessions: ${err.message}`;
@@ -535,6 +587,7 @@
             p.set('all', 'true');
             p.set('activity', activityFilter);
             p.set('activeDays', String(activeDaysFilter));
+            p.set('labeledOnly', labeledOnly ? 'true' : 'false');
             if (searchInput && searchInput.value.trim()) {
                 p.set('search', searchInput.value.trim());
             }
@@ -672,8 +725,15 @@
         showAllUsersBtn = document.getElementById('showAllUsersBtn');
         showActiveUsersBtn = document.getElementById('showActiveUsersBtn');
 
+        // expected in HTML as a single toggle button
+        toggleLabeledOnlyBtn = document.getElementById('toggleLabeledOnlyBtn');
+
         if (showAllUsersBtn) showAllUsersBtn.addEventListener('click', () => setActivityFilter('all'));
         if (showActiveUsersBtn) showActiveUsersBtn.addEventListener('click', () => setActivityFilter('active'));
+
+        if (toggleLabeledOnlyBtn) {
+            toggleLabeledOnlyBtn.addEventListener('click', () => setLabeledOnly(!labeledOnly));
+        }
 
         if (reviewSelectedBtn && reviewSelectedBtn.parentNode) {
             selectAllAllSessionsBtn = document.createElement('button');
@@ -746,6 +806,11 @@
         page = initial.page || 1;
         pageSize = initial.limit || pageSize;
 
+        if (typeof initial.labeledOnly === 'boolean') {
+            labeledOnly = initial.labeledOnly;
+        }
+
+        syncFiltersToUrl();
         refreshActivityUi();
         loadSessions(page, '');
     });

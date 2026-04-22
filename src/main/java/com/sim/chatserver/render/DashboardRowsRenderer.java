@@ -3,6 +3,7 @@ package com.sim.chatserver.render;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -38,10 +39,9 @@ public final class DashboardRowsRenderer {
             int yesterday = stat.getYesterdayCount();
             int delta = stat.getDelta();
 
-            String todayDate = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).toString();
-            String yesterdayDate = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).minusDays(1).toString();
+            String todayDate = LocalDate.now(ZoneId.systemDefault()).toString();
+            String yesterdayDate = LocalDate.now(ZoneId.systemDefault()).minusDays(1).toString();
 
-            // Drilldown URLs (adjust endpoint/param names if your servlet expects different names)
             String todayHref = contextPath + "/dashboard/widgets/view?widgetId="
                     + URLEncoder.encode(widgetId, StandardCharsets.UTF_8)
                     + "&date=" + URLEncoder.encode(todayDate, StandardCharsets.UTF_8);
@@ -90,17 +90,23 @@ public final class DashboardRowsRenderer {
         StringBuilder b = new StringBuilder(Math.max(256, terms.size() * 220));
         int rank = 1;
 
+        String todayYmd = LocalDate.now(ZoneId.systemDefault()).toString();
+        String yesterdayYmd = LocalDate.now(ZoneId.systemDefault()).minusDays(1).toString();
+
         for (TopTopic t : terms) {
             String label = t.getLabel() == null ? "" : t.getLabel();
 
             String termHref = contextPath + "/dashboard/term-review?term="
                     + URLEncoder.encode(label, StandardCharsets.UTF_8);
 
-            String todayHref = contextPath + "/dashboard/sessions/drilldown/date-review-relative?day=today&term="
-                    + URLEncoder.encode(label, StandardCharsets.UTF_8);
+            // Enhancement: route term/day drilldown to Popular Topics day-filtered view.
+            String todayHref = contextPath + "/dashboard/topics?day="
+                    + URLEncoder.encode(todayYmd, StandardCharsets.UTF_8)
+                    + "&q=" + URLEncoder.encode(label, StandardCharsets.UTF_8);
 
-            String yesterdayHref = contextPath + "/dashboard/sessions/drilldown/date-review-relative?day=yesterday&term="
-                    + URLEncoder.encode(label, StandardCharsets.UTF_8);
+            String yesterdayHref = contextPath + "/dashboard/topics?day="
+                    + URLEncoder.encode(yesterdayYmd, StandardCharsets.UTF_8)
+                    + "&q=" + URLEncoder.encode(label, StandardCharsets.UTF_8);
 
             String todayCell = t.getToday() > 0
                     ? "<a class=\"metric-link\" href=\"" + todayHref + "\">" + t.getToday() + "</a>"
@@ -211,11 +217,9 @@ public final class DashboardRowsRenderer {
             return null;
         }
         try {
-            // most common in your project style
             return (String) info.getClass().getMethod("getDisplayName").invoke(info);
         } catch (Exception ignore) {
             try {
-                // if it is a record style accessor
                 return (String) info.getClass().getMethod("displayName").invoke(info);
             } catch (Exception ignore2) {
                 return null;
