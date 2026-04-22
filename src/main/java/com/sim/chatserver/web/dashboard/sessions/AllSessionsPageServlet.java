@@ -16,8 +16,8 @@ import jakarta.servlet.http.HttpSession;
 
 /**
  * Serves the /dashboard/sessions page which renders the “All Sessions” SPA. The
- * initial script tag injects the context path (for AJAX) and the default
- * pagination parameters.
+ * initial script tag injects the context path (for AJAX), default pagination
+ * parameters, and initial filters.
  */
 @WebServlet(name = "AllSessionsPageServlet", urlPatterns = {"/dashboard/sessions"})
 public class AllSessionsPageServlet extends HttpServlet {
@@ -36,9 +36,17 @@ public class AllSessionsPageServlet extends HttpServlet {
         String contextPath = req.getContextPath();
         String user = String.valueOf(session.getAttribute("user"));
 
+        // New "identity" filter:
+        // all | name | email | either | both
         String initialScript = """
                 window.APP_CONTEXT_PATH = %s;
-                window.ALL_SESSIONS_INITIAL = { all: true, page: 1, limit: 10 };
+                window.ALL_SESSIONS_INITIAL = {
+                    all: true,
+                    page: 1,
+                    limit: 10,
+                    activity: "all",
+                    identity: "either"
+                };
                 """.formatted(toJsonString(contextPath));
 
         String template = loadTemplate(req, TEMPLATE_PATH);

@@ -34,25 +34,50 @@
         <section class="section">
             <h1>Popular Topics</h1>
             <p>
-                Topic popularity is calculated using Terms from the Terms database
-                (excluding <strong>Other Parasoft Match</strong>).
+                Topic popularity is calculated using Terms from the Terms database.
+                By default, <strong>Other Parasoft Match</strong> is excluded.
             </p>
 
-            <div class="search-row"
-                style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <label for="topicLimitSelect">Show</label>
-                <select id="topicLimitSelect" aria-label="Rows limit" style="min-width:120px; max-width:160px;">
-                    <option value="5" selected>Top 5</option>
-                    <option value="10">Top 10</option>
-                    <option value="20">Top 20</option>
-                    <option value="all">All</option>
-                </select>
+            <!-- simplified / normalized controls -->
+            <div id="topicsFilterBar" class="topics-filter-bar">
+                <div class="topics-filter-field">
+                    <label for="topicDayInput">Day</label>
+                    <input id="topicDayInput" type="date">
+                </div>
+
+                <label class="topics-filter-check">
+                    <input id="topicUseRange" type="checkbox">
+                    Use range
+                </label>
+
+                <div class="topics-filter-field">
+                    <label for="topicStartDateInput">Start</label>
+                    <input id="topicStartDateInput" type="date">
+                </div>
+
+                <div class="topics-filter-field">
+                    <label for="topicEndDateInput">End</label>
+                    <input id="topicEndDateInput" type="date">
+                </div>
+
+                <button id="topicIncludeOtherBtn" type="button" class="ghost-btn">
+                    Include "Other Parasoft Match"
+                </button>
+
                 <button id="topicRefreshBtn" type="button" class="ghost-btn">Reset</button>
+            </div>
+
+
+            <div style="margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;">
+                <div class="helper-note">Day: <strong id="topicsSummaryDay">—</strong></div>
+                <div class="helper-note">Range: <strong id="topicsSummaryRange">—</strong></div>
+                <div class="helper-note">Term Mentions: <strong id="topicsSummaryMentions">0</strong></div>
+                <div class="helper-note">Unique Chats: <strong id="topicsSummaryUniqueChats">0</strong></div>
             </div>
         </section>
 
         <section class="section">
-            <h2>Top Topics Across All Widgets</h2>
+            <h2>Topics Across All Widgets</h2>
             <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
                 <div style="flex:1 1 520px; min-width:420px;">
                     <div class="table-scroll">

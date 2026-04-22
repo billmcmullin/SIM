@@ -12,6 +12,17 @@
         }
     }
 
+    function parseObject(input) {
+        if (input && typeof input === 'object' && !Array.isArray(input)) return input;
+        if (typeof input !== 'string') return {};
+        try {
+            const parsed = JSON.parse(input);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
     function buildSeries(slices, palette) {
         const labels = new Array(slices.length);
         const values = new Array(slices.length);
@@ -102,6 +113,16 @@
         };
     }
 
+    function parseTermsFromServerRenderedDom() {
+        const t1 = document.getElementById('serverTermsToday');
+        const y1 = document.getElementById('serverTermsYesterday');
+
+        return {
+            today: parseIntFromText(t1?.textContent),
+            yesterday: parseIntFromText(y1?.textContent)
+        };
+    }
+
     function applyProgressionDirectionStyling() {
         const direction = (window.chatProgressionDirection || '').toLowerCase().trim();
         if (!direction) return;
@@ -137,6 +158,17 @@
 
     async function buildWidgetReviewSelectionLink(dayToken, contextPath) {
         return `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=${encodeURIComponent(dayToken)}`;
+    }
+
+    function buildTermDayLink(dayYmd, contextPath) {
+        return `${contextPath}/dashboard/topics?day=${encodeURIComponent(dayYmd)}`;
+    }
+
+    function buildTermReviewUrl(contextPath, term, increaseOnly) {
+        const qp = new URLSearchParams();
+        qp.set('term', term || '');
+        if (increaseOnly) qp.set('mode', 'increaseOnly');
+        return `${contextPath}/dashboard/term-review?${qp.toString()}`;
     }
 
     function setConditionalMetricLink(el, value, hrefOrBuilder) {
@@ -204,6 +236,10 @@
         const yesterdayUsersEl = document.getElementById('dpYesterdayUsers');
         const usersDeltaEl = document.getElementById('dpUsersDelta');
 
+        const todayTermsEl = document.getElementById('dpTodayTerms');
+        const yesterdayTermsEl = document.getElementById('dpYesterdayTerms');
+        const termsDeltaEl = document.getElementById('dpTermsDelta');
+
         const chatVals = parseChatSummaryValues();
         if (Number.isFinite(chatVals.today) && Number.isFinite(chatVals.yesterday)) {
             const d = computeDelta(chatVals.today, chatVals.yesterday);
@@ -245,6 +281,32 @@
             if (todayUsersEl) todayUsersEl.textContent = 'N/A';
             if (yesterdayUsersEl) yesterdayUsersEl.textContent = 'N/A';
             if (usersDeltaEl) usersDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+        }
+
+        const termVals = parseTermsFromServerRenderedDom();
+        if (Number.isFinite(termVals.today) && Number.isFinite(termVals.yesterday)) {
+            const d = computeDelta(termVals.today, termVals.yesterday);
+            const dates = getTodayYesterday();
+
+            setConditionalMetricLink(
+                todayTermsEl,
+                d.today,
+                buildTermDayLink(dates.today, contextPath)
+            );
+            setConditionalMetricLink(
+                yesterdayTermsEl,
+                d.yesterday,
+                buildTermDayLink(dates.yesterday, contextPath)
+            );
+
+            if (termsDeltaEl) {
+                const forcedDir = (window.termsProgressionDirection || d.direction || 'flat').toLowerCase();
+                termsDeltaEl.innerHTML = renderProgressPill(d, forcedDir);
+            }
+        } else {
+            if (todayTermsEl) todayTermsEl.textContent = 'N/A';
+            if (yesterdayTermsEl) yesterdayTermsEl.textContent = 'N/A';
+            if (termsDeltaEl) termsDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
         }
 
         const summaryToday = document.getElementById('summaryTodayChats');
@@ -295,9 +357,9 @@
 
         deltaEl.classList.remove('progression-up', 'progression-down', 'progression-flat');
         deltaEl.classList.add(
-            direction === 'up' ? 'progression-up' :
-                direction === 'down' ? 'progression-down' :
-                    'progression-flat'
+            direction === 'up' ? 'progression-up'
+                : direction === 'down' ? 'progression-down'
+                    : 'progression-flat'
         );
         deltaEl.setAttribute('data-direction', direction);
         deltaEl.textContent = `${formatSignedInt(delta)} (${formatPct(pct)}%) vs yesterday`;
@@ -309,6 +371,10 @@
     const termSlices = parseSlices(window.termChartData || []);
     const widgetSlices = parseSlices(window.widgetPieChartData || []);
 
+    const termIncreaseMap = parseObject(window.termIncreaseMapJson || {});
+    const termTotalMap = parseObject(window.termTotalMapJson || {});
+    let legendMode = String(window.termLegendDefaultMode || 'increase').toLowerCase() === 'total' ? 'total' : 'increase';
+
     const palette = ['#1d4ed8', '#047857', '#c0392b', '#d97706', '#0f172a', '#6366f1', '#af7b1b'];
 
     const termChartEl = document.getElementById('termChart');
@@ -316,46 +382,96 @@
     const ctx = termChartEl?.getContext('2d');
     const widgetPieCtx = widgetChartEl?.getContext('2d');
 
+    let termChartInstance = null;
+
     function openTermReview(term) {
         if (!term) return;
-        window.location.href = `${contextPath}/dashboard/term-review?term=${encodeURIComponent(term)}`;
+        window.location.href = buildTermReviewUrl(contextPath, term, false);
     }
 
-    if (ctx && termSlices.length) {
-        const { labels, values, colors } = buildSeries(termSlices, palette);
+    function getTermValueForMode(term, fallbackCount, mode) {
+        if (mode === 'increase') {
+            const v = Number(termIncreaseMap[term] || 0);
+            return Number.isFinite(v) ? Math.max(0, v) : 0;
+        }
+        const t = Number(termTotalMap[term]);
+        if (Number.isFinite(t)) return Math.max(0, t);
+        return Number.isFinite(fallbackCount) ? Math.max(0, fallbackCount) : 0;
+    }
 
-        new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels,
-                datasets: [{ data: values, backgroundColor: colors }]
-            },
-            options: {
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            title: contextRows => {
-                                const i = contextRows?.[0]?.dataIndex;
-                                return (i !== undefined ? termSlices[i]?.term : '') || '';
-                            },
-                            label: context => {
-                                const slice = termSlices[context.dataIndex];
-                                return slice ? `${slice.label}: ${slice.count}` : '';
-                            }
-                        }
-                    },
-                    legend: { display: false }
+    function buildTermChartValues(mode) {
+        const values = new Array(termSlices.length);
+        for (let i = 0; i < termSlices.length; i++) {
+            const s = termSlices[i] || {};
+            values[i] = getTermValueForMode(s.term || '', s.count, mode);
+        }
+        return values;
+    }
+
+    function updateTermModeSummary(mode) {
+        const summaryEl = document.getElementById('termLegendModeSummary');
+        if (!summaryEl) return;
+
+        let total = 0;
+        for (let i = 0; i < termSlices.length; i++) {
+            const s = termSlices[i] || {};
+            total += getTermValueForMode(s.term || '', s.count, mode);
+        }
+
+        summaryEl.textContent = mode === 'increase'
+            ? `Showing increases (today): ${total} total entries`
+            : `Showing totals (all entries): ${total} total entries`;
+    }
+
+    function renderOrUpdateTermChart(mode) {
+        if (!ctx || !termSlices.length) return;
+
+        const labels = termSlices.map(s => (s?.label ?? ''));
+        const colors = termSlices.map((_, i) => palette[i % palette.length]);
+        const values = buildTermChartValues(mode);
+
+        if (!termChartInstance) {
+            termChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels,
+                    datasets: [{ data: values, backgroundColor: colors }]
                 },
-                responsive: true,
-                maintainAspectRatio: false,
-                onClick: (_event, elements) => {
-                    if (!elements?.length) return;
-                    const slice = termSlices[elements[0].index];
-                    if (!slice) return;
-                    openTermReview(slice.term);
+                options: {
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: contextRows => {
+                                    const i = contextRows?.[0]?.dataIndex;
+                                    return (i !== undefined ? termSlices[i]?.term : '') || '';
+                                },
+                                label: context => {
+                                    const i = context.dataIndex;
+                                    const slice = termSlices[i];
+                                    const term = slice?.term || '';
+                                    const value = getTermValueForMode(term, slice?.count, legendMode);
+                                    return `${slice?.label ?? ''}: ${value}`;
+                                }
+                            }
+                        },
+                        legend: { display: false }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (_event, elements) => {
+                        if (!elements?.length) return;
+                        const slice = termSlices[elements[0].index];
+                        if (!slice) return;
+                        openTermReview(slice.term);
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            termChartInstance.data.datasets[0].data = values;
+            termChartInstance.update();
+        }
+
+        updateTermModeSummary(mode);
     }
 
     if (widgetPieCtx && widgetSlices.length) {
@@ -396,37 +512,120 @@
     }
 
     const legendEl = document.getElementById('termChartLegend');
-    if (legendEl && termSlices.length) {
-        const frag = document.createDocumentFragment();
+    const legendToggleBtn = document.getElementById('termLegendValueToggleBtn');
 
-        for (let i = 0; i < termSlices.length; i++) {
-            const slice = termSlices[i] || {};
-            const chip = document.createElement('button');
-            chip.className = 'legend-chip';
-            chip.style.background = palette[i % palette.length];
-            chip.type = 'button';
-            chip.textContent = `${slice.label ?? ''} (${typeof slice.count === 'number' ? slice.count : 0})`;
-            chip.dataset.term = slice.term || '';
-            frag.appendChild(chip);
+    function buildLegendChip(slice, index) {
+        const term = slice.term || '';
+        const label = slice.label ?? '';
+        const rangeCount = typeof slice.count === 'number' ? slice.count : 0;
+        const inc = Number(termIncreaseMap[term] || 0);
+        const total = Number(termTotalMap[term] || rangeCount || 0);
+
+        const chip = document.createElement('div');
+        chip.className = 'legend-chip';
+        chip.style.setProperty('--legend-dot-color', palette[index % palette.length]);
+        chip.dataset.term = term;
+        chip.dataset.mode = legendMode;
+
+        const nameLink = document.createElement('a');
+        nameLink.className = 'legend-chip-name-link';
+        nameLink.dataset.term = term;
+
+        if (legendMode === 'total') {
+            nameLink.href = buildTermReviewUrl(contextPath, term, false);
+            nameLink.title = label;
+            nameLink.textContent = label;
+        } else {
+            nameLink.href = buildTermReviewUrl(contextPath, term, true);
+            nameLink.title = label;
+            nameLink.textContent = label;
         }
 
+        chip.appendChild(nameLink);
+
+        const valueWrap = document.createElement('span');
+        valueWrap.className = 'legend-chip-value-wrap';
+
+        if (legendMode === 'increase') {
+            if (Number.isFinite(inc) && inc > 0) {
+                const incLink = document.createElement('a');
+                incLink.className = 'legend-chip-increase-link';
+                incLink.href = buildTermReviewUrl(contextPath, term, true);
+                incLink.dataset.term = term;
+                incLink.dataset.increaseOnly = '1';
+                incLink.textContent = `+${inc}`;
+                valueWrap.appendChild(incLink);
+            } else {
+                const zero = document.createElement('span');
+                zero.className = 'legend-chip-value-muted';
+                zero.textContent = '+0';
+                valueWrap.appendChild(zero);
+            }
+        } else {
+            const totalLink = document.createElement('a');
+            totalLink.className = 'legend-chip-total-link';
+            totalLink.href = buildTermReviewUrl(contextPath, term, false);
+            totalLink.dataset.term = term;
+            totalLink.textContent = String(Number.isFinite(total) ? total : 0);
+            valueWrap.appendChild(totalLink);
+        }
+
+        chip.appendChild(valueWrap);
+        return chip;
+    }
+
+    function renderLegend() {
+        if (!legendEl) return;
+        legendEl.innerHTML = '';
+
+        if (!termSlices.length) return;
+
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < termSlices.length; i++) {
+            frag.appendChild(buildLegendChip(termSlices[i] || {}, i));
+        }
         legendEl.appendChild(frag);
 
-        legendEl.addEventListener('click', event => {
-            const chip = event.target.closest('.legend-chip');
-            if (!chip || !legendEl.contains(chip)) return;
-            openTermReview(chip.dataset.term);
-        });
-
-        legendEl.addEventListener('keydown', event => {
-            const chip = event.target.closest('.legend-chip');
-            if (!chip || !legendEl.contains(chip)) return;
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                openTermReview(chip.dataset.term);
+        if (legendToggleBtn) {
+            if (legendMode === 'increase') {
+                legendToggleBtn.textContent = 'Show Totals';
+                legendToggleBtn.setAttribute('aria-pressed', 'false');
+            } else {
+                legendToggleBtn.textContent = 'Show Increases';
+                legendToggleBtn.setAttribute('aria-pressed', 'true');
             }
+        }
+    }
+
+    if (legendEl) {
+        renderLegend();
+
+        legendEl.addEventListener('click', event => {
+            const a = event.target.closest('a');
+            if (a && legendEl.contains(a)) return;
+
+            const chip = event.target.closest('.legend-chip');
+            if (!chip || !legendEl.contains(chip)) return;
+
+            const term = chip.dataset.term || '';
+            if (!term) return;
+
+            const mode = chip.dataset.mode || legendMode;
+            const increaseOnly = mode === 'increase';
+
+            window.location.href = buildTermReviewUrl(contextPath, term, increaseOnly);
         });
     }
+
+    if (legendToggleBtn) {
+        legendToggleBtn.addEventListener('click', () => {
+            legendMode = legendMode === 'increase' ? 'total' : 'increase';
+            renderLegend();
+            renderOrUpdateTermChart(legendMode);
+        });
+    }
+
+    renderOrUpdateTermChart(legendMode);
 
     (async function loadTopSessions() {
         const totalEl = document.getElementById('totalSessions');
@@ -479,7 +678,6 @@
                 inactiveCountLink.href = `${contextPath}/dashboard/inactive-users`;
             }
 
-            // NEW: apply active-users day-over-day delta (green/red/flat)
             renderActiveUsersDelta(data);
 
             const sessions = Array.isArray(data.sessions) ? data.sessions : [];

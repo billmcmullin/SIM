@@ -36,35 +36,51 @@
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
                 <div>
                     <h1 style="margin:8px 0 0 0;">Review Sessions</h1>
-                    <p style="margin:6px 0 0 0; color:#475569;">View and drill into sessions across all widgets. Use the
-                        controls below to search, expand and select chats for review.</p>
+                    <p style="margin:6px 0 0 0; color:#475569;">
+                        View and drill into sessions across all widgets. Use the controls below to search, filter,
+                        expand and select chats for review.
+                    </p>
                 </div>
             </div>
 
-            <div class="widget-view-controls" style="align-items:center; gap:12px; margin-bottom:12px;">
-                <div style="flex:1; display:flex; gap:12px; align-items:center;">
-                    <input id="searchInput" type="search" placeholder="Search prompts & responses"
-                        style="flex:1;padding:10px;border-radius:8px;border:1px solid #cbd5f5">
+            <div class="widget-view-controls" style="align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+                <div style="flex:1; display:flex; gap:12px; align-items:center; min-width:320px; flex-wrap:wrap;">
+                    <input id="searchInput" type="search"
+                        placeholder="Search prompts, responses, session IDs, name, email"
+                        style="flex:1; min-width:240px; padding:10px; border-radius:8px; border:1px solid #cbd5f5">
                     <button id="searchBtn" class="ghost-btn">Search</button>
                     <button id="refreshBtn" class="ghost-btn">Clear</button>
                 </div>
 
-                <div style="display:flex; gap:12px; align-items:center;">
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                     <button id="reviewSelectedBtn" class="ghost-btn" disabled>Review Selected</button>
                     <button id="deselectSelectedBtn" class="ghost-btn" disabled>Deselect all</button>
                     <span id="selectionInfo" style="color:#475569; font-weight:600;"></span>
                 </div>
             </div>
+
             <div id="activityFilterBar"
-                style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin:8px 0 12px 0; flex-wrap:wrap;">
-                <div id="activityFilterBadge"
-                    style="display:none; padding:6px 10px; border-radius:999px; font-weight:600; font-size:.9rem; background:#e0f2fe; color:#075985;">
-                    Active filter applied
+                style="display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; gap:12px; margin:8px 0 12px 0;">
+
+                <!-- left spacer -->
+                <div></div>
+
+                <!-- centered badge area with fixed min height -->
+                <div style="display:flex; justify-content:center; min-height:32px;">
+                    <div id="activityFilterBadge"
+                        style="visibility:hidden; padding:6px 10px; border-radius:999px; font-weight:600; font-size:.9rem; background:#e0f2fe; color:#075985; white-space:nowrap;">
+                        Filters applied
+                    </div>
                 </div>
 
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <!-- right controls -->
+                <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; align-items:center;">
                     <button id="showAllUsersBtn" class="ghost-btn small" type="button">All users</button>
                     <button id="showActiveUsersBtn" class="ghost-btn small" type="button">Active users</button>
+                    <button id="toggleLabeledOnlyBtn" class="ghost-btn small" type="button" aria-pressed="false"
+                        style="margin-left:8px;">
+                        Only labeled users: Off
+                    </button>
                 </div>
             </div>
 
@@ -108,7 +124,9 @@
         window.ALL_SESSIONS_INITIAL = {
             all: true,
             page: 1,
-            limit: 10
+            limit: 10,
+            activity: "all",
+            labeledOnly: false
         };
     </script>
 

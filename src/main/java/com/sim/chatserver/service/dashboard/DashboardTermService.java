@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,24 @@ public class DashboardTermService {
         }
     }
 
+    /**
+     * Existing behavior: all-time (no date filter).
+     */
     public TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+        return buildTermSummary(conn, widgets, terms, null, null);
+    }
+
+    /**
+     * New behavior: optional date range filter (inclusive start/end by day). If
+     * either start or end is null, falls back to all-time behavior.
+     */
+    public TermSummary buildTermSummary(
+            Connection conn,
+            List<WidgetEntry> widgets,
+            List<TermDefinition> terms,
+            LocalDate rangeStartInclusive,
+            LocalDate rangeEndInclusive
+    ) throws SQLException {
         TermSummary summary = new TermSummary();
         if (widgets == null || widgets.isEmpty() || terms == null) {
             return summary;
@@ -68,6 +86,10 @@ public class DashboardTermService {
 
         Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
 
+        final boolean useDateRange = rangeStartInclusive != null && rangeEndInclusive != null;
+        final Timestamp startTs = useDateRange ? Timestamp.valueOf(rangeStartInclusive.atStartOfDay()) : null;
+        final Timestamp endExclusiveTs = useDateRange ? Timestamp.valueOf(rangeEndInclusive.plusDays(1).atStartOfDay()) : null;
+
         for (WidgetEntry widget : widgets) {
             if (widget == null || widget.getWidgetId() == null) {
                 continue;
@@ -79,62 +101,78 @@ public class DashboardTermService {
                 continue;
             }
 
-            String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                    + DashboardDbUtil.quoteIdentifier(tableName);
+            String sql;
+            if (useDateRange) {
+                sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                        + DashboardDbUtil.quoteIdentifier(tableName)
+                        + " WHERE created_at >= ? AND created_at < ?";
+            } else {
+                sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                        + DashboardDbUtil.quoteIdentifier(tableName);
+            }
 
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (useDateRange) {
+                    ps.setTimestamp(1, startTs);
+                    ps.setTimestamp(2, endExclusiveTs);
+                }
 
-                while (rs.next()) {
-                    String chatId = rs.getString("widget_chat_id");
-                    if (chatId == null) {
-                        chatId = "";
-                    }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        if (chatId == null) {
+                            chatId = "";
+                        }
 
-                    String prompt = rs.getString("prompt");
-                    if (prompt == null) {
-                        prompt = "";
-                    }
+                        String prompt = rs.getString("prompt");
+                        if (prompt == null) {
+                            prompt = "";
+                        }
 
-                    String response = rs.getString("response_text");
-                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                    String sessionId = rs.getString("session_id");
+                        String response = rs.getString("response_text");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        String sessionId = rs.getString("session_id");
 
-                    final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
-                    TermDefinition bestTerm = null;
-                    int bestStart = Integer.MAX_VALUE;
+                        final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
+                        TermDefinition bestTerm = null;
+                        int bestStart = Integer.MAX_VALUE;
 
-                    for (int i = 0; i < compiledPatterns.size(); i++) {
-                        Pattern pattern = compiledPatterns.get(i);
-                        try {
-                            Matcher m = pattern.matcher(sanitizedPrompt);
-                            if (m.find()) {
-                                int start = m.start();
-                                if (start < bestStart) {
-                                    bestStart = start;
-                                    bestTerm = activeTerms.get(i);
-                                    if (bestStart == 0) {
-                                        break;
+                        for (int i = 0; i < compiledPatterns.size(); i++) {
+                            Pattern pattern = compiledPatterns.get(i);
+                            if (pattern == null) {
+                                continue;
+                            }
+                            try {
+                                Matcher m = pattern.matcher(sanitizedPrompt);
+                                if (m.find()) {
+                                    int start = m.start();
+                                    if (start < bestStart) {
+                                        bestStart = start;
+                                        bestTerm = activeTerms.get(i);
+                                        if (bestStart == 0) {
+                                            break;
+                                        }
                                     }
                                 }
+                            } catch (Exception ignore) {
+                                // Keep behavior resilient even if one regex fails
                             }
-                        } catch (Exception ignore) {
-                            // Keep behavior resilient even if one regex fails
                         }
+
+                        String snapshotTerm = bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
+
+                        TermChatSnapshot snapshot = new TermChatSnapshot(
+                                snapshotTerm,
+                                widgetId,
+                                chatId,
+                                prompt,
+                                response,
+                                createdAt,
+                                sessionId
+                        );
+
+                        summary.recordMatch(snapshotTerm, snapshot);
                     }
-
-                    String snapshotTerm = bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
-
-                    TermChatSnapshot snapshot = new TermChatSnapshot(
-                            snapshotTerm,
-                            widgetId,
-                            chatId,
-                            prompt,
-                            response,
-                            createdAt,
-                            sessionId
-                    );
-
-                    summary.recordMatch(snapshotTerm, snapshot);
                 }
             }
         }

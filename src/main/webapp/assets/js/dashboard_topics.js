@@ -4,9 +4,20 @@
     const API_URL = `${contextPath}/dashboard/topics/data`;
     const REVIEW_START_URL = `${contextPath}/dashboard/topics/select`;
 
-    const searchInput = document.getElementById('topicSearchInput');
-    const limitSelect = document.getElementById('topicLimitSelect');
     const refreshBtn = document.getElementById('topicRefreshBtn');
+
+    const dayInput = document.getElementById('topicDayInput');
+    const startInput = document.getElementById('topicStartDateInput');
+    const endInput = document.getElementById('topicEndDateInput');
+    const useRangeCheckbox = document.getElementById('topicUseRange');
+
+    const includeOtherBtn = document.getElementById('topicIncludeOtherBtn');
+    let includeOtherEnabled = false;
+
+    const summaryDayEl = document.getElementById('topicsSummaryDay');
+    const summaryRangeEl = document.getElementById('topicsSummaryRange');
+    const summaryMentionsEl = document.getElementById('topicsSummaryMentions');
+    const summaryChatsEl = document.getElementById('topicsSummaryUniqueChats');
 
     const globalBody = document.getElementById('globalTopicsBody');
     const widgetContainer = document.getElementById('perWidgetTopicsContainer');
@@ -29,6 +40,100 @@
 
     function makeWidgetKey(name) {
         return String(name || 'widget').replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function toYmd(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function ensureDefaultDateInputs() {
+        const today = toYmd(new Date());
+        if (dayInput && !dayInput.value) dayInput.value = today;
+        if (startInput && !startInput.value) startInput.value = today;
+        if (endInput && !endInput.value) endInput.value = today;
+    }
+
+    function applyIncludeOtherBtnState() {
+        if (!includeOtherBtn) return;
+        includeOtherBtn.textContent = includeOtherEnabled
+            ? 'Including "Other Parasoft Match"'
+            : 'Include "Other Parasoft Match"';
+        includeOtherBtn.classList.toggle('is-active', includeOtherEnabled);
+        includeOtherBtn.setAttribute('aria-pressed', includeOtherEnabled ? 'true' : 'false');
+    }
+
+    function hydrateControlsFromUrl() {
+        const qp = new URLSearchParams(window.location.search || '');
+        const day = (qp.get('day') || '').trim();
+        const start = (qp.get('start') || '').trim();
+        const end = (qp.get('end') || '').trim();
+        const includeOther = (qp.get('includeOther') || '').trim().toLowerCase();
+
+        if (dayInput && day) dayInput.value = day;
+        if (startInput && start) startInput.value = start;
+        if (endInput && end) endInput.value = end;
+
+        if (useRangeCheckbox) {
+            useRangeCheckbox.checked = !!(start && end);
+        }
+
+        includeOtherEnabled = includeOther === '1' || includeOther === 'true' || includeOther === 'yes' || includeOther === 'on';
+        applyIncludeOtherBtnState();
+    }
+
+    function updateUrlFromControls() {
+        const params = new URLSearchParams();
+        const day = (dayInput?.value || '').trim();
+        const start = (startInput?.value || '').trim();
+        const end = (endInput?.value || '').trim();
+        const useRange = !!(useRangeCheckbox && useRangeCheckbox.checked);
+
+        // default always all topics
+        params.set('limit', 'all');
+
+        if (includeOtherEnabled) params.set('includeOther', 'true');
+
+        if (useRange) {
+            if (start) params.set('start', start);
+            if (end) params.set('end', end);
+            if (!start && !end && day) params.set('day', day);
+        } else {
+            if (day) params.set('day', day);
+            else {
+                if (start) params.set('start', start);
+                if (end) params.set('end', end);
+            }
+        }
+
+        const qs = params.toString();
+        const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', newUrl);
+    }
+
+    function getDateParams() {
+        const params = new URLSearchParams();
+
+        const useRange = !!(useRangeCheckbox && useRangeCheckbox.checked);
+        const day = (dayInput?.value || '').trim();
+        const start = (startInput?.value || '').trim();
+        const end = (endInput?.value || '').trim();
+
+        if (useRange) {
+            if (start) params.set('start', start);
+            if (end) params.set('end', end);
+            if (!start && !end && day) params.set('day', day);
+        } else {
+            if (day) params.set('day', day);
+            else if (start || end) {
+                if (start) params.set('start', start);
+                if (end) params.set('end', end);
+            }
+        }
+
+        return params;
     }
 
     async function openReviewForChatIds(chatIds) {
@@ -124,10 +229,7 @@
     }
 
     function destroyCharts() {
-        if (globalPieChart) {
-            globalPieChart.destroy();
-            globalPieChart = null;
-        }
+        if (globalPieChart) { globalPieChart.destroy(); globalPieChart = null; }
         widgetPieCharts.forEach(chart => chart.destroy());
         widgetPieCharts.clear();
     }
@@ -139,32 +241,20 @@
         const labels = rows.map(r => r.topic || 'Topic');
         const values = rows.map(r => Number(r.mentions || 0));
 
-        if (globalPieChart) {
-            globalPieChart.destroy();
-            globalPieChart = null;
-        }
-
+        if (globalPieChart) { globalPieChart.destroy(); globalPieChart = null; }
         if (!labels.length) return;
 
         globalPieChart = new Chart(globalPieCanvas.getContext('2d'), {
             type: 'pie',
-            data: {
-                labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: labels.map((_, i) => palette[i % palette.length])
-                }]
-            },
+            data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => palette[i % palette.length]) }] },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { position: 'bottom' } },
-                onClick: (evt, elements) => {
-                    if (!elements || !elements.length) return;
-                    const idx = elements[0].index;
-                    const row = rows[idx];
-                    if (!row) return;
-                    openReviewForChatIds(row.selectedChatIds || []);
+                onClick: (_evt, elements) => {
+                    if (!elements?.length) return;
+                    const row = rows[elements[0].index];
+                    if (row) openReviewForChatIds(row.selectedChatIds || []);
                 }
             }
         });
@@ -183,28 +273,19 @@
             const topics = Array.isArray(w.topics) ? w.topics : [];
             const labels = topics.map(t => t.topic || 'Topic');
             const values = topics.map(t => Number(t.mentions || 0));
-
             if (!labels.length) return;
 
             const chart = new Chart(canvas.getContext('2d'), {
                 type: 'pie',
-                data: {
-                    labels,
-                    datasets: [{
-                        data: values,
-                        backgroundColor: labels.map((_, i) => palette[i % palette.length])
-                    }]
-                },
+                data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => palette[i % palette.length]) }] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom' } },
-                    onClick: (evt, elements) => {
-                        if (!elements || !elements.length) return;
-                        const idx = elements[0].index;
-                        const topic = topics[idx];
-                        if (!topic) return;
-                        openReviewForChatIds(topic.selectedChatIds || []);
+                    onClick: (_evt, elements) => {
+                        if (!elements?.length) return;
+                        const topic = topics[elements[0].index];
+                        if (topic) openReviewForChatIds(topic.selectedChatIds || []);
                     }
                 }
             });
@@ -223,16 +304,22 @@
         });
     }
 
+    function updateSummary(data) {
+        if (!data || typeof data !== 'object') return;
+        if (summaryDayEl) summaryDayEl.textContent = data.day || '—';
+        if (summaryRangeEl) summaryRangeEl.textContent = `${data.rangeStart || '—'} to ${data.rangeEnd || '—'}`;
+        if (summaryMentionsEl) summaryMentionsEl.textContent = String(Number.isFinite(Number(data.termsTotal)) ? Number(data.termsTotal) : 0);
+        if (summaryChatsEl) summaryChatsEl.textContent = String(Number.isFinite(Number(data.uniqueChatsTotal)) ? Number(data.uniqueChatsTotal) : 0);
+    }
+
     async function loadTopics() {
         setLoading();
         destroyCharts();
+        updateUrlFromControls();
 
-        const params = new URLSearchParams();
-        const q = (searchInput?.value || '').trim();
-        const selectedLimit = (limitSelect?.value || '5').trim();
-
-        if (q) params.set('q', q);
-        if (selectedLimit) params.set('limit', selectedLimit);
+        const params = getDateParams();
+        params.set('limit', 'all'); // default always all topics
+        if (includeOtherEnabled) params.set('includeOther', 'true');
 
         try {
             const res = await fetch(`${API_URL}?${params.toString()}`, {
@@ -249,8 +336,8 @@
             renderGlobal(globalTopics);
             renderWidgets(widgets);
             wireMentionButtons();
+            updateSummary(data);
 
-            // pie charts use same filtered/limited data as tables
             renderGlobalPie(globalTopics);
             renderWidgetPies(widgets);
         } catch (err) {
@@ -261,19 +348,46 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (limitSelect && !limitSelect.value) limitSelect.value = '5';
+        hydrateControlsFromUrl();
+        ensureDefaultDateInputs();
 
-        searchInput?.addEventListener('input', loadTopics);
-        searchInput?.addEventListener('keydown', e => {
-            if (e.key === 'Enter') { e.preventDefault(); loadTopics(); }
-        });
-        limitSelect?.addEventListener('change', loadTopics);
-        refreshBtn?.addEventListener('click', () => {
-            if (searchInput) searchInput.value = '';
-            if (limitSelect) limitSelect.value = '5';
+        includeOtherBtn?.addEventListener('click', () => {
+            includeOtherEnabled = !includeOtherEnabled;
+            applyIncludeOtherBtnState();
             loadTopics();
         });
 
+        dayInput?.addEventListener('change', () => {
+            if (useRangeCheckbox) useRangeCheckbox.checked = false;
+            loadTopics();
+        });
+
+        startInput?.addEventListener('change', () => {
+            if (useRangeCheckbox) useRangeCheckbox.checked = true;
+            loadTopics();
+        });
+
+        endInput?.addEventListener('change', () => {
+            if (useRangeCheckbox) useRangeCheckbox.checked = true;
+            loadTopics();
+        });
+
+        useRangeCheckbox?.addEventListener('change', loadTopics);
+
+        refreshBtn?.addEventListener('click', () => {
+            const today = toYmd(new Date());
+            if (dayInput) dayInput.value = today;
+            if (startInput) startInput.value = today;
+            if (endInput) endInput.value = today;
+            if (useRangeCheckbox) useRangeCheckbox.checked = false;
+
+            includeOtherEnabled = false;
+            applyIncludeOtherBtnState();
+
+            loadTopics();
+        });
+
+        applyIncludeOtherBtnState();
         loadTopics();
     });
 })();

@@ -7,6 +7,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -14,8 +17,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -43,6 +46,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTopicsDataServlet extends HttpServlet {
 
     private static final String OTHER_LABEL = "Other Parasoft Match";
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -60,9 +64,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             return;
         }
 
-        String q = req.getParameter("q");
-        String limitRaw = req.getParameter("limit");
-        int limit = parseLimit(limitRaw, 5);
+        boolean includeOther = parseBooleanFlag(req.getParameter("includeOther"));
+        DateWindow window = resolveDateWindow(req);
 
         List<WidgetEntry> widgets;
         try {
@@ -78,15 +81,19 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             allTerms = List.of();
         }
 
-        List<TopicPattern> visibleTopics = new ArrayList<>();
-        List<TopicPattern> allTopicPatterns = new ArrayList<>();
-
+        // Only "real" terms are regex-matched.
+        // OTHER_LABEL is reserved as catch-all bucket.
+        List<TopicPattern> realTopics = new ArrayList<>();
         for (TermDefinition t : allTerms) {
             if (t == null || t.isSystemFlag()) {
                 continue;
             }
+
             String name = t.getName();
             if (name == null || name.isBlank()) {
+                continue;
+            }
+            if (OTHER_LABEL.equalsIgnoreCase(name.trim())) {
                 continue;
             }
 
@@ -95,12 +102,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 continue;
             }
 
-            TopicPattern tp = new TopicPattern(name.trim(), p);
-            allTopicPatterns.add(tp);
-
-            if (!OTHER_LABEL.equalsIgnoreCase(name.trim())) {
-                visibleTopics.add(tp);
-            }
+            realTopics.add(new TopicPattern(name.trim(), p));
         }
 
         Map<String, Integer> globalCounts = new LinkedHashMap<>();
@@ -109,6 +111,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
         Map<String, Map<String, Set<String>>> byWidgetChatIds = new LinkedHashMap<>();
 
+        long totalMentions = 0L;
+        Set<String> allMatchedChatIds = new LinkedHashSet<>();
+
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -116,7 +121,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 }
 
                 String widgetId = w.getWidgetId();
-                String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank()) ? widgetId : w.getDisplayName();
+                String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank())
+                        ? widgetId : w.getDisplayName();
 
                 String tableName = sanitizeWidgetTableName(widgetId);
                 if (!tableExists(conn, tableName)) {
@@ -126,40 +132,55 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
                 Map<String, Set<String>> widgetTopicChatIds = byWidgetChatIds.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
 
-                String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName);
-                try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String chatId = rs.getString("widget_chat_id");
-                        String prompt = rs.getString("prompt");
+                String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
+                        + " WHERE created_at >= ? AND created_at < ?";
 
-                        if (chatId == null || chatId.isBlank()) {
-                            continue;
-                        }
-                        if (prompt == null) {
-                            prompt = "";
-                        }
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
+                    ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
 
-                        // Defensive read for mixed timestamp representations after import.
-                        try {
-                            Timestamp ignored = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (ignored == null) {
-                                // keep going; timestamp is not needed for topic classification itself
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String chatId = rs.getString("widget_chat_id");
+                            String prompt = rs.getString("prompt");
+
+                            if (chatId == null || chatId.isBlank()) {
+                                continue;
                             }
-                        } catch (SQLException ignored) {
-                            // Continue processing prompt-based topic matching.
+                            if (prompt == null) {
+                                prompt = "";
+                            }
+
+                            try {
+                                SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            } catch (SQLException ignored) {
+                                // Prompt processing still valid.
+                            }
+
+                            Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
+
+                            if (!matchedRealTopics.isEmpty()) {
+                                for (String topic : matchedRealTopics) {
+                                    globalCounts.merge(topic, 1, Integer::sum);
+                                    globalChatIdsByTopic.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
+
+                                    widgetMap.merge(topic, 1, Integer::sum);
+                                    widgetTopicChatIds.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
+
+                                    totalMentions++;
+                                }
+                                allMatchedChatIds.add(chatId);
+                            } else if (includeOther) {
+                                globalCounts.merge(OTHER_LABEL, 1, Integer::sum);
+                                globalChatIdsByTopic.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
+
+                                widgetMap.merge(OTHER_LABEL, 1, Integer::sum);
+                                widgetTopicChatIds.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
+
+                                totalMentions++;
+                                allMatchedChatIds.add(chatId);
+                            }
                         }
-
-                        String chosenTopic = resolveTopic(prompt, visibleTopics, allTopicPatterns);
-
-                        if (chosenTopic == null || chosenTopic.isBlank() || OTHER_LABEL.equalsIgnoreCase(chosenTopic)) {
-                            continue;
-                        }
-
-                        globalCounts.merge(chosenTopic, 1, Integer::sum);
-                        globalChatIdsByTopic.computeIfAbsent(chosenTopic, k -> new LinkedHashSet<>()).add(chatId);
-
-                        widgetMap.merge(chosenTopic, 1, Integer::sum);
-                        widgetTopicChatIds.computeIfAbsent(chosenTopic, k -> new LinkedHashSet<>()).add(chatId);
                     }
                 }
             }
@@ -174,16 +195,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             return;
         }
 
-        Map<String, Integer> filteredGlobal = filterTopicMap(globalCounts, q);
-        Map<String, Map<String, Integer>> filteredByWidget = new LinkedHashMap<>();
-        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
-            Map<String, Integer> filtered = filterTopicMap(e.getValue(), q);
-            if (!filtered.isEmpty()) {
-                filteredByWidget.put(e.getKey(), filtered);
-            }
-        }
+        long uniqueChatsTotal = allMatchedChatIds.size();
 
-        List<Map.Entry<String, Integer>> globalSorted = sortTopicMap(filteredGlobal, limit);
+        List<Map.Entry<String, Integer>> globalSorted = sortTopicMap(globalCounts);
 
         JsonArrayBuilder globalArray = Json.createArrayBuilder();
         int rank = 1;
@@ -204,9 +218,20 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
 
         JsonArrayBuilder widgetsArray = Json.createArrayBuilder();
-        for (Map.Entry<String, Map<String, Integer>> e : filteredByWidget.entrySet()) {
+        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
             String widgetName = e.getKey();
-            List<Map.Entry<String, Integer>> sorted = sortTopicMap(e.getValue(), limit);
+            Map<String, Integer> widgetCounts = e.getValue();
+
+            // Restore prior behavior: only show widgets that actually have topic entries.
+            if (widgetCounts == null || widgetCounts.isEmpty()) {
+                continue;
+            }
+
+            List<Map.Entry<String, Integer>> sorted = sortTopicMap(widgetCounts);
+            if (sorted.isEmpty()) {
+                continue;
+            }
+
             Map<String, Set<String>> topicChats = byWidgetChatIds.getOrDefault(widgetName, Map.of());
 
             JsonArrayBuilder topicsArray = Json.createArrayBuilder();
@@ -234,10 +259,16 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "ok")
-                .add("query", q == null ? "" : q)
-                .add("limit", "all".equalsIgnoreCase(limitRaw == null ? "" : limitRaw.trim()) ? "all" : String.valueOf(limit))
+                .add("query", "") // kept for compatibility
+                .add("limit", "all") // now fixed behavior
+                .add("includeOther", includeOther)
+                .add("day", window.dayToken)
+                .add("rangeStart", window.startInclusive.format(DATE_FMT))
+                .add("rangeEnd", window.endExclusive.minusDays(1).format(DATE_FMT))
                 .add("globalTopics", globalArray)
                 .add("widgets", widgetsArray)
+                .add("termsTotal", totalMentions)
+                .add("uniqueChatsTotal", uniqueChatsTotal)
                 .build();
 
         resp.setCharacterEncoding("UTF-8");
@@ -245,87 +276,75 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         resp.getWriter().print(payload.toString());
     }
 
-    private String resolveTopic(String prompt, List<TopicPattern> visibleTopics, List<TopicPattern> allTopicPatterns) {
-        String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
-
-        String bestVisible = firstBestMatchName(sanitized, visibleTopics);
-        if (bestVisible != null) {
-            return bestVisible;
+    private DateWindow resolveDateWindow(HttpServletRequest req) {
+        Optional<LocalDate> dayOpt = parseLocalDate(req.getParameter("day"));
+        if (dayOpt.isPresent()) {
+            LocalDate d = dayOpt.get();
+            return new DateWindow(d, d.plusDays(1), d.format(DATE_FMT));
         }
 
-        String bestAny = firstBestMatchName(sanitized, allTopicPatterns);
-        if (bestAny != null && !OTHER_LABEL.equalsIgnoreCase(bestAny)) {
-            return bestAny;
+        Optional<LocalDate> startOpt = parseLocalDate(req.getParameter("start"));
+        Optional<LocalDate> endOpt = parseLocalDate(req.getParameter("end"));
+
+        if (startOpt.isPresent() || endOpt.isPresent()) {
+            LocalDate s = startOpt.orElseGet(endOpt::get);
+            LocalDate e = endOpt.orElseGet(startOpt::get);
+
+            if (e.isBefore(s)) {
+                LocalDate tmp = s;
+                s = e;
+                e = tmp;
+            }
+
+            String token = s.equals(e)
+                    ? s.format(DATE_FMT)
+                    : s.format(DATE_FMT) + "_to_" + e.format(DATE_FMT);
+
+            return new DateWindow(s, e.plusDays(1), token);
         }
 
-        return null;
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        return new DateWindow(today, today.plusDays(1), today.format(DATE_FMT));
     }
 
-    private String firstBestMatchName(String text, List<TopicPattern> patterns) {
-        String winner = null;
-        int bestStart = Integer.MAX_VALUE;
-        for (TopicPattern tp : patterns) {
+    private Optional<LocalDate> parseLocalDate(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
+        } catch (Exception ex) {
+            return Optional.empty();
+        }
+    }
+
+    private boolean parseBooleanFlag(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String v = raw.trim().toLowerCase(Locale.ROOT);
+        return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
+    }
+
+    private Set<String> matchTopics(String prompt, List<TopicPattern> topics) {
+        String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
+        Set<String> matched = new LinkedHashSet<>();
+        for (TopicPattern tp : topics) {
             try {
-                Matcher m = tp.pattern.matcher(text);
-                if (m.find()) {
-                    int start = m.start();
-                    if (start < bestStart) {
-                        bestStart = start;
-                        winner = tp.name;
-                        if (bestStart == 0) {
-                            break;
-                        }
-                    }
+                if (tp.pattern.matcher(sanitized).find()) {
+                    matched.add(tp.name);
                 }
             } catch (Exception ignored) {
             }
         }
-        return winner;
+        return matched;
     }
 
-    private Map<String, Integer> filterTopicMap(Map<String, Integer> source, String q) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
-        }
-        if (q == null || q.isBlank()) {
-            return source;
-        }
-
-        String needle = q.trim().toLowerCase(Locale.ROOT);
-        Map<String, Integer> out = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> e : source.entrySet()) {
-            if (e.getKey() != null && e.getKey().toLowerCase(Locale.ROOT).contains(needle)) {
-                out.put(e.getKey(), e.getValue());
-            }
-        }
-        return out;
-    }
-
-    private List<Map.Entry<String, Integer>> sortTopicMap(Map<String, Integer> map, int limit) {
+    private List<Map.Entry<String, Integer>> sortTopicMap(Map<String, Integer> map) {
         return map.entrySet().stream()
                 .sorted(Comparator.<Map.Entry<String, Integer>>comparingInt(e -> -e.getValue())
                         .thenComparing(e -> e.getKey().toLowerCase(Locale.ROOT)))
-                .limit(limit)
                 .collect(Collectors.toList());
-    }
-
-    private int parseLimit(String raw, int fallback) {
-        if (raw == null || raw.isBlank()) {
-            return fallback;
-        }
-        String v = raw.trim().toLowerCase(Locale.ROOT);
-        if ("all".equals(v)) {
-            return Integer.MAX_VALUE;
-        }
-        try {
-            int n = Integer.parseInt(v);
-            if (n <= 0) {
-                return fallback;
-            }
-            return Math.min(n, 10000);
-        } catch (Exception e) {
-            return fallback;
-        }
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
@@ -369,6 +388,19 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
+        }
+    }
+
+    private static final class DateWindow {
+
+        final LocalDate startInclusive;
+        final LocalDate endExclusive;
+        final String dayToken;
+
+        DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
+            this.startInclusive = startInclusive;
+            this.endExclusive = endExclusive;
+            this.dayToken = dayToken;
         }
     }
 }

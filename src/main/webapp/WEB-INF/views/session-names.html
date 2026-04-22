@@ -35,11 +35,16 @@
             <h1>Username Catalog</h1>
             <p>This page lists every session ID stored in your widget tables so you can search, review, and assign
                 friendly names &amp; email contacts.</p>
-            <div class="search-row">
+
+            <div class="search-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <input id="sessionSearch" type="search" placeholder="Search session IDs…"
                     aria-label="Search session IDs">
                 <button id="sessionSearchButton" class="ghost-btn" type="button">Search</button>
+                <button id="toggleLabeledOnlyBtn" class="ghost-btn small" type="button" aria-pressed="false">
+                    Only labeled users: Off
+                </button>
             </div>
+
             <div class="list-controls" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
                 <p class="helper-note" id="sessionListInfo">Loading sessions…</p>
                 <div style="display:flex; gap:8px; align-items:center;">

@@ -59,7 +59,6 @@
             </div>
         </section>
 
-        <!-- Daily Progress Section -->
         <section id="dailyProgressSection" class="section daily-progress-section">
             <div class="section-header">
                 <h2>Daily Progress</h2>
@@ -68,28 +67,58 @@
 
             <div class="daily-progress-grid"
                 style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
-                <!-- Chats -->
                 <article class="progress-card">
                     <h3 style="margin-top:0;">Chats</h3>
                     <p style="margin:6px 0;">
                         Today:
-                        <strong id="dpTodayChats" data-value="${todayChats}"
-                            data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                        <strong id="dpTodayChats" data-value="${todayChats}">
                             ${todayChats}
                         </strong>
                     </p>
                     <p style="margin:6px 0;">
                         Yesterday:
-                        <strong id="dpYesterdayChats" data-value="${yesterdayChats}"
-                            data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                        <strong id="dpYesterdayChats" data-value="${yesterdayChats}">
                             ${yesterdayChats}
                         </strong>
                     </p>
                     <p style="margin:6px 0;">Change: <span id="dpChatDelta">${chatProgression}</span></p>
                 </article>
 
-                <!-- Top terms today vs yesterday -->
                 <article class="progress-card">
+                    <h3 style="margin-top:0;">Term Entries</h3>
+                    <p style="margin:6px 0;">
+                        Today:
+                        <strong id="dpTodayTerms" data-value="${termsToday}">
+                            ${termsToday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">
+                        Yesterday:
+                        <strong id="dpYesterdayTerms" data-value="${termsYesterday}">
+                            ${termsYesterday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">Change: <span id="dpTermsDelta">${termsProgression}</span></p>
+                </article>
+
+                <article class="progress-card">
+                    <h3 style="margin-top:0;">New Users</h3>
+                    <p style="margin:6px 0;">
+                        Today:
+                        <strong id="dpTodayUsers" data-value="${newUsersToday}">
+                            ${newUsersToday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">
+                        Yesterday:
+                        <strong id="dpYesterdayUsers" data-value="${newUsersYesterday}">
+                            ${newUsersYesterday}
+                        </strong>
+                    </p>
+                    <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
+                </article>
+
+                <article class="progress-card" style="grid-column:1 / -1;">
                     <h3 style="margin-top:0;">Top 3 Terms (Today vs Yesterday)</h3>
                     <div class="table-scroll">
                         <table class="widget-table" style="margin:0;">
@@ -107,29 +136,8 @@
                         </table>
                     </div>
                 </article>
-
-                <!-- New users -->
-                <article class="progress-card">
-                    <h3 style="margin-top:0;">New Users</h3>
-                    <p style="margin:6px 0;">
-                        Today:
-                        <strong id="dpTodayUsers" data-value="${newUsersToday}"
-                            data-link-base="${contextPath}/dashboard/new-users/day" data-link-param="day">
-                            ${newUsersToday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">
-                        Yesterday:
-                        <strong id="dpYesterdayUsers" data-value="${newUsersYesterday}"
-                            data-link-base="${contextPath}/dashboard/new-users/day" data-link-param="day">
-                            ${newUsersYesterday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
-                </article>
             </div>
 
-            <!-- Latest 5 Other Parasoft Match -->
             <div class="section" style="margin-top:16px; padding:0;">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                     <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
@@ -161,14 +169,12 @@
 
             <p class="chat-progression-summary">
                 Today:
-                <strong id="summaryTodayChats" data-value="${todayChats}"
-                    data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                <strong id="summaryTodayChats" data-value="${todayChats}">
                     ${todayChats}
                 </strong>
                 |
                 Yesterday:
-                <strong id="summaryYesterdayChats" data-value="${yesterdayChats}"
-                    data-link-base="${contextPath}/dashboard/latest-chats" data-link-param="date">
+                <strong id="summaryYesterdayChats" data-value="${yesterdayChats}">
                     ${yesterdayChats}
                 </strong>
                 |
@@ -204,11 +210,28 @@
         </section>
 
         <section class="chart-wrapper">
-            <h2>Term Distribution based on Prompts</h2>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <h2 style="margin:0;">Term Distribution based on Prompts</h2>
+                <p id="termLegendModeSummary" class="helper-note" style="margin:6px 0 10px 0;">
+                    Total entries shown: —
+                </p>
+                <button id="termLegendValueToggleBtn" type="button" class="ghost-btn">
+                    Show Totals
+                </button>
+            </div>
+
             <div class="chart-area">
                 <canvas id="termChart"></canvas>
             </div>
             <div id="termChartLegend" class="term-legend"></div>
+
+            <p class="helper-note" style="margin-top:12px; margin-bottom:0;">
+                Legend behavior:
+                term name opens all entries; <strong>+N</strong> opens increased-only entries.
+                (Current: <strong>${termIncreaseRangeStart}</strong> to <strong>${termIncreaseRangeEnd}</strong>
+                | Previous: <strong>${termIncreasePrevRangeStart}</strong> to
+                <strong>${termIncreasePrevRangeEnd}</strong>)
+            </p>
         </section>
 
         <section class="section session-overview-section">
@@ -258,16 +281,21 @@
         </section>
     </div>
 
-    <!-- New users authoritative values (used by dashboard.js to avoid picking up chat counts) -->
     <span id="serverNewUsersToday" style="display:none;">${newUsersToday}</span>
     <span id="serverNewUsersYesterday" style="display:none;">${newUsersYesterday}</span>
+    <span id="serverTermsToday" style="display:none;">${termsToday}</span>
+    <span id="serverTermsYesterday" style="display:none;">${termsYesterday}</span>
 
     <script>
         window.termChartData = '${termChartData}';
         window.widgetPieChartData = '${widgetPieChartData}';
+        window.termIncreaseMapJson = '${termIncreaseMapJson}';
+        window.termTotalMapJson = '${termTotalMapJson}';
+        window.termLegendDefaultMode = '${termLegendDefaultMode}';
         window.dashboardConfig = { contextPath: '${contextPath}' };
         window.chatProgressionDirection = '${chatProgressionDirection}';
         window.newUsersProgressionDirection = '${newUsersProgressionDirection}';
+        window.termsProgressionDirection = '${termsProgressionDirection}';
         window.dashboardDates = {
             today: '${sessionRangeEnd}',
             yesterday: (() => {

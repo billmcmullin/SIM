@@ -128,6 +128,8 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         boolean returnAll = "true".equalsIgnoreCase(req.getParameter("all"));
+        boolean labeledOnly = "true".equalsIgnoreCase(req.getParameter("labeledOnly"));
+
         String search = req.getParameter("search");
         boolean hasSearch = search != null && !search.isBlank();
         String normalizedSearch = hasSearch ? "%" + search.trim() + "%" : null;
@@ -218,6 +220,23 @@ public class AllSessionsServlet extends HttpServlet {
             activity = "all";
         }
 
+        // New: only show sessions with friendly name and/or email if labeledOnly=true
+        if (labeledOnly && !sessionList.isEmpty()) {
+            Map<String, SessionLabelStore.SessionLabel> labelsForFilter = mapSessionLabels(sessionList);
+            sessionList.removeIf(s -> {
+                if (s == null || s.sessionId == null) {
+                    return true;
+                }
+                SessionLabelStore.SessionLabel label = labelsForFilter.get(s.sessionId);
+                if (label == null) {
+                    return true;
+                }
+                boolean hasName = label.getDisplayName() != null && !label.getDisplayName().isBlank();
+                boolean hasEmail = label.getEmail() != null && !label.getEmail().isBlank();
+                return !(hasName || hasEmail);
+            });
+        }
+
         sessionList.sort((a, b) -> {
             int cmp = Long.compare(b.totalCount, a.totalCount);
             if (cmp != 0) {
@@ -269,6 +288,7 @@ public class AllSessionsServlet extends HttpServlet {
                 .add("status", "ok")
                 .add("activeDays", ACTIVE_DAYS)
                 .add("activity", activity)
+                .add("labeledOnly", labeledOnly)
                 .add("totalUsers", totalUsers)
                 .add("activeUsers", activeUsers)
                 .add("inactiveUsers", inactiveUsers)

@@ -100,7 +100,7 @@ body {
     padding: 28px;
     background: #fff;
     border-radius: 12px;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, .15);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.15);
 }
 
 .summary-label {
@@ -114,7 +114,7 @@ body {
     padding: 18px;
     border-radius: 12px;
     background: #f8fafc;
-    box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
+    box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.1);
 }
 
 .detail-card pre {
@@ -178,7 +178,7 @@ button:disabled {
 }
 
 .helper-note {
-    font-size: .85rem;
+    font-size: 0.85rem;
     color: #475569;
 }
 
@@ -239,16 +239,13 @@ button:disabled {
     vertical-align: top;
 }
 
-/* Column sizing */
 #termTable th:nth-child(1),
 #termTable td:nth-child(1) {
     width: 14%;
 }
 
-/* Term */
 #termTable th:nth-child(2),
 #termTable td:nth-child(2) {
-    /* Description */
     width: 22%;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -256,7 +253,6 @@ button:disabled {
 
 #termTable th:nth-child(3),
 #termTable td:nth-child(3) {
-    /* Pattern */
     width: 44%;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -265,7 +261,6 @@ button:disabled {
 
 #termTable th:nth-child(4),
 #termTable td:nth-child(4) {
-    /* Type */
     width: 120px;
     min-width: 120px;
     white-space: nowrap;
@@ -275,13 +270,10 @@ button:disabled {
 
 #termTable th:nth-child(5),
 #termTable td:nth-child(5) {
-    /* Actions */
     width: 170px;
     min-width: 170px;
     white-space: nowrap;
 }
-
-
 
 .select-column {
     min-width: 56px;
@@ -290,7 +282,8 @@ button:disabled {
 .widget-view-table thead th,
 .widget-review-table thead th,
 .sessions-page .session-table thead th,
-.inner-chats-table thead th {
+.inner-chats-table thead th,
+.widget-table thead th {
     background: var(--primary-blue);
     color: #fff;
     font-weight: 600;
@@ -318,40 +311,84 @@ button:disabled {
 }
 
 .legend-chip {
-    /* normalized size */
-    flex: 0 0 220px;
-    min-width: 220px;
-    max-width: 220px;
-    min-height: 44px;
-
+    flex: 1 1 320px;
+    min-width: 300px;
+    max-width: 420px;
+    min-height: 46px;
     padding: 8px 12px;
     border-radius: 999px;
     font-weight: 600;
-    font-size: 0.85rem;
-    color: #fff;
+    font-size: 0.9rem;
+    color: #0f172a;
     line-height: 1.2;
-
     display: inline-flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
-
-    /* show full text */
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    justify-content: space-between;
+    gap: 10px;
     text-align: left;
+    background: #f8fafc !important;
+    border: 1px solid #dbe3ef;
+    box-shadow: none;
 }
 
 .legend-chip::before {
     content: '';
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     display: inline-block;
-    flex: 0 0 10px;
+    flex: 0 0 14px;
+    background: var(--legend-dot-color, #334155);
+    opacity: 0.95;
+    margin-right: 2px;
 }
 
+.legend-chip-name-link {
+    color: #1d4ed8;
+    text-decoration: none;
+    font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.legend-chip-name-link:hover,
+.legend-chip-name-link:focus {
+    text-decoration: underline;
+    color: #1e40af;
+}
+
+.legend-chip-value-wrap {
+    flex: 0 0 auto;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    white-space: nowrap;
+    min-width: 52px;
+}
+
+.legend-chip-increase-link,
+.legend-chip-total-link {
+    color: #0f172a;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.legend-chip-increase-link:hover,
+.legend-chip-increase-link:focus,
+.legend-chip-total-link:hover,
+.legend-chip-total-link:focus {
+    color: #111827;
+}
+
+.legend-chip-value-muted {
+    color: #64748b;
+    font-weight: 700;
+}
 
 /* ----------------------------------
    Widget view specific
@@ -441,7 +478,7 @@ button:disabled {
 
 .session-table th,
 .session-table td {
-    padding: .6rem .5rem;
+    padding: 0.6rem 0.5rem;
     text-align: left;
     border-bottom: 1px solid #e5e7eb;
     vertical-align: top;
@@ -531,7 +568,7 @@ button:disabled {
     box-shadow: none;
     border-left: 1px solid #e5e7eb;
     vertical-align: top;
-    padding: .45rem .4rem;
+    padding: 0.45rem 0.4rem;
     font-size: 0.92rem;
 }
 
@@ -842,8 +879,6 @@ hr {
 /* ==========================================
    Dashboard Metric Enhancements
 ========================================== */
-
-/* Positive / negative / neutral progression */
 .progression {
     font-weight: 700;
     display: inline-flex;
@@ -853,20 +888,16 @@ hr {
 
 .progression-up {
     color: #15803d !important;
-    /* green */
 }
 
 .progression-down {
     color: #b91c1c !important;
-    /* red */
 }
 
 .progression-flat {
     color: #475569 !important;
-    /* neutral slate */
 }
 
-/* Optional arrows (visual cue) */
 .progression-up::before {
     content: "▲";
     font-size: 0.75em;
@@ -886,7 +917,6 @@ hr {
     opacity: 0.65;
 }
 
-/* Links for non-zero metrics */
 .metric-link {
     color: #1d4ed8;
     text-decoration: underline;
@@ -900,7 +930,6 @@ hr {
     color: #1e40af;
 }
 
-/* Cards in daily progress for readability */
 .daily-progress-section .progress-card {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
@@ -912,16 +941,94 @@ hr {
     color: #0f172a;
 }
 
-/* Make links inside cards stand out but remain clean */
 .daily-progress-section .progress-card .metric-link {
     text-decoration-thickness: 2px;
 }
 
+/* ----------------------------------
+   Popular Topics Enhancements
+----------------------------------- */
+#topicDayInput,
+#topicStartDateInput,
+#topicEndDateInput {
+    min-width: 160px;
+    max-width: 190px;
+}
+
+#topicUseRange {
+    width: auto;
+    margin: 0;
+}
+
+.topic-mentions-btn {
+    margin-right: 0;
+    padding: 4px 10px;
+    font-size: 0.86rem;
+    line-height: 1.2;
+}
+
+.topic-mentions-btn.small {
+    padding: 3px 9px;
+    font-size: 0.82rem;
+}
+
+#perWidgetTopicsContainer .section h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#globalTopicsBody td:nth-child(1),
+#globalTopicsBody td:nth-child(3),
+#perWidgetTopicsContainer .widget-table td:nth-child(1),
+#perWidgetTopicsContainer .widget-table td:nth-child(3) {
+    white-space: nowrap;
+}
+
+#topicsSummaryDay,
+#topicsSummaryRange,
+#topicsSummaryMentions,
+#topicsSummaryUniqueChats {
+    color: #0f172a;
+}
+
+/* New normalized topics filter layout */
+.topics-filter-bar {
+    margin-top: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.topics-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 170px;
+}
+
+.topics-filter-field input[type="date"] {
+    min-height: 36px;
+}
+
+.topics-filter-check {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    min-height: 38px;
+    padding-bottom: 2px;
+    margin-bottom: 0;
+}
+
+#topicIncludeOtherBtn.is-active {
+    background: #1e40af;
+    color: #fff;
+    border-color: #1e40af;
+}
 
 /* ==========================================
    Customer Profile Page
 ========================================== */
-
 .customer-profile-container {
     max-width: 1100px;
 }
@@ -1038,7 +1145,6 @@ hr {
     }
 }
 
-
 /* ----------------------------------
    Responsive
 ----------------------------------- */
@@ -1061,7 +1167,12 @@ hr {
 
     .session-table th,
     .session-table td {
-        padding: .5rem .4rem;
+        padding: 0.5rem 0.4rem;
+    }
+
+    .legend-chip {
+        min-width: 280px;
+        max-width: 100%;
     }
 }
 
@@ -1079,7 +1190,7 @@ hr {
     .session-table th,
     .session-table td {
         font-size: 0.92rem;
-        padding: .45rem .35rem;
+        padding: 0.45rem 0.35rem;
     }
 
     .top-bar-inner {
@@ -1120,10 +1231,49 @@ hr {
         padding: 8px;
         font-size: 0.92rem;
     }
+
+    #topicDayInput,
+    #topicStartDateInput,
+    #topicEndDateInput {
+        min-width: 140px;
+        max-width: 100%;
+    }
+
+    .topics-filter-field {
+        min-width: 150px;
+    }
+
+    .legend-chip {
+        min-width: 100%;
+        max-width: 100%;
+    }
 }
 
 @media (max-width: 720px) {
     .cp-table th {
         width: 140px;
+    }
+
+    .topics-filter-bar {
+        align-items: stretch;
+    }
+
+    .topics-filter-field {
+        min-width: 100%;
+    }
+
+    .topics-filter-check {
+        min-height: 36px;
+    }
+
+    .legend-chip {
+        font-size: 0.85rem;
+        padding: 8px 10px;
+    }
+
+    .legend-chip::before {
+        width: 13px;
+        height: 13px;
+        flex-basis: 13px;
     }
 }

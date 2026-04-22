@@ -9,6 +9,7 @@ const editTemplate = document.getElementById('sessionEditTemplate');
 const prevPageBtn = document.getElementById('prevPageBtn');
 const nextPageBtn = document.getElementById('nextPageBtn');
 const pageSizeSelect = document.getElementById('pageSizeSelect');
+const toggleLabeledOnlyBtn = document.getElementById('toggleLabeledOnlyBtn');
 
 let currentQuery = '';
 let activeEditRow = null;
@@ -16,6 +17,9 @@ let currentPage = 1;
 let pageSize = 10;
 let totalSessions = 0;
 let totalPages = 1;
+
+// New toggle filter state
+let labeledOnly = false;
 
 function buildCustomerProfileUrl(sessionId, fallbackFriendlyName) {
     const params = new URLSearchParams();
@@ -85,7 +89,29 @@ function updatePaginationControls(count) {
     if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
     if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
     if (sessionInfo) {
-        sessionInfo.textContent = `Showing ${count} of ${totalSessions} sessions · Page ${currentPage} of ${totalPages}`;
+        const labelState = labeledOnly ? 'Only labeled users' : 'All users';
+        sessionInfo.textContent = `Showing ${count} of ${totalSessions} sessions · Page ${currentPage} of ${totalPages} · ${labelState}`;
+    }
+}
+
+function refreshLabeledOnlyUi() {
+    if (!toggleLabeledOnlyBtn) return;
+    toggleLabeledOnlyBtn.textContent = `Only labeled users: ${labeledOnly ? 'On' : 'Off'}`;
+    toggleLabeledOnlyBtn.setAttribute('aria-pressed', labeledOnly ? 'true' : 'false');
+    toggleLabeledOnlyBtn.style.border = labeledOnly ? '2px solid #1d4ed8' : '1px solid transparent';
+}
+
+function syncLabeledOnlyToUrl() {
+    try {
+        const u = new URL(window.location.href);
+        if (labeledOnly) {
+            u.searchParams.set('labeledOnly', 'true');
+        } else {
+            u.searchParams.delete('labeledOnly');
+        }
+        window.history.replaceState({}, '', u.toString());
+    } catch (e) {
+        // no-op
     }
 }
 
@@ -98,10 +124,11 @@ async function loadSessions(query = '') {
     try {
         const params = new URLSearchParams();
         if (query && query.trim()) {
-            params.append('q', query.trim()); // backend supports q (and now search)
+            params.append('q', query.trim());
         }
         params.append('limit', String(pageSize));
         params.append('page', String(currentPage));
+        params.append('labeledOnly', labeledOnly ? 'true' : 'false');
 
         const url = `${contextPath}/dashboard/session-names.json?${params.toString()}`;
         const response = await fetch(url, { credentials: 'same-origin' });
@@ -147,9 +174,8 @@ async function loadSessions(query = '') {
             row.appendChild(emailCell);
 
             const countCell = document.createElement('td');
-            const hasCount = Number.isFinite(session.count);
-            const countValue = hasCount ? session.count : null;
-            countCell.textContent = countValue != null ? `${countValue} chats` : '—';
+            const countNum = Number(session.count);
+            countCell.textContent = Number.isFinite(countNum) ? `${countNum} chats` : '—';
             row.appendChild(countCell);
 
             const lastCell = document.createElement('td');
@@ -238,7 +264,6 @@ async function submitLabel(form, session, row, statusMessage) {
 
         statusMessage.textContent = 'Saved.';
 
-        // Update row display and preserve profile links
         session.displayName = displayName;
         session.email = email;
         session.displayLabel = displayName || email || session.sessionId || '';
@@ -258,6 +283,8 @@ async function submitLabel(form, session, row, statusMessage) {
         setTimeout(() => {
             statusMessage.textContent = '';
             removeEditPanel();
+            // reload to keep filter/paging list in sync (important for labeledOnly mode)
+            loadSessions(currentQuery);
         }, 800);
     } catch (error) {
         console.error(error);
@@ -298,4 +325,22 @@ nextPageBtn?.addEventListener('click', () => {
     loadSessions(currentQuery);
 });
 
+toggleLabeledOnlyBtn?.addEventListener('click', () => {
+    labeledOnly = !labeledOnly;
+    currentPage = 1;
+    refreshLabeledOnlyUi();
+    syncLabeledOnlyToUrl();
+    loadSessions(currentQuery);
+});
+
+// initial state from URL if present
+try {
+    const urlParams = new URLSearchParams(window.location.search);
+    labeledOnly = (urlParams.get('labeledOnly') || 'false').toLowerCase() === 'true';
+} catch (e) {
+    labeledOnly = false;
+}
+
+refreshLabeledOnlyUi();
+syncLabeledOnlyToUrl();
 loadSessions('');

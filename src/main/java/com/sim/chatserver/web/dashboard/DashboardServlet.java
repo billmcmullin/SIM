@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +38,7 @@ import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardPro
 import com.sim.chatserver.service.dashboard.DashboardSessionService;
 import com.sim.chatserver.service.dashboard.DashboardTermService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
@@ -43,6 +47,8 @@ import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
+import jakarta.json.Json;
+import jakarta.json.JsonObjectBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -57,6 +63,7 @@ public class DashboardServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
+    private static final String TERM_INCREASE_SNAPSHOT_SESSION_KEY = "termDistributionIncreaseSnapshots";
 
     private static final int DEFAULT_RANGE_DAYS = 14;
     private static final int DEFAULT_ACTIVE_DAYS = 7;
@@ -120,6 +127,13 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate rangeStartFinal = rangeStart;
         final LocalDate rangeEndFinal = rangeEnd;
 
+        long windowDays = Math.max(1, ChronoUnit.DAYS.between(rangeStartFinal, rangeEndFinal) + 1);
+        final LocalDate prevRangeEnd = rangeStartFinal.minusDays(1);
+        final LocalDate prevRangeStart = prevRangeEnd.minusDays(windowDays - 1);
+
+        // Daily anchor date for "increase mode" (daily reset counter).
+        final LocalDate dayToday = rangeEndFinal;
+
         DashboardMetricsService metricsService = new DashboardMetricsService(dsHolder, termsStore, TOP_TOPIC_LIMIT);
         DashboardTermService termService = new DashboardTermService(termsStore);
         DashboardSessionService sessionService = new DashboardSessionService();
@@ -135,8 +149,6 @@ public class DashboardServlet extends HttpServlet {
         );
 
         CompletableFuture<DashboardProgressMetrics> dashboardProgressFuture = CompletableFuture.supplyAsync(
-                // If your DashboardCacheRegistry doesn't yet have this method, replace with:
-                // () -> metricsService.buildDashboardProgressMetrics(widgetsFinal),
                 () -> cacheRegistry.getDashboardProgressMetrics(
                         () -> metricsService.buildDashboardProgressMetrics(widgetsFinal)),
                 DASHBOARD_EXECUTOR
@@ -153,8 +165,27 @@ public class DashboardServlet extends HttpServlet {
                 DASHBOARD_EXECUTOR
         );
 
+        // Current selected range summary (chart display values).
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
-                () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal)),
+                () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
+                DASHBOARD_EXECUTOR
+        );
+
+        // Previous selected range summary (kept for compatibility/other views).
+        CompletableFuture<TermSummary> prevTermSummaryFuture = CompletableFuture.supplyAsync(
+                () -> loadTermSummary(termService, widgetsFinal, prevRangeStart, prevRangeEnd),
+                DASHBOARD_EXECUTOR
+        );
+
+        // Daily summary for increase-mode legend values (+N = today's count by term).
+        CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
+                () -> loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
+                DASHBOARD_EXECUTOR
+        );
+
+        // Async all-time summary for Show Total values and drilldown source.
+        CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
+                () -> loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
         );
 
@@ -177,6 +208,9 @@ public class DashboardServlet extends HttpServlet {
         ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
         List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
         TermSummary termSummary = safeJoin(termSummaryFuture, null, "term summary");
+        safeJoin(prevTermSummaryFuture, null, "previous term summary");
+        TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
+        TermSummary allTimeTermSummary = safeJoin(allTimeTermSummaryFuture, null, "all-time term summary");
         SessionOverview sessionOverview = safeJoin(sessionOverviewFuture, null, "session overview");
 
         int totalChats = widgetStats.stream().mapToInt(WidgetStat::getCount).sum();
@@ -188,8 +222,8 @@ public class DashboardServlet extends HttpServlet {
         int todayChats = dashboardProgress.getChatsToday();
         int yesterdayChats = dashboardProgress.getChatsYesterday();
 
-        int termsToday = dashboardProgress.getTermsToday();
-        int termsYesterday = dashboardProgress.getTermsYesterday();
+        int termsToday = Math.max(0, dashboardProgress.getTermsToday());
+        int termsYesterday = Math.max(0, dashboardProgress.getTermsYesterday());
         ProgressStat termsProgression = dashboardProgress.getTermsProgression() == null
                 ? new ProgressStat(termsToday, termsYesterday)
                 : dashboardProgress.getTermsProgression();
@@ -202,11 +236,27 @@ public class DashboardServlet extends HttpServlet {
         String otherParasoftLatestRows = DashboardRowsRenderer.renderOtherParasoftLatestRows(otherParasoftLatest, req.getContextPath());
 
         String termChartJson = termService.toChartJson(termSummary);
-        if (termSummary != null) {
-            storeTermSnapshots(session, termSummary);
+
+        // IMPORTANT FIX:
+        // Default term drilldown (Show Total mode) uses TERM_SNAPSHOT_SESSION_KEY.
+        // Must store all-time snapshots here so total-mode drilldown is full history.
+        if (allTimeTermSummary != null) {
+            storeTermSnapshots(session, allTimeTermSummary);
         } else {
             session.removeAttribute(TERM_SNAPSHOT_SESSION_KEY);
         }
+
+        // Increase mode: +N is today's count per term (daily reset, no yesterday comparison).
+        Map<String, Integer> increaseMap = buildTermTotalMap(todayTermSummary);
+        String termIncreaseMapJson = buildTermIncreaseMapJson(increaseMap);
+
+        // Show-all mode totals: all-time distribution across DB history.
+        Map<String, Integer> totalMap = buildTermTotalMap(allTimeTermSummary);
+        String termTotalMapJson = buildTermTotalMapJson(totalMap);
+
+        // Increase-only drilldown should show today's entries for each term.
+        Map<String, List<TermChatSnapshot>> increaseOnlySnapshots = copySnapshots(todayTermSummary);
+        storeIncreaseSnapshots(session, increaseOnlySnapshots);
 
         String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
         String sessionChartJson = sessionService.buildEmptySessionPayload(rangeStart, rangeEnd);
@@ -253,7 +303,6 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("newUsersYesterday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newUserProgression.getYesterday()))),
                 Map.entry("newUsersProgression", formatProgressionHtml(newUserProgression)),
                 Map.entry("newUsersProgressionDirection", DashboardTemplateRenderer.escapeHtml(newUserProgression.getDirection())),
-                // NEW: terms progression placeholders
                 Map.entry("termsToday", DashboardTemplateRenderer.escapeHtml(String.valueOf(termsToday))),
                 Map.entry("termsYesterday", DashboardTemplateRenderer.escapeHtml(String.valueOf(termsYesterday))),
                 Map.entry("termsProgression", formatProgressionHtml(termsProgression)),
@@ -263,6 +312,14 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("widgetStatsRows", widgetStatsRows),
                 Map.entry("widgetPieChartData", DashboardTemplateRenderer.escapeForJs(buildWidgetPieChartData(widgetStats))),
                 Map.entry("termChartData", termChartJson),
+                // Legend payload
+                Map.entry("termIncreaseMapJson", DashboardTemplateRenderer.escapeForJs(termIncreaseMapJson)),
+                Map.entry("termTotalMapJson", DashboardTemplateRenderer.escapeForJs(termTotalMapJson)),
+                Map.entry("termLegendDefaultMode", "increase"),
+                Map.entry("termIncreaseRangeStart", DashboardTemplateRenderer.escapeHtml(dayToday.format(DATE_FORMATTER))),
+                Map.entry("termIncreaseRangeEnd", DashboardTemplateRenderer.escapeHtml(dayToday.format(DATE_FORMATTER))),
+                Map.entry("termIncreasePrevRangeStart", DashboardTemplateRenderer.escapeHtml(dayToday.format(DATE_FORMATTER))),
+                Map.entry("termIncreasePrevRangeEnd", DashboardTemplateRenderer.escapeHtml(dayToday.format(DATE_FORMATTER))),
                 Map.entry("sessionRows", sessionRows),
                 Map.entry("sessionRangeStart", DashboardTemplateRenderer.escapeHtml(rangeStart.format(DATE_FORMATTER))),
                 Map.entry("sessionRangeEnd", DashboardTemplateRenderer.escapeHtml(rangeEnd.format(DATE_FORMATTER))),
@@ -272,7 +329,6 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("activeUsers", DashboardTemplateRenderer.escapeHtml(String.valueOf(activeUsers))),
                 Map.entry("inactiveUsers", DashboardTemplateRenderer.escapeHtml(String.valueOf(inactiveUsers))),
                 Map.entry("activeUsersUrl", req.getContextPath() + "/dashboard/sessions?activity=active&activeDays=" + activeDays),
-                // Existing Top 10 Sessions metric block placeholders
                 Map.entry("sessionNewToday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsToday))),
                 Map.entry("sessionNewYesterday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsYesterday))),
                 Map.entry("sessionNewProgression", formatProgressionHtml(newSessionsProgression)),
@@ -294,10 +350,15 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    private TermSummary loadTermSummary(DashboardTermService termService, List<WidgetEntry> widgets) {
+    private TermSummary loadTermSummary(
+            DashboardTermService termService,
+            List<WidgetEntry> widgets,
+            LocalDate rangeStart,
+            LocalDate rangeEnd
+    ) {
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             List<TermDefinition> terms = termService.loadAllTerms();
-            return termService.buildTermSummary(conn, widgets, terms);
+            return termService.buildTermSummary(conn, widgets, terms, rangeStart, rangeEnd);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to compute term summary", e);
             return null;
@@ -355,6 +416,36 @@ public class DashboardServlet extends HttpServlet {
         session.setAttribute(TERM_SNAPSHOT_SESSION_KEY, summary.copyTermSnapshots());
     }
 
+    private void storeIncreaseSnapshots(HttpSession session, Map<String, List<TermChatSnapshot>> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            session.removeAttribute(TERM_INCREASE_SNAPSHOT_SESSION_KEY);
+            return;
+        }
+
+        Map<String, List<TermChatSnapshot>> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, List<TermChatSnapshot>> e : snapshots.entrySet()) {
+            copy.put(e.getKey(), e.getValue() == null ? List.of() : new ArrayList<>(e.getValue()));
+        }
+        session.setAttribute(TERM_INCREASE_SNAPSHOT_SESSION_KEY, copy);
+    }
+
+    private Map<String, List<TermChatSnapshot>> copySnapshots(TermSummary summary) {
+        Map<String, List<TermChatSnapshot>> out = new LinkedHashMap<>();
+        if (summary == null || summary.getTermSnapshots() == null) {
+            return out;
+        }
+
+        for (Map.Entry<String, List<TermChatSnapshot>> e : summary.getTermSnapshots().entrySet()) {
+            String term = e.getKey();
+            if (term == null || term.isBlank()) {
+                continue;
+            }
+            List<TermChatSnapshot> snaps = e.getValue() == null ? List.of() : e.getValue();
+            out.put(term, new ArrayList<>(snaps));
+        }
+        return out;
+    }
+
     private String buildWidgetPieChartData(List<WidgetStat> stats) {
         jakarta.json.JsonArrayBuilder arr = jakarta.json.Json.createArrayBuilder();
         if (stats != null) {
@@ -384,6 +475,48 @@ public class DashboardServlet extends HttpServlet {
 
         String text = String.format("%+d (%.1f%%) vs yesterday", p.getDelta(), p.getPctDelta());
         return "<span class=\"progression " + cls + "\">" + DashboardTemplateRenderer.escapeHtml(text) + "</span>";
+    }
+
+    private Map<String, Integer> buildTermTotalMap(TermSummary summary) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (summary == null || summary.getTermCounts() == null) {
+            return out;
+        }
+        for (Map.Entry<String, Integer> e : summary.getTermCounts().entrySet()) {
+            if (e.getKey() == null || e.getKey().isBlank()) {
+                continue;
+            }
+            out.put(e.getKey(), Math.max(0, e.getValue() == null ? 0 : e.getValue()));
+        }
+        return out;
+    }
+
+    private String buildTermIncreaseMapJson(Map<String, Integer> increaseMap) {
+        JsonObjectBuilder obj = Json.createObjectBuilder();
+        if (increaseMap != null) {
+            for (Map.Entry<String, Integer> e : increaseMap.entrySet()) {
+                String k = e.getKey();
+                int v = e.getValue() == null ? 0 : Math.max(0, e.getValue());
+                if (k != null) {
+                    obj.add(k, v);
+                }
+            }
+        }
+        return obj.build().toString();
+    }
+
+    private String buildTermTotalMapJson(Map<String, Integer> totalMap) {
+        JsonObjectBuilder obj = Json.createObjectBuilder();
+        if (totalMap != null) {
+            for (Map.Entry<String, Integer> e : totalMap.entrySet()) {
+                String k = e.getKey();
+                int v = e.getValue() == null ? 0 : Math.max(0, e.getValue());
+                if (k != null) {
+                    obj.add(k, v);
+                }
+            }
+        }
+        return obj.build().toString();
     }
 
     private <T> T safeJoin(CompletableFuture<T> future, T fallback, String label) {
