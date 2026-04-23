@@ -112,6 +112,8 @@ public class DashboardServlet extends HttpServlet {
                 ? "<p><a href=\"" + req.getContextPath() + "/admin\">Go to Admin Configuration</a></p>"
                 : "";
 
+        String infoMessageHtml = buildInfoMessageHtml(req.getParameter("msg"));
+
         List<WidgetEntry> widgets = loadWidgets();
 
         LocalDate rangeEnd = parseLocalDate(req.getParameter("rangeEnd"))
@@ -131,7 +133,6 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate prevRangeEnd = rangeStartFinal.minusDays(1);
         final LocalDate prevRangeStart = prevRangeEnd.minusDays(windowDays - 1);
 
-        // Daily anchor date for "increase mode" (daily reset counter).
         final LocalDate dayToday = rangeEndFinal;
 
         DashboardMetricsService metricsService = new DashboardMetricsService(dsHolder, termsStore, TOP_TOPIC_LIMIT);
@@ -165,25 +166,21 @@ public class DashboardServlet extends HttpServlet {
                 DASHBOARD_EXECUTOR
         );
 
-        // Current selected range summary (chart display values).
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
                 DASHBOARD_EXECUTOR
         );
 
-        // Previous selected range summary (kept for compatibility/other views).
         CompletableFuture<TermSummary> prevTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, prevRangeStart, prevRangeEnd),
                 DASHBOARD_EXECUTOR
         );
 
-        // Daily summary for increase-mode legend values (+N = today's count by term).
         CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
                 DASHBOARD_EXECUTOR
         );
 
-        // Async all-time summary for Show Total values and drilldown source.
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
@@ -237,24 +234,18 @@ public class DashboardServlet extends HttpServlet {
 
         String termChartJson = termService.toChartJson(termSummary);
 
-        // IMPORTANT FIX:
-        // Default term drilldown (Show Total mode) uses TERM_SNAPSHOT_SESSION_KEY.
-        // Must store all-time snapshots here so total-mode drilldown is full history.
         if (allTimeTermSummary != null) {
             storeTermSnapshots(session, allTimeTermSummary);
         } else {
             session.removeAttribute(TERM_SNAPSHOT_SESSION_KEY);
         }
 
-        // Increase mode: +N is today's count per term (daily reset, no yesterday comparison).
         Map<String, Integer> increaseMap = buildTermTotalMap(todayTermSummary);
         String termIncreaseMapJson = buildTermIncreaseMapJson(increaseMap);
 
-        // Show-all mode totals: all-time distribution across DB history.
         Map<String, Integer> totalMap = buildTermTotalMap(allTimeTermSummary);
         String termTotalMapJson = buildTermTotalMapJson(totalMap);
 
-        // Increase-only drilldown should show today's entries for each term.
         Map<String, List<TermChatSnapshot>> increaseOnlySnapshots = copySnapshots(todayTermSummary);
         storeIncreaseSnapshots(session, increaseOnlySnapshots);
 
@@ -294,6 +285,7 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("contextPath", req.getContextPath()),
                 Map.entry("role", DashboardTemplateRenderer.escapeHtml(role)),
                 Map.entry("adminLink", adminLink),
+                Map.entry("dashboardInfoMessage", infoMessageHtml),
                 Map.entry("totalChats", DashboardTemplateRenderer.escapeHtml(String.valueOf(totalChats))),
                 Map.entry("todayChats", DashboardTemplateRenderer.escapeHtml(String.valueOf(todayChats))),
                 Map.entry("yesterdayChats", DashboardTemplateRenderer.escapeHtml(String.valueOf(yesterdayChats))),
@@ -312,7 +304,6 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("widgetStatsRows", widgetStatsRows),
                 Map.entry("widgetPieChartData", DashboardTemplateRenderer.escapeForJs(buildWidgetPieChartData(widgetStats))),
                 Map.entry("termChartData", termChartJson),
-                // Legend payload
                 Map.entry("termIncreaseMapJson", DashboardTemplateRenderer.escapeForJs(termIncreaseMapJson)),
                 Map.entry("termTotalMapJson", DashboardTemplateRenderer.escapeForJs(termTotalMapJson)),
                 Map.entry("termLegendDefaultMode", "increase"),
@@ -339,6 +330,14 @@ public class DashboardServlet extends HttpServlet {
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
+    }
+
+    private String buildInfoMessageHtml(String msg) {
+        String m = msg == null ? "" : msg.trim();
+        if ("noIncreaseForTerm".equalsIgnoreCase(m)) {
+            return "<div class=\"dashboard-info-banner\" role=\"status\">No increased chats found for that term today.</div>";
+        }
+        return "";
     }
 
     private List<WidgetEntry> loadWidgets() {

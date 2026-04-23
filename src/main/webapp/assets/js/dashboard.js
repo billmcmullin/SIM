@@ -386,7 +386,12 @@
 
     function openTermReview(term) {
         if (!term) return;
-        window.location.href = buildTermReviewUrl(contextPath, term, false);
+        const increaseOnly = legendMode === 'increase';
+        if (increaseOnly) {
+            const inc = Number(termIncreaseMap[term] || 0);
+            if (!(Number.isFinite(inc) && inc > 0)) return;
+        }
+        window.location.href = buildTermReviewUrl(contextPath, term, increaseOnly);
     }
 
     function getTermValueForMode(term, fallbackCount, mode) {
@@ -520,6 +525,7 @@
         const rangeCount = typeof slice.count === 'number' ? slice.count : 0;
         const inc = Number(termIncreaseMap[term] || 0);
         const total = Number(termTotalMap[term] || rangeCount || 0);
+        const hasIncrease = Number.isFinite(inc) && inc > 0;
 
         const chip = document.createElement('div');
         chip.className = 'legend-chip';
@@ -530,15 +536,18 @@
         const nameLink = document.createElement('a');
         nameLink.className = 'legend-chip-name-link';
         nameLink.dataset.term = term;
+        nameLink.title = label;
+        nameLink.textContent = label;
 
         if (legendMode === 'total') {
             nameLink.href = buildTermReviewUrl(contextPath, term, false);
-            nameLink.title = label;
-            nameLink.textContent = label;
-        } else {
+        } else if (hasIncrease) {
             nameLink.href = buildTermReviewUrl(contextPath, term, true);
-            nameLink.title = label;
-            nameLink.textContent = label;
+        } else {
+            nameLink.removeAttribute('href');
+            nameLink.setAttribute('aria-disabled', 'true');
+            nameLink.classList.add('is-disabled');
+            nameLink.title = `${label} (no increases today)`;
         }
 
         chip.appendChild(nameLink);
@@ -547,7 +556,7 @@
         valueWrap.className = 'legend-chip-value-wrap';
 
         if (legendMode === 'increase') {
-            if (Number.isFinite(inc) && inc > 0) {
+            if (hasIncrease) {
                 const incLink = document.createElement('a');
                 incLink.className = 'legend-chip-increase-link';
                 incLink.href = buildTermReviewUrl(contextPath, term, true);
@@ -611,8 +620,12 @@
             if (!term) return;
 
             const mode = chip.dataset.mode || legendMode;
-            const increaseOnly = mode === 'increase';
+            if (mode === 'increase') {
+                const inc = Number(termIncreaseMap[term] || 0);
+                if (!(Number.isFinite(inc) && inc > 0)) return;
+            }
 
+            const increaseOnly = mode === 'increase';
             window.location.href = buildTermReviewUrl(contextPath, term, increaseOnly);
         });
     }

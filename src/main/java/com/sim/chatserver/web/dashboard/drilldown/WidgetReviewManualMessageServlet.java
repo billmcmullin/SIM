@@ -15,12 +15,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.model.SelectedEntry;
+import com.sim.chatserver.service.PromptTemplateService;
+import com.sim.chatserver.service.ReviewContextBuilderService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.inject.Inject;
@@ -36,27 +40,33 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-@WebServlet(name = "WidgetReviewManualMessageServlet", urlPatterns = {"/dashboard/widgets/drilldown/review/manual-message"})
+@WebServlet(name = "WidgetReviewManualMessageServlet", urlPatterns = {"/dashboard/drilldown/widget-review/manual-message"})
 public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetReviewManualMessageServlet.class.getName());
     private static final String CHAT_API_PATH_TEMPLATE = "/api/v1/workspace/%s/chat";
 
-    // Safer budgeting for ~8k token model
-    private static final int MAX_TOTAL_MESSAGE_CHARS = 5200;
-    private static final int MAX_CONTEXT_CHARS = 3400;
+    private static final int MAX_TOTAL_MESSAGE_CHARS = 12000;
+    private static final int MAX_CONTEXT_CHARS = 8000;
+    private static final int RETRY_CONTEXT_CHARS = 4200;
+    private static final int RETRY_TOTAL_MESSAGE_CHARS = 7000;
     private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = 20000;
     private static final int MAX_PROMPT_INLINE_CHARS = 80;
     private static final int MAX_INDEX_IDS = 1200;
 
-    // NEW: Map-reduce batching to maximize context coverage
     private static final int BATCH_SIZE = 35;
     private static final int MAX_BATCH_SUMMARY_CHARS = 420;
+
+    private static final int MAX_SESSION_ID_CHARS = 200;
+    private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
     @Inject
     AppDataSourceHolder dsHolder;
 
     private transient HttpClient httpClient;
+
+    private final PromptTemplateService promptTemplateService = new PromptTemplateService();
+    private final ReviewContextBuilderService reviewContextBuilderService = new ReviewContextBuilderService();
 
     @Override
     public void init() throws ServletException {
@@ -66,6 +76,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        final String requestId = UUID.randomUUID().toString();
+        final long startMs = System.currentTimeMillis();
+
         if (!isLoggedIn(req, resp)) {
             return;
         }
@@ -87,15 +100,27 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
         userMessage = stripClientInjectedContext(userMessage);
 
+        String mode = payload.getString("mode", "chat").trim().toLowerCase(Locale.ROOT);
+        if (!ALLOWED_MODES.contains(mode)) {
+            mode = "chat";
+        }
+
+        String sessionId = payload.getString("sessionId", "").trim();
+        if (sessionId.length() > MAX_SESSION_ID_CHARS) {
+            sessionId = sessionId.substring(0, MAX_SESSION_ID_CHARS);
+        }
+
+        boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean("reset", false));
+
         List<SelectedEntry> selectedEntries = parseSelectedEntries(payload);
-        boolean requestReset = payload.getBoolean("requestReset", true);
+        JsonArray normalizedAttachments = normalizeAttachments(payload);
 
         EncryptedDbConfigStore.setAppDataSourceHolder(dsHolder);
         ServerConfig config;
         try {
             config = EncryptedDbConfigStore.load();
         } catch (Exception ex) {
-            log.log(Level.SEVERE, "Unable to load server configuration", ex);
+            log.log(Level.SEVERE, "[manual-message][" + requestId + "] Unable to load server configuration", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration not available.");
             return;
         }
@@ -105,13 +130,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return;
         }
 
-        String slug = buildSlug(config.getWorkspaceName());
-        if (slug == null || slug.isBlank()) {
+        String workspaceSlug = buildSlug(config.getWorkspaceName());
+        if (workspaceSlug == null || workspaceSlug.isBlank()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace slug not configured.");
             return;
         }
 
-        String baseUrl = buildBaseUrl(config);
+        String baseUrl = sanitizeBaseUrl(buildBaseUrl(config));
         if (baseUrl == null || baseUrl.isBlank()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Server connection information is incomplete.");
             return;
@@ -123,33 +148,46 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return;
         }
 
-        String encodedSlug = URLEncoder.encode(slug, StandardCharsets.UTF_8);
-        String targetUrl = baseUrl + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
-        String sessionId = req.getSession().getId();
+        String encodedSlug = URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8);
+        String targetUrl = stripTrailingSlash(baseUrl) + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
 
-        String compressedContext = buildAllPromptsCompressedContext(userMessage, selectedEntries, MAX_CONTEXT_CHARS);
-        String outboundMessage = buildOutboundMessage(userMessage, compressedContext, MAX_TOTAL_MESSAGE_CHARS);
+        String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
+        String evidenceContext = reviewContextBuilderService.buildContext(controlledPrompt, selectedEntries, MAX_CONTEXT_CHARS);
+        String outboundMessage = buildOutboundMessage(controlledPrompt, evidenceContext, MAX_TOTAL_MESSAGE_CHARS);
 
-        HttpResponse<String> remoteResponse = sendToWorkspace(targetUrl, apiKey, outboundMessage, sessionId, requestReset);
+        HttpResponse<String> remoteResponse = sendToWorkspace(
+                targetUrl, apiKey, outboundMessage, mode, sessionId, requestReset, normalizedAttachments, requestId
+        );
 
         if (isLikelyContextTooLarge(remoteResponse)) {
-            // Retry with tighter budget and forced reset
-            String retryContext = buildAllPromptsCompressedContext(userMessage, selectedEntries, 2200);
-            String retryMessage = buildOutboundMessage(userMessage, retryContext, 3200);
-            remoteResponse = sendToWorkspace(targetUrl, apiKey, retryMessage, sessionId, true);
+            String retryEvidenceContext = reviewContextBuilderService.buildContext(controlledPrompt, selectedEntries, RETRY_CONTEXT_CHARS);
+            String retryMessage = buildOutboundMessage(controlledPrompt, retryEvidenceContext, RETRY_TOTAL_MESSAGE_CHARS);
+            remoteResponse = sendToWorkspace(
+                    targetUrl, apiKey, retryMessage, mode, sessionId, true, normalizedAttachments, requestId
+            );
         }
 
         mirrorUpstreamResponse(resp, remoteResponse);
+
+        log.info("[manual-message][" + requestId + "] completed"
+                + " status=" + remoteResponse.statusCode()
+                + " latencyMs=" + (System.currentTimeMillis() - startMs)
+                + " mode=" + mode
+                + " selected=" + selectedEntries.size());
     }
 
-    private HttpResponse<String> sendToWorkspace(String targetUrl, String apiKey, String outboundMessage, String sessionId, boolean reset)
-            throws IOException, ServletException {
-        JsonObject requestBody = Json.createObjectBuilder()
-                .add("message", outboundMessage)
-                .add("mode", "chat")
-                .add("sessionId", sessionId == null ? "" : sessionId)
-                .add("reset", reset)
-                .build();
+    private HttpResponse<String> sendToWorkspace(
+            String targetUrl,
+            String apiKey,
+            String outboundMessage,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments,
+            String requestId
+    ) throws IOException, ServletException {
+
+        JsonObject requestBody = buildStrictAnythingPayload(outboundMessage, mode, sessionId, reset, attachments);
 
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(targetUrl))
@@ -160,12 +198,83 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 .build();
 
         try {
-            return httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            if (response.statusCode() >= 400 && response.statusCode() < 500) {
+                log.warning("[manual-message][" + requestId + "] upstream 4xx"
+                        + " status=" + response.statusCode()
+                        + " body=" + truncateForLog(response.body(), 4000));
+            }
+
+            return response;
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            log.log(Level.SEVERE, "Manual message request interrupted", ex);
+            log.log(Level.SEVERE, "[manual-message][" + requestId + "] request interrupted", ex);
             throw new ServletException("Request interrupted.", ex);
+        } catch (Exception ex) {
+            log.log(Level.SEVERE, "[manual-message][" + requestId + "] upstream call failed", ex);
+            throw ex;
         }
+    }
+
+    private JsonObject buildStrictAnythingPayload(
+            String message,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments
+    ) {
+        jakarta.json.JsonObjectBuilder b = Json.createObjectBuilder()
+                .add("message", message == null ? "" : message)
+                .add("mode", mode == null || mode.isBlank() ? "chat" : mode)
+                .add("reset", reset);
+
+        if (sessionId != null && !sessionId.isBlank()) {
+            b.add("sessionId", sessionId);
+        }
+
+        if (attachments != null && !attachments.isEmpty()) {
+            b.add("attachments", attachments);
+        }
+
+        return b.build();
+    }
+
+    private JsonArray normalizeAttachments(JsonObject payload) {
+        if (payload == null || !payload.containsKey("attachments")) {
+            return Json.createArrayBuilder().build();
+        }
+
+        JsonValue raw = payload.get("attachments");
+        if (raw == null || raw.getValueType() != JsonValue.ValueType.ARRAY) {
+            return Json.createArrayBuilder().build();
+        }
+
+        JsonArray input = payload.getJsonArray("attachments");
+        var out = Json.createArrayBuilder();
+
+        for (JsonValue v : input) {
+            if (v == null || v.getValueType() != JsonValue.ValueType.OBJECT) {
+                continue;
+            }
+            JsonObject o = v.asJsonObject();
+
+            String name = o.getString("name", "").trim();
+            String mime = o.getString("mime", "").trim();
+            String contentString = o.getString("contentString", "").trim();
+
+            if (name.isBlank() || mime.isBlank() || contentString.isBlank()) {
+                continue;
+            }
+
+            out.add(Json.createObjectBuilder()
+                    .add("name", name)
+                    .add("mime", mime)
+                    .add("contentString", contentString)
+                    .build());
+        }
+
+        return out.build();
     }
 
     private void mirrorUpstreamResponse(HttpServletResponse resp, HttpResponse<String> remoteResponse) throws IOException {
@@ -180,8 +289,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         } else {
             resp.setContentType("application/json; charset=UTF-8");
         }
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         byte[] bytes = remoteResponse.body() == null ? new byte[0] : remoteResponse.body().getBytes(StandardCharsets.UTF_8);
         resp.getOutputStream().write(bytes);
         resp.getOutputStream().flush();
@@ -191,18 +300,17 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (remoteResponse == null) {
             return false;
         }
+
         String body = remoteResponse.body() == null ? "" : remoteResponse.body().toLowerCase(Locale.ROOT);
         int status = remoteResponse.statusCode();
+
         return status >= 400 && (body.contains("maximum context length")
                 || body.contains("too many tokens")
-                || body.contains("failed_to_embed"));
+                || body.contains("failed_to_embed")
+                || body.contains("payload too large")
+                || body.contains("too large"));
     }
 
-    /**
-     * Best-effort max context: 1) ALL prompts represented via hash index
-     * (coverage) 2) Map-reduce batch summaries (coverage + thematic
-     * compression) 3) Relevance-ordered inline previews (high signal)
-     */
     private String buildAllPromptsCompressedContext(String userMessage, List<SelectedEntry> entries, int maxChars) {
         if (entries == null || entries.isEmpty()) {
             return "";
@@ -217,18 +325,15 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         sb.append("- total_selected: ").append(entries.size()).append('\n');
         sb.append("- coverage: all prompts represented via hash index + batch summaries\n");
 
-        // Section A: prompt hash index (all coverage)
         appendWithinLimit(sb, "\nPrompt hash index (all selected):\n", maxChars);
         appendWithinLimit(sb, buildPromptHashIndex(entries), maxChars);
 
-        // Section B: batch summaries (map-reduce style)
         if (sb.length() < maxChars) {
             appendWithinLimit(sb, "\nBatch summaries (compressed):\n", maxChars);
             String batchSummary = buildBatchSummaries(ranked, terms, maxChars - sb.length());
             appendWithinLimit(sb, batchSummary, maxChars);
         }
 
-        // Section C: inline previews ordered by relevance
         if (sb.length() < maxChars) {
             appendWithinLimit(sb, "\nPrompt inline previews:\n", maxChars);
             int omittedInline = 0;
@@ -280,10 +385,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         for (int i = 0; i < batch.size(); i++) {
             SelectedEntry e = batch.get(i);
-            String p = e.prompt == null ? "" : e.prompt;
+            String p = e.getPrompt() == null ? "" : e.getPrompt();
             promptChars += p.length();
 
-            String hay = (p + " " + (e.response == null ? "" : e.response)).toLowerCase(Locale.ROOT);
+            String hay = (p + " " + (e.getResponse() == null ? "" : e.getResponse())).toLowerCase(Locale.ROOT);
             for (String t : terms) {
                 if (hay.contains(t)) {
                     matched.add(t);
@@ -291,7 +396,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             if (i < 4) {
-                sampleIds.add(defaultIfBlank(e.chatId, "(unknown)"));
+                sampleIds.add(defaultIfBlank(e.getChatId(), "(unknown)"));
             }
         }
 
@@ -310,11 +415,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (sb.length() >= maxChars) {
             return false;
         }
+
         int room = maxChars - sb.length();
         if (text.length() <= room) {
             sb.append(text);
             return true;
         }
+
         sb.append(text, 0, room);
         return false;
     }
@@ -327,8 +434,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 out.append("... (index truncated at ").append(MAX_INDEX_IDS).append(")\n");
                 break;
             }
-            String id = defaultIfBlank(e.chatId, "(unknown)");
-            String prompt = e.prompt == null ? "" : e.prompt;
+            String id = defaultIfBlank(e.getChatId(), "(unknown)");
+            String prompt = e.getPrompt() == null ? "" : e.getPrompt();
             String hash = sha1Hex(prompt);
             out.append(id).append("|").append(hash).append('\n');
             count++;
@@ -337,9 +444,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String formatPromptInline(SelectedEntry e) {
-        String id = defaultIfBlank(e.chatId, "(unknown)");
-        String p = compressText(e.prompt, MAX_PROMPT_INLINE_CHARS);
-        String t = defaultIfBlank(e.createdAt, "?");
+        String id = defaultIfBlank(e.getChatId(), "(unknown)");
+        String p = compressText(e.getPrompt(), MAX_PROMPT_INLINE_CHARS);
+        String t = defaultIfBlank(e.getCreatedAt(), "?");
         return "- " + id + " | " + t + " | P: " + p;
     }
 
@@ -347,7 +454,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (terms.isEmpty()) {
             return 0;
         }
-        String hay = ((e.prompt == null ? "" : e.prompt) + " " + (e.response == null ? "" : e.response)).toLowerCase(Locale.ROOT);
+
+        String hay = ((e.getPrompt() == null ? "" : e.getPrompt()) + " " + (e.getResponse() == null ? "" : e.getResponse())).toLowerCase(Locale.ROOT);
         int score = 0;
         for (String t : terms) {
             if (hay.contains(t)) {
@@ -361,11 +469,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (text == null || text.isBlank()) {
             return List.of();
         }
+
         Set<String> stop = new HashSet<>(Arrays.asList(
                 "the", "and", "for", "with", "that", "this", "from", "into", "about",
                 "what", "when", "where", "which", "have", "has", "had", "you", "your",
                 "are", "was", "were", "how", "why"
         ));
+
         return Arrays.stream(text.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"))
                 .filter(s -> s.length() >= 3 && !stop.contains(s))
                 .distinct()
@@ -391,6 +501,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (userMessage == null || userMessage.isBlank()) {
             return "";
         }
+
         String marker = "\n\nSelected chats context:\n";
         int idx = userMessage.indexOf(marker);
         return idx >= 0 ? userMessage.substring(0, idx).trim() : userMessage.trim();
@@ -436,7 +547,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             count++;
         }
 
-        entries.sort(Comparator.comparing((SelectedEntry e) -> e.createdAt == null ? "" : e.createdAt).reversed());
+        entries.sort(Comparator.comparing((SelectedEntry e) -> e.getCreatedAt() == null ? "" : e.getCreatedAt()).reversed());
         return entries;
     }
 
@@ -444,6 +555,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (text == null || text.isBlank()) {
             return "(empty)";
         }
+
         String normalized = text.replaceAll("\\s+", " ").trim();
         if (normalized.length() <= maxChars) {
             return normalized;
@@ -467,6 +579,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (roomForSuffix <= 0) {
             return trimTo(base, maxTotalChars);
         }
+
         return base + trimTo(suffix, roomForSuffix);
     }
 
@@ -474,10 +587,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return "";
         }
+
         JsonValue v = obj.get(key);
         if (v == null) {
             return "";
         }
+
         if (v.getValueType() == JsonValue.ValueType.STRING) {
             return ((JsonString) v).getString();
         }
@@ -485,10 +600,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String trimTo(String value, int maxChars) {
-        if (value == null) {
-            return "";
-        }
-        if (maxChars <= 0) {
+        if (value == null || maxChars <= 0) {
             return "";
         }
         if (value.length() <= maxChars) {
@@ -526,6 +638,39 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
 
         return stripTrailingSlash(builder.toString());
+    }
+
+    private String sanitizeBaseUrl(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+
+        String s = raw.trim();
+
+        s = s.replaceFirst("^(https?://)+(https?://)", "$2");
+        s = s.replaceFirst("^(https?://)(https?://)+", "$1");
+
+        s = s.replace("https://https://", "https://")
+                .replace("http://http://", "http://")
+                .replace("http://https://", "https://")
+                .replace("https://http://", "http://");
+
+        try {
+            URI u = new URI(s);
+            String scheme = u.getScheme();
+            String host = u.getHost();
+            int port = u.getPort();
+
+            if (scheme == null || host == null || host.isBlank()) {
+                return "";
+            }
+
+            return port > 0
+                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
+                    : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private String buildSlug(String workspaceName) {
@@ -572,20 +717,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 .replace("\r", " ");
     }
 
-    private static final class SelectedEntry {
-
-        private final String chatId;
-        private final String prompt;
-        private final String response;
-        private final String createdAt;
-        private final String sessionId;
-
-        private SelectedEntry(String chatId, String prompt, String response, String createdAt, String sessionId) {
-            this.chatId = chatId == null ? "" : chatId;
-            this.prompt = prompt == null ? "" : prompt;
-            this.response = response == null ? "" : response;
-            this.createdAt = createdAt == null ? "" : createdAt;
-            this.sessionId = sessionId == null ? "" : sessionId;
+    private String truncateForLog(String s, int max) {
+        if (s == null) {
+            return "";
         }
+        if (s.length() <= max) {
+            return s;
+        }
+        return s.substring(0, max) + "...(truncated)";
     }
 }

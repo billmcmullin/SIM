@@ -1,7 +1,9 @@
 package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,6 +29,8 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetReviewStartServlet.class.getName());
     private static final String SESSION_KEY = "widgetReviewSelections";
+    private static final int MAX_SELECTIONS_PER_SESSION = 200;
+    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
     public static final class Selection {
 
@@ -36,7 +40,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final List<String> chatIds;
         public final SearchTerms searchTerms;
         public final List<TermChatSnapshot> snapshots;
-        public final String date; // NEW: optional YYYY-MM-DD scope
+        public final String date; // optional YYYY-MM-DD scope
 
         private Selection(String widgetId,
                 String displayName,
@@ -55,7 +59,15 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
 
         static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
-            return new Selection(widgetId, widgetId, null, new ArrayList<>(chatIds), null, searchTerms, normalizeDate(date));
+            return new Selection(
+                    safe(widgetId),
+                    safe(widgetId),
+                    null,
+                    new ArrayList<>(chatIds),
+                    null,
+                    searchTerms == null ? new SearchTerms("", "", "") : searchTerms,
+                    normalizeDate(date)
+            );
         }
 
         // backward-compatible helper
@@ -66,11 +78,20 @@ public class WidgetReviewStartServlet extends HttpServlet {
         static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
             List<String> chatIds = snapshots.stream()
                     .map(TermChatSnapshot::getChatId)
+                    .filter(v -> v != null && !v.isBlank())
                     .collect(Collectors.toCollection(LinkedHashSet::new))
                     .stream()
                     .toList();
-            return new Selection(displayName, displayName, backUrl, chatIds, new ArrayList<>(snapshots),
-                    new SearchTerms("", "", ""), null);
+
+            return new Selection(
+                    safe(displayName),
+                    safe(displayName),
+                    safe(backUrl),
+                    chatIds,
+                    new ArrayList<>(snapshots),
+                    new SearchTerms("", "", ""),
+                    null
+            );
         }
 
         public boolean hasSnapshots() {
@@ -93,9 +114,9 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final String response;
 
         SearchTerms(String global, String prompt, String response) {
-            this.global = global;
-            this.prompt = prompt;
-            this.response = response;
+            this.global = safe(global);
+            this.prompt = safe(prompt);
+            this.response = safe(response);
         }
     }
 
@@ -103,8 +124,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"message\":\"Authentication required.\"}");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.", null);
             return;
         }
 
@@ -112,16 +132,14 @@ public class WidgetReviewStartServlet extends HttpServlet {
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"message\":\"Invalid payload.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
 
-        String widgetId = payload.getString("widgetId", "").trim();
+        String widgetId = safe(payload.getString("widgetId", ""));
         var chatArray = payload.getJsonArray("selectedChatIds");
         if (widgetId.isBlank() || chatArray == null || chatArray.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"message\":\"widgetId and selections required.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId and selections required.", null);
             return;
         }
 
@@ -134,8 +152,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         });
 
         if (chatSet.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"message\":\"At least one chat must be selected.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "At least one chat must be selected.", null);
             return;
         }
 
@@ -143,8 +160,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
         String global = search == null ? "" : search.getString("global", "");
         String prompt = search == null ? "" : search.getString("prompt", "");
         String responseText = search == null ? "" : search.getString("response", "");
-
-        // NEW: optional date passed from widget table page
         String date = payload.getString("date", "");
 
         Selection selection = Selection.fromWidget(
@@ -156,8 +171,10 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         String selectionId = storeSelection(session, selection);
 
-        resp.setContentType("application/json");
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
         resp.getWriter().write(Json.createObjectBuilder()
+                .add("status", "ok")
                 .add("selectionId", selectionId)
                 .build()
                 .toString());
@@ -176,6 +193,17 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     private static String storeSelection(HttpSession session, Selection selection) {
         Map<String, Selection> selections = getSelectionMap(session);
+
+        // prevent unbounded session growth
+        while (selections.size() >= MAX_SELECTIONS_PER_SESSION) {
+            Iterator<String> it = selections.keySet().iterator();
+            if (!it.hasNext()) {
+                break;
+            }
+            it.next();
+            it.remove();
+        }
+
         String selectionId = UUID.randomUUID().toString();
         selections.put(selectionId, selection);
         return selectionId;
@@ -194,14 +222,14 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     @SuppressWarnings("unchecked")
     public static Selection fetchSelection(HttpSession session, String selectionId) {
-        if (session == null || selectionId == null) {
+        if (session == null || selectionId == null || selectionId.isBlank()) {
             return null;
         }
         Map<String, Selection> selections = (Map<String, Selection>) session.getAttribute(SESSION_KEY);
         if (selections == null) {
             return null;
         }
-        return selections.get(selectionId);
+        return selections.get(selectionId.trim());
     }
 
     public static String createSelectionFromGlobalChatIds(HttpSession session,
@@ -214,11 +242,12 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         LinkedHashSet<String> dedup = new LinkedHashSet<>();
         for (String id : chatIds) {
-            if (id != null) {
-                String t = id.trim();
-                if (!t.isEmpty()) {
-                    dedup.add(t);
-                }
+            if (id == null) {
+                continue;
+            }
+            String t = id.trim();
+            if (!t.isEmpty()) {
+                dedup.add(t);
             }
         }
         if (dedup.isEmpty()) {
@@ -230,7 +259,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         Selection selection = new Selection(
                 safeLabel, // widgetId placeholder for global selections
                 safeLabel, // displayName
-                backUrl, // backUrl
+                safe(backUrl), // backUrl
                 new ArrayList<>(dedup), // chatIds
                 null, // snapshots (DB-backed selection)
                 new SearchTerms("", "", ""), // search terms
@@ -246,5 +275,23 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
         String t = raw.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    private static String safe(String v) {
+        return v == null ? "" : v.trim();
+    }
+
+    private void writeError(HttpServletResponse resp, int status, String message, String selectionId) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
+
+        var b = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", safe(message));
+        if (selectionId != null && !selectionId.isBlank()) {
+            b.add("selectionId", selectionId.trim());
+        }
+        resp.getWriter().write(b.build().toString());
     }
 }

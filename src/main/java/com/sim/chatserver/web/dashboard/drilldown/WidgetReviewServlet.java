@@ -5,7 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
@@ -32,41 +34,59 @@ public class WidgetReviewServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = req.getParameter("selectionId");
-        if (selectionId == null || selectionId.isBlank()) {
+        String selectionId = trimToNull(req.getParameter("selectionId"));
+        if (selectionId == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
             return;
         }
 
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
+            log.log(Level.INFO, "Selection not found for selectionId={0}", selectionId);
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
             return;
         }
 
-        String subjectLabel = selection.displayName == null || selection.displayName.isBlank()
-                ? selection.widgetId
-                : selection.displayName;
+        String widgetId = trimToNull(selection.widgetId);
+        String displayName = trimToNull(selection.displayName);
+        String subjectLabel = displayName != null ? displayName : (widgetId != null ? widgetId : "Selected Chats");
         String subjectType = selection.hasSnapshots() ? "Term" : "Widget";
-        String backLink = selection.getBackUrl();
-        if (backLink == null || backLink.isBlank()) {
-            backLink = req.getContextPath() + "/dashboard/widgets/view?widgetId=" + selection.widgetId;
+
+        String backLink = trimToNull(selection.getBackUrl());
+        if (backLink == null) {
+            if (widgetId != null) {
+                backLink = req.getContextPath() + "/dashboard/widgets/view?widgetId=" + urlEncode(widgetId);
+            } else {
+                backLink = req.getContextPath() + "/dashboard";
+            }
         }
 
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+
         String userName = String.valueOf(session.getAttribute("user"));
-        String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
+        String role = session.getAttribute("role") == null ? "USER" : String.valueOf(session.getAttribute("role"));
+        String contextPath = req.getContextPath();
+
+        // HTML placeholder replacements
         String rendered = template
                 .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role))
-                .replace("${contextPath}", req.getContextPath())
+                .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${widgetName}", escapeHtml(subjectLabel))
-                .replace("${widgetId}", escapeHtml(selection.widgetId))
+                .replace("${widgetId}", escapeHtml(widgetId == null ? "" : widgetId))
                 .replace("${selectionId}", escapeHtml(selectionId))
                 .replace("${subjectType}", escapeHtml(subjectType))
                 .replace("${subjectLabel}", escapeHtml(subjectLabel))
                 .replace("${backLink}", escapeHtml(backLink));
 
+        // JS string literal safety (for placeholders used in inline script config)
+        rendered = rendered
+                .replace("'${contextPath}'", "'" + escapeJs(contextPath) + "'")
+                .replace("'${selectionId}'", "'" + escapeJs(selectionId) + "'")
+                .replace("'${subjectLabel}'", "'" + escapeJs(subjectLabel) + "'")
+                .replace("'${subjectType}'", "'" + escapeJs(subjectType) + "'");
+
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
@@ -98,5 +118,57 @@ public class WidgetReviewServlet extends HttpServlet {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    private String escapeJs(String input) {
+        if (input == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(input.length() + 16);
+        for (char c : input.toCharArray()) {
+            switch (c) {
+                case '\\' ->
+                    sb.append("\\\\");
+                case '\'' ->
+                    sb.append("\\'");
+                case '"' ->
+                    sb.append("\\\"");
+                case '\n' ->
+                    sb.append("\\n");
+                case '\r' ->
+                    sb.append("\\r");
+                case '\t' ->
+                    sb.append("\\t");
+                case '\b' ->
+                    sb.append("\\b");
+                case '\f' ->
+                    sb.append("\\f");
+                case '<' ->
+                    sb.append("\\x3C");
+                case '>' ->
+                    sb.append("\\x3E");
+                case '&' ->
+                    sb.append("\\x26");
+                default ->
+                    sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private String urlEncode(String value) {
+        try {
+            return URLEncoder.encode(value, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return value;
+        }
     }
 }

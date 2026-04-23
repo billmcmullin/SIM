@@ -5,6 +5,11 @@
     <meta charset="utf-8">
     <title>Review Selected Chats</title>
     <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+
+    <!-- Markdown rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 </head>
 
 <body>
@@ -35,8 +40,7 @@
         <section class="section">
             <h1>Review Selected Chats</h1>
             <p class="helper-note">Currently reviewing ${subjectType}: <strong>${subjectLabel}</strong></p>
-            <p class="helper-note">Showing all columns except the response. Use the search or sort controls to
-                explore
+            <p class="helper-note">Showing all columns except the response. Use the search or sort controls to explore
                 the selection.</p>
         </section>
 
@@ -64,7 +68,7 @@
                     <div class="button-row">
                         <button type="button" id="selectAllEntriesBtn">Select all entries</button>
                         <button type="button" id="deselectAllBtn">Deselect all</button>
-                        <button type="button" id="manualMessageToggleBtn">Ask IDA</button>
+                        <button type="button" id="manualMessageToggleBtn">Ask IDA?</button>
 
                         <label for="exportFormat" style="margin-left:12px; align-self:center;">Export:</label>
                         <select id="exportFormat" style="margin-left:6px;">
@@ -77,21 +81,24 @@
                 </div>
             </div>
 
+            <!-- Updated note to match form-encoded backend call -->
             <div class="manual-message-section" id="manualMessageSection" aria-hidden="true" hidden>
                 <div class="form-group">
                     <label for="manualMessageText">Message</label>
                     <textarea id="manualMessageText" placeholder="Type your manual workspace message here"></textarea>
                 </div>
+
                 <div class="manual-message-status" id="manualMessageStatus"></div>
+
                 <div class="manual-message-selection-preview">
-                    <strong>Selected chats context (Markdown)</strong>
-                    <textarea id="manualMessageSelectionPreview" readonly>No response yet.</textarea>
+                    <strong>Selected chats context preview</strong>
+                    <textarea id="manualMessageSelectionPreview" readonly>No entries selected.</textarea>
                 </div>
+
                 <div class="manual-message-response-wrapper form-group">
                     <label>Workspace response</label>
-                    <div class="manual-message-response manual-message-box" id="manualMessageResponse">No response
-                        yet.
-                    </div>
+                    <div class="manual-message-response manual-message-box markdown-body" id="manualMessageResponse">No
+                        response yet.</div>
                 </div>
 
                 <div class="manual-message-buttons">
@@ -103,8 +110,8 @@
 
             <div class="pagination-wrapper">
                 <div class="pagination-controls">
-                    <button id="prevPageBtn">Previous</button>
-                    <button id="nextPageBtn">Next</button>
+                    <button type="button" id="prevPageBtn">Previous</button>
+                    <button type="button" id="nextPageBtn">Next</button>
                     <div class="page-info" id="pageInfo"></div>
                 </div>
             </div>
@@ -137,7 +144,6 @@
                     <pre id="detailPrompt"></pre>
                 </div>
 
-                <!-- Shared language selector -->
                 <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <label for="translateTargetLang" style="margin:0;">Translate To:</label>
                     <select id="translateTargetLang" style="width:auto;">
@@ -149,7 +155,6 @@
                     </select>
                 </div>
 
-                <!-- Prompt translate -->
                 <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <button type="button" id="translatePromptBtn" class="ghost-btn">Detect &amp; Translate
                         Prompt</button>
@@ -162,7 +167,6 @@
                     <pre id="detailResponse"></pre>
                 </div>
 
-                <!-- Response translate -->
                 <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <button type="button" id="translateResponseBtn" class="ghost-btn">Detect &amp; Translate
                         Response</button>
@@ -178,10 +182,14 @@
             contextPath: '${contextPath}',
             selectionId: '${selectionId}',
             subjectLabel: '${subjectLabel}',
-            subjectType: '${subjectType}'
+            subjectType: '${subjectType}',
+            // manual endpoint kept explicit for clarity
+            manualMessageEndpoint: '${contextPath}/dashboard/drilldown/widget-review/manual-message'
         };
     </script>
-    <script src="${contextPath}/assets/js/widget_review.js"></script>
+
+    <!-- IMPORTANT: must be module because widget_review.js uses import/export -->
+    <script type="module" src="${contextPath}/assets/js/widget_review.js"></script>
 </body>
 
 </html>
