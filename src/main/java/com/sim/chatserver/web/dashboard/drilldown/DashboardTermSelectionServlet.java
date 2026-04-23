@@ -44,6 +44,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
+        String normalizedTerm = normalize(rawTerm);
+
         String mode = normalize(req.getParameter("mode"));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
 
@@ -68,13 +70,14 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 return;
             }
 
-            snapshots = increasedSnapshotsByTerm.get(rawTerm);
+            snapshots = findSnapshotsByTerm(increasedSnapshotsByTerm, normalizedTerm);
             if (snapshots == null || snapshots.isEmpty()) {
-                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for the selected term.");
+                log.fine(() -> "No increase snapshots for term='" + rawTerm + "' normalized='" + normalizedTerm + "'");
+                resp.sendRedirect(req.getContextPath() + "/dashboard?msg=noIncreaseForTerm");
                 return;
             }
         } else {
-            snapshots = allSnapshotsByTerm.get(rawTerm);
+            snapshots = findSnapshotsByTerm(allSnapshotsByTerm, normalizedTerm);
             if (snapshots == null || snapshots.isEmpty()) {
                 resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                 return;
@@ -100,7 +103,35 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         resp.sendRedirect(redirectUrl);
     }
 
+    private List<TermChatSnapshot> findSnapshotsByTerm(Map<String, List<TermChatSnapshot>> snapshotsByTerm, String rawTerm) {
+        if (snapshotsByTerm == null || snapshotsByTerm.isEmpty()) {
+            return null;
+        }
+
+        List<TermChatSnapshot> direct = snapshotsByTerm.get(rawTerm);
+        if (direct != null && !direct.isEmpty()) {
+            return direct;
+        }
+
+        String normalizedTarget = normalizeKey(rawTerm);
+        for (Map.Entry<String, List<TermChatSnapshot>> entry : snapshotsByTerm.entrySet()) {
+            String key = entry.getKey();
+            if (normalizeKey(key).equals(normalizedTarget)) {
+                List<TermChatSnapshot> value = entry.getValue();
+                if (value != null && !value.isEmpty()) {
+                    return value;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private String normalize(String s) {
         return s == null ? "" : s.trim();
+    }
+
+    private String normalizeKey(String s) {
+        return normalize(s).toLowerCase();
     }
 }

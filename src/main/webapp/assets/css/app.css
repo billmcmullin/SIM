@@ -692,14 +692,151 @@ hr {
     margin: 16px 0;
 }
 
+/* ----------------------------------
+   Manual Message / Markdown Response
+   (clean, readable, consistent with light UI)
+----------------------------------- */
 .manual-message-box {
     border: 1px solid #d1d5db;
-    border-radius: 4px;
-    background: #fff;
-    padding: 10px;
-    min-height: 120px;
-    white-space: pre-wrap;
-    font-family: monospace;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 14px 16px;
+    min-height: 160px;
+    max-height: 560px;
+    overflow: auto;
+    line-height: 1.55;
+    color: #0f172a;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    white-space: normal;
+    font-family: inherit;
+}
+
+#manualMessageResponse.manual-message-response.manual-message-box.markdown-body {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+}
+
+#manualMessageResponse.markdown-body>*:first-child {
+    margin-top: 0;
+}
+
+#manualMessageResponse.markdown-body>*:last-child {
+    margin-bottom: 0;
+}
+
+#manualMessageResponse.markdown-body h1,
+#manualMessageResponse.markdown-body h2,
+#manualMessageResponse.markdown-body h3,
+#manualMessageResponse.markdown-body h4,
+#manualMessageResponse.markdown-body h5,
+#manualMessageResponse.markdown-body h6 {
+    color: #0f172a !important;
+    margin-top: 1.05em;
+    margin-bottom: 0.55em;
+    line-height: 1.3;
+    font-weight: 700;
+    background: transparent !important;
+}
+
+#manualMessageResponse.markdown-body h3 {
+    color: #1e3a8a !important;
+    border-bottom: 1px solid #dbe3ef;
+    padding-bottom: 4px;
+}
+
+#manualMessageResponse.markdown-body p {
+    color: #1f2937;
+    margin: 0.55em 0;
+}
+
+#manualMessageResponse.markdown-body ul,
+#manualMessageResponse.markdown-body ol {
+    margin: 0.55em 0 0.8em 1.25em;
+    padding-left: 0.35em;
+}
+
+#manualMessageResponse.markdown-body li {
+    margin: 0.2em 0;
+}
+
+#manualMessageResponse.markdown-body strong {
+    color: #0b1220;
+    font-weight: 700;
+}
+
+#manualMessageResponse.markdown-body em {
+    color: #334155;
+}
+
+#manualMessageResponse.markdown-body blockquote {
+    margin: 0.8em 0;
+    padding: 0.5em 0.85em;
+    border-left: 4px solid #93c5fd;
+    background: #eff6ff;
+    color: #1e3a8a;
+    border-radius: 6px;
+}
+
+#manualMessageResponse.markdown-body code {
+    font-family: Menlo, Monaco, "Courier New", monospace;
+    font-size: 0.88em;
+    background: #eef2ff;
+    border: 1px solid #dbeafe;
+    color: #1e3a8a;
+    border-radius: 5px;
+    padding: 0.08em 0.32em;
+}
+
+#manualMessageResponse.markdown-body pre {
+    margin: 0.8em 0;
+    padding: 12px 14px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    overflow: auto;
+    border: 1px solid #1e293b;
+}
+
+#manualMessageResponse.markdown-body pre code {
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 0;
+}
+
+#manualMessageResponse.markdown-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.9em 0;
+    display: block;
+    overflow-x: auto;
+}
+
+#manualMessageResponse.markdown-body th,
+#manualMessageResponse.markdown-body td {
+    border: 1px solid #dbe3ef;
+    padding: 8px 10px;
+    vertical-align: top;
+    text-align: left;
+    color: #1f2937;
+}
+
+#manualMessageResponse.markdown-body th {
+    background: #e2e8f0;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+#manualMessageResponse.markdown-body a {
+    color: #1d4ed8;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#manualMessageResponse.markdown-body a:hover,
+#manualMessageResponse.markdown-body a:focus {
+    color: #1e40af;
 }
 
 #manualMessageText,
@@ -1125,26 +1262,6 @@ hr {
     text-decoration: underline;
 }
 
-@media (max-width: 900px) {
-    .customer-profile-table th {
-        width: 160px;
-    }
-
-    .customer-profile-table th,
-    .customer-profile-table td,
-    .customer-profile-linked-table th,
-    .customer-profile-linked-table td {
-        padding: 8px;
-        font-size: 0.92rem;
-    }
-}
-
-@media (max-width: 720px) {
-    .customer-profile-table th {
-        width: 140px;
-    }
-}
-
 /* ----------------------------------
    Responsive
 ----------------------------------- */
@@ -1247,10 +1364,22 @@ hr {
         min-width: 100%;
         max-width: 100%;
     }
+
+    .customer-profile-table th,
+    .customer-profile-table td,
+    .customer-profile-linked-table th,
+    .customer-profile-linked-table td {
+        padding: 8px;
+        font-size: 0.92rem;
+    }
+
+    .customer-profile-table th {
+        width: 160px;
+    }
 }
 
 @media (max-width: 720px) {
-    .cp-table th {
+    .customer-profile-table th {
         width: 140px;
     }
 
@@ -1275,5 +1404,29 @@ hr {
         width: 13px;
         height: 13px;
         flex-basis: 13px;
+    }
+
+    .dashboard-info-banner {
+        margin: 10px 0 14px 0;
+        padding: 10px 12px;
+        border: 1px solid #b6d4fe;
+        background: #e7f1ff;
+        color: #084298;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        line-height: 1.35;
+    }
+
+    .legend-chip-name-link.is-disabled {
+        pointer-events: none;
+        cursor: default;
+        opacity: 0.6;
+        text-decoration: none;
+    }
+
+    .legend-chip-name-link.is-disabled:hover,
+    .legend-chip-name-link.is-disabled:focus {
+        text-decoration: none;
+        color: #1d4ed8;
     }
 }
