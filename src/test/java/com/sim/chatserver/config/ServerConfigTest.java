@@ -324,4 +324,520 @@ public class ServerConfigTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceApiKey()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceApiKey()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceApiKey() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceApiKey();
+
+        // Then - assertions for result of method getSalesforceApiKey()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceClientId()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceClientId()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceClientId() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceClientId();
+
+        // Then - assertions for result of method getSalesforceClientId()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceClientSecret()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceClientSecret()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceClientSecret() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceClientSecret();
+
+        // Then - assertions for result of method getSalesforceClientSecret()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceInstanceUrl()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceInstanceUrl()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceInstanceUrl() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceInstanceUrl();
+
+        // Then - assertions for result of method getSalesforceInstanceUrl()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceLoginUrl()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceLoginUrl()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceLoginUrl() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceLoginUrl();
+
+        // Then - assertions for result of method getSalesforceLoginUrl()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for getSalesforceRefreshToken()
+     *
+     * @see com.sim.chatserver.config.ServerConfig#getSalesforceRefreshToken()
+     * @author bmcmullin
+     */
+    @Test
+    public void testGetSalesforceRefreshToken() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String result = underTest.getSalesforceRefreshToken();
+
+        // Then - assertions for result of method getSalesforceRefreshToken()
+        assertNull(result);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceApiKey(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceApiKey(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceApiKey() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceApiKey = "salesforceApiKey"; // UTA: default value
+        underTest.setSalesforceApiKey(salesforceApiKey);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertEquals("salesforceApiKey", underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceClientId(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceClientId(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceClientId() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceClientId = "salesforceClientId"; // UTA: default value
+        underTest.setSalesforceClientId(salesforceClientId);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertEquals("salesforceClientId", underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceClientSecret(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceClientSecret(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceClientSecret() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceClientSecret = "salesforceClientSecret"; // UTA: default value
+        underTest.setSalesforceClientSecret(salesforceClientSecret);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertEquals("salesforceClientSecret", underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceInstanceUrl(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceInstanceUrl(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceInstanceUrl() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceInstanceUrl = "salesforceInstanceUrl"; // UTA: default value
+        underTest.setSalesforceInstanceUrl(salesforceInstanceUrl);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertEquals("salesforceInstanceUrl", underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceLoginUrl(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceLoginUrl(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceLoginUrl() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceLoginUrl = "salesforceLoginUrl"; // UTA: default value
+        underTest.setSalesforceLoginUrl(salesforceLoginUrl);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertEquals("salesforceLoginUrl", underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertNull(underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for setSalesforceRefreshToken(String)
+     *
+     * @see com.sim.chatserver.config.ServerConfig#setSalesforceRefreshToken(String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testSetSalesforceRefreshToken() throws Throwable
+    {
+        // Given
+        ServerConfig underTest = new ServerConfig();
+
+        // When
+        String salesforceRefreshToken = "salesforceRefreshToken"; // UTA: default value
+        underTest.setSalesforceRefreshToken(salesforceRefreshToken);
+
+        // Then - assertions for this instance of ServerConfig
+        assertAll(() -> {
+            assertNull(underTest.getServerHost());
+        }, () -> {
+            assertEquals(0, underTest.getServerPort());
+        }, () -> {
+            assertNull(underTest.getConnectionInfo());
+        }, () -> {
+            assertNull(underTest.getApiKey());
+        }, () -> {
+            assertNull(underTest.getWorkspaceName());
+        }, () -> {
+            assertNull(underTest.getSalesforceInstanceUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceApiKey());
+        }, () -> {
+            assertNull(underTest.getSalesforceLoginUrl());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientId());
+        }, () -> {
+            assertNull(underTest.getSalesforceClientSecret());
+        }, () -> {
+            assertEquals("salesforceRefreshToken", underTest.getSalesforceRefreshToken());
+        });
+
+    }
+
 }

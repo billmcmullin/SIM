@@ -1,30 +1,41 @@
+// src/main/java/com/sim/chatserver/web/dashboard/drilldown/WidgetReviewManualMessageServlet.java
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.config.MapReduceConfig;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.model.SelectedEntry;
+import com.sim.chatserver.model.review.BatchFailure;
+import com.sim.chatserver.model.review.CoverageSummary;
+import com.sim.chatserver.model.review.MapBatchResult;
+import com.sim.chatserver.model.review.ReduceRequest;
+import com.sim.chatserver.model.review.ReduceResult;
+import com.sim.chatserver.security.review.ReviewOutputValidator;
+import com.sim.chatserver.security.review.TrustedUrlValidator;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
+import com.sim.chatserver.service.ReviewJobService;
+import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
+import com.sim.chatserver.service.WorkspaceClient;
+import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.inject.Inject;
@@ -46,17 +57,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetReviewManualMessageServlet.class.getName());
     private static final String CHAT_API_PATH_TEMPLATE = "/api/v1/workspace/%s/chat";
 
-    private static final int MAX_TOTAL_MESSAGE_CHARS = 12000;
-    private static final int MAX_CONTEXT_CHARS = 8000;
-    private static final int RETRY_CONTEXT_CHARS = 4200;
-    private static final int RETRY_TOTAL_MESSAGE_CHARS = 7000;
-    private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = 20000;
-    private static final int MAX_PROMPT_INLINE_CHARS = 80;
-    private static final int MAX_INDEX_IDS = 1200;
-
-    private static final int BATCH_SIZE = 35;
-    private static final int MAX_BATCH_SUMMARY_CHARS = 420;
-
+    private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = Integer.MAX_VALUE;
     private static final int MAX_SESSION_ID_CHARS = 200;
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
@@ -64,14 +65,60 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     private transient HttpClient httpClient;
-
-    private final PromptTemplateService promptTemplateService = new PromptTemplateService();
-    private final ReviewContextBuilderService reviewContextBuilderService = new ReviewContextBuilderService();
+    private transient MapReduceConfig mrConfig;
+    private transient WorkspaceClient workspaceClient;
+    private transient WidgetReviewMapReduceOrchestrator orchestrator;
+    private transient PromptTemplateService promptTemplateService;
+    private transient ReviewContextBuilderService reviewContextBuilderService;
+    private transient ReviewOutputValidator reviewOutputValidator;
+    private transient TrustedUrlValidator trustedUrlValidator;
 
     @Override
     public void init() throws ServletException {
         super.init();
-        httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+
+        this.mrConfig = MapReduceConfig.load();
+
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(20))
+                .build();
+
+        this.workspaceClient = new WorkspaceClient(
+                httpClient,
+                mrConfig.getWorkspaceMaxRetries(),
+                mrConfig.getWorkspaceTimeout()
+        );
+
+        this.promptTemplateService = new PromptTemplateService();
+        this.reviewContextBuilderService = new ReviewContextBuilderService();
+        this.reviewOutputValidator = new ReviewOutputValidator();
+
+        Set<String> allowedHosts = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOSTS"));
+        Set<String> allowedSuffixes = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOST_SUFFIXES"));
+        boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(System.getenv("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
+        this.trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+
+        this.orchestrator = new WidgetReviewMapReduceOrchestrator(
+                workspaceClient,
+                reviewContextBuilderService,
+                promptTemplateService,
+                reviewOutputValidator,
+                mrConfig.getBatchSize(),
+                mrConfig.getMaxParallel(),
+                mrConfig.getMapMessageMaxChars(),
+                mrConfig.getMapContextMaxChars(),
+                mrConfig.getReduceMessageMaxChars(),
+                mrConfig.getReduceContextMaxChars(),
+                mrConfig.getRetryContextChars(),
+                mrConfig.getRetryMessageMaxChars(),
+                mrConfig.getMaxCoveragePasses(),
+                mrConfig.getMinBatchSize(),
+                mrConfig.getSegmentPromptChars(),
+                mrConfig.getSegmentResponseChars()
+        );
+
+        log.info("[manual-message][init] loaded config: " + mrConfig);
     }
 
     @Override
@@ -111,9 +158,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
 
         boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean("reset", false));
+        boolean async = payload.getBoolean("async", false);
 
         List<SelectedEntry> selectedEntries = parseSelectedEntries(payload);
         JsonArray normalizedAttachments = normalizeAttachments(payload);
+
+        log.info("[manual-message][" + requestId + "] selectedEntriesParsed=" + selectedEntries.size());
 
         EncryptedDbConfigStore.setAppDataSourceHolder(dsHolder);
         ServerConfig config;
@@ -151,93 +201,709 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String encodedSlug = URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8);
         String targetUrl = stripTrailingSlash(baseUrl) + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
 
-        String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
-        String evidenceContext = reviewContextBuilderService.buildContext(controlledPrompt, selectedEntries, MAX_CONTEXT_CHARS);
-        String outboundMessage = buildOutboundMessage(controlledPrompt, evidenceContext, MAX_TOTAL_MESSAGE_CHARS);
+        TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(targetUrl);
+        if (!trust.isValid()) {
+            log.warning("[manual-message][" + requestId + "] blocked untrusted targetUrl reason=" + trust.getReason());
+            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace URL failed trust validation.");
+            return;
+        }
 
-        HttpResponse<String> remoteResponse = sendToWorkspace(
-                targetUrl, apiKey, outboundMessage, mode, sessionId, requestReset, normalizedAttachments, requestId
+        try {
+            if (async) {
+                handleAsyncSubmission(
+                        resp, targetUrl, apiKey, userMessage, mode, sessionId, requestReset,
+                        normalizedAttachments, selectedEntries, requestId
+                );
+                return;
+            }
+
+            boolean useMapReduce = shouldUseMapReduce(selectedEntries);
+
+            WorkspaceResponse upstream = useMapReduce
+                    ? runMapReduce(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, normalizedAttachments, selectedEntries, requestId).response
+                    : runSinglePass(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, normalizedAttachments, selectedEntries, requestId);
+
+            mirrorWorkspaceResponse(resp, upstream);
+
+            log.info("[manual-message][" + requestId + "] completed"
+                    + " status=" + upstream.statusCode()
+                    + " latencyMs=" + (System.currentTimeMillis() - startMs)
+                    + " mode=" + mode
+                    + " selected=" + selectedEntries.size()
+                    + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass"));
+        } catch (Exception ex) {
+            log.log(Level.SEVERE, "[manual-message][" + requestId + "] execution failed", ex);
+            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to process manual message.");
+        }
+    }
+
+    private boolean shouldUseMapReduce(List<SelectedEntry> selectedEntries) {
+        int n = selectedEntries == null ? 0 : selectedEntries.size();
+
+        if (mrConfig.isExhaustiveMode()) {
+            boolean use = n > 0;
+            log.info("[manual-message][strategy] exhaustiveMode=true"
+                    + " selected=" + n
+                    + " singlePassMaxSelected=" + mrConfig.getSinglePassMaxSelected()
+                    + " -> useMapReduce=" + use);
+            return use;
+        }
+
+        boolean use = n > mrConfig.getSinglePassMaxSelected();
+        log.info("[manual-message][strategy] exhaustiveMode=false"
+                + " selected=" + n
+                + " singlePassMaxSelected=" + mrConfig.getSinglePassMaxSelected()
+                + " -> useMapReduce=" + use);
+        return use;
+    }
+
+    private void handleAsyncSubmission(
+            HttpServletResponse resp,
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            String requestId
+    ) throws IOException {
+
+        ReviewJobService jobs = WidgetReviewJobStatusServlet.jobService();
+
+        String jobId = jobs.submit(requestId, selectedEntries.size(), (jid) -> {
+            try {
+                List<String> allIds = distinctIds(extractAllIds(selectedEntries));
+
+                jobs.updateMapProgress(
+                        jid, 0, 0, 0, 0,
+                        allIds, List.of(), allIds, List.of(), "Starting"
+                );
+
+                boolean useMapReduce = shouldUseMapReduce(selectedEntries);
+
+                if (!useMapReduce) {
+                    WorkspaceResponse upstream = runSinglePass(
+                            targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId
+                    );
+
+                    int httpStatus = upstream == null ? 500 : upstream.statusCode();
+                    String body = upstream == null ? "" : upstream.body();
+                    String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
+                    String finalReport = extractPrimaryText(body);
+
+                    List<String> usedIdsFromText = extractUsedIdsFromText(finalReport, allIds);
+                    List<String> usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
+                    List<String> missingIds = subtract(allIds, usedIds);
+
+                    ReviewOutputValidator.ValidationResult finalValidation
+                            = reviewOutputValidator.validateFinalReportStrict(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                    boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+
+                    boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
+                    boolean httpOk = upstream != null && httpStatus < 400;
+                    boolean ok = httpOk && coverageComplete;
+
+                    String completionMsg = ok
+                            ? "Completed"
+                            : (httpOk
+                                    ? ("Completed with partial coverage (missing=" + missingIds.size() + ")")
+                                    : ("Completed with upstream errors (status=" + httpStatus + ")"));
+
+                    String errMsg = ok ? ""
+                            : (!httpOk
+                                    ? "Upstream returned status " + httpStatus
+                                    : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
+
+                    List<String> warnings = new ArrayList<>();
+                    if (!coverageComplete) {
+                        warnings.add("coverage incomplete");
+                    }
+                    if (metadataMismatch) {
+                        warnings.add("coverage metadata mismatch");
+                    }
+
+                    jobs.updateReduceProgress(
+                            jid, 1, 1, ok ? 0 : 1, 0,
+                            allIds, usedIds, missingIds, List.of(), completionMsg
+                    );
+
+                    return new ReviewJobService.JobResult(
+                            httpStatus, ok, completionMsg, errMsg,
+                            1, 1, ok ? 0 : 1, 0,
+                            allIds, usedIds, missingIds, List.of(), warnings,
+                            finalReport, body, contentType
+                    );
+                }
+
+                AtomicInteger liveTotalBatches = new AtomicInteger(0);
+                AtomicInteger liveCompletedBatches = new AtomicInteger(0);
+                AtomicInteger liveFailedBatches = new AtomicInteger(0);
+
+                final int[] reduceLevel = {0};
+                final int[] reduceChunks = {0};
+                final int[] reduceChunk = {0};
+                final int[] reduceFinalAttempt = {0};
+                final int reduceFinalAttemptTotal = 4;
+
+                WidgetReviewMapReduceOrchestrator.ProgressListener progressListener = new WidgetReviewMapReduceOrchestrator.ProgressListener() {
+                    @Override
+                    public void onMapRoundStarted(String reqId, int round, int totalRounds, int remainingBeforeRound, int entriesInRound) {
+                        jobs.updateMapProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                allIds,
+                                List.of(),
+                                "Map round " + round + "/" + totalRounds + " started • remaining=" + remainingBeforeRound
+                        );
+                    }
+
+                    @Override
+                    public void onMapBatchStarted(String reqId, int batchIndex, int totalBatchesSoFar, int expectedIdsInBatch, int round) {
+                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
+                        jobs.updateMapProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                allIds,
+                                List.of(),
+                                "Sending batch " + batchIndex + " (round " + round + ", size=" + expectedIdsInBatch + ")..."
+                        );
+                    }
+
+                    @Override
+                    public void onMapBatchCompleted(String reqId, int batchIndex, int totalBatchesSoFar, boolean success, int usedSoFar, int missingSoFar, int round) {
+                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
+                        if (success) {
+                            liveCompletedBatches.incrementAndGet();
+                        } else {
+                            liveFailedBatches.incrementAndGet();
+                        }
+
+                        jobs.updateMapProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                "Batch " + batchIndex + " " + (success ? "completed" : "failed")
+                                + " • " + liveCompletedBatches.get() + "/" + Math.max(1, liveTotalBatches.get())
+                                + " complete"
+                        );
+                    }
+
+                    @Override
+                    public void onReduceStarted(String reqId, int totalSelected, int totalBatches, int mapOutputsCount, int missingCount) {
+                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatches));
+                        jobs.updateReduceProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                "Synthesizing final report..."
+                        );
+                    }
+
+                    @Override
+                    public void onReduceChunkStarted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, int chunkSize, int currentChunkSizeConfig) {
+                        if (level == 999) {
+                            reduceFinalAttempt[0] = chunkIndex;
+                            jobs.updateReduceProgress(
+                                    jid,
+                                    Math.max(liveTotalBatches.get(), 0),
+                                    Math.max(liveCompletedBatches.get(), 0),
+                                    Math.max(liveFailedBatches.get(), 0),
+                                    0,
+                                    allIds,
+                                    List.of(),
+                                    List.of(),
+                                    List.of(),
+                                    "Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal
+                                    + " • summaries=" + chunkSize
+                            );
+                            return;
+                        }
+
+                        reduceLevel[0] = level;
+                        reduceChunk[0] = chunkIndex;
+                        reduceChunks[0] = totalChunksAtLevel;
+
+                        jobs.updateReduceProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                "Synthesis L" + level + " • chunk " + chunkIndex + "/" + totalChunksAtLevel
+                                + " • size=" + chunkSize + " • cfg=" + currentChunkSizeConfig
+                        );
+                    }
+
+                    @Override
+                    public void onReduceChunkCompleted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, boolean success, int httpStatus) {
+                        String phaseText = (level == 999)
+                                ? ("Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal)
+                                : ("Synthesis L" + level + " chunk " + chunkIndex + "/" + totalChunksAtLevel);
+
+                        jobs.updateReduceProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                phaseText + " " + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ")"
+                        );
+                    }
+
+                    @Override
+                    public void onReduceLevelCompleted(String reqId, int level, int totalChunksAtLevel, int producedSummaries) {
+                        jobs.updateReduceProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                "Synthesis level " + level + " complete • chunks=" + totalChunksAtLevel
+                                + " • summaries=" + producedSummaries
+                        );
+                    }
+
+                    @Override
+                    public void onReduceCompleted(String reqId, boolean success, int httpStatus, int missingCount) {
+                        jobs.updateReduceProgress(
+                                jid,
+                                Math.max(liveTotalBatches.get(), 0),
+                                Math.max(liveCompletedBatches.get(), 0),
+                                Math.max(liveFailedBatches.get(), 0),
+                                0,
+                                allIds,
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ")"
+                        );
+                    }
+                };
+
+                MapReduceExecutionResult mr = runMapReduce(
+                        targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
+                );
+
+                WorkspaceResponse upstream = mr.response;
+                WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = mr.orchestration;
+                ReduceResult reduceResult = orchestration == null ? null : orchestration.reduceResult();
+
+                int httpStatus = upstream == null ? 500 : upstream.statusCode();
+                String body = upstream == null ? "" : upstream.body();
+                String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
+                String finalReport = extractPrimaryText(body);
+
+                List<String> usedIds = reduceResult != null
+                        ? distinctIds(reduceResult.getUsedChatIds())
+                        : distinctIds(orchestration == null ? List.of() : subtract(allIds, orchestration.missingChatIds()));
+
+                List<String> missingIds = reduceResult != null
+                        ? distinctIds(reduceResult.getMissingChatIds())
+                        : distinctIds(orchestration == null ? allIds : orchestration.missingChatIds());
+
+                missingIds = intersect(allIds, missingIds);
+                usedIds = subtract(allIds, missingIds);
+
+                ReviewOutputValidator.ValidationResult finalValidation
+                        = reviewOutputValidator.validateFinalReportStrict(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+
+                boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
+                boolean httpOk = upstream != null && httpStatus < 400;
+                boolean ok = httpOk && coverageComplete;
+
+                String completionMsg = ok
+                        ? "Completed"
+                        : (httpOk
+                                ? ("Completed with partial coverage (missing=" + missingIds.size() + ")")
+                                : ("Completed with upstream errors (status=" + httpStatus + ")"));
+
+                String errMsg = ok ? ""
+                        : (!httpOk
+                                ? "Upstream returned status " + httpStatus
+                                : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
+
+                List<String> warnings = new ArrayList<>();
+                if (!coverageComplete) {
+                    warnings.add("coverage incomplete");
+                }
+                if (metadataMismatch) {
+                    warnings.add("coverage metadata mismatch");
+                }
+
+                jobs.updateReduceProgress(
+                        jid,
+                        orchestration == null ? 0 : orchestration.totalBatches(),
+                        orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
+                        orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
+                        0,
+                        allIds, usedIds, missingIds,
+                        orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
+                        completionMsg
+                );
+
+                return new ReviewJobService.JobResult(
+                        httpStatus, ok, completionMsg, errMsg,
+                        orchestration == null ? 0 : orchestration.totalBatches(),
+                        orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
+                        orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
+                        0,
+                        allIds, usedIds, missingIds,
+                        orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
+                        warnings,
+                        finalReport, body, contentType
+                );
+            } catch (Exception e) {
+                return new ReviewJobService.JobResult(
+                        500, false, "Failed",
+                        e.getMessage() == null ? "Async execution failed." : e.getMessage(),
+                        0, 0, 1, 0,
+                        List.of(), List.of(), List.of(),
+                        List.of(), List.of(),
+                        "", "", "application/json"
+                );
+            }
+        });
+
+        resp.setStatus(HttpServletResponse.SC_ACCEPTED);
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.getWriter().write(Json.createObjectBuilder()
+                .add("status", "accepted")
+                .add("requestId", requestId)
+                .add("jobId", jobId)
+                .build()
+                .toString());
+    }
+
+    private WorkspaceResponse runSinglePass(
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            String requestId
+    ) throws Exception {
+        String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
+        String deterministicHeader = """
+                Deterministic metadata (use exactly; do not estimate):
+                - exact_total_selected: %d
+                - execution_mode: single-pass
+                """.formatted(selectedEntries.size());
+
+        String promptWithMeta = controlledPrompt + "\n\n" + deterministicHeader;
+        String context = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getSinglePassContextMaxChars());
+        String outbound = buildOutboundMessage(promptWithMeta, context, mrConfig.getSinglePassMessageMaxChars());
+
+        WorkspaceResponse response = workspaceClient.sendChat(
+                targetUrl, apiKey, outbound, mode, sessionId, requestReset, attachments, requestId
         );
 
-        if (isLikelyContextTooLarge(remoteResponse)) {
-            String retryEvidenceContext = reviewContextBuilderService.buildContext(controlledPrompt, selectedEntries, RETRY_CONTEXT_CHARS);
-            String retryMessage = buildOutboundMessage(controlledPrompt, retryEvidenceContext, RETRY_TOTAL_MESSAGE_CHARS);
-            remoteResponse = sendToWorkspace(
-                    targetUrl, apiKey, retryMessage, mode, sessionId, true, normalizedAttachments, requestId
+        if (workspaceClient.isLikelyContextTooLarge(response)) {
+            String retryContext = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getRetryContextChars());
+            String retryMsg = buildOutboundMessage(promptWithMeta, retryContext, mrConfig.getRetryMessageMaxChars());
+            response = workspaceClient.sendChat(
+                    targetUrl, apiKey, retryMsg, mode, sessionId, true, attachments, requestId
             );
         }
 
-        mirrorUpstreamResponse(resp, remoteResponse);
+        String text = extractPrimaryText(response.body());
+        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateFinalReport(text, mrConfig.getSinglePassMessageMaxChars());
+        if (!validation.isValid()) {
+            log.warning("[manual-message][" + requestId + "][single-pass] final validation errors=" + validation.getErrors());
+        } else if (!validation.getWarnings().isEmpty()) {
+            log.info("[manual-message][" + requestId + "][single-pass] final validation warnings=" + validation.getWarnings());
+        }
 
-        log.info("[manual-message][" + requestId + "] completed"
-                + " status=" + remoteResponse.statusCode()
-                + " latencyMs=" + (System.currentTimeMillis() - startMs)
-                + " mode=" + mode
-                + " selected=" + selectedEntries.size());
+        return response;
     }
 
-    private HttpResponse<String> sendToWorkspace(
+    private MapReduceExecutionResult runMapReduce(
             String targetUrl,
             String apiKey,
-            String outboundMessage,
+            String userMessage,
             String mode,
             String sessionId,
-            boolean reset,
+            boolean requestReset,
             JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws IOException, ServletException {
+    ) throws Exception {
+        return runMapReduce(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, WidgetReviewMapReduceOrchestrator.NOOP_PROGRESS_LISTENER);
+    }
 
-        JsonObject requestBody = buildStrictAnythingPayload(outboundMessage, mode, sessionId, reset, attachments);
+    private MapReduceExecutionResult runMapReduce(
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            String requestId,
+            WidgetReviewMapReduceOrchestrator.ProgressListener progressListener
+    ) throws Exception {
 
-        HttpRequest httpRequest = HttpRequest.newBuilder()
-                .uri(URI.create(targetUrl))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
+        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = orchestrator.run(
+                targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
+        );
+
+        List<MapBatchResult> mapBatchResults = orchestration.mapBatchResults();
+        List<BatchFailure> failures = orchestration.batchFailures();
+        ReduceRequest reduceRequest = orchestration.reduceRequest();
+        ReduceResult reduceResult = orchestration.reduceResult();
+
+        List<String> allIds = distinctIds(extractAllIds(selectedEntries));
+
+        List<String> usedIds = reduceResult != null
+                ? distinctIds(reduceResult.getUsedChatIds())
+                : distinctIds(subtract(allIds, orchestration.missingChatIds()));
+
+        List<String> missingIds = reduceResult != null
+                ? distinctIds(reduceResult.getMissingChatIds())
+                : distinctIds(orchestration.missingChatIds());
+
+        missingIds = intersect(allIds, missingIds);
+        usedIds = subtract(allIds, missingIds);
+
+        CoverageSummary coverage = CoverageSummary.builder()
+                .allSelectedChatIds(allIds)
+                .chatsProvided(allIds.size())
+                .usedChatIds(usedIds)
+                .chatsUsedInAnalysis(usedIds.size())
+                .notUsedChatIds(missingIds)
+                .chatsNotUsed(missingIds.size())
+                .reasonsChatsNotUsed(buildCoverageReasons(failures, missingIds))
+                .totalBatches(orchestration.totalBatches())
+                .successfulBatches(Math.max(0, orchestration.totalBatches() - orchestration.failedBatchIndexes().size()))
+                .failedBatchIndexes(orchestration.failedBatchIndexes())
+                .coverageComplete(missingIds.isEmpty())
                 .build();
 
-        try {
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        WorkspaceResponse finalResp = orchestration.finalResponse();
 
-            if (response.statusCode() >= 400 && response.statusCode() < 500) {
-                log.warning("[manual-message][" + requestId + "] upstream 4xx"
-                        + " status=" + response.statusCode()
-                        + " body=" + truncateForLog(response.body(), 4000));
+        String finalText = extractPrimaryText(finalResp.body());
+        ReviewOutputValidator.ValidationResult finalValidation
+                = reviewOutputValidator.validateFinalReportStrict(finalText, allIds, mrConfig.getReduceMessageMaxChars());
+
+        if (!finalValidation.isValid()) {
+            log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + finalValidation.getErrors());
+        } else if (!finalValidation.getWarnings().isEmpty()) {
+            log.info("[manual-message][" + requestId + "][reduce-validation] warnings=" + finalValidation.getWarnings());
+        }
+
+        boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+        if (metadataMismatch) {
+            log.warning("[manual-message][" + requestId + "][coverage] metadata mismatch detected in final report.");
+        }
+
+        if (reduceResult != null) {
+            if (!reduceResult.isSuccess() && reduceResult.getErrorMessage() != null && !reduceResult.getErrorMessage().isBlank()) {
+                log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + reduceResult.getErrorMessage());
             }
+            if (!reduceResult.isCoverageComplete()) {
+                log.warning("[manual-message][" + requestId + "][coverage] incomplete missing=" + reduceResult.getMissingChatIds());
+            }
+        }
 
-            return response;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            log.log(Level.SEVERE, "[manual-message][" + requestId + "] request interrupted", ex);
-            throw new ServletException("Request interrupted.", ex);
-        } catch (Exception ex) {
-            log.log(Level.SEVERE, "[manual-message][" + requestId + "] upstream call failed", ex);
-            throw ex;
+        log.info("[manual-message][" + requestId + "][map-reduce-summary]"
+                + " reduceRequest=" + reduceRequest
+                + " reduceResultSuccess=" + (reduceResult != null && reduceResult.isSuccess())
+                + " coverage=" + coverage
+                + " mapBatchResults=" + mapBatchResults.size()
+                + " failures=" + failures.size()
+                + " coverageComplete=" + coverage.isCoverageComplete()
+                + " missingCount=" + coverage.getNotUsedChatIds().size()
+                + " metadataMismatch=" + metadataMismatch
+                + " strictFixedBatchMode=" + mrConfig.isStrictFixedBatchMode()
+                + " fixedBatchSize=" + mrConfig.getFixedBatchSize());
+
+        return new MapReduceExecutionResult(finalResp, orchestration);
+    }
+
+    private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) throws IOException {
+        resp.setStatus(remote.statusCode());
+
+        String contentType = remote.contentType();
+        if (contentType != null && !contentType.isBlank()) {
+            if (!contentType.toLowerCase(Locale.ROOT).contains("charset")) {
+                contentType = contentType + "; charset=UTF-8";
+            }
+            resp.setContentType(contentType);
+        } else {
+            resp.setContentType("application/json; charset=UTF-8");
+        }
+
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        byte[] bytes = remote.body() == null ? new byte[0] : remote.body().getBytes(StandardCharsets.UTF_8);
+        resp.getOutputStream().write(bytes);
+        resp.getOutputStream().flush();
+    }
+
+    private String extractPrimaryText(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        try (var reader = Json.createReader(new StringReader(body))) {
+            JsonObject o = reader.readObject();
+            String t = o.getString("textResponse", "");
+            if (!t.isBlank()) {
+                return t;
+            }
+            t = o.getString("response", "");
+            if (!t.isBlank()) {
+                return t;
+            }
+            t = o.getString("message", "");
+            if (!t.isBlank()) {
+                return t;
+            }
+            t = o.getString("answer", "");
+            if (!t.isBlank()) {
+                return t;
+            }
+            t = o.getString("output", "");
+            if (!t.isBlank()) {
+                return t;
+            }
+            return body;
+        } catch (Exception ignored) {
+            return body;
         }
     }
 
-    private JsonObject buildStrictAnythingPayload(
-            String message,
-            String mode,
-            String sessionId,
-            boolean reset,
-            JsonArray attachments
-    ) {
-        jakarta.json.JsonObjectBuilder b = Json.createObjectBuilder()
-                .add("message", message == null ? "" : message)
-                .add("mode", mode == null || mode.isBlank() ? "chat" : mode)
-                .add("reset", reset);
+    private List<String> extractAllIds(List<SelectedEntry> entries) {
+        List<String> out = new ArrayList<>();
+        if (entries == null) {
+            return out;
+        }
+        for (SelectedEntry e : entries) {
+            if (e == null) {
+                continue;
+            }
+            String id = e.getChatId();
+            if (id != null && !id.isBlank()) {
+                out.add(id.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
 
-        if (sessionId != null && !sessionId.isBlank()) {
-            b.add("sessionId", sessionId);
+    private List<String> extractUsedIdsFromText(String text, List<String> expected) {
+        ReviewOutputValidator.ValidationResult v
+                = reviewOutputValidator.validateFinalReportStrict(text == null ? "" : text, expected, mrConfig.getReduceMessageMaxChars());
+        return distinctIds(v.getFoundChatIds());
+    }
+
+    private boolean hasCoverageMetadataMismatch(ReviewOutputValidator.ValidationResult validation) {
+        if (validation == null || validation.getErrors() == null) {
+            return false;
+        }
+        for (String e : validation.getErrors()) {
+            if (e != null && e.toLowerCase(Locale.ROOT).contains("coverage metadata mismatch")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> buildCoverageReasons(List<BatchFailure> failures, List<String> missingIds) {
+        List<String> reasons = new ArrayList<>();
+        if (failures != null) {
+            for (BatchFailure bf : failures) {
+                reasons.add(bf.reasonForCoverage() + " (batch " + bf.getBatchIndex() + ")");
+            }
+        }
+        if (missingIds != null && !missingIds.isEmpty()) {
+            reasons.add("missing inline evidence / truncated or absent per-chat content");
+        }
+        return reasons;
+    }
+
+    private List<String> distinctIds(List<String> ids) {
+        Set<String> s = new LinkedHashSet<>();
+        if (ids != null) {
+            for (String id : ids) {
+                if (id != null && !id.isBlank()) {
+                    s.add(id.trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return new ArrayList<>(s);
+    }
+
+    private List<String> subtract(List<String> all, List<String> used) {
+        Set<String> a = new LinkedHashSet<>(all == null ? List.of() : distinctIds(all));
+        Set<String> u = new LinkedHashSet<>(used == null ? List.of() : distinctIds(used));
+        a.removeAll(u);
+        return new ArrayList<>(a);
+    }
+
+    private List<String> intersect(List<String> a, List<String> b) {
+        Set<String> sa = new LinkedHashSet<>(a == null ? List.of() : distinctIds(a));
+        Set<String> sb = new LinkedHashSet<>(b == null ? List.of() : distinctIds(b));
+        sa.retainAll(sb);
+        return new ArrayList<>(sa);
+    }
+
+    private String buildOutboundMessage(String userMessage, String context, int maxTotalChars) {
+        String base = userMessage == null ? "" : userMessage.trim();
+        if (context == null || context.isBlank()) {
+            return trimTo(base, maxTotalChars);
         }
 
-        if (attachments != null && !attachments.isEmpty()) {
-            b.add("attachments", attachments);
+        String suffix = "\n\nSelected chats context:\n" + context;
+        String combined = base + suffix;
+        if (combined.length() <= maxTotalChars) {
+            return combined;
         }
 
-        return b.build();
+        int roomForSuffix = Math.max(0, maxTotalChars - base.length());
+        if (roomForSuffix <= 0) {
+            return trimTo(base, maxTotalChars);
+        }
+
+        return base + trimTo(suffix, roomForSuffix);
     }
 
     private JsonArray normalizeAttachments(JsonObject payload) {
@@ -273,235 +939,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     .add("contentString", contentString)
                     .build());
         }
-
         return out.build();
-    }
-
-    private void mirrorUpstreamResponse(HttpServletResponse resp, HttpResponse<String> remoteResponse) throws IOException {
-        resp.setStatus(remoteResponse.statusCode());
-
-        String upstreamContentType = remoteResponse.headers().firstValue("Content-Type").orElse(null);
-        if (upstreamContentType != null && !upstreamContentType.isBlank()) {
-            if (!upstreamContentType.toLowerCase(Locale.ROOT).contains("charset")) {
-                upstreamContentType = upstreamContentType + "; charset=UTF-8";
-            }
-            resp.setContentType(upstreamContentType);
-        } else {
-            resp.setContentType("application/json; charset=UTF-8");
-        }
-
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        byte[] bytes = remoteResponse.body() == null ? new byte[0] : remoteResponse.body().getBytes(StandardCharsets.UTF_8);
-        resp.getOutputStream().write(bytes);
-        resp.getOutputStream().flush();
-    }
-
-    private boolean isLikelyContextTooLarge(HttpResponse<String> remoteResponse) {
-        if (remoteResponse == null) {
-            return false;
-        }
-
-        String body = remoteResponse.body() == null ? "" : remoteResponse.body().toLowerCase(Locale.ROOT);
-        int status = remoteResponse.statusCode();
-
-        return status >= 400 && (body.contains("maximum context length")
-                || body.contains("too many tokens")
-                || body.contains("failed_to_embed")
-                || body.contains("payload too large")
-                || body.contains("too large"));
-    }
-
-    private String buildAllPromptsCompressedContext(String userMessage, List<SelectedEntry> entries, int maxChars) {
-        if (entries == null || entries.isEmpty()) {
-            return "";
-        }
-
-        List<String> terms = keywordTerms(userMessage);
-        List<SelectedEntry> ranked = new ArrayList<>(entries);
-        ranked.sort((a, b) -> Integer.compare(scoreEntry(b, terms), scoreEntry(a, terms)));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Selected chats summary\n");
-        sb.append("- total_selected: ").append(entries.size()).append('\n');
-        sb.append("- coverage: all prompts represented via hash index + batch summaries\n");
-
-        appendWithinLimit(sb, "\nPrompt hash index (all selected):\n", maxChars);
-        appendWithinLimit(sb, buildPromptHashIndex(entries), maxChars);
-
-        if (sb.length() < maxChars) {
-            appendWithinLimit(sb, "\nBatch summaries (compressed):\n", maxChars);
-            String batchSummary = buildBatchSummaries(ranked, terms, maxChars - sb.length());
-            appendWithinLimit(sb, batchSummary, maxChars);
-        }
-
-        if (sb.length() < maxChars) {
-            appendWithinLimit(sb, "\nPrompt inline previews:\n", maxChars);
-            int omittedInline = 0;
-            for (SelectedEntry e : ranked) {
-                String line = formatPromptInline(e) + '\n';
-                if (!appendWithinLimit(sb, line, maxChars)) {
-                    omittedInline++;
-                }
-            }
-            if (omittedInline > 0) {
-                appendWithinLimit(sb, "... (" + omittedInline + " prompt previews omitted due to size)\n", maxChars);
-            }
-        }
-
-        return trimTo(sb.toString(), maxChars);
-    }
-
-    private String buildBatchSummaries(List<SelectedEntry> ranked, List<String> terms, int budget) {
-        if (budget <= 0 || ranked.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder out = new StringBuilder();
-        int total = ranked.size();
-        int batchCount = (int) Math.ceil(total / (double) BATCH_SIZE);
-
-        for (int b = 0; b < batchCount; b++) {
-            int from = b * BATCH_SIZE;
-            int to = Math.min(total, from + BATCH_SIZE);
-            List<SelectedEntry> slice = ranked.subList(from, to);
-
-            String line = summarizeBatch(slice, b + 1, batchCount, terms);
-            line = trimTo(line, MAX_BATCH_SUMMARY_CHARS) + '\n';
-
-            if (out.length() + line.length() > budget) {
-                out.append("... (remaining batch summaries omitted due to size)\n");
-                break;
-            }
-            out.append(line);
-        }
-
-        return out.toString();
-    }
-
-    private String summarizeBatch(List<SelectedEntry> batch, int idx, int totalBatches, List<String> terms) {
-        int promptChars = 0;
-        Set<String> matched = new HashSet<>();
-        List<String> sampleIds = new ArrayList<>();
-
-        for (int i = 0; i < batch.size(); i++) {
-            SelectedEntry e = batch.get(i);
-            String p = e.getPrompt() == null ? "" : e.getPrompt();
-            promptChars += p.length();
-
-            String hay = (p + " " + (e.getResponse() == null ? "" : e.getResponse())).toLowerCase(Locale.ROOT);
-            for (String t : terms) {
-                if (hay.contains(t)) {
-                    matched.add(t);
-                }
-            }
-
-            if (i < 4) {
-                sampleIds.add(defaultIfBlank(e.getChatId(), "(unknown)"));
-            }
-        }
-
-        String avgPrompt = batch.isEmpty() ? "0" : String.valueOf(promptChars / batch.size());
-        return "Batch " + idx + "/" + totalBatches
-                + " size=" + batch.size()
-                + " avgPromptChars=" + avgPrompt
-                + " matchedTerms=" + matched
-                + " sampleIds=" + sampleIds;
-    }
-
-    private boolean appendWithinLimit(StringBuilder sb, String text, int maxChars) {
-        if (text == null || text.isEmpty()) {
-            return true;
-        }
-        if (sb.length() >= maxChars) {
-            return false;
-        }
-
-        int room = maxChars - sb.length();
-        if (text.length() <= room) {
-            sb.append(text);
-            return true;
-        }
-
-        sb.append(text, 0, room);
-        return false;
-    }
-
-    private String buildPromptHashIndex(List<SelectedEntry> entries) {
-        StringBuilder out = new StringBuilder();
-        int count = 0;
-        for (SelectedEntry e : entries) {
-            if (count >= MAX_INDEX_IDS) {
-                out.append("... (index truncated at ").append(MAX_INDEX_IDS).append(")\n");
-                break;
-            }
-            String id = defaultIfBlank(e.getChatId(), "(unknown)");
-            String prompt = e.getPrompt() == null ? "" : e.getPrompt();
-            String hash = sha1Hex(prompt);
-            out.append(id).append("|").append(hash).append('\n');
-            count++;
-        }
-        return out.toString();
-    }
-
-    private String formatPromptInline(SelectedEntry e) {
-        String id = defaultIfBlank(e.getChatId(), "(unknown)");
-        String p = compressText(e.getPrompt(), MAX_PROMPT_INLINE_CHARS);
-        String t = defaultIfBlank(e.getCreatedAt(), "?");
-        return "- " + id + " | " + t + " | P: " + p;
-    }
-
-    private int scoreEntry(SelectedEntry e, List<String> terms) {
-        if (terms.isEmpty()) {
-            return 0;
-        }
-
-        String hay = ((e.getPrompt() == null ? "" : e.getPrompt()) + " " + (e.getResponse() == null ? "" : e.getResponse())).toLowerCase(Locale.ROOT);
-        int score = 0;
-        for (String t : terms) {
-            if (hay.contains(t)) {
-                score++;
-            }
-        }
-        return score;
-    }
-
-    private List<String> keywordTerms(String text) {
-        if (text == null || text.isBlank()) {
-            return List.of();
-        }
-
-        Set<String> stop = new HashSet<>(Arrays.asList(
-                "the", "and", "for", "with", "that", "this", "from", "into", "about",
-                "what", "when", "where", "which", "have", "has", "had", "you", "your",
-                "are", "was", "were", "how", "why"
-        ));
-
-        return Arrays.stream(text.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"))
-                .filter(s -> s.length() >= 3 && !stop.contains(s))
-                .distinct()
-                .limit(12)
-                .collect(Collectors.toList());
-    }
-
-    private String sha1Hex(String value) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : bytes) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception ex) {
-            return "sha1_error";
-        }
     }
 
     private String stripClientInjectedContext(String userMessage) {
         if (userMessage == null || userMessage.isBlank()) {
             return "";
         }
-
         String marker = "\n\nSelected chats context:\n";
         int idx = userMessage.indexOf(marker);
         return idx >= 0 ? userMessage.substring(0, idx).trim() : userMessage.trim();
@@ -537,13 +981,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             String prompt = str(obj, "prompt");
             String response = str(obj, "response");
             String createdAt = str(obj, "createdAt");
-            String sessionId = str(obj, "sessionId");
+            String sid = str(obj, "sessionId");
 
             if (chatId.isBlank() && prompt.isBlank() && response.isBlank()) {
                 continue;
             }
 
-            entries.add(new SelectedEntry(chatId, prompt, response, createdAt, sessionId));
+            entries.add(new SelectedEntry(chatId, prompt, response, createdAt, sid));
             count++;
         }
 
@@ -551,66 +995,18 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return entries;
     }
 
-    private String compressText(String text, int maxChars) {
-        if (text == null || text.isBlank()) {
-            return "(empty)";
-        }
-
-        String normalized = text.replaceAll("\\s+", " ").trim();
-        if (normalized.length() <= maxChars) {
-            return normalized;
-        }
-        return normalized.substring(0, Math.max(0, maxChars - 1)) + "…";
-    }
-
-    private String buildOutboundMessage(String userMessage, String compressedContext, int maxTotalChars) {
-        String base = userMessage == null ? "" : userMessage.trim();
-        if (compressedContext == null || compressedContext.isBlank()) {
-            return trimTo(base, maxTotalChars);
-        }
-
-        String suffix = "\n\nSelected chats context:\n" + compressedContext;
-        String combined = base + suffix;
-        if (combined.length() <= maxTotalChars) {
-            return combined;
-        }
-
-        int roomForSuffix = Math.max(0, maxTotalChars - base.length());
-        if (roomForSuffix <= 0) {
-            return trimTo(base, maxTotalChars);
-        }
-
-        return base + trimTo(suffix, roomForSuffix);
-    }
-
     private String str(JsonObject obj, String key) {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return "";
         }
-
         JsonValue v = obj.get(key);
         if (v == null) {
             return "";
         }
-
         if (v.getValueType() == JsonValue.ValueType.STRING) {
             return ((JsonString) v).getString();
         }
         return v.toString();
-    }
-
-    private String trimTo(String value, int maxChars) {
-        if (value == null || maxChars <= 0) {
-            return "";
-        }
-        if (value.length() <= maxChars) {
-            return value;
-        }
-        return value.substring(0, maxChars);
-    }
-
-    private String defaultIfBlank(String value, String fallback) {
-        return (value == null || value.isBlank()) ? fallback : value;
     }
 
     private String buildBaseUrl(ServerConfig config) {
@@ -646,10 +1042,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
 
         String s = raw.trim();
-
         s = s.replaceFirst("^(https?://)+(https?://)", "$2");
         s = s.replaceFirst("^(https?://)(https?://)+", "$1");
-
         s = s.replace("https://https://", "https://")
                 .replace("http://http://", "http://")
                 .replace("http://https://", "https://")
@@ -717,13 +1111,39 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 .replace("\r", " ");
     }
 
-    private String truncateForLog(String s, int max) {
-        if (s == null) {
+    private String trimTo(String value, int maxChars) {
+        if (value == null || maxChars <= 0) {
             return "";
         }
-        if (s.length() <= max) {
-            return s;
+        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+    }
+
+    private Set<String> parseCsvToSet(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return Set.of();
         }
-        return s.substring(0, max) + "...(truncated)";
+        String[] parts = csv.split(",");
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String p : parts) {
+            if (p != null && !p.isBlank()) {
+                out.add(p.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
+
+    private static final class MapReduceExecutionResult {
+
+        private final WorkspaceResponse response;
+        private final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
+
+        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+            this.response = response;
+            this.orchestration = orchestration;
+        }
     }
 }

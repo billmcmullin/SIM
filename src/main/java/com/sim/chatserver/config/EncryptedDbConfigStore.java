@@ -73,7 +73,10 @@ public final class EncryptedDbConfigStore {
 
     public static void ensureTable() throws SQLException {
         log.fine("ensureTable: start");
-        try (Connection conn = getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement(CREATE_TABLE_SQL)) {
+
+        DataSource ds = requireDataSource();
+
+        try (Connection conn = ds.getConnection(); PreparedStatement ps = conn.prepareStatement(CREATE_TABLE_SQL)) {
             ps.execute();
             log.fine("ensureTable: create table statement executed");
         } catch (SQLException e) {
@@ -81,7 +84,7 @@ public final class EncryptedDbConfigStore {
             throw e;
         }
 
-        try (Connection conn = getDataSource().getConnection()) {
+        try (Connection conn = ds.getConnection()) {
             ensureWorkspaceColumn(conn);
             ensureSalesforceInstanceUrlColumn(conn);
             ensureSalesforceApiKeyColumn(conn);
@@ -100,7 +103,9 @@ public final class EncryptedDbConfigStore {
         log.fine("load: start");
         ensureTable();
 
-        try (Connection conn = getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement(SELECT_SQL); ResultSet rs = ps.executeQuery()) {
+        DataSource ds = requireDataSource();
+
+        try (Connection conn = ds.getConnection(); PreparedStatement ps = conn.prepareStatement(SELECT_SQL); ResultSet rs = ps.executeQuery()) {
 
             if (rs.next()) {
                 log.fine("load: row found in server_config");
@@ -143,7 +148,9 @@ public final class EncryptedDbConfigStore {
         String encryptedSalesforceClientSecret = encryptIfPresent(config != null ? config.getSalesforceClientSecret() : null);
         String encryptedSalesforceRefreshToken = encryptIfPresent(config != null ? config.getSalesforceRefreshToken() : null);
 
-        try (Connection conn = getDataSource().getConnection(); PreparedStatement deleteStmt = conn.prepareStatement(DELETE_SQL)) {
+        DataSource ds = requireDataSource();
+
+        try (Connection conn = ds.getConnection(); PreparedStatement deleteStmt = conn.prepareStatement(DELETE_SQL)) {
             int deleted = deleteStmt.executeUpdate();
             log.fine("save: deleted existing rows count=" + deleted);
         } catch (SQLException e) {
@@ -151,7 +158,7 @@ public final class EncryptedDbConfigStore {
             throw e;
         }
 
-        try (Connection conn = getDataSource().getConnection(); PreparedStatement insertStmt = conn.prepareStatement(INSERT_SQL)) {
+        try (Connection conn = ds.getConnection(); PreparedStatement insertStmt = conn.prepareStatement(INSERT_SQL)) {
             insertStmt.setString(1, config != null ? config.getServerHost() : null);
             insertStmt.setInt(2, config != null ? config.getServerPort() : 0);
             insertStmt.setString(3, config != null ? config.getConnectionInfo() : null);
@@ -296,24 +303,20 @@ public final class EncryptedDbConfigStore {
 
         String trimmed = secret.trim();
 
-        // Try Base64 first
         try {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
 
-            // Accept valid AES key sizes directly
             if (decoded.length == 16 || decoded.length == 24 || decoded.length == 32) {
                 log.fine("getAesKeyBytes: using Base64-decoded AES key length=" + decoded.length);
                 return decoded;
             }
 
-            // Compatibility path: derive 32-byte key deterministically
             log.fine("getAesKeyBytes: Base64 decoded length=" + decoded.length
                     + ", deriving AES-256 key via SHA-256");
             MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
             return sha256.digest(decoded);
 
         } catch (IllegalArgumentException notBase64) {
-            // Not Base64: derive from raw env string (legacy-compatible behavior)
             try {
                 log.fine("getAesKeyBytes: env not Base64, deriving AES-256 key via SHA-256 of UTF-8 string");
                 MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
@@ -328,26 +331,46 @@ public final class EncryptedDbConfigStore {
         }
     }
 
+    // NEW: clear, null-safe datasource resolution to avoid NPEs in tests/scheduler paths
+    private static DataSource requireDataSource() throws SQLException {
+        DataSource ds = getDataSource();
+        if (ds == null) {
+            IllegalStateException ex = new IllegalStateException(
+                    "DataSource is not initialized. Ensure AppDataSourceHolder is set before using EncryptedDbConfigStore.");
+            log.log(Level.SEVERE, "requireDataSource: datasource is null", ex);
+            throw new SQLException("DataSource is not initialized", ex);
+        }
+        return ds;
+    }
+
     private static DataSource getDataSource() {
         AppDataSourceHolder holder = dsHolder;
         if (holder == null) {
             log.fine("getDataSource: dsHolder null, resolving via CDI");
-            holder = CDI.current().select(AppDataSourceHolder.class).get();
-            dsHolder = holder;
+            try {
+                holder = CDI.current().select(AppDataSourceHolder.class).get();
+                dsHolder = holder;
+            } catch (Exception e) {
+                log.log(Level.WARNING, "getDataSource: CDI lookup failed for AppDataSourceHolder", e);
+                return null;
+            }
         }
         if (holder == null) {
-            IllegalStateException ex = new IllegalStateException("AppDataSourceHolder is not initialized");
-            log.log(Level.SEVERE, "getDataSource: holder is null after CDI lookup", ex);
-            throw ex;
+            log.severe("getDataSource: holder is null after CDI lookup");
+            return null;
         }
 
         try {
             DataSource ds = holder.getDataSource();
-            log.fine("getDataSource: datasource acquired");
+            if (ds == null) {
+                log.severe("getDataSource: holder returned null DataSource");
+            } else {
+                log.fine("getDataSource: datasource acquired");
+            }
             return ds;
         } catch (Exception e) {
             log.log(Level.SEVERE, "getDataSource: failed to get datasource from holder", e);
-            throw e;
+            return null;
         }
     }
 }

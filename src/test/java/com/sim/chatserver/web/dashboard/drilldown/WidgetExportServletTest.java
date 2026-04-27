@@ -126,4 +126,43 @@ public class WidgetExportServletTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.dashboard.drilldown.WidgetExportServlet#doPost(HttpServletRequest,
+     *      HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoPost4() throws Throwable
+    {
+        // Given
+        WidgetExportServlet underTest = new WidgetExportServlet();
+        AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
+        DataSource getDataSourceResult = mock(DataSource.class);
+        Connection getConnectionResult = mock(Connection.class);
+        DatabaseMetaData getMetaDataResult = mock(DatabaseMetaData.class);
+        ResultSet getTablesResult = mock(ResultSet.class);
+        boolean nextResult = false; // UTA: configured value
+        when(getTablesResult.next()).thenReturn(nextResult);
+        when(getMetaDataResult.getTables(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String[].class))).thenReturn(getTablesResult);
+        when(getConnectionResult.getMetaData()).thenReturn(getMetaDataResult);
+        when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
+        when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
+        underTest.dsHolder = dsHolderValue;
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
+        HttpSession getSessionResult2 = mock(HttpSession.class);
+        Object getAttributeResult2 = new Object(); // UTA: default value
+        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult2);
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        underTest.doPost(req, resp);
+
+    }
+
 }

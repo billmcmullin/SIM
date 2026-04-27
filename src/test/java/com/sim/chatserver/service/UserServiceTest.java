@@ -10,8 +10,13 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -640,6 +645,52 @@ public class UserServiceTest
         String username = "username"; // UTA: default value
         assertThrows(IllegalStateException.class, () -> {
             underTest.userExists(username);
+        });
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for createUser(String, String, String)
+     *
+     * @see com.sim.chatserver.service.UserService#createUser(String, String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testCreateUser2() throws Throwable
+    {
+        // Given
+        UserService underTest = new UserService();
+        AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
+        EntityManagerFactory getEmfResult = mock(EntityManagerFactory.class);
+        EntityManager createEntityManagerResult = mock(EntityManager.class);
+        Query createNativeQueryResult = mock(Query.class);
+        when(createEntityManagerResult.createNativeQuery(nullable(String.class))).thenReturn(createNativeQueryResult);
+
+        EntityTransaction getTransactionResult = mock(EntityTransaction.class);
+        when(createEntityManagerResult.getTransaction()).thenReturn(getTransactionResult);
+        when(getEmfResult.createEntityManager()).thenReturn(createEntityManagerResult);
+        when(dsHolderValue.getEmf()).thenReturn(getEmfResult);
+        underTest.dsHolder = dsHolderValue;
+
+        // When
+        String username = "username"; // UTA: default value
+        String password = "password"; // UTA: default value
+        String role = "role"; // UTA: default value
+        UserAccount result = underTest.createUser(username, password, role);
+
+        // Then - assertions for result of method createUser(String, String, String)
+        assertAll(() -> {
+            assertNotNull(result);
+        }, () -> {
+            assertNull(result.getId());
+        }, () -> {
+            assertEquals("username", result.getUsername());
+        }, () -> {
+            assertEquals("$2a$10$IpCBl6udMTVhhz.FxgcFH.usN8/HqjCxvpawWR5tvQyKwkG75G5Re", result.getPasswordHash());
+        }, () -> {
+            assertNull(result.getEmail());
+        }, () -> {
+            assertNotNull(result.getCreatedAt());
         });
 
     }

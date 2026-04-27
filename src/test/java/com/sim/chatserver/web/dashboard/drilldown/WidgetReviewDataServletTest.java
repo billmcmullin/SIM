@@ -113,4 +113,35 @@ public class WidgetReviewDataServletTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.dashboard.drilldown.WidgetReviewDataServlet#doGet(HttpServletRequest,
+     *      HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoGet4() throws Throwable
+    {
+        // Given
+        WidgetReviewDataServlet underTest = new WidgetReviewDataServlet();
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        String getParameterResult = "*"; // UTA: configured value
+        String getParameterResult2 = null; // UTA: configured value
+        when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
+
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
+        HttpSession getSessionResult2 = null; // UTA: configured value
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
+        underTest.doGet(req, resp);
+
+    }
+
 }

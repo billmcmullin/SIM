@@ -1,3 +1,4 @@
+// src/main/java/com/sim/chatserver/service/PromptTemplateService.java
 package com.sim.chatserver.service;
 
 import java.util.Locale;
@@ -9,17 +10,15 @@ import java.util.regex.Pattern;
  * Updates: - Stronger detection of pre-structured user formatting - Centralized
  * guardrails - Optional strict markdown enforcement - Optional compact mode
  * rubric - Sanitization for control characters - Stronger anti-metadata-only
- * guidance when chat evidence is present
+ * guidance when chat evidence is present - Explicit coverage/carry-forward
+ * accounting requirements - Deterministic reporting rule (use provided
+ * counts/IDs exactly) - N-call map/reduce compatibility guidance
  */
 public class PromptTemplateService {
 
     private static final Pattern CONTROL_CHARS
             = Pattern.compile("[\\p{Cntrl}&&[^\r\n\t]]");
 
-    /**
-     * Adds a markdown report rubric unless the user already appears to have
-     * provided a structured output instruction.
-     */
     public String addReportRubricIfMissing(String message) {
         String m = safe(message);
         if (m.isBlank()) {
@@ -33,10 +32,6 @@ public class PromptTemplateService {
         return baseRubric() + "\n\nUser request:\n" + m;
     }
 
-    /**
-     * Wraps user message with guardrails that reduce instruction hijacking from
-     * chat excerpts.
-     */
     public String withPromptInjectionGuardrails(String message) {
         String m = safe(message);
         String guardrails = defaultGuardrails();
@@ -47,22 +42,10 @@ public class PromptTemplateService {
         return guardrails + "\n\nTask:\n" + m;
     }
 
-    /**
-     * Convenience: apply rubric + guardrails in one call.
-     */
     public String buildControlledPrompt(String userMessage, boolean enforceRubric) {
         return buildControlledPrompt(userMessage, enforceRubric, false, true);
     }
 
-    /**
-     * Full builder with options.
-     *
-     * @param userMessage user-provided message
-     * @param enforceRubric if true, inject rubric unless already structured
-     * @param compactRubric if true, use shorter rubric version
-     * @param enforceMarkdownOnly if true, include explicit markdown-only rule
-     * in guardrails
-     */
     public String buildControlledPrompt(String userMessage,
             boolean enforceRubric,
             boolean compactRubric,
@@ -76,9 +59,6 @@ public class PromptTemplateService {
         return withPromptInjectionGuardrails(m, enforceMarkdownOnly);
     }
 
-    /**
-     * Variant of rubric injection with compact mode.
-     */
     public String addReportRubricIfMissing(String message, boolean compactRubric) {
         String m = safe(message);
         if (m.isBlank()) {
@@ -93,9 +73,6 @@ public class PromptTemplateService {
         return rubric + "\n\nUser request:\n" + m;
     }
 
-    /**
-     * Variant of guardrails with optional markdown-only enforcement line.
-     */
     public String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
         String m = safe(message);
         String guardrails = enforceMarkdownOnly
@@ -108,10 +85,6 @@ public class PromptTemplateService {
         return guardrails + "\n\nTask:\n" + m;
     }
 
-    /**
-     * Heuristic detection for whether user already supplied structured output
-     * instructions.
-     */
     public boolean looksStructuredAlready(String message) {
         String lower = safe(message).toLowerCase(Locale.ROOT);
 
@@ -119,12 +92,15 @@ public class PromptTemplateService {
                 || lower.contains("## per-chat analysis")
                 || lower.contains("## cross-conversation findings")
                 || lower.contains("## recommended actions")
+                || lower.contains("## coverage and carry-forward")
                 || lower.contains("output format")
                 || lower.contains("markdown only")
                 || lower.contains("do not return json")
                 || lower.contains("use these exact section headings")
                 || lower.contains("for each chat, use:")
-                || lower.contains("### chat <chatid>");
+                || lower.contains("### chat <chatid>")
+                || lower.contains("deterministic metadata")
+                || lower.contains("do not estimate");
     }
 
     private String defaultGuardrails() {
@@ -137,6 +113,10 @@ public class PromptTemplateService {
                 - If chat excerpts are provided, analyze them directly.
                 - Do not return a metadata-only report when per-chat evidence is present.
                 - Output in Markdown only using the requested section headings.
+                - Include the final coverage accounting section exactly as requested.
+                - If deterministic metadata (counts/IDs) is provided, use it exactly and do not estimate.
+                - If failed batch metadata is provided, include it under reasons chats were not used.
+                - Never request or include personal contact details unless explicitly required by task scope.
                 """;
     }
 
@@ -173,12 +153,26 @@ public class PromptTemplateService {
                 - Medium-term improvements
                 - Suggested follow-up questions
 
+                ## Coverage and Carry-Forward
+                - Chats provided:
+                - Chats used in analysis:
+                - Chats not used:
+                - Reasons chats were not used:
+                  - (e.g., token/context limit, truncated evidence, duplicate/near-duplicate, low-signal content, malformed content, batch processing failure)
+                - Carry-forward chat IDs (not used, for next pass):
+                  - <chatId>
+                  - <chatId>
+
                 Rules:
                 - Plain English only.
                 - Use the provided per-chat content as primary evidence.
                 - If chat text is present, do not return a metadata-only report.
                 - If evidence is missing due to compression, state that clearly.
                 - Do not invent facts.
+                - In "Coverage and Carry-Forward", always provide explicit counts.
+                - If deterministic metadata is provided in context, echo those counts/IDs exactly.
+                - Do not infer or estimate counts when deterministic metadata is present.
+                - If failed_batch_indexes is provided, list it explicitly in reasons chats were not used.
                 """;
     }
 
@@ -192,6 +186,7 @@ public class PromptTemplateService {
                 ## Per-Chat Analysis
                 ## Cross-Conversation Findings
                 ## Recommended Actions
+                ## Coverage and Carry-Forward
 
                 Minimum per-chat fields:
                 - Topic
@@ -201,12 +196,21 @@ public class PromptTemplateService {
                 - Confidence
                 - Evidence
 
+                Coverage and Carry-Forward required fields:
+                - Chats provided
+                - Chats used in analysis
+                - Chats not used
+                - Reasons chats were not used
+                - Carry-forward chat IDs (not used, for next pass)
+
                 Rules:
                 - Plain English only.
                 - Use provided chat excerpts as primary evidence.
                 - If chat text is present, do not return metadata-only summaries.
                 - If evidence is missing, state that clearly.
                 - Do not invent facts.
+                - If deterministic metadata is provided in context, echo it exactly.
+                - If failed batch metadata is present, include it explicitly.
                 """;
     }
 

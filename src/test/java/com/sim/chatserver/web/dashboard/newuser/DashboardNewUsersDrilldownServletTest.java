@@ -1,11 +1,8 @@
 package com.sim.chatserver.web.dashboard.newuser;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Field;
@@ -23,11 +20,19 @@ import org.junit.jupiter.api.Test;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-class DashboardNewUsersDrilldownServletTest {
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.*;
+class DashboardNewUsersDrilldownServletTest
+{
 
     private DashboardNewUsersDrilldownServlet servlet;
     private HttpServletRequest req;
@@ -36,7 +41,8 @@ class DashboardNewUsersDrilldownServletTest {
     private ServletContext servletContext;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() throws Exception
+    {
         servlet = new DashboardNewUsersDrilldownServlet();
 
         req = mock(HttpServletRequest.class);
@@ -60,7 +66,8 @@ class DashboardNewUsersDrilldownServletTest {
     }
 
     @Test
-    void redirectsToLoginWhenNotAuthenticated() throws Exception {
+    void redirectsToLoginWhenNotAuthenticated() throws Exception
+    {
         when(req.getSession(false)).thenReturn(null);
 
         servlet.doGet(req, resp);
@@ -69,7 +76,8 @@ class DashboardNewUsersDrilldownServletTest {
     }
 
     @Test
-    void parsePositiveIntWorks() throws Exception {
+    void parsePositiveIntWorks() throws Exception
+    {
         Method m = DashboardNewUsersDrilldownServlet.class.getDeclaredMethod("parsePositiveInt", String.class);
         m.setAccessible(true);
 
@@ -81,7 +89,8 @@ class DashboardNewUsersDrilldownServletTest {
     }
 
     @Test
-    void parseDateWorks() throws Exception {
+    void parseDateWorks() throws Exception
+    {
         Method m = DashboardNewUsersDrilldownServlet.class.getDeclaredMethod("parseDate", String.class);
         m.setAccessible(true);
 
@@ -91,7 +100,8 @@ class DashboardNewUsersDrilldownServletTest {
     }
 
     @Test
-    void sanitizeWidgetTableNameNormalizes() throws Exception {
+    void sanitizeWidgetTableNameNormalizes() throws Exception
+    {
         Method m = DashboardNewUsersDrilldownServlet.class.getDeclaredMethod("sanitizeWidgetTableName", String.class);
         m.setAccessible(true);
 
@@ -100,4 +110,84 @@ class DashboardNewUsersDrilldownServletTest {
         assertFalse(result.contains("-"));
         assertFalse(result.contains(" "));
     }
+
+    /**
+     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.dashboard.newuser.DashboardNewUsersDrilldownServlet#doGet(HttpServletRequest,
+     *      HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoGet() throws Throwable
+    {
+        // Given
+        DashboardNewUsersDrilldownServlet underTest = new DashboardNewUsersDrilldownServlet();
+        AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
+        DataSource getDataSourceResult = mock(DataSource.class);
+        Connection getConnectionResult = null; // UTA: configured value
+        when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
+        when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
+        underTest.dsHolder = dsHolderValue;
+
+        // When
+        HttpServletRequest req2 = mock(HttpServletRequest.class);
+        String getContextPathResult = null; // UTA: configured value
+        when(req2.getContextPath()).thenReturn(getContextPathResult);
+
+        String getParameterResult = null; // UTA: configured value
+        String getParameterResult2 = null; // UTA: configured value
+        String getParameterResult3 = null; // UTA: configured value
+        when(req2.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2, getParameterResult3);
+
+        ServletContext getServletContextResult = mock(ServletContext.class);
+        InputStream getResourceAsStreamResult = mock(InputStream.class);
+        when(getServletContextResult.getResourceAsStream(nullable(String.class))).thenReturn(getResourceAsStreamResult);
+        when(req2.getServletContext()).thenReturn(getServletContextResult);
+
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
+        when(req2.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp2 = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp2.getWriter()).thenReturn(getWriterResult);
+        underTest.doGet(req2, resp2);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.dashboard.newuser.DashboardNewUsersDrilldownServlet#doGet(HttpServletRequest,
+     *      HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoGet2() throws Throwable
+    {
+        // Given
+        DashboardNewUsersDrilldownServlet underTest = new DashboardNewUsersDrilldownServlet();
+        AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
+        when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
+        underTest.dsHolder = dsHolderValue;
+
+        // When
+        HttpServletRequest req2 = mock(HttpServletRequest.class);
+        String getParameterResult = null; // UTA: configured value
+        String getParameterResult2 = null; // UTA: configured value
+        String getParameterResult3 = null; // UTA: configured value
+        when(req2.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2, getParameterResult3);
+
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
+        when(req2.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp2 = mock(HttpServletResponse.class);
+        assertThrows(ServletException.class, () -> {
+            underTest.doGet(req2, resp2);
+        });
+
+    }
+
 }
