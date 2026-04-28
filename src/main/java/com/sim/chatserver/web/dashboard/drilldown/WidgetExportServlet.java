@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,10 +13,27 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.openpdf.text.Document;
+import org.openpdf.text.DocumentException;
+import org.openpdf.text.Element;
+import org.openpdf.text.Font;
+import org.openpdf.text.FontFactory;
+import org.openpdf.text.PageSize;
+import org.openpdf.text.Paragraph;
+import org.openpdf.text.Phrase;
+import org.openpdf.text.pdf.PdfPCell;
+import org.openpdf.text.pdf.PdfPTable;
+import org.openpdf.text.pdf.PdfWriter;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -24,9 +42,12 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonString;
+import jakarta.json.JsonValue;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -39,13 +60,18 @@ public class WidgetExportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getName());
 
+    private static final String DEFAULT_FORMAT = "csv";
+    private static final int FALLBACK_ROW_LIMIT = Integer.getInteger("export.fallbackRowLimit", 40);
+    private static final int DB_ID_CHUNK_SIZE = Integer.getInteger("export.dbIdChunkSize", 500);
+    private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
+
     @Inject
     AppDataSourceHolder dsHolder;
 
-    private static final String DEFAULT_FORMAT = "csv";
-
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        long startedAt = System.nanoTime();
+
         if (!isLoggedIn(req, resp)) {
             return;
         }
@@ -64,24 +90,8 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
-        List<String> selectedChatIds = new ArrayList<>();
-        if (payload.containsKey("selectedChatIds")) {
-            try {
-                payload.getJsonArray("selectedChatIds")
-                        .forEach(v -> selectedChatIds.add(v.toString().replace("\"", "").trim()));
-            } catch (Exception ignored) {
-            }
-        }
-
-        String format = payload.getString("format", DEFAULT_FORMAT).trim().toLowerCase(Locale.ROOT);
-        if (format.isEmpty()) {
-            format = DEFAULT_FORMAT;
-        }
-        if (!format.equals("csv") && !format.equals("json") && !format.equals("text") && !format.equals("pdf")) {
-            format = DEFAULT_FORMAT;
-        }
-
-        // Optional synthesized analysis markdown (for evidence-style PDF)
+        List<String> selectedChatIds = dedupePreserveOrder(parseSelectedChatIds(payload));
+        String format = normalizeFormat(payload.getString("format", DEFAULT_FORMAT));
         String reportMarkdown = payload.getString("reportMarkdown", "").trim();
 
         HttpSession session = req.getSession(false);
@@ -94,19 +104,8 @@ public class WidgetExportServlet extends HttpServlet {
         try {
             List<TermChatSnapshot> exportRows = resolveExportRows(selection, selectedChatIds);
 
-            String extension = switch (format) {
-                case "json" ->
-                    "json";
-                case "text" ->
-                    "txt";
-                case "pdf" ->
-                    "pdf";
-                default ->
-                    "csv";
-            };
-
-            String filename = "chats-export-" + Instant.now().toString().replace(":", "-") + "." + extension;
-            String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8.name()).replaceAll("\\+", "%20");
+            String filename = "chats-export-" + Instant.now().toString().replace(":", "-") + "." + extensionFor(format);
+            String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
             String disposition = "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encoded;
 
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -124,10 +123,80 @@ public class WidgetExportServlet extends HttpServlet {
                 default ->
                     writeCsv(resp, exportRows);
             }
+
+            long ms = (System.nanoTime() - startedAt) / 1_000_000L;
+            log.info(() -> String.format(
+                    "[export] format=%s selectionId=%s selectedIds=%d rows=%d durationMs=%d",
+                    format, selectionId, selectedChatIds.size(), exportRows.size(), ms
+            ));
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Export failed", e);
-            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed: " + e.getMessage());
+            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed.");
         }
+    }
+
+    private List<String> parseSelectedChatIds(JsonObject payload) {
+        List<String> ids = new ArrayList<>();
+        if (!payload.containsKey("selectedChatIds")) {
+            return ids;
+        }
+
+        try {
+            JsonArray arr = payload.getJsonArray("selectedChatIds");
+            if (arr == null) {
+                return ids;
+            }
+
+            for (JsonValue v : arr) {
+                String id = "";
+                if (v.getValueType() == JsonValue.ValueType.STRING) {
+                    id = ((JsonString) v).getString();
+                } else if (v.getValueType() != JsonValue.ValueType.NULL) {
+                    id = v.toString();
+                }
+                id = id == null ? "" : id.trim();
+                if (!id.isEmpty()) {
+                    ids.add(id);
+                }
+            }
+        } catch (Exception ignored) {
+            // tolerant parse
+        }
+
+        return ids;
+    }
+
+    private List<String> dedupePreserveOrder(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(new LinkedHashSet<>(ids));
+    }
+
+    private String normalizeFormat(String raw) {
+        String format = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+        if (format.isEmpty()) {
+            return DEFAULT_FORMAT;
+        }
+        return switch (format) {
+            case "csv", "json", "text", "pdf" ->
+                format;
+            default ->
+                DEFAULT_FORMAT;
+        };
+    }
+
+    private String extensionFor(String format) {
+        return switch (format) {
+            case "json" ->
+                "json";
+            case "text" ->
+                "txt";
+            case "pdf" ->
+                "pdf";
+            default ->
+                "csv";
+        };
     }
 
     private List<TermChatSnapshot> resolveExportRows(WidgetReviewStartServlet.Selection selection, List<String> selectedChatIds) throws SQLException {
@@ -136,13 +205,18 @@ public class WidgetExportServlet extends HttpServlet {
         if (selection.hasSnapshots()) {
             if (selectedChatIds.isEmpty()) {
                 exportRows.addAll(selection.snapshots);
-            } else {
-                for (TermChatSnapshot s : selection.snapshots) {
-                    if (s.getChatId() != null && selectedChatIds.contains(s.getChatId())) {
-                        exportRows.add(s);
-                    }
+                return exportRows;
+            }
+
+            Map<String, Integer> order = indexByOrder(selectedChatIds);
+            for (TermChatSnapshot s : selection.snapshots) {
+                String chatId = s.getChatId();
+                if (chatId != null && order.containsKey(chatId)) {
+                    exportRows.add(s);
                 }
             }
+
+            exportRows.sort(Comparator.comparingInt(x -> order.getOrDefault(safe(x.getChatId()), Integer.MAX_VALUE)));
             return exportRows;
         }
 
@@ -152,26 +226,37 @@ public class WidgetExportServlet extends HttpServlet {
 
         String widgetId = selection.widgetId;
         String tableName = sanitizeWidgetTableName(widgetId);
+        Map<String, Integer> order = indexByOrder(selectedChatIds);
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
                 return exportRows;
             }
 
-            String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                    + quoteIdentifier(tableName)
-                    + " WHERE widget_chat_id = ?";
+            for (List<String> chunk : chunk(selectedChatIds, DB_ID_CHUNK_SIZE)) {
+                if (chunk.isEmpty()) {
+                    continue;
+                }
 
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                for (String chatId : selectedChatIds) {
-                    ps.setString(1, chatId);
+                String placeholders = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                        + quoteIdentifier(tableName)
+                        + " WHERE widget_chat_id IN (" + placeholders + ")";
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    int idx = 1;
+                    for (String id : chunk) {
+                        ps.setString(idx++, id);
+                    }
+
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
+                        while (rs.next()) {
                             String cid = rs.getString("widget_chat_id");
                             Timestamp created = rs.getTimestamp("created_at");
                             String prompt = rs.getString("prompt");
                             String responseText = rs.getString("response_text");
                             String sessionId = rs.getString("session_id");
+
                             exportRows.add(new TermChatSnapshot(
                                     sessionId == null ? "" : sessionId,
                                     widgetId,
@@ -187,7 +272,17 @@ public class WidgetExportServlet extends HttpServlet {
             }
         }
 
+        exportRows.sort(Comparator.comparingInt(x -> order.getOrDefault(safe(x.getChatId()), Integer.MAX_VALUE)));
         return exportRows;
+    }
+
+    private Map<String, Integer> indexByOrder(List<String> ids) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        int i = 0;
+        for (String id : ids) {
+            out.putIfAbsent(id, i++);
+        }
+        return out;
     }
 
     private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) throws IOException {
@@ -198,12 +293,11 @@ public class WidgetExportServlet extends HttpServlet {
                 String sessionId = safe(row.getSessionId());
                 String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
                 String createdAt = row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString();
-                String prompt = safe(row.getPrompt());
-                String responseText = safe(row.getResponse());
-                out.write(csvLine(new String[]{sessionId, sessionDisplay, createdAt, prompt, responseText}).getBytes(StandardCharsets.UTF_8));
+                out.write(csvLine(new String[]{
+                    sessionId, sessionDisplay, createdAt, safe(row.getPrompt()), safe(row.getResponse())
+                }).getBytes(StandardCharsets.UTF_8));
                 out.write('\n');
             }
-            out.flush();
         }
     }
 
@@ -221,7 +315,6 @@ public class WidgetExportServlet extends HttpServlet {
                         .add("response", safe(row.getResponse())));
             }
             Json.createWriter(out).writeArray(ab.build());
-            out.flush();
         }
     }
 
@@ -238,263 +331,265 @@ public class WidgetExportServlet extends HttpServlet {
                 out.write(("Response:\n" + safe(row.getResponse()) + "\n").getBytes(StandardCharsets.UTF_8));
                 out.write(("----------------------------------------\n").getBytes(StandardCharsets.UTF_8));
             }
-            out.flush();
         }
     }
 
     private void writePdf(HttpServletResponse resp, List<TermChatSnapshot> rows, String selectionId, String reportMarkdown) throws IOException {
-        String html = (reportMarkdown != null && !reportMarkdown.isBlank())
-                ? buildEvidenceReportHtmlFromMarkdown(reportMarkdown, rows, selectionId)
-                : buildFallbackRowsHtml(rows, selectionId);
-
         try {
-            byte[] pdfBytes = htmlToPdf(html);
+            byte[] pdfBytes = buildPdf(reportMarkdown, rows, selectionId);
             resp.setContentType("application/pdf");
             resp.setContentLength(pdfBytes.length);
             try (OutputStream out = resp.getOutputStream()) {
                 out.write(pdfBytes);
-                out.flush();
             }
         } catch (Throwable t) {
-            log.log(Level.WARNING, "PDF renderer unavailable/failure; falling back to HTML export.", t);
-            resp.setContentType("text/html; charset=UTF-8");
+            log.log(Level.WARNING, "PDF generation failed; falling back to text export.", t);
+            resp.setContentType("text/plain; charset=UTF-8");
             try (OutputStream out = resp.getOutputStream()) {
-                out.write(html.getBytes(StandardCharsets.UTF_8));
-                out.flush();
+                String fallback = (reportMarkdown != null && !reportMarkdown.isBlank())
+                        ? reportMarkdown
+                        : buildFallbackText(rows, selectionId);
+                out.write(fallback.getBytes(StandardCharsets.UTF_8));
             }
         }
     }
 
-    private byte[] htmlToPdf(String html) throws Exception {
+    private byte[] buildPdf(String reportMarkdown, List<TermChatSnapshot> rows, String selectionId) throws IOException, DocumentException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        com.openhtmltopdf.pdfboxout.PdfRendererBuilder builder = new com.openhtmltopdf.pdfboxout.PdfRendererBuilder();
-        builder.useFastMode();
-        builder.withHtmlContent(html, null);
-        builder.toStream(baos);
-        builder.run();
+        Document doc = new Document(PageSize.A4, 50, 50, 50, 50);
+
+        try {
+            PdfWriter.getInstance(doc, baos);
+            doc.open();
+
+            Font title = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
+            Font h2 = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
+            Font normal = FontFactory.getFont(FontFactory.HELVETICA, 10);
+            Font small = FontFactory.getFont(FontFactory.HELVETICA, 9);
+
+            Paragraph pTitle = new Paragraph("Chat Analysis Evidence Report", title);
+            pTitle.setSpacingAfter(8);
+            doc.add(pTitle);
+
+            doc.add(new Paragraph("Selection ID: " + safe(selectionId), small));
+            doc.add(new Paragraph("Generated: " + Instant.now(), small));
+            doc.add(new Paragraph(" "));
+
+            if (reportMarkdown != null && !reportMarkdown.isBlank()) {
+                addSection(doc, h2, normal, "Executive Chat Analysis", cleanSectionBody(section(reportMarkdown, "Executive Chat Analysis")));
+                addBulletSection(doc, h2, normal, "Risks and Opportunities", section(reportMarkdown, "Risks and Opportunities"));
+                addBulletSection(doc, h2, normal, "Recommendations", section(reportMarkdown, "Recommendations"));
+                addBulletSection(doc, h2, normal, "Coverage and Methodology", section(reportMarkdown, "Coverage and Methodology"));
+                addMetricsTable(doc, h2, normal, section(reportMarkdown, "Key Metrics"));
+            } else {
+                addSection(doc, h2, normal, "Chat Export Report", "No synthesized report was provided. Showing selected chat rows.");
+                addRowsTable(doc, rows, normal);
+            }
+        } finally {
+            if (doc.isOpen()) {
+                doc.close();
+            }
+        }
+
         return baos.toByteArray();
     }
 
-    // -------- Evidence-style report rendering --------
-    private String buildEvidenceReportHtmlFromMarkdown(String md, List<TermChatSnapshot> rows, String selectionId) {
-        String exec = section(md, "Executive Chat Analysis");
-        String metrics = section(md, "Key Metrics");
-        String risks = section(md, "Risks and Opportunities");
-        String recs = section(md, "Recommendations");
-        String coverage = section(md, "Coverage and Methodology");
+    private void addSection(Document doc, Font h2, Font normal, String heading, String body) throws DocumentException {
+        Paragraph head = new Paragraph(heading, h2);
+        head.setSpacingBefore(6);
+        head.setSpacingAfter(4);
+        doc.add(head);
 
-        String metricsTable = markdownTableToHtml(metrics);
-        String risksHtml = markdownBulletsToHtml(risks);
-        String recsHtml = markdownBulletsToHtml(recs);
-        String coverageHtml = markdownBulletsToHtml(coverage);
-
-        int totalChats = rows == null ? 0 : rows.size();
-        String now = Instant.now().toString();
-
-        return """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta charset="UTF-8"/>
-                  <style>
-                    @page { size: A4; margin: 1in; }
-                    body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 12px; line-height: 1.45; }
-                    .header { border-bottom: 2px solid #111827; margin-bottom: 14px; padding-bottom: 8px; }
-                    .title { margin: 0; font-size: 22px; color: #0f172a; }
-                    .meta { color: #475569; font-size: 11px; margin-top: 4px; }
-                    .pill-row { margin-top: 10px; }
-                    .pill { display:inline-block; border:1px solid #cbd5e1; border-radius:999px; padding:2px 10px; margin-right:6px; font-size:11px; color:#334155; background:#f8fafc; }
-                    h2 { font-size: 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 18px; }
-                    h3 { font-size: 13px; color: #1e293b; margin-top: 12px; }
-                    p { margin: 8px 0; white-space: pre-wrap; }
-                    table { width: 100%%; border-collapse: collapse; margin-top: 8px; }
-                    th, td { border: 1px solid #e2e8f0; padding: 7px; vertical-align: top; }
-                    th { background: #f8fafc; text-align: left; }
-                    ul { margin-top: 6px; }
-                    li { margin: 5px 0; }
-                    .appendix { margin-top: 18px; }
-                    .small { color: #64748b; font-size: 10px; }
-                  </style>
-                </head>
-                <body>
-                  <div class="header">
-                    <h1 class="title">Chat Analysis Evidence Report</h1>
-                    <div class="meta">Selection ID: %s</div>
-                    <div class="meta">Generated: %s</div>
-                    <div class="pill-row">
-                      <span class="pill">Evidence Artifact</span>
-                      <span class="pill">Total Selected Chats: %d</span>
-                    </div>
-                  </div>
-
-                  <h2>Executive Chat Analysis</h2>
-                  <p>%s</p>
-
-                  <h2>Key Metrics</h2>
-                  %s
-
-                  <h2>Risks and Opportunities</h2>
-                  %s
-
-                  <h2>Recommendations</h2>
-                  %s
-
-                  <h2>Coverage and Methodology</h2>
-                  %s
-
-                  <div class="appendix">
-                    <h2>Appendix (Evidence Trace)</h2>
-                    <p class="small">This report was generated from synthesized analysis output and selected chat evidence available at export time.</p>
-                  </div>
-                </body>
-                </html>
-                """.formatted(
-                escapeHtml(selectionId),
-                escapeHtml(now),
-                totalChats,
-                escapeHtml(cleanSectionBody(exec)),
-                metricsTable,
-                risksHtml,
-                recsHtml,
-                coverageHtml
-        );
+        Paragraph content = new Paragraph(safe(body), normal);
+        content.setSpacingAfter(8);
+        doc.add(content);
     }
 
-    private String buildFallbackRowsHtml(List<TermChatSnapshot> rows, String selectionId) {
-        StringBuilder tableRows = new StringBuilder();
-        int limit = Math.min(rows == null ? 0 : rows.size(), 40);
+    private void addBulletSection(Document doc, Font h2, Font normal, String heading, String sectionMd) throws DocumentException {
+        Paragraph head = new Paragraph(heading, h2);
+        head.setSpacingBefore(6);
+        head.setSpacingAfter(4);
+        doc.add(head);
+
+        String body = cleanSectionBody(sectionMd);
+        if (body.isBlank()) {
+            doc.add(new Paragraph("None", normal));
+            return;
+        }
+
+        String[] lines = body.split("\\r?\\n");
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.startsWith("### ")) {
+                Paragraph sub = new Paragraph(t.substring(4).trim(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11));
+                sub.setSpacingBefore(4);
+                sub.setSpacingAfter(2);
+                doc.add(sub);
+            } else if (t.startsWith("- ")) {
+                Paragraph bullet = new Paragraph("• " + t.substring(2).trim(), normal);
+                bullet.setIndentationLeft(14f);
+                bullet.setSpacingAfter(2);
+                doc.add(bullet);
+            } else if (!t.isBlank()) {
+                Paragraph para = new Paragraph(t, normal);
+                para.setSpacingAfter(3);
+                doc.add(para);
+            }
+        }
+    }
+
+    private void addMetricsTable(Document doc, Font h2, Font normal, String sectionMd) throws DocumentException {
+        Paragraph head = new Paragraph("Key Metrics", h2);
+        head.setSpacingBefore(6);
+        head.setSpacingAfter(4);
+        doc.add(head);
+
+        String body = cleanSectionBody(sectionMd);
+        List<String> tableLines = new ArrayList<>();
+        for (String l : body.split("\\r?\\n")) {
+            if (l.contains("|")) {
+                String t = l.trim();
+                if (!isMarkdownTableSeparatorRow(t)) {
+                    tableLines.add(t);
+                }
+            }
+        }
+
+        if (tableLines.size() < 2) {
+            doc.add(new Paragraph("No metrics table found.", normal));
+            return;
+        }
+
+        List<String> header = splitPipeRow(tableLines.get(0));
+        int cols = Math.max(1, header.size());
+        PdfPTable table = new PdfPTable(cols);
+        table.setWidthPercentage(100f);
+        table.setSpacingAfter(8f);
+
+        for (String h : header) {
+            PdfPCell c = new PdfPCell(new Phrase(h, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            c.setHorizontalAlignment(Element.ALIGN_LEFT);
+            c.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            c.setBackgroundColor(TABLE_HEADER_BG);
+            c.setPadding(6f);
+            table.addCell(c);
+        }
+
+        for (int i = 1; i < tableLines.size(); i++) {
+            List<String> cells = splitPipeRow(tableLines.get(i));
+            if (cells.isEmpty()) {
+                continue;
+            }
+
+            for (int c = 0; c < cols; c++) {
+                String val = c < cells.size() ? cells.get(c) : "";
+                PdfPCell cell = new PdfPCell(new Phrase(val, normal));
+                cell.setPadding(6f);
+                cell.setVerticalAlignment(Element.ALIGN_TOP);
+                table.addCell(cell);
+            }
+        }
+
+        doc.add(table);
+    }
+
+    private boolean isMarkdownTableSeparatorRow(String line) {
+        String s = line == null ? "" : line.replace("|", "").trim();
+        return !s.isEmpty() && s.matches("[:\\-\\s]+");
+    }
+
+    private void addRowsTable(Document doc, List<TermChatSnapshot> rows, Font normal) throws DocumentException {
+        PdfPTable table = new PdfPTable(4);
+        table.setWidthPercentage(100f);
+        table.setSpacingBefore(4f);
+        table.setSpacingAfter(8f);
+        table.setWidths(new float[]{1.2f, 1.4f, 3.2f, 3.2f});
+
+        addHeaderCell(table, "Chat ID");
+        addHeaderCell(table, "Created");
+        addHeaderCell(table, "Prompt");
+        addHeaderCell(table, "Response");
+
+        int limit = Math.min(rows == null ? 0 : rows.size(), FALLBACK_ROW_LIMIT);
         for (int i = 0; i < limit; i++) {
             TermChatSnapshot r = rows.get(i);
             String createdAt = r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant().toString();
-            tableRows.append("<tr>")
-                    .append("<td>").append(escapeHtml(safe(r.getChatId()))).append("</td>")
-                    .append("<td>").append(escapeHtml(createdAt)).append("</td>")
-                    .append("<td>").append(escapeHtml(trimForCell(safe(r.getPrompt()), 180))).append("</td>")
-                    .append("<td>").append(escapeHtml(trimForCell(safe(r.getResponse()), 180))).append("</td>")
-                    .append("</tr>");
+            table.addCell(new PdfPCell(new Phrase(safe(r.getChatId()), normal)));
+            table.addCell(new PdfPCell(new Phrase(createdAt, normal)));
+            table.addCell(new PdfPCell(new Phrase(trimForCell(safe(r.getPrompt()), 180), normal)));
+            table.addCell(new PdfPCell(new Phrase(trimForCell(safe(r.getResponse()), 180), normal)));
         }
 
-        return """
-                <!doctype html>
-                <html>
-                <head>
-                  <meta charset="UTF-8"/>
-                  <style>
-                    @page { size: A4; margin: 1in; }
-                    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1f2937; }
-                    h1 { margin-bottom: 4px; }
-                    .meta { color: #64748b; font-size: 11px; margin-bottom: 10px; }
-                    table { width:100%%; border-collapse: collapse; }
-                    th, td { border:1px solid #e2e8f0; padding:6px; vertical-align:top; }
-                    th { background:#f8fafc; text-align:left; }
-                  </style>
-                </head>
-                <body>
-                  <h1>Chat Export Report</h1>
-                  <div class="meta">Selection: %s</div>
-                  <table>
-                    <thead>
-                      <tr><th>Chat ID</th><th>Created</th><th>Prompt</th><th>Response</th></tr>
-                    </thead>
-                    <tbody>%s</tbody>
-                  </table>
-                </body>
-                </html>
-                """.formatted(escapeHtml(selectionId), tableRows.toString());
+        doc.add(table);
+    }
+
+    private void addHeaderCell(PdfPTable table, String text) {
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+        c.setBackgroundColor(TABLE_HEADER_BG);
+        c.setPadding(6f);
+        c.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        table.addCell(c);
+    }
+
+    private String buildFallbackText(List<TermChatSnapshot> rows, String selectionId) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Chat Export Report\n");
+        sb.append("Selection: ").append(safe(selectionId)).append("\n\n");
+
+        int limit = Math.min(rows == null ? 0 : rows.size(), FALLBACK_ROW_LIMIT);
+        for (int i = 0; i < limit; i++) {
+            TermChatSnapshot r = rows.get(i);
+            sb.append("Chat ID: ").append(safe(r.getChatId())).append("\n");
+            sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append("\n");
+            sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append("\n");
+            sb.append("Response: ").append(trimForCell(safe(r.getResponse()), 180)).append("\n");
+            sb.append("--------------------------------------------------\n");
+        }
+        return sb.toString();
     }
 
     private String section(String md, String heading) {
-        if (md == null || md.isBlank()) {
+        if (md == null || md.isBlank() || heading == null || heading.isBlank()) {
             return "";
         }
-        String marker = "## " + heading;
-        int start = md.indexOf(marker);
-        if (start < 0) {
+
+        String[] lines = md.split("\\r?\\n", -1);
+        int startLine = -1;
+
+        for (int i = 0; i < lines.length; i++) {
+            String t = lines[i].trim();
+            if (t.startsWith("## ")) {
+                String h = t.substring(3).trim();
+                if (h.equalsIgnoreCase(heading.trim())) {
+                    startLine = i;
+                    break;
+                }
+            }
+        }
+        if (startLine < 0) {
             return "";
         }
-        int next = md.indexOf("\n## ", start + marker.length());
-        return (next < 0 ? md.substring(start) : md.substring(start, next)).trim();
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = startLine; i < lines.length; i++) {
+            String t = lines[i].trim();
+            if (i > startLine && t.startsWith("## ")) {
+                break;
+            }
+            sb.append(lines[i]);
+            if (i < lines.length - 1) {
+                sb.append('\n');
+            }
+        }
+
+        return sb.toString().trim();
     }
 
     private String cleanSectionBody(String s) {
         if (s == null) {
             return "";
         }
-        return s.replaceFirst("^##\\s+[^\\n]+\\s*", "").trim();
-    }
-
-    private String markdownBulletsToHtml(String sectionMd) {
-        String body = cleanSectionBody(sectionMd);
-        if (body.isBlank()) {
-            return "<p>None</p>";
-        }
-
-        String[] lines = body.split("\\r?\\n");
-        StringBuilder out = new StringBuilder();
-        boolean ulOpen = false;
-
-        for (String line : lines) {
-            String t = line.trim();
-            if (t.startsWith("### ")) {
-                if (ulOpen) {
-                    out.append("</ul>");
-                    ulOpen = false;
-                }
-                out.append("<h3>").append(escapeHtml(t.substring(4).trim())).append("</h3>");
-            } else if (t.startsWith("- ")) {
-                if (!ulOpen) {
-                    out.append("<ul>");
-                    ulOpen = true;
-                }
-                out.append("<li>").append(escapeHtml(t.substring(2).trim())).append("</li>");
-            } else if (!t.isBlank()) {
-                if (ulOpen) {
-                    out.append("</ul>");
-                    ulOpen = false;
-                }
-                out.append("<p>").append(escapeHtml(t)).append("</p>");
-            }
-        }
-        if (ulOpen) {
-            out.append("</ul>");
-        }
-        return out.toString();
-    }
-
-    private String markdownTableToHtml(String sectionMd) {
-        String body = cleanSectionBody(sectionMd);
-        String[] lines = body.split("\\r?\\n");
-        List<String> tableLines = new ArrayList<>();
-        for (String l : lines) {
-            if (l.contains("|")) {
-                tableLines.add(l.trim());
-            }
-        }
-        if (tableLines.size() < 2) {
-            return "<p>No metrics table found.</p>";
-        }
-
-        // row0 = header, row1 = separator, rest = data
-        List<String> header = splitPipeRow(tableLines.get(0));
-        StringBuilder html = new StringBuilder("<table><thead><tr>");
-        for (String h : header) {
-            html.append("<th>").append(escapeHtml(h)).append("</th>");
-        }
-        html.append("</tr></thead><tbody>");
-
-        for (int i = 2; i < tableLines.size(); i++) {
-            List<String> cells = splitPipeRow(tableLines.get(i));
-            if (cells.isEmpty()) {
-                continue;
-            }
-            html.append("<tr>");
-            for (String c : cells) {
-                html.append("<td>").append(escapeHtml(c)).append("</td>");
-            }
-            html.append("</tr>");
-        }
-        html.append("</tbody></table>");
-        return html.toString();
+        return s.replaceFirst("(?is)^##\\s+[^\\n]+\\s*", "").trim();
     }
 
     private List<String> splitPipeRow(String row) {
@@ -509,15 +604,11 @@ public class WidgetExportServlet extends HttpServlet {
         String[] parts = r.split("\\|");
         List<String> out = new ArrayList<>();
         for (String p : parts) {
-            String t = p.trim();
-            if (!t.isBlank()) {
-                out.add(t);
-            }
+            out.add(p == null ? "" : p.trim());
         }
         return out;
     }
 
-    // ---------- helpers ----------
     private String trimForCell(String s, int max) {
         if (s == null) {
             return "";
@@ -527,6 +618,17 @@ public class WidgetExportServlet extends HttpServlet {
 
     private String safe(String s) {
         return s == null ? "" : s;
+    }
+
+    private static List<List<String>> chunk(List<String> input, int size) {
+        List<List<String>> out = new ArrayList<>();
+        if (input == null || input.isEmpty() || size <= 0) {
+            return out;
+        }
+        for (int i = 0; i < input.size(); i += size) {
+            out.add(input.subList(i, Math.min(i + size, input.size())));
+        }
+        return out;
     }
 
     private static String csvLine(String[] cols) {
@@ -553,6 +655,8 @@ public class WidgetExportServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            resp.setContentType("application/json; charset=UTF-8");
+            resp.setHeader("Cache-Control", "no-store");
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
             return false;
         }
@@ -590,15 +694,5 @@ public class WidgetExportServlet extends HttpServlet {
             normalized = normalized.substring(0, 60);
         }
         return normalized;
-    }
-
-    private String escapeHtml(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;");
     }
 }

@@ -1,10 +1,63 @@
 // widget_review.js
-import { getJson, postJson, buildHeaders } from "./widget_review_util/api_client.js";
-import { normalizeSelectedEntries, chunkBy, dedupeByKey } from "./widget_review_util/selection_util.js";
-import { buildManualMessagePayload, buildBatchAnalyzePayload } from "./widget_review_util/payload_builder.js";
-import { estimateTokens, trimToBudget, compressWhitespace } from "./widget_review_util/text_budget_util.js";
-import { renderLoading, renderError, renderMarkdown, renderStatusPill } from "./widget_review_util/render_util.js";
+import {
+    getJson,
+    postJson,
+    postForDownload,
+    deleteJson,
+    buildHeaders
+} from "./widget_review_util/api_client.js";
+
+import {
+    normalizeSelectedEntries,
+    normalizeIncomingRows,
+    chunkBy,
+    dedupeByKey,
+    rowKey,
+    getSelectedEntries as getSelectedEntriesFromState,
+    filterRows,
+    getPageRows
+} from "./widget_review_util/selection_util.js";
+
+import {
+    buildManualMessagePayload,
+    buildBatchAnalyzePayload,
+    buildExportPayload
+} from "./widget_review_util/payload_builder.js";
+
+import {
+    estimateTokens,
+    normalizeTextForBudget
+} from "./widget_review_util/text_budget_util.js";
+
+import {
+    renderLoading,
+    renderError,
+    renderMarkdown,
+    renderStatusPill
+} from "./widget_review_util/render_util.js";
+
 import { info, warn, error, timed } from "./widget_review_util/logger.js";
+
+import {
+    humanizePhase,
+    parseSynthesisFromActivity,
+    deriveWeightedProgress,
+    deriveSynthesisPercent,
+    formatSynthesisLine,
+    createInitialSynthState
+} from "./widget_review_util/job_progress_util.js";
+
+import {
+    escapeHtml,
+    extractFilenameFromContentDisposition,
+    formatDurationHms,
+    normalizeIds,
+    subtractIds,
+    intersectIds,
+    setTextById,
+    setBlockTextById,
+    byId
+} from "./widget_review_util/dom_util.js";
 
 const CFG = window.widgetReviewConfig || {};
 const CONTEXT_PATH = (CFG.contextPath || "").replace(/\/+$/, "");
@@ -41,14 +94,49 @@ const state = {
     jobPollTimer: null,
     jobPollStartedAt: 0,
     activeDetailKey: "",
-    synth: {
-        level: 0,
-        chunk: 0,
-        totalChunks: 0,
-        finalAttempt: 0,
-        finalAttemptTotal: 4
-    }
+    lastReportMarkdown: "",
+    synth: createInitialSynthState()
 };
+
+function moveKeyMetricsToBottom(markdown) {
+    const md = String(markdown || "");
+    if (!md.trim()) return md;
+
+    // Match heading variants:
+    // ## Key Metrics
+    // ### KEY METRICS
+    // #### Key Metrics Table
+    const headingRe = /^#{2,6}\s*key\s+metrics\b[^\n]*$/i;
+    const lines = md.split("\n");
+
+    let start = -1;
+    let end = lines.length;
+
+    for (let i = 0; i < lines.length; i++) {
+        if (headingRe.test(lines[i].trim())) {
+            start = i;
+            break;
+        }
+    }
+    if (start === -1) return md;
+
+    // End at next markdown heading
+    for (let i = start + 1; i < lines.length; i++) {
+        if (/^#{1,6}\s+/.test(lines[i])) {
+            end = i;
+            break;
+        }
+    }
+
+    const sectionLines = lines.slice(start, end);
+    const before = lines.slice(0, start);
+    const after = lines.slice(end);
+
+    const without = [...before, ...after].join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    const section = sectionLines.join("\n").trim();
+
+    return `${without}\n\n${section}\n`.replace(/\n{3,}/g, "\n\n").trim();
+}
 
 export async function sendManualMessage({
     message,
@@ -68,10 +156,9 @@ export async function sendManualMessage({
             sessionId,
             reset,
             attachments,
-            selectedEntries: cleanEntries
+            selectedEntries: cleanEntries,
+            async
         });
-
-        payload.async = !!async;
 
         info("manual message payload prepared", {
             selected: cleanEntries.length,
@@ -116,7 +203,7 @@ export async function sendManualMessage({
         t.end({ ok: true, status: res.status });
         return { status: res.status, data };
     } catch (e) {
-        t.end({ ok: false });
+        t.fail?.({ ok: false });
         error("sendManualMessage failed", e);
         throw e;
     }
@@ -140,7 +227,7 @@ export async function analyzeInBatches({ prompt, selectedEntries, onProgress = (
             onProgress({ index: i + 1, total: batches.length, size: batch.length });
 
             const payload = buildBatchAnalyzePayload({
-                prompt: trimToBudget(compressWhitespace(prompt || ""), 12000),
+                prompt: normalizeTextForBudget(prompt || "", 12000),
                 selectedEntries: batch
             });
 
@@ -154,22 +241,25 @@ export async function analyzeInBatches({ prompt, selectedEntries, onProgress = (
         t.end({ ok: true, batches: batches.length });
         return outputs;
     } catch (e) {
-        t.end({ ok: false });
+        t.fail?.({ ok: false });
         error("analyzeInBatches failed", e);
         throw e;
     }
 }
 
-function extractCurrentReportMarkdown() {
-    const responseEl = document.getElementById("manualMessageResponse");
-    if (!responseEl) return "";
-    const txt = (responseEl.textContent || "").trim();
-    if (txt) return txt;
-    return (responseEl.innerText || "").trim();
+function getCurrentReportMarkdown() {
+    return (state.lastReportMarkdown || "").trim();
+}
+
+function setReportMarkdown(md) {
+    state.lastReportMarkdown = String(md || "");
+    const responseEl = byId("manualMessageResponse");
+    if (!responseEl) return;
+    renderMarkdown(responseEl, state.lastReportMarkdown || "No analysis yet.");
 }
 
 function setQuickPdfVisibility({ show, enabled }) {
-    const btn = document.getElementById("quickPdfAfterAnalyzeBtn");
+    const btn = byId("quickPdfAfterAnalyzeBtn");
     if (!btn) return;
     btn.hidden = !show;
     btn.disabled = !enabled;
@@ -187,16 +277,23 @@ export async function exportSelected(format = "csv") {
         .filter(Boolean);
 
     const normalizedFormat = String(format || "csv").toLowerCase();
-    const payload = {
-        selectionId: SELECTION_ID,
-        selectedChatIds,
-        format: normalizedFormat
-    };
+    const reportForExport = normalizedFormat === "pdf"
+        ? moveKeyMetricsToBottom(getCurrentReportMarkdown())
+        : getCurrentReportMarkdown();
 
     if (normalizedFormat === "pdf") {
-        const reportMarkdown = extractCurrentReportMarkdown();
-        if (reportMarkdown) payload.reportMarkdown = reportMarkdown;
+        info("PDF export markdown check", {
+            keyMetricsIndex: reportForExport.toLowerCase().indexOf("key metrics"),
+            preview: reportForExport.slice(0, 800)
+        });
     }
+
+    const payload = buildExportPayload({
+        selectionId: SELECTION_ID,
+        selectedChatIds,
+        format: normalizedFormat,
+        reportMarkdown: reportForExport
+    });
 
     info("export requested", {
         endpoint: DEFAULTS.exportEndpoint,
@@ -205,35 +302,27 @@ export async function exportSelected(format = "csv") {
         hasReportMarkdown: !!payload.reportMarkdown
     });
 
-    const res = await fetch(DEFAULTS.exportEndpoint, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-            ...buildHeaders(),
-            "Content-Type": "application/json",
-            "Accept": "*/*"
-        },
-        body: JSON.stringify(payload)
+    const { blob, filename } = await postForDownload(DEFAULTS.exportEndpoint, payload, {
+        headers: { ...buildHeaders(), Accept: "*/*" }
     });
 
-    if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Export failed (HTTP ${res.status})${txt ? `: ${txt}` : ""}`);
-    }
-
-    const blob = await res.blob();
-    const cd = res.headers.get("Content-Disposition") || "";
-    const fallbackExt = payload.format === "pdf" ? "pdf"
-        : payload.format === "json" ? "json"
-            : payload.format === "text" ? "txt"
+    const fallbackExt = payload.format === "pdf"
+        ? "pdf"
+        : payload.format === "json"
+            ? "json"
+            : payload.format === "text"
+                ? "txt"
                 : "csv";
-    const filename = extractFilenameFromContentDisposition(cd) || `chats-export.${fallbackExt}`;
+
+    const resolvedName = filename
+        || extractFilenameFromContentDisposition("")
+        || `chats-export.${fallbackExt}`;
 
     const url = URL.createObjectURL(blob);
     try {
         const a = document.createElement("a");
         a.href = url;
-        a.download = filename;
+        a.download = resolvedName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -248,7 +337,7 @@ export function showMarkdown(el, md) { renderMarkdown(el, md); }
 export function showStatus(el, text, tone = "neutral") { renderStatusPill(el, text, tone); }
 
 async function initPage() {
-    const tbody = document.getElementById("widgetReviewBody");
+    const tbody = byId("widgetReviewBody");
     if (!tbody) return;
 
     wireBasicUi();
@@ -264,10 +353,10 @@ async function initPage() {
 
     try {
         const raw = await fetchSelectionData(SELECTION_ID);
-        state.rows = normalizeIncomingRows(raw);
+        state.rows = normalizeIncomingRows(raw, DEFAULTS.maxSelectedEntries);
         applyFilterAndRender();
 
-        const searchTermsDisplay = document.getElementById("searchTermsDisplay");
+        const searchTermsDisplay = byId("searchTermsDisplay");
         if (searchTermsDisplay && raw?.searchTerms) {
             const g = raw.searchTerms.global || "";
             const p = raw.searchTerms.prompt || "";
@@ -289,19 +378,19 @@ async function initPage() {
 }
 
 function wireBasicUi() {
-    const pageSizeSel = document.getElementById("reviewPageSize");
-    const searchInput = document.getElementById("reviewSearchInput");
-    const prevBtn = document.getElementById("prevPageBtn");
-    const nextBtn = document.getElementById("nextPageBtn");
-    const selectAllVisible = document.getElementById("reviewSelectAll");
-    const selectAllBtn = document.getElementById("selectAllEntriesBtn");
-    const deselectAllBtn = document.getElementById("deselectAllBtn");
+    const pageSizeSel = byId("reviewPageSize");
+    const searchInput = byId("reviewSearchInput");
+    const prevBtn = byId("prevPageBtn");
+    const nextBtn = byId("nextPageBtn");
+    const selectAllVisible = byId("reviewSelectAll");
+    const selectAllBtn = byId("selectAllEntriesBtn");
+    const deselectAllBtn = byId("deselectAllBtn");
 
-    const exportCsvBtn = document.getElementById("exportCsvBtn");
-    const exportJsonBtn = document.getElementById("exportJsonBtn");
-    const exportTextBtn = document.getElementById("exportTextBtn");
-    const exportFormatSel = document.getElementById("exportFormatSelect");
-    const exportBtn = document.getElementById("exportSelectedBtn");
+    const exportCsvBtn = byId("exportCsvBtn");
+    const exportJsonBtn = byId("exportJsonBtn");
+    const exportTextBtn = byId("exportTextBtn");
+    const exportFormatSel = byId("exportFormatSelect");
+    const exportBtn = byId("exportSelectedBtn");
 
     if (pageSizeSel) {
         pageSizeSel.addEventListener("change", () => {
@@ -364,20 +453,27 @@ function wireBasicUi() {
     if (exportTextBtn) exportTextBtn.addEventListener("click", async () => {
         try { await exportSelected("text"); } catch (e) { error("text export failed", e); alert(e.message || "Text export failed."); }
     });
+
     if (exportBtn) exportBtn.addEventListener("click", async () => {
-        const f = exportFormatSel?.value || "csv";
-        try { await exportSelected(f); } catch (e) { error("export failed", e); alert(e.message || "Export failed."); }
+        let f = (exportFormatSel?.value || "csv").toLowerCase();
+        if (f === "pdf") f = "csv";
+        try {
+            await exportSelected(f);
+        } catch (e) {
+            error("export failed", e);
+            alert(e.message || "Export failed.");
+        }
     });
 }
 
 function wireManualMessageUi() {
-    const toggleBtn = document.getElementById("manualMessageToggleBtn");
-    const section = document.getElementById("manualMessageSection");
-    const closeBtn = document.getElementById("manualMessageCloseBtn");
-    const clearBtn = document.getElementById("manualMessageClearBtn");
-    const sendBtn = document.getElementById("manualMessageSendBtn");
-    const cancelBtn = document.getElementById("manualMessageCancelJobBtn");
-    const quickPdfBtn = document.getElementById("quickPdfAfterAnalyzeBtn");
+    const toggleBtn = byId("manualMessageToggleBtn");
+    const section = byId("manualMessageSection");
+    const closeBtn = byId("manualMessageCloseBtn");
+    const clearBtn = byId("manualMessageClearBtn");
+    const sendBtn = byId("manualMessageSendBtn");
+    const cancelBtn = byId("manualMessageCancelJobBtn");
+    const quickPdfBtn = byId("quickPdfAfterAnalyzeBtn");
 
     if (!toggleBtn || !section) return;
 
@@ -385,8 +481,8 @@ function wireManualMessageUi() {
         section.hidden = false;
         section.setAttribute("aria-hidden", "false");
         state.manualSectionOpen = true;
-        updateManualSelectionPreview();
-        setQuickPdfVisibility({ show: true, enabled: false });
+        updateManualSelectedCount();
+        setQuickPdfVisibility({ show: true, enabled: !!getCurrentReportMarkdown() });
     };
     const closeSection = () => {
         section.hidden = true;
@@ -405,18 +501,13 @@ function wireManualMessageUi() {
 
     if (clearBtn) {
         clearBtn.addEventListener("click", () => {
-            const status = document.getElementById("manualMessageStatus");
-            const preview = document.getElementById("manualMessageSelectionPreview");
-            const response = document.getElementById("manualMessageResponse");
+            setTextById("manualMessageStatus", "");
             resetProgressUi();
-
-            if (status) status.textContent = "";
-            if (preview) preview.value = "No response yet.";
-            if (response) response.textContent = "No analysis yet.";
-
+            setReportMarkdown("");
             stopJobPolling();
             state.lastManualSessionId = "";
             setQuickPdfVisibility({ show: true, enabled: false });
+            updateManualSelectedCount();
         });
     }
 
@@ -425,10 +516,10 @@ function wireManualMessageUi() {
             if (!state.activeJobId) return;
             try {
                 await cancelJob(state.activeJobId);
-                setManualStatus("Job cancellation requested.");
+                setManualStatus("Stop requested.");
             } catch (e) {
                 warn("cancel failed", e);
-                setManualStatus("Failed to cancel job.");
+                setManualStatus("Could not stop running work.");
             }
         });
     }
@@ -448,9 +539,9 @@ function wireManualMessageUi() {
 }
 
 function wireDetailCardUi() {
-    const promptBtn = document.getElementById("translatePromptBtn");
-    const responseBtn = document.getElementById("translateResponseBtn");
-    const langSel = document.getElementById("translateTargetLang");
+    const promptBtn = byId("translatePromptBtn");
+    const responseBtn = byId("translateResponseBtn");
+    const langSel = byId("translateTargetLang");
 
     if (promptBtn) {
         promptBtn.addEventListener("click", async () => {
@@ -470,13 +561,11 @@ function wireDetailCardUi() {
 }
 
 async function onManualMessageSend() {
-    const statusEl = document.getElementById("manualMessageStatus");
-    const responseEl = document.getElementById("manualMessageResponse");
-    const asyncEl = document.getElementById("manualMessageAsyncMode");
+    const statusEl = byId("manualMessageStatus");
 
     const message = DEFAULT_ANALYZE_PROMPT;
     const selectedEntries = getSelectedEntries();
-    const useAsync = asyncEl ? !!asyncEl.checked : true;
+    const useAsync = true;
 
     if (!selectedEntries.length) {
         if (statusEl) statusEl.textContent = "Select at least one chat entry.";
@@ -488,8 +577,8 @@ async function onManualMessageSend() {
         resetProgressUi();
         setQuickPdfVisibility({ show: true, enabled: false });
 
-        if (statusEl) statusEl.textContent = useAsync ? "Submitting analysis job…" : "Running analysis…";
-        if (responseEl) responseEl.textContent = "No analysis yet.";
+        if (statusEl) statusEl.textContent = "Submitting analysis job…";
+        setReportMarkdown("");
 
         const { status, data } = await sendManualMessage({
             message,
@@ -511,15 +600,15 @@ async function onManualMessageSend() {
             toggleCancelButton(true);
             showProgressBlock(true);
 
-            if (statusEl) statusEl.textContent = `Job accepted (${jobId.slice(0, 8)}…). Starting analysis…`;
+            if (statusEl) statusEl.textContent = `Job accepted (${jobId.slice(0, 8)}…). Starting…`;
             startJobPolling(jobId);
             return;
         }
 
         const responseText =
             data?.textResponse || data?.response || data?.message || data?.answer || data?.output || data?.raw || "No response returned.";
-        if (responseEl) renderMarkdown(responseEl, String(responseText));
-        if (statusEl) statusEl.textContent = "Completed.";
+        setReportMarkdown(moveKeyMetricsToBottom(String(responseText)));
+        if (statusEl) statusEl.textContent = "Finished.";
         setQuickPdfVisibility({ show: true, enabled: !!String(responseText || "").trim() });
     } catch (e) {
         const requestId = e?.data?.requestId || e?.requestId || "";
@@ -542,7 +631,7 @@ function startJobPolling(jobId) {
             const elapsed = Date.now() - state.jobPollStartedAt;
             if (elapsed > DEFAULTS.pollMaxMs) {
                 stopJobPolling();
-                setManualStatus("Job timed out while polling.");
+                setManualStatus("This took too long. Please try again.");
                 toggleCancelButton(false);
                 return;
             }
@@ -550,8 +639,7 @@ function startJobPolling(jobId) {
             const payload = await fetchJobStatus(jobId);
             applyJobStatusToUi(payload);
 
-            const done = !!(payload?.job?.done);
-            if (done) {
+            if (payload?.job?.done) {
                 stopJobPolling();
                 toggleCancelButton(false);
             }
@@ -574,62 +662,29 @@ function stopJobPolling() {
 
 async function fetchJobStatus(jobId) {
     const url = `${DEFAULTS.jobStatusEndpoint}?jobId=${encodeURIComponent(jobId)}`;
-    const res = await fetch(url, {
-        method: "GET",
-        credentials: "same-origin",
-        headers: { ...buildHeaders(), "Accept": "application/json" }
-    });
-
-    const text = await res.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
-
-    if (!res.ok) {
-        const err = new Error(`Job status failed: HTTP ${res.status}`);
-        err.status = res.status;
-        err.data = data;
-        throw err;
-    }
-    return data || {};
+    return getJson(url, { headers: { ...buildHeaders(), Accept: "application/json" } });
 }
 
 async function cancelJob(jobId) {
     const url = `${DEFAULTS.jobStatusEndpoint}?jobId=${encodeURIComponent(jobId)}`;
-    const res = await fetch(url, {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: { ...buildHeaders(), "Accept": "application/json" }
-    });
-
-    const text = await res.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
-
-    if (!res.ok) {
-        const err = new Error(`Cancel failed: HTTP ${res.status}`);
-        err.status = res.status;
-        err.data = data;
-        throw err;
-    }
-    return data;
+    return deleteJson(url, { headers: { ...buildHeaders(), Accept: "application/json" } });
 }
 
 function applyJobStatusToUi(payload) {
-    const statusEl = document.getElementById("manualMessageStatus");
-    const responseEl = document.getElementById("manualMessageResponse");
-    const progressBar = document.getElementById("manualMessageProgressBar");
-    const progressText = document.getElementById("manualMessageProgressText");
-    const coverageText = document.getElementById("manualMessageCoverageText");
-    const missingText = document.getElementById("manualMessageMissingIds");
+    const statusEl = byId("manualMessageStatus");
+    const progressBar = byId("manualMessageProgressBar");
+    const progressText = byId("manualMessageProgressText");
+    const coverageText = byId("manualMessageCoverageText");
+    const missingText = byId("manualMessageMissingIds");
 
-    const phasePill = document.getElementById("manualMessagePhasePill");
-    const activityText = document.getElementById("manualMessageActivityText");
-    const batchText = document.getElementById("manualMessageBatchText");
-    const runtimeText = document.getElementById("manualMessageRuntimeText");
-    const lastUpdateText = document.getElementById("manualMessageLastUpdateText");
+    const phasePill = byId("manualMessagePhasePill");
+    const activityText = byId("manualMessageActivityText");
+    const batchText = byId("manualMessageBatchText");
+    const runtimeText = byId("manualMessageRuntimeText");
+    const lastUpdateText = byId("manualMessageLastUpdateText");
 
-    const synthText = document.getElementById("manualMessageSynthesisText");
-    const synthProgress = document.getElementById("manualMessageSynthesisProgress");
+    const synthText = byId("manualMessageSynthesisText");
+    const synthProgress = byId("manualMessageSynthesisProgress");
 
     const job = payload?.job || null;
     const progress = payload?.progress || null;
@@ -685,12 +740,7 @@ function applyJobStatusToUi(payload) {
     );
 
     const synthParsed = parseSynthesisFromActivity(activity);
-    if (synthParsed) {
-        state.synth = {
-            ...state.synth,
-            ...synthParsed
-        };
-    }
+    if (synthParsed) state.synth = { ...state.synth, ...synthParsed };
 
     if (!Number.isFinite(progressPercent)) {
         progressPercent = deriveWeightedProgress({
@@ -700,16 +750,14 @@ function applyJobStatusToUi(payload) {
             totalBatches,
             synth: state.synth
         });
-    } else {
-        if (phase.toUpperCase() === "REDUCE" && !done) {
-            progressPercent = Math.max(progressPercent, deriveWeightedProgress({
-                phase,
-                done,
-                completedBatches,
-                totalBatches,
-                synth: state.synth
-            }));
-        }
+    } else if (phase.toUpperCase() === "REDUCE" && !done) {
+        progressPercent = Math.max(progressPercent, deriveWeightedProgress({
+            phase,
+            done,
+            completedBatches,
+            totalBatches,
+            synth: state.synth
+        }));
     }
 
     progressPercent = Math.max(0, Math.min(100, Math.round(progressPercent)));
@@ -722,7 +770,7 @@ function applyJobStatusToUi(payload) {
 
     if (progressText) {
         progressText.textContent =
-            `Phase: ${humanizePhase(phase)}`
+            `Status: ${humanizePhase(phase)}`
             + batchSegment
             + ` • Progress: ${progressPercent}%`
             + (failedBatches > 0 ? ` • Failed: ${failedBatches}` : "")
@@ -733,7 +781,7 @@ function applyJobStatusToUi(payload) {
         coverageText.textContent =
             `Coverage: ${coverage}%${coverageComplete ? " (complete)" : " (in progress)"}`
             + ` • Used: ${usedCount}/${Math.max(0, total)}`
-            + (metadataMismatch ? " • Metadata mismatch detected" : "");
+            + (metadataMismatch ? " • Coverage metadata mismatch detected" : "");
     }
 
     if (missingText) {
@@ -744,7 +792,7 @@ function applyJobStatusToUi(payload) {
     if (phasePill) phasePill.textContent = humanizePhase(phase);
 
     const fallbackActivity = showBatchCounts
-        ? `Processing batch ${Math.max(1, completedBatches + (done ? 0 : 1))} of ${Math.max(1, totalBatches)}...`
+        ? `Working on batch ${Math.max(1, completedBatches + (done ? 0 : 1))} of ${Math.max(1, totalBatches)}...`
         : "Preparing analysis...";
     if (activityText) activityText.textContent = activity || fallbackActivity;
 
@@ -754,27 +802,24 @@ function applyJobStatusToUi(payload) {
             : "—";
     }
 
-    if (runtimeText) {
-        const runtimeMs = Math.max(0, Date.now() - state.jobPollStartedAt);
-        runtimeText.textContent = formatDurationHms(runtimeMs);
-    }
+    if (runtimeText) runtimeText.textContent = formatDurationHms(Math.max(0, Date.now() - state.jobPollStartedAt));
+    if (lastUpdateText) lastUpdateText.textContent = new Date().toLocaleTimeString();
 
-    if (lastUpdateText) {
-        lastUpdateText.textContent = new Date().toLocaleTimeString();
+    if (synthText || synthProgress) {
+        const p = String(phase || "").toUpperCase();
+        if (done || p !== "REDUCE") {
+            if (synthText) synthText.textContent = "";
+            if (synthProgress) synthProgress.textContent = "";
+        } else {
+            if (synthText) synthText.textContent = formatSynthesisLine(phase, state.synth) || "Finalizing report...";
+            if (synthProgress) synthProgress.textContent = `${deriveSynthesisPercent(state.synth)}%`;
+        }
     }
-
-    updateSynthesisUi({
-        phase,
-        done,
-        synth: state.synth,
-        synthTextEl: synthText,
-        synthProgressEl: synthProgress
-    });
 
     if (statusEl) {
         const tone = done
-            ? (coverageComplete && success ? "Completed" : "Completed with issues")
-            : "Running";
+            ? (coverageComplete && success ? "Finished" : "Finished with issues")
+            : "In progress";
 
         statusEl.textContent =
             `${tone} • ${humanizePhase(phase)}`
@@ -784,16 +829,15 @@ function applyJobStatusToUi(payload) {
             + (metadataMismatch ? " • Coverage metadata mismatch" : "");
     }
 
-    // no interim progress text in response panel
-    if (done && responseEl) {
+    if (done) {
         const finalReport = job?.finalReport || job?.rawResponseBody || "";
         if (success && coverageComplete && !metadataMismatch) {
-            renderMarkdown(responseEl, String(finalReport || "Analysis completed successfully."));
+            setReportMarkdown(moveKeyMetricsToBottom(String(finalReport || "Analysis completed successfully.")));
             setQuickPdfVisibility({ show: true, enabled: !!String(finalReport || "").trim() });
             return;
         }
 
-        const title = coverageComplete ? "## Completed with Errors" : "## Completed with Partial Coverage";
+        const title = coverageComplete ? "## Finished with Issues" : "## Finished with Partial Coverage";
         const detail =
             `${title}\n\n`
             + `- Coverage: **${coverage}%**\n`
@@ -803,149 +847,30 @@ function applyJobStatusToUi(payload) {
             + (job.errorMessage ? `- Error: ${job.errorMessage}\n` : "")
             + (finalReport ? `\n---\n\n${finalReport}` : "");
 
-        renderMarkdown(responseEl, detail);
+        setReportMarkdown(moveKeyMetricsToBottom(detail));
         setQuickPdfVisibility({ show: true, enabled: true });
     }
 }
 
-function deriveWeightedProgress({ phase, done, completedBatches, totalBatches, synth }) {
-    if (done) return 100;
-    const p = String(phase || "").toUpperCase();
-
-    if (p === "QUEUED") return 3;
-    if (p === "MAP") {
-        if (totalBatches > 0) {
-            const ratio = Math.max(0, Math.min(1, completedBatches / Math.max(1, totalBatches)));
-            return 5 + Math.round(ratio * 75);
-        }
-        return 15;
-    }
-    if (p === "REDUCE") {
-        let reduceRatio = 0.1;
-
-        if (synth?.finalAttempt > 0 && synth?.finalAttemptTotal > 0) {
-            reduceRatio = Math.max(reduceRatio, Math.min(1, synth.finalAttempt / synth.finalAttemptTotal));
-        } else if (synth?.level > 0 && synth?.totalChunks > 0) {
-            const chunkRatio = Math.max(0, Math.min(1, synth.chunk / Math.max(1, synth.totalChunks)));
-            const lvlFactor = Math.min(0.95, 0.2 + (synth.level * 0.15));
-            reduceRatio = Math.max(reduceRatio, Math.min(1, lvlFactor * 0.7 + chunkRatio * 0.3));
-        }
-
-        return 80 + Math.round(reduceRatio * 19);
-    }
-
-    return 10;
-}
-
-function parseSynthesisFromActivity(activity) {
-    if (!activity) return null;
-    const txt = String(activity).toLowerCase();
-
-    const levelChunk = txt.match(/synthesis\s+l(\d+).*chunk\s+(\d+)\s*\/\s*(\d+)/i);
-    if (levelChunk) {
-        return {
-            level: parseInt(levelChunk[1], 10) || 0,
-            chunk: parseInt(levelChunk[2], 10) || 0,
-            totalChunks: parseInt(levelChunk[3], 10) || 0
-        };
-    }
-
-    const levelOnly = txt.match(/synthesis\s+level\s+(\d+)/i);
-    if (levelOnly) {
-        return { level: parseInt(levelOnly[1], 10) || 0 };
-    }
-
-    const finalAttempt = txt.match(/final\s+synthesis\s+attempt\s+(\d+)\s*\/\s*(\d+)/i);
-    if (finalAttempt) {
-        return {
-            finalAttempt: parseInt(finalAttempt[1], 10) || 0,
-            finalAttemptTotal: parseInt(finalAttempt[2], 10) || 0
-        };
-    }
-
-    return null;
-}
-
-function updateSynthesisUi({ phase, done, synth, synthTextEl, synthProgressEl }) {
-    if (!synthTextEl && !synthProgressEl) return;
-
-    const p = String(phase || "").toUpperCase();
-    if (done || p !== "REDUCE") {
-        if (synthTextEl) synthTextEl.textContent = "";
-        if (synthProgressEl) synthProgressEl.textContent = "";
-        return;
-    }
-
-    const line = formatSynthesisLine(phase, synth);
-    if (synthTextEl) synthTextEl.textContent = line || "Synthesizing final report...";
-
-    if (synthProgressEl) {
-        const pct = deriveSynthesisPercent(synth);
-        synthProgressEl.textContent = `${pct}%`;
-    }
-}
-
-function deriveSynthesisPercent(synth) {
-    if (synth?.finalAttempt > 0 && synth?.finalAttemptTotal > 0) {
-        return Math.max(1, Math.min(99, Math.round((synth.finalAttempt / synth.finalAttemptTotal) * 100)));
-    }
-    if (synth?.chunk > 0 && synth?.totalChunks > 0) {
-        return Math.max(1, Math.min(99, Math.round((synth.chunk / synth.totalChunks) * 100)));
-    }
-    return 10;
-}
-
-function formatSynthesisLine(phase, synth) {
-    const p = String(phase || "").toUpperCase();
-    if (p !== "REDUCE") return "";
-
-    if (synth?.finalAttempt > 0 && synth?.finalAttemptTotal > 0) {
-        return `Final attempt ${synth.finalAttempt}/${synth.finalAttemptTotal}`;
-    }
-
-    if (synth?.level > 0 && synth?.chunk > 0 && synth?.totalChunks > 0) {
-        return `Level ${synth.level} • Chunk ${synth.chunk}/${synth.totalChunks}`;
-    }
-
-    if (synth?.level > 0) {
-        return `Level ${synth.level}`;
-    }
-
-    return "Synthesizing final report...";
-}
-
-function humanizePhase(phase) {
-    const p = String(phase || "").toUpperCase();
-    switch (p) {
-        case "QUEUED": return "Queued";
-        case "MAP": return "Map analysis";
-        case "REDUCE": return "Reduce synthesis";
-        case "COMPLETED": return "Completed";
-        case "FAILED": return "Failed";
-        case "CANCELLED": return "Cancelled";
-        default: return p || "Unknown";
-    }
-}
-
 function showProgressBlock(show) {
-    const block = document.getElementById("manualMessageProgressBlock");
+    const block = byId("manualMessageProgressBlock");
     if (block) block.hidden = !show;
 }
 
 function resetProgressUi() {
-    const progressBar = document.getElementById("manualMessageProgressBar");
-    const progressText = document.getElementById("manualMessageProgressText");
-    const coverageText = document.getElementById("manualMessageCoverageText");
-    const missingText = document.getElementById("manualMessageMissingIds");
+    const progressBar = byId("manualMessageProgressBar");
+    const progressText = byId("manualMessageProgressText");
+    const coverageText = byId("manualMessageCoverageText");
+    const missingText = byId("manualMessageMissingIds");
 
-    const phasePill = document.getElementById("manualMessagePhasePill");
-    const activityText = document.getElementById("manualMessageActivityText");
-    const batchText = document.getElementById("manualMessageBatchText");
-    const runtimeText = document.getElementById("manualMessageRuntimeText");
-    const lastUpdateText = document.getElementById("manualMessageLastUpdateText");
+    const phasePill = byId("manualMessagePhasePill");
+    const activityText = byId("manualMessageActivityText");
+    const batchText = byId("manualMessageBatchText");
+    const runtimeText = byId("manualMessageRuntimeText");
+    const lastUpdateText = byId("manualMessageLastUpdateText");
 
-    const synthText = document.getElementById("manualMessageSynthesisText");
-    const synthProgress = document.getElementById("manualMessageSynthesisProgress");
+    const synthText = byId("manualMessageSynthesisText");
+    const synthProgress = byId("manualMessageSynthesisProgress");
 
     if (progressBar) progressBar.value = 0;
     if (progressText) progressText.textContent = "Waiting to start…";
@@ -955,7 +880,7 @@ function resetProgressUi() {
         missingText.style.display = "none";
     }
 
-    if (phasePill) phasePill.textContent = "Queued";
+    if (phasePill) phasePill.textContent = "Waiting to start";
     if (activityText) activityText.textContent = "Waiting for first update…";
     if (batchText) batchText.textContent = "—";
     if (runtimeText) runtimeText.textContent = "00:00:00";
@@ -963,33 +888,17 @@ function resetProgressUi() {
     if (synthText) synthText.textContent = "";
     if (synthProgress) synthProgress.textContent = "";
 
-    state.synth = {
-        level: 0,
-        chunk: 0,
-        totalChunks: 0,
-        finalAttempt: 0,
-        finalAttemptTotal: 4
-    };
-
+    state.synth = createInitialSynthState();
     showProgressBlock(false);
 }
 
 function toggleCancelButton(enabled) {
-    const cancelBtn = document.getElementById("manualMessageCancelJobBtn");
+    const cancelBtn = byId("manualMessageCancelJobBtn");
     if (cancelBtn) cancelBtn.disabled = !enabled;
 }
 
 function setManualStatus(text) {
-    const statusEl = document.getElementById("manualMessageStatus");
-    if (statusEl) statusEl.textContent = text;
-}
-
-function formatDurationHms(ms) {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const hh = Math.floor(totalSec / 3600);
-    const mm = Math.floor((totalSec % 3600) / 60);
-    const ss = totalSec % 60;
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+    setTextById("manualMessageStatus", text);
 }
 
 async function fetchSelectionData(selectionId) {
@@ -1043,36 +952,17 @@ function getJsonViaXhr(url) {
     });
 }
 
-function normalizeIncomingRows(payload) {
-    let rows = [];
-    if (Array.isArray(payload)) rows = payload;
-    else if (Array.isArray(payload?.rows)) rows = payload.rows;
-    else if (Array.isArray(payload?.selectedEntries)) rows = payload.selectedEntries;
-    else if (Array.isArray(payload?.data)) rows = payload.data;
-
-    return normalizeSelectedEntries(rows, DEFAULTS.maxSelectedEntries);
-}
-
 function applyFilterAndRender() {
-    const q = (document.getElementById("reviewSearchInput")?.value || "").trim().toLowerCase();
-
-    if (!q) {
-        state.filteredRows = [...state.rows];
-    } else {
-        state.filteredRows = state.rows.filter((r) => {
-            const hay = `${r.chatId || ""} ${r.prompt || ""} ${r.response || ""} ${r.sessionId || ""}`.toLowerCase();
-            return hay.includes(q);
-        });
-    }
-
+    const q = (byId("reviewSearchInput")?.value || "").trim().toLowerCase();
+    state.filteredRows = filterRows(state.rows, q);
     renderTable();
-    if (state.manualSectionOpen) updateManualSelectionPreview();
+    if (state.manualSectionOpen) updateManualSelectedCount();
 }
 
 function renderTable() {
-    const tbody = document.getElementById("widgetReviewBody");
-    const pageInfo = document.getElementById("pageInfo");
-    const selectAllVisible = document.getElementById("reviewSelectAll");
+    const tbody = byId("widgetReviewBody");
+    const pageInfo = byId("pageInfo");
+    const selectAllVisible = byId("reviewSelectAll");
 
     if (!tbody) return;
 
@@ -1083,7 +973,7 @@ function renderTable() {
             selectAllVisible.checked = false;
             selectAllVisible.indeterminate = false;
         }
-        if (state.manualSectionOpen) updateManualSelectionPreview();
+        if (state.manualSectionOpen) updateManualSelectedCount();
         return;
     }
 
@@ -1117,7 +1007,7 @@ function renderTable() {
             if (cb.checked) state.selectedIds.add(key);
             else state.selectedIds.delete(key);
             syncVisibleSelectAll();
-            if (state.manualSectionOpen) updateManualSelectionPreview();
+            if (state.manualSectionOpen) updateManualSelectedCount();
         });
     });
 
@@ -1144,14 +1034,14 @@ function renderTable() {
     }
 
     syncVisibleSelectAll();
-    if (state.manualSectionOpen) updateManualSelectionPreview();
+    if (state.manualSectionOpen) updateManualSelectedCount();
 }
 
 function openDetailCard(row) {
-    const card = document.getElementById("detailCard");
-    const title = document.getElementById("detailTitle");
-    const prompt = document.getElementById("detailPrompt");
-    const response = document.getElementById("detailResponse");
+    const card = byId("detailCard");
+    const title = byId("detailTitle");
+    const prompt = byId("detailPrompt");
+    const response = byId("detailResponse");
 
     if (!card || !title || !prompt || !response) return;
 
@@ -1173,15 +1063,15 @@ function getActiveDetailRow() {
 }
 
 function clearTranslationUi() {
-    setText("promptTranslationMeta", "");
-    setText("responseTranslationMeta", "");
-    setPreText("promptTranslationOutput", "", false);
-    setPreText("responseTranslationOutput", "", false);
+    setTextById("promptTranslationMeta", "");
+    setTextById("responseTranslationMeta", "");
+    setBlockTextById("promptTranslationOutput", "", false);
+    setBlockTextById("responseTranslationOutput", "", false);
 }
 
 async function translateText(sourceText, targetLang, metaId, outId, label) {
-    const meta = document.getElementById(metaId);
-    const out = document.getElementById(outId);
+    const meta = byId(metaId);
+    const out = byId(outId);
 
     if (!sourceText || !sourceText.trim()) {
         if (meta) meta.textContent = `${label} is empty; nothing to translate.`;
@@ -1228,20 +1118,8 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
     }
 }
 
-function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value || "";
-}
-
-function setPreText(id, value, show) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = value || "";
-    el.style.display = show ? "block" : "none";
-}
-
 function syncVisibleSelectAll() {
-    const selectAllVisible = document.getElementById("reviewSelectAll");
+    const selectAllVisible = byId("reviewSelectAll");
     if (!selectAllVisible) return;
 
     const pageRows = getCurrentPageRows();
@@ -1261,46 +1139,26 @@ function syncVisibleSelectAll() {
 }
 
 function getCurrentPageRows() {
-    const start = (state.page - 1) * state.pageSize;
-    return state.filteredRows.slice(start, start + state.pageSize);
+    return getPageRows(state.filteredRows, state.page, state.pageSize);
 }
 
 function getSelectedEntries() {
-    return state.rows.filter((r) => state.selectedIds.has(rowKey(r)));
+    return getSelectedEntriesFromState(state.rows, state.selectedIds);
 }
 
-function updateManualSelectionPreview() {
-    const preview = document.getElementById("manualMessageSelectionPreview");
-    if (!preview) return;
-
-    const selected = getSelectedEntries();
-    if (!selected.length) {
-        preview.value = "No entries selected.";
-        return;
-    }
-
-    const lines = [];
-    for (const r of selected.slice(0, 200)) {
-        lines.push(`- Chat ID: ${r.chatId || ""}`);
-        lines.push(`  Session: ${r.sessionId || ""}`);
-        lines.push(`  Created: ${r.createdAt || ""}`);
-        lines.push(`  Prompt: ${(r.prompt || "").slice(0, 500)}`);
-    }
-    if (selected.length > 200) lines.push(`\n... and ${selected.length - 200} more selected entries.`);
-    preview.value = lines.join("\n");
-}
-
-function rowKey(r) {
-    return r.chatId || `${r.createdAt || ""}|${(r.prompt || "").slice(0, 24)}|${r.sessionId || ""}`;
+function updateManualSelectedCount() {
+    const el = byId("manualMessageSelectedCount");
+    if (!el) return;
+    el.textContent = `Selected chats: ${getSelectedEntries().length}`;
 }
 
 function renderLoadingRow(text) {
-    const tbody = document.getElementById("widgetReviewBody");
+    const tbody = byId("widgetReviewBody");
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
 }
 
 function renderErrorRow(text) {
-    const tbody = document.getElementById("widgetReviewBody");
+    const tbody = byId("widgetReviewBody");
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
 }
 
@@ -1308,57 +1166,6 @@ function humanizeLoadError(e) {
     if (e instanceof TypeError) return "Network/CSP blocked the data request. Check browser console + server/proxy logs.";
     if (typeof e?.status === "number") return `Failed to load selected chats (HTTP ${e.status}).`;
     return "Failed to load selected chats.";
-}
-
-function normalizeIds(ids) {
-    const out = [];
-    const seen = new Set();
-    for (const id of Array.isArray(ids) ? ids : []) {
-        const n = String(id ?? "").trim().toLowerCase();
-        if (!n) continue;
-        if (seen.has(n)) continue;
-        seen.add(n);
-        out.push(n);
-    }
-    return out;
-}
-
-function subtractIds(all, used) {
-    const a = new Set(normalizeIds(all));
-    const u = new Set(normalizeIds(used));
-    for (const id of u) a.delete(id);
-    return Array.from(a);
-}
-
-function intersectIds(a, b) {
-    const sa = new Set(normalizeIds(a));
-    const sb = new Set(normalizeIds(b));
-    const out = [];
-    for (const id of sa) {
-        if (sb.has(id)) out.push(id);
-    }
-    return out;
-}
-
-function extractFilenameFromContentDisposition(cd) {
-    if (!cd) return "";
-    const star = cd.match(/filename\*=UTF-8''([^;]+)/i);
-    if (star && star[1]) {
-        try { return decodeURIComponent(star[1]); } catch { }
-    }
-    const plain = cd.match(/filename="([^"]+)"/i);
-    if (plain && plain[1]) return plain[1];
-    return "";
-}
-
-function escapeHtml(s) {
-    return (s ?? "")
-        .toString()
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\"", "&quot;")
-        .replaceAll("'", "&#039;");
 }
 
 window.widgetReview = {

@@ -122,6 +122,8 @@ body {
     padding: 16px;
     border-radius: 10px;
     white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 /* ----------------------------------
@@ -694,7 +696,6 @@ hr {
 
 /* ----------------------------------
    Manual Message / Markdown Response
-   (clean, readable, consistent with light UI)
 ----------------------------------- */
 .manual-message-box {
     border: 1px solid #d1d5db;
@@ -709,12 +710,25 @@ hr {
     box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
     white-space: normal;
     font-family: inherit;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.manual-message-response-wrapper,
+.manual-message-response {
+    min-width: 0;
 }
 
 #manualMessageResponse.manual-message-response.manual-message-box.markdown-body {
     background: #f8fafc;
     border: 1px solid #cbd5e1;
     color: #0f172a;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+#manualMessageResponse.markdown-body {
+    max-width: 100%;
 }
 
 #manualMessageResponse.markdown-body>*:first-child {
@@ -737,6 +751,8 @@ hr {
     line-height: 1.3;
     font-weight: 700;
     background: transparent !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body h3 {
@@ -748,6 +764,8 @@ hr {
 #manualMessageResponse.markdown-body p {
     color: #1f2937;
     margin: 0.55em 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body ul,
@@ -758,6 +776,8 @@ hr {
 
 #manualMessageResponse.markdown-body li {
     margin: 0.2em 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body strong {
@@ -776,6 +796,8 @@ hr {
     background: #eff6ff;
     color: #1e3a8a;
     border-radius: 6px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body code {
@@ -786,6 +808,9 @@ hr {
     color: #1e3a8a;
     border-radius: 5px;
     padding: 0.08em 0.32em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body pre {
@@ -796,6 +821,9 @@ hr {
     border-radius: 8px;
     overflow: auto;
     border: 1px solid #1e293b;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body pre code {
@@ -803,35 +831,62 @@ hr {
     border: none;
     color: inherit;
     padding: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* ----------------------------------
+   KEY METRICS TABLE READABILITY (FORCED OVERRIDE)
+----------------------------------- */
+#manualMessageResponse.markdown-body table,
+#manualMessageResponse.markdown-body table * {
+    color: #111827 !important;
 }
 
 #manualMessageResponse.markdown-body table {
     width: 100%;
-    border-collapse: collapse;
-    margin: 0.9em 0;
+    border-collapse: collapse !important;
+    margin: 1rem 0;
     display: block;
     overflow-x: auto;
+    max-width: 100%;
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
 }
 
-#manualMessageResponse.markdown-body th,
-#manualMessageResponse.markdown-body td {
-    border: 1px solid #dbe3ef;
-    padding: 8px 10px;
-    vertical-align: top;
-    text-align: left;
-    color: #1f2937;
-}
-
+#manualMessageResponse.markdown-body thead th,
 #manualMessageResponse.markdown-body th {
-    background: #e2e8f0;
-    color: #0f172a;
-    font-weight: 700;
+    background: #e5e7eb !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+    border: 1px solid #d1d5db !important;
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+#manualMessageResponse.markdown-body tbody td,
+#manualMessageResponse.markdown-body td {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#manualMessageResponse.markdown-body tbody tr:nth-child(even) td {
+    background: #f9fafb !important;
 }
 
 #manualMessageResponse.markdown-body a {
     color: #1d4ed8;
     text-decoration: underline;
     text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #manualMessageResponse.markdown-body a:hover,
@@ -844,6 +899,94 @@ hr {
     resize: none;
     overflow-x: hidden;
     overflow-y: auto;
+}
+
+#manualMessageMissingIds,
+#manualMessageActivityText,
+#manualMessageBatchText,
+#manualMessageCoverageText,
+#manualMessageRuntimeText,
+#manualMessageLastUpdateText {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Existing classes used by page html */
+.widget-review-table tr.row-active {
+    outline: 2px solid #4f46e5;
+    outline-offset: -2px;
+    background: rgba(79, 70, 229, 0.06);
+}
+
+.widget-review-table td.row-open-cell {
+    cursor: pointer;
+}
+
+.helper-inline {
+    margin-left: 10px;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.progress-kv {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 4px 10px;
+    margin-top: 8px;
+    font-size: 0.92em;
+}
+
+.progress-kv .k {
+    color: #555;
+}
+
+.progress-kv .v {
+    color: #111;
+    font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.manual-live-status {
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.manual-live-status .phase-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.8em;
+    font-weight: 600;
+    background: #e0e7ff;
+    color: #312e81;
+}
+
+.manual-live-status .activity {
+    margin-top: 6px;
+    color: #1f2937;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.export-inline {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.analyze-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
 }
 
 /* ==========================================
@@ -1128,7 +1271,6 @@ hr {
     color: #0f172a;
 }
 
-/* New normalized topics filter layout */
 .topics-filter-bar {
     margin-top: 12px;
     display: flex;

@@ -10,85 +10,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown.min.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-
-    <style>
-        .widget-review-table tr.row-active {
-            outline: 2px solid #4f46e5;
-            outline-offset: -2px;
-            background: rgba(79, 70, 229, 0.06);
-        }
-
-        .widget-review-table td.row-open-cell {
-            cursor: pointer;
-        }
-
-        #detailCard pre {
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        .helper-inline {
-            margin-left: 10px;
-            color: #666;
-            font-size: 0.9em;
-        }
-
-        .progress-kv {
-            display: grid;
-            grid-template-columns: 160px 1fr;
-            gap: 4px 10px;
-            margin-top: 8px;
-            font-size: 0.92em;
-        }
-
-        .progress-kv .k {
-            color: #555;
-        }
-
-        .progress-kv .v {
-            color: #111;
-            font-weight: 500;
-        }
-
-        .manual-live-status {
-            margin-top: 8px;
-            padding: 10px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            background: #fafafa;
-        }
-
-        .manual-live-status .phase-pill {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 999px;
-            font-size: 0.8em;
-            font-weight: 600;
-            background: #e0e7ff;
-            color: #312e81;
-        }
-
-        .manual-live-status .activity {
-            margin-top: 6px;
-            color: #1f2937;
-            font-size: 0.92em;
-        }
-
-        .export-inline {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .analyze-toolbar {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
-    </style>
 </head>
 
 <body>
@@ -148,41 +69,20 @@
                         <button type="button" id="selectAllEntriesBtn">Select all entries</button>
                         <button type="button" id="deselectAllBtn">Deselect all</button>
                         <button type="button" id="manualMessageToggleBtn">Analyze with IDA</button>
-
+                        <button type="button" id="exportSelectedBtn">Export Chat Entries</button>
                         <div class="export-inline" style="margin-left:12px;">
                             <label for="exportFormatSelect" style="margin:0;">Export:</label>
                             <select id="exportFormatSelect">
                                 <option value="csv" selected>CSV</option>
                                 <option value="json">JSON</option>
                                 <option value="text">TEXT</option>
-                                <option value="pdf">PDF (Manager Report)</option>
                             </select>
-                            <button type="button" id="exportSelectedBtn">Export</button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="manual-message-section" id="manualMessageSection" aria-hidden="true" hidden>
-                <div class="analyze-toolbar">
-                    <button type="button" id="manualMessageSendBtn" class="primary">Analyze</button>
-
-                    <button type="button" id="quickPdfAfterAnalyzeBtn" class="ghost-btn" hidden disabled>
-                        Quick PDF
-                    </button>
-
-                    <label style="display:flex; gap:8px; align-items:center; margin:0;">
-                        <input type="checkbox" id="manualMessageAsyncMode" checked>
-                        Run in background (recommended)
-                    </label>
-
-                    <button type="button" id="manualMessageCancelJobBtn" class="ghost-btn" disabled>
-                        Cancel Running Job
-                    </button>
-                    <button type="button" id="manualMessageClearBtn">Clear</button>
-                    <button type="button" id="manualMessageCloseBtn">Hide</button>
-                </div>
-
                 <div class="helper-note" style="margin-bottom:10px;">
                     Uses the default analysis prompt and selected chat context.
                 </div>
@@ -215,15 +115,20 @@
                         </div>
                     </div>
 
-                    <div id="manualMessageMissingIds" class="helper-note" style="margin-top:8px; white-space:pre-wrap;">
-                    </div>
+                    <div id="manualMessageMissingIds" class="helper-note" style="margin-top:8px;"></div>
                 </div>
 
-                <div class="manual-message-selection-preview">
-                    <strong>Selected chats context preview</strong>
-                    <textarea id="manualMessageSelectionPreview" readonly>No entries selected.</textarea>
-                </div>
+                <div class="helper-note" id="manualMessageSelectedCount">Selected chats: 0</div>
+                <button type="button" id="manualMessageSendBtn" class="primary">Analyze</button>
 
+                <button type="button" id="quickPdfAfterAnalyzeBtn" class="ghost-btn" hidden disabled>
+                    PDF Report
+                </button>
+                <button type="button" id="manualMessageCancelJobBtn" class="ghost-btn" disabled>
+                    Cancel Running Job
+                </button>
+                <button type="button" id="manualMessageClearBtn">Clear</button>
+                <button type="button" id="manualMessageCloseBtn">Hide</button>
                 <div class="manual-message-response-wrapper form-group">
                     <label>Analysis report</label>
                     <div class="manual-message-response manual-message-box markdown-body" id="manualMessageResponse">

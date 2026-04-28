@@ -12,7 +12,7 @@
     <name>chat-server</name>
 
     <properties>
-        <maven.compiler.release>18</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <jakarta.ws.rs.version>4.0.0</jakarta.ws.rs.version>
@@ -34,104 +34,10 @@
         <dependency-check.version>12.2.1</dependency-check.version>
         <dependency-check.failBuildOnCVSS>9</dependency-check.failBuildOnCVSS>
 
-        <!-- PDF/HTML ecosystem pinned to safer versions -->
-        <pdfbox.version>2.0.33</pdfbox.version>
-        <batik.version>1.19</batik.version>
-        <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+        <!-- PDF/Markdown -->
+        <openpdf.version>3.0.3</openpdf.version>
         <flexmark.version>0.64.8</flexmark.version>
     </properties>
-
-    <!-- Force secure transitive versions -->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.apache.pdfbox</groupId>
-                <artifactId>pdfbox</artifactId>
-                <version>${pdfbox.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.pdfbox</groupId>
-                <artifactId>xmpbox</artifactId>
-                <version>${pdfbox.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-css</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-svg-dom</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-anim</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-awt-util</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-bridge</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-dom</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-ext</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-gvt</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-parser</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-script</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-shared-resources</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-svggen</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-util</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-xml</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.xmlgraphics</groupId>
-                <artifactId>batik-codec</artifactId>
-                <version>${batik.version}</version>
-            </dependency>
-
-        </dependencies>
-    </dependencyManagement>
 
     <dependencies>
         <!-- Explicit Jakarta APIs (provided by app server) -->
@@ -203,63 +109,18 @@
             <version>1.11.0</version>
         </dependency>
 
-        <!-- Markdown -> HTML -->
+        <!-- Markdown support -->
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>
             <artifactId>flexmark-all</artifactId>
             <version>${flexmark.version}</version>
         </dependency>
 
-        <!-- HTML -> PDF -->
+        <!-- New PDF library -->
         <dependency>
-            <groupId>com.openhtmltopdf</groupId>
-            <artifactId>openhtmltopdf-pdfbox</artifactId>
-            <version>${openhtmltopdf.version}</version>
-            <exclusions>
-                <!-- Remove vulnerable xalan chain -->
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>xalan</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>serializer</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- Optional: better SVG support in PDFs -->
-        <dependency>
-            <groupId>com.openhtmltopdf</groupId>
-            <artifactId>openhtmltopdf-svg-support</artifactId>
-            <version>${openhtmltopdf.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>xalan</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>serializer</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- Optional: MathML support (only if needed) -->
-        <dependency>
-            <groupId>com.openhtmltopdf</groupId>
-            <artifactId>openhtmltopdf-mathml-support</artifactId>
-            <version>${openhtmltopdf.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>xalan</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>xalan</groupId>
-                    <artifactId>serializer</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>${openpdf.version}</version>
         </dependency>
 
         <!-- Tests -->
