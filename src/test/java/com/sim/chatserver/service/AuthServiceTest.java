@@ -273,4 +273,56 @@ public class AuthServiceTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for authenticate(String, String)
+     *
+     * @see com.sim.chatserver.service.AuthService#authenticate(String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testAuthenticate10() throws Throwable
+    {
+        // Given
+        AuthService underTest = new AuthService();
+        UserService userServiceValue = mock(UserService.class);
+        UserAccount findByUsernameResult = null; // UTA: configured value
+        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        underTest.userService = userServiceValue;
+
+        // When
+        String username = "*"; // UTA: configured value
+        String password = "password"; // UTA: default value
+        UserAccount result = underTest.authenticate(username, password);
+
+        // Then - assertions for result of method authenticate(String, String)
+        assertNull(result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for authenticate(String, String)
+     *
+     * @see com.sim.chatserver.service.AuthService#authenticate(String, String)
+     * @author bmcmullin
+     */
+    @Test
+    public void testAuthenticate11() throws Throwable
+    {
+        // Given
+        AuthService underTest = new AuthService();
+        UserService userServiceValue = mock(UserService.class);
+        UserAccount findByUsernameResult = mock(UserAccount.class);
+        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        underTest.userService = userServiceValue;
+
+        // When
+        String username = "*"; // UTA: configured value
+        String password = null; // UTA: configured value
+        UserAccount result = underTest.authenticate(username, password);
+
+        // Then - assertions for result of method authenticate(String, String)
+        assertNull(result);
+
+    }
+
 }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -17,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
@@ -89,6 +91,23 @@ public class WidgetReviewManualMessageServletTest
      */
     @Test
     public void testInit() throws Throwable
+    {
+        // Given
+        WidgetReviewManualMessageServlet underTest = new WidgetReviewManualMessageServlet();
+
+        // When
+        underTest.init();
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for init()
+     *
+     * @see com.sim.chatserver.web.dashboard.drilldown.WidgetReviewManualMessageServlet#init()
+     * @author bmcmullin
+     */
+    @Test
+    public void testInit2() throws Throwable
     {
         // Given
         WidgetReviewManualMessageServlet underTest = new WidgetReviewManualMessageServlet();

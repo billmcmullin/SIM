@@ -43,9 +43,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 /**
- * Optimized WidgetReviewDataServlet: - hard page-size caps - single-pass data
- * query (count via window function) - PostgreSQL array binding instead of giant
- * IN (?, ?, ...) - cached table existence checks - cached widget display names
+ * Optimized WidgetReviewDataServlet: - supports returning all selected entries
+ * when limit=all or limit<=0 - single-pass data query (count via window
+ * function) - PostgreSQL array binding instead of giant IN (?, ?, ...) - cached
+ * table existence checks - cached widget display names
  */
 @WebServlet(name = "WidgetReviewDataServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/review-data"})
 public class WidgetReviewDataServlet extends HttpServlet {
@@ -59,7 +60,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
     };
 
     private static final int DEFAULT_LIMIT = 50;
-    private static final int MAX_LIMIT = 200;
+    // Raised to allow full retrieval from UI (was 200).
+    private static final int MAX_LIMIT = 20000;
     private static final int DEFAULT_PAGE = 1;
 
     private final Map<String, Boolean> tableExistsCache = new ConcurrentHashMap<>();
@@ -113,13 +115,12 @@ public class WidgetReviewDataServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         String widgetDisplayName = resolveWidgetDisplayNameCached(widgetId);
 
-        int limit = clampLimit(parseInteger(req.getParameter("limit"), DEFAULT_LIMIT));
-        int page = Math.max(DEFAULT_PAGE, parseInteger(req.getParameter("page"), DEFAULT_PAGE));
-        int offset = (page - 1) * limit;
+        Integer rawLimit = parseIntegerOrNull(req.getParameter("limit"));
+        boolean unboundedRequested = isUnlimitedLimit(req.getParameter("limit"), rawLimit);
 
-        String search = trimToNull(req.getParameter("search"));
-        String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
-        String sortDir = parseSortDirection(req.getParameter("sortDir"));
+        int page = Math.max(DEFAULT_PAGE, parseInteger(req.getParameter("page"), DEFAULT_PAGE));
+        int offset = 0;
+        int limit;
 
         List<String> chatIds = selection.chatIds == null ? Collections.emptyList() : selection.chatIds;
         if (chatIds.isEmpty()) {
@@ -127,6 +128,21 @@ public class WidgetReviewDataServlet extends HttpServlet {
             writeJson(resp, "{\"status\":\"error\",\"message\":\"No chat IDs specified.\"}");
             return;
         }
+
+        if (unboundedRequested) {
+            // Return all selected IDs in one response (bounded by chatIds size).
+            limit = chatIds.size() <= 0 ? MAX_LIMIT : Math.min(chatIds.size(), MAX_LIMIT);
+            page = 1;
+            offset = 0;
+        } else {
+            int parsed = rawLimit == null ? DEFAULT_LIMIT : rawLimit.intValue();
+            limit = clampLimit(parsed);
+            offset = (page - 1) * limit;
+        }
+
+        String search = trimToNull(req.getParameter("search"));
+        String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
+        String sortDir = parseSortDirection(req.getParameter("sortDir"));
 
         final long t1 = System.nanoTime();
 
@@ -208,7 +224,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 arrayBuilder.add(jsonRow);
             }
 
-            int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / limit);
+            int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / Math.max(1, limit));
             SearchTerms st = normalizeSearchTerms(selection);
 
             JsonObject body = Json.createObjectBuilder()
@@ -221,15 +237,16 @@ public class WidgetReviewDataServlet extends HttpServlet {
                     .add("totalRows", totalRows)
                     .add("totalPages", totalPages)
                     .add("page", page)
+                    .add("limit", limit)
                     .build();
 
             writeJson(resp, body.toString());
 
             final long t3 = System.nanoTime();
             log.info(String.format(
-                    "review-data timings ms: prep=%.2f db=%.2f json=%.2f total=%.2f rows=%d totalRows=%d limit=%d page=%d",
+                    "review-data timings ms: prep=%.2f db=%.2f json=%.2f total=%.2f rows=%d totalRows=%d limit=%d page=%d unbounded=%s",
                     nsToMs(t1 - t0), nsToMs(t2 - t1), nsToMs(t3 - t2), nsToMs(t3 - t0),
-                    rows.size(), totalRows, limit, page
+                    rows.size(), totalRows, limit, page, String.valueOf(unboundedRequested)
             ));
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to fetch selected rows", e);
@@ -247,11 +264,24 @@ public class WidgetReviewDataServlet extends HttpServlet {
         String search = trimToNull(req.getParameter("search"));
         String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
         String sortDir = parseSortDirection(req.getParameter("sortDir"));
-        int limit = clampLimit(parseInteger(req.getParameter("limit"), DEFAULT_LIMIT));
+
+        Integer rawLimit = parseIntegerOrNull(req.getParameter("limit"));
+        boolean unboundedRequested = isUnlimitedLimit(req.getParameter("limit"), rawLimit);
+
         int page = Math.max(DEFAULT_PAGE, parseInteger(req.getParameter("page"), DEFAULT_PAGE));
-        int offset = (page - 1) * limit;
+        int limit;
+        int offset;
 
         List<TermChatSnapshot> base = selection.snapshots == null ? Collections.emptyList() : selection.snapshots;
+        if (unboundedRequested) {
+            limit = Math.min(base.size() <= 0 ? MAX_LIMIT : base.size(), MAX_LIMIT);
+            page = 1;
+            offset = 0;
+        } else {
+            limit = clampLimit(rawLimit == null ? DEFAULT_LIMIT : rawLimit.intValue());
+            offset = (page - 1) * limit;
+        }
+
         List<TermChatSnapshot> filtered = filterSnapshots(base, search);
         sortSnapshots(filtered, sortColumn, sortDir);
 
@@ -293,7 +323,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
 
         SearchTerms st = normalizeSearchTerms(selection);
-        int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / limit);
+        int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / Math.max(1, limit));
 
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "ok")
@@ -305,14 +335,15 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 .add("totalRows", totalRows)
                 .add("totalPages", totalPages)
                 .add("page", page)
+                .add("limit", limit)
                 .build();
 
         writeJson(resp, body.toString());
 
         final long t1 = System.nanoTime();
         log.info(String.format(
-                "review-data snapshot timings ms: total=%.2f rows=%d totalRows=%d limit=%d page=%d",
-                nsToMs(t1 - t0), pageRows.size(), totalRows, limit, page
+                "review-data snapshot timings ms: total=%.2f rows=%d totalRows=%d limit=%d page=%d unbounded=%s",
+                nsToMs(t1 - t0), pageRows.size(), totalRows, limit, page, String.valueOf(unboundedRequested)
         ));
     }
 
@@ -409,6 +440,28 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return DEFAULT_LIMIT;
         }
         return Math.min(raw, MAX_LIMIT);
+    }
+
+    private boolean isUnlimitedLimit(String rawLimitParam, Integer parsed) {
+        if (rawLimitParam == null) {
+            return false;
+        }
+        String t = rawLimitParam.trim().toLowerCase(Locale.ROOT);
+        if (t.isEmpty()) {
+            return false;
+        }
+        if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
+            return true;
+        }
+        return parsed != null && parsed.intValue() <= 0;
+    }
+
+    private Integer parseIntegerOrNull(String value) {
+        try {
+            return value == null ? null : Integer.valueOf(value.trim());
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private String sanitizeWidgetTableName(String widgetId) {

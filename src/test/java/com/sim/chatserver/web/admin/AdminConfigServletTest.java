@@ -255,4 +255,31 @@ public class AdminConfigServletTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.admin.AdminConfigServlet#doGet(HttpServletRequest, HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoGet8() throws Throwable
+    {
+        // Given
+        AdminConfigServlet underTest = new AdminConfigServlet();
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        String getContextPathResult = "getContextPathResult"; // UTA: default value
+        when(req.getContextPath()).thenReturn(getContextPathResult);
+
+        HttpSession getSessionResult = null; // UTA: configured value
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        doThrow(IOException.class).when(resp).sendRedirect(nullable(String.class));
+        assertThrows(Exception.class, () -> {
+            underTest.doGet(req, resp);
+        });
+
+    }
+
 }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -17,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -72,6 +74,35 @@ public class WidgetTableDataServletTest
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getParameterResult = null; // UTA: configured value
+        when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
+
+        HttpSession getSessionResult = mock(HttpSession.class);
+        Object getAttributeResult = new Object(); // UTA: default value
+        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
+        underTest.doGet(req, resp);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.dashboard.drilldown.WidgetTableDataServlet#doGet(HttpServletRequest,
+     *      HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoGet3() throws Throwable
+    {
+        // Given
+        WidgetTableDataServlet underTest = new WidgetTableDataServlet();
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        String getParameterResult = "getParameterResult"; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
 
         HttpSession getSessionResult = mock(HttpSession.class);

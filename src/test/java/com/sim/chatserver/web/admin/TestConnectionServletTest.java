@@ -268,4 +268,27 @@ public class TestConnectionServletTest
 
     }
 
+    /**
+     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
+     *
+     * @see com.sim.chatserver.web.admin.TestConnectionServlet#doPost(HttpServletRequest, HttpServletResponse)
+     * @author bmcmullin
+     */
+    @Test
+    public void testDoPost10() throws Throwable
+    {
+        // Given
+        TestConnectionServlet underTest = new TestConnectionServlet();
+
+        // When
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpSession getSessionResult = null; // UTA: configured value
+        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
+        underTest.doPost(req, resp);
+
+    }
+
 }
