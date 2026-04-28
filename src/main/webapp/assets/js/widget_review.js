@@ -10,12 +10,18 @@ const CFG = window.widgetReviewConfig || {};
 const CONTEXT_PATH = (CFG.contextPath || "").replace(/\/+$/, "");
 const SELECTION_ID = (CFG.selectionId || "").trim();
 
+const DEFAULT_ANALYZE_PROMPT = (
+    CFG.defaultAnalyzePrompt
+    || "Analyze the selected chats and produce a manager-ready report with: Executive Chat Analysis, Key Metrics table, Risks and Opportunities, Recommendations, and Coverage and Methodology. Use concise evidence-based language and include coverage accounting."
+).trim();
+
 const DEFAULTS = {
     reviewDataEndpointPath: `${CONTEXT_PATH}/dashboard/widgets/drilldown/view/review-data`,
     manualMessageEndpoint: `${CONTEXT_PATH}/dashboard/drilldown/widget-review/manual-message`,
     jobStatusEndpoint: `${CONTEXT_PATH}/dashboard/drilldown/widget-review/job-status`,
     batchAnalyzeEndpoint: `${CONTEXT_PATH}/dashboard/drilldown/widget-review/batch-analyze`,
     translateEndpoint: CFG.translateEndpoint || `${CONTEXT_PATH}/dashboard/widgets/drilldown/review/translate`,
+    exportEndpoint: `${CONTEXT_PATH}/dashboard/widgets/drilldown/export`,
     maxSelectedEntries: 5000,
     pageSize: 10,
     batchSize: 150,
@@ -154,6 +160,88 @@ export async function analyzeInBatches({ prompt, selectedEntries, onProgress = (
     }
 }
 
+function extractCurrentReportMarkdown() {
+    const responseEl = document.getElementById("manualMessageResponse");
+    if (!responseEl) return "";
+    const txt = (responseEl.textContent || "").trim();
+    if (txt) return txt;
+    return (responseEl.innerText || "").trim();
+}
+
+function setQuickPdfVisibility({ show, enabled }) {
+    const btn = document.getElementById("quickPdfAfterAnalyzeBtn");
+    if (!btn) return;
+    btn.hidden = !show;
+    btn.disabled = !enabled;
+}
+
+export async function exportSelected(format = "csv") {
+    const selected = getSelectedEntries();
+    if (!selected.length) {
+        alert("Select at least one chat to export.");
+        return;
+    }
+
+    const selectedChatIds = selected
+        .map((r) => String(r.chatId || "").trim())
+        .filter(Boolean);
+
+    const normalizedFormat = String(format || "csv").toLowerCase();
+    const payload = {
+        selectionId: SELECTION_ID,
+        selectedChatIds,
+        format: normalizedFormat
+    };
+
+    if (normalizedFormat === "pdf") {
+        const reportMarkdown = extractCurrentReportMarkdown();
+        if (reportMarkdown) payload.reportMarkdown = reportMarkdown;
+    }
+
+    info("export requested", {
+        endpoint: DEFAULTS.exportEndpoint,
+        format: payload.format,
+        count: selectedChatIds.length,
+        hasReportMarkdown: !!payload.reportMarkdown
+    });
+
+    const res = await fetch(DEFAULTS.exportEndpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+            ...buildHeaders(),
+            "Content-Type": "application/json",
+            "Accept": "*/*"
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Export failed (HTTP ${res.status})${txt ? `: ${txt}` : ""}`);
+    }
+
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition") || "";
+    const fallbackExt = payload.format === "pdf" ? "pdf"
+        : payload.format === "json" ? "json"
+            : payload.format === "text" ? "txt"
+                : "csv";
+    const filename = extractFilenameFromContentDisposition(cd) || `chats-export.${fallbackExt}`;
+
+    const url = URL.createObjectURL(blob);
+    try {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
 export function showLoading(el, text = "Loading...") { renderLoading(el, text); }
 export function showError(el, message, requestId = "") { renderError(el, message, requestId); }
 export function showMarkdown(el, md) { renderMarkdown(el, md); }
@@ -209,6 +297,12 @@ function wireBasicUi() {
     const selectAllBtn = document.getElementById("selectAllEntriesBtn");
     const deselectAllBtn = document.getElementById("deselectAllBtn");
 
+    const exportCsvBtn = document.getElementById("exportCsvBtn");
+    const exportJsonBtn = document.getElementById("exportJsonBtn");
+    const exportTextBtn = document.getElementById("exportTextBtn");
+    const exportFormatSel = document.getElementById("exportFormatSelect");
+    const exportBtn = document.getElementById("exportSelectedBtn");
+
     if (pageSizeSel) {
         pageSizeSel.addEventListener("change", () => {
             state.pageSize = Math.max(1, parseInt(pageSizeSel.value || "10", 10));
@@ -260,6 +354,20 @@ function wireBasicUi() {
             renderTable();
         });
     }
+
+    if (exportCsvBtn) exportCsvBtn.addEventListener("click", async () => {
+        try { await exportSelected("csv"); } catch (e) { error("csv export failed", e); alert(e.message || "CSV export failed."); }
+    });
+    if (exportJsonBtn) exportJsonBtn.addEventListener("click", async () => {
+        try { await exportSelected("json"); } catch (e) { error("json export failed", e); alert(e.message || "JSON export failed."); }
+    });
+    if (exportTextBtn) exportTextBtn.addEventListener("click", async () => {
+        try { await exportSelected("text"); } catch (e) { error("text export failed", e); alert(e.message || "Text export failed."); }
+    });
+    if (exportBtn) exportBtn.addEventListener("click", async () => {
+        const f = exportFormatSel?.value || "csv";
+        try { await exportSelected(f); } catch (e) { error("export failed", e); alert(e.message || "Export failed."); }
+    });
 }
 
 function wireManualMessageUi() {
@@ -269,6 +377,7 @@ function wireManualMessageUi() {
     const clearBtn = document.getElementById("manualMessageClearBtn");
     const sendBtn = document.getElementById("manualMessageSendBtn");
     const cancelBtn = document.getElementById("manualMessageCancelJobBtn");
+    const quickPdfBtn = document.getElementById("quickPdfAfterAnalyzeBtn");
 
     if (!toggleBtn || !section) return;
 
@@ -277,11 +386,13 @@ function wireManualMessageUi() {
         section.setAttribute("aria-hidden", "false");
         state.manualSectionOpen = true;
         updateManualSelectionPreview();
+        setQuickPdfVisibility({ show: true, enabled: false });
     };
     const closeSection = () => {
         section.hidden = true;
         section.setAttribute("aria-hidden", "true");
         state.manualSectionOpen = false;
+        setQuickPdfVisibility({ show: false, enabled: false });
     };
 
     toggleBtn.addEventListener("click", () => {
@@ -294,19 +405,18 @@ function wireManualMessageUi() {
 
     if (clearBtn) {
         clearBtn.addEventListener("click", () => {
-            const text = document.getElementById("manualMessageText");
             const status = document.getElementById("manualMessageStatus");
             const preview = document.getElementById("manualMessageSelectionPreview");
             const response = document.getElementById("manualMessageResponse");
             resetProgressUi();
 
-            if (text) text.value = "";
             if (status) status.textContent = "";
             if (preview) preview.value = "No response yet.";
-            if (response) response.textContent = "No response yet.";
+            if (response) response.textContent = "No analysis yet.";
 
             stopJobPolling();
             state.lastManualSessionId = "";
+            setQuickPdfVisibility({ show: true, enabled: false });
         });
     }
 
@@ -319,6 +429,17 @@ function wireManualMessageUi() {
             } catch (e) {
                 warn("cancel failed", e);
                 setManualStatus("Failed to cancel job.");
+            }
+        });
+    }
+
+    if (quickPdfBtn) {
+        quickPdfBtn.addEventListener("click", async () => {
+            try {
+                await exportSelected("pdf");
+            } catch (e) {
+                error("quick pdf export failed", e);
+                alert(e.message || "PDF export failed.");
             }
         });
     }
@@ -349,19 +470,14 @@ function wireDetailCardUi() {
 }
 
 async function onManualMessageSend() {
-    const textEl = document.getElementById("manualMessageText");
     const statusEl = document.getElementById("manualMessageStatus");
     const responseEl = document.getElementById("manualMessageResponse");
     const asyncEl = document.getElementById("manualMessageAsyncMode");
 
-    const message = (textEl?.value || "").trim();
+    const message = DEFAULT_ANALYZE_PROMPT;
     const selectedEntries = getSelectedEntries();
     const useAsync = asyncEl ? !!asyncEl.checked : true;
 
-    if (!message) {
-        if (statusEl) statusEl.textContent = "Enter a message first.";
-        return;
-    }
     if (!selectedEntries.length) {
         if (statusEl) statusEl.textContent = "Select at least one chat entry.";
         return;
@@ -370,9 +486,10 @@ async function onManualMessageSend() {
     try {
         stopJobPolling();
         resetProgressUi();
+        setQuickPdfVisibility({ show: true, enabled: false });
 
-        if (statusEl) statusEl.textContent = useAsync ? "Submitting async review job…" : "Sending…";
-        if (responseEl) responseEl.textContent = useAsync ? "Job accepted. Waiting for progress…" : "Loading response…";
+        if (statusEl) statusEl.textContent = useAsync ? "Submitting analysis job…" : "Running analysis…";
+        if (responseEl) responseEl.textContent = "No analysis yet.";
 
         const { status, data } = await sendManualMessage({
             message,
@@ -395,8 +512,6 @@ async function onManualMessageSend() {
             showProgressBlock(true);
 
             if (statusEl) statusEl.textContent = `Job accepted (${jobId.slice(0, 8)}…). Starting analysis…`;
-            if (responseEl) responseEl.textContent = "Starting map/reduce pipeline…";
-
             startJobPolling(jobId);
             return;
         }
@@ -404,17 +519,18 @@ async function onManualMessageSend() {
         const responseText =
             data?.textResponse || data?.response || data?.message || data?.answer || data?.output || data?.raw || "No response returned.";
         if (responseEl) renderMarkdown(responseEl, String(responseText));
-        if (statusEl) statusEl.textContent = "Sent.";
+        if (statusEl) statusEl.textContent = "Completed.";
+        setQuickPdfVisibility({ show: true, enabled: !!String(responseText || "").trim() });
     } catch (e) {
         const requestId = e?.data?.requestId || e?.requestId || "";
         const backendMessage = e?.data?.message || e?.data?.error || "";
         if (statusEl) {
             statusEl.textContent =
-                `Send failed${e?.status ? ` (HTTP ${e.status})` : ""}${requestId ? ` [${requestId}]` : ""}`
+                `Analyze failed${e?.status ? ` (HTTP ${e.status})` : ""}${requestId ? ` [${requestId}]` : ""}`
                 + (backendMessage ? `: ${backendMessage}` : ".");
         }
-        if (responseEl) responseEl.textContent = "No response yet.";
-        error("manual message send failed", e);
+        setQuickPdfVisibility({ show: true, enabled: false });
+        error("manual analyze failed", e);
     }
 }
 
@@ -597,7 +713,6 @@ function applyJobStatusToUi(payload) {
     }
 
     progressPercent = Math.max(0, Math.min(100, Math.round(progressPercent)));
-
     if (progressBar) progressBar.value = progressPercent;
 
     const showBatchCounts = totalBatches > 0;
@@ -669,25 +784,12 @@ function applyJobStatusToUi(payload) {
             + (metadataMismatch ? " • Coverage metadata mismatch" : "");
     }
 
-    if (!done && responseEl) {
-        const synthLine = formatSynthesisLine(phase, state.synth);
-        responseEl.textContent =
-            `Running analysis...\n\n`
-            + `Phase: ${humanizePhase(phase)}\n`
-            + `Progress: ${progressPercent}%\n`
-            + `Current step: ${activity || fallbackActivity}\n`
-            + (showBatchCounts ? `Batches: ${Math.max(0, completedBatches)}/${Math.max(0, totalBatches)}\n` : "")
-            + (synthLine ? `Synthesis: ${synthLine}\n` : "")
-            + `Runtime: ${formatDurationHms(Math.max(0, Date.now() - state.jobPollStartedAt))}\n`
-            + `Coverage: ${coverage}% (${coverageComplete ? "complete" : "in progress"})\n`
-            + `Used chats: ${usedCount}/${Math.max(0, total)}`
-            + (metadataMismatch ? `\nWarning: Coverage metadata mismatch detected.` : "");
-    }
-
+    // no interim progress text in response panel
     if (done && responseEl) {
         const finalReport = job?.finalReport || job?.rawResponseBody || "";
         if (success && coverageComplete && !metadataMismatch) {
-            renderMarkdown(responseEl, String(finalReport || "Job completed successfully."));
+            renderMarkdown(responseEl, String(finalReport || "Analysis completed successfully."));
+            setQuickPdfVisibility({ show: true, enabled: !!String(finalReport || "").trim() });
             return;
         }
 
@@ -702,6 +804,7 @@ function applyJobStatusToUi(payload) {
             + (finalReport ? `\n---\n\n${finalReport}` : "");
 
         renderMarkdown(responseEl, detail);
+        setQuickPdfVisibility({ show: true, enabled: true });
     }
 }
 
@@ -738,7 +841,6 @@ function parseSynthesisFromActivity(activity) {
     if (!activity) return null;
     const txt = String(activity).toLowerCase();
 
-    // "Synthesis L2 • chunk 3/7 ..."
     const levelChunk = txt.match(/synthesis\s+l(\d+).*chunk\s+(\d+)\s*\/\s*(\d+)/i);
     if (levelChunk) {
         return {
@@ -748,13 +850,11 @@ function parseSynthesisFromActivity(activity) {
         };
     }
 
-    // "Synthesis level 2 complete..."
     const levelOnly = txt.match(/synthesis\s+level\s+(\d+)/i);
     if (levelOnly) {
         return { level: parseInt(levelOnly[1], 10) || 0 };
     }
 
-    // "Final synthesis attempt 2/4 ..."
     const finalAttempt = txt.match(/final\s+synthesis\s+attempt\s+(\d+)\s*\/\s*(\d+)/i);
     if (finalAttempt) {
         return {
@@ -1240,6 +1340,17 @@ function intersectIds(a, b) {
     return out;
 }
 
+function extractFilenameFromContentDisposition(cd) {
+    if (!cd) return "";
+    const star = cd.match(/filename\*=UTF-8''([^;]+)/i);
+    if (star && star[1]) {
+        try { return decodeURIComponent(star[1]); } catch { }
+    }
+    const plain = cd.match(/filename="([^"]+)"/i);
+    if (plain && plain[1]) return plain[1];
+    return "";
+}
+
 function escapeHtml(s) {
     return (s ?? "")
         .toString()
@@ -1253,6 +1364,7 @@ function escapeHtml(s) {
 window.widgetReview = {
     sendManualMessage,
     analyzeInBatches,
+    exportSelected,
     showLoading,
     showError,
     showMarkdown,

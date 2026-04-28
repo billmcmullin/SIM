@@ -9,13 +9,6 @@ import java.util.Locale;
  *
  * Loads from System properties first, then environment variables, then
  * defaults.
- *
- * Controls: - REVIEW_MR_EXHAUSTIVE_MODE (1/0, true/false) -
- * REVIEW_MR_MIN_BATCH_SIZE - REVIEW_MR_MAX_COVERAGE_PASSES (legacy/compat) -
- * REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT - REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT
- * - REVIEW_MR_SEGMENT_PROMPT_CHARS - REVIEW_MR_SEGMENT_RESPONSE_CHARS -
- * REVIEW_MR_STRICT_FIXED_BATCH_MODE - REVIEW_MR_FIXED_BATCH_SIZE -
- * REVIEW_MR_PROGRESS_POLL_MS (UI hint) - REVIEW_MR_PROGRESS_ENABLED (UI hint)
  */
 public final class MapReduceConfig {
 
@@ -54,9 +47,19 @@ public final class MapReduceConfig {
     private static final boolean D_STRICT_FIXED_BATCH_MODE = true;
     private static final int D_FIXED_BATCH_SIZE = 5;
 
-    // NEW: UI progress hints (optional consumption by frontend/backend)
+    // UI progress hints
     private static final boolean D_PROGRESS_ENABLED = true;
     private static final int D_PROGRESS_POLL_MS = 1200;
+
+    // New hierarchical reduce performance/safety controls
+    private static final int D_REDUCE_INITIAL_CHUNK_SIZE = 6;
+    private static final int D_REDUCE_MIN_CHUNK_SIZE = 2;
+    private static final int D_REDUCE_MAX_LEVELS = 3;
+    private static final int D_REDUCE_CHUNK_SUMMARY_MAX_CHARS = 900;
+
+    private static final int D_FINAL_REDUCE_MAX_SUMMARIES = 3;
+    private static final int D_FINAL_REDUCE_SUMMARY_MAX_CHARS = 900;
+    private static final int D_FINAL_REDUCE_MAX_ATTEMPTS = 2;
 
     // Loaded values
     private final int singlePassMaxSelected;
@@ -90,9 +93,18 @@ public final class MapReduceConfig {
     private final boolean strictFixedBatchMode;
     private final int fixedBatchSize;
 
-    // NEW
     private final boolean progressEnabled;
     private final int progressPollMs;
+
+    // New
+    private final int reduceInitialChunkSize;
+    private final int reduceMinChunkSize;
+    private final int reduceMaxLevels;
+    private final int reduceChunkSummaryMaxChars;
+
+    private final int finalReduceMaxSummaries;
+    private final int finalReduceSummaryMaxChars;
+    private final int finalReduceMaxAttempts;
 
     private MapReduceConfig(
             int singlePassMaxSelected,
@@ -118,7 +130,14 @@ public final class MapReduceConfig {
             boolean strictFixedBatchMode,
             int fixedBatchSize,
             boolean progressEnabled,
-            int progressPollMs
+            int progressPollMs,
+            int reduceInitialChunkSize,
+            int reduceMinChunkSize,
+            int reduceMaxLevels,
+            int reduceChunkSummaryMaxChars,
+            int finalReduceMaxSummaries,
+            int finalReduceSummaryMaxChars,
+            int finalReduceMaxAttempts
     ) {
         this.singlePassMaxSelected = singlePassMaxSelected;
         this.batchSize = batchSize;
@@ -150,6 +169,15 @@ public final class MapReduceConfig {
 
         this.progressEnabled = progressEnabled;
         this.progressPollMs = progressPollMs;
+
+        this.reduceInitialChunkSize = reduceInitialChunkSize;
+        this.reduceMinChunkSize = reduceMinChunkSize;
+        this.reduceMaxLevels = reduceMaxLevels;
+        this.reduceChunkSummaryMaxChars = reduceChunkSummaryMaxChars;
+
+        this.finalReduceMaxSummaries = finalReduceMaxSummaries;
+        this.finalReduceSummaryMaxChars = finalReduceSummaryMaxChars;
+        this.finalReduceMaxAttempts = finalReduceMaxAttempts;
     }
 
     public static MapReduceConfig load() {
@@ -187,6 +215,15 @@ public final class MapReduceConfig {
         boolean progressEnabled = booleanFromPropertyOrEnv("REVIEW_MR_PROGRESS_ENABLED", D_PROGRESS_ENABLED);
         int progressPollMs = boundedInt("REVIEW_MR_PROGRESS_POLL_MS", D_PROGRESS_POLL_MS, 250, 15000);
 
+        int reduceInitialChunkSize = boundedInt("REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE", D_REDUCE_INITIAL_CHUNK_SIZE, 2, 64);
+        int reduceMinChunkSize = boundedInt("REVIEW_MR_REDUCE_MIN_CHUNK_SIZE", D_REDUCE_MIN_CHUNK_SIZE, 1, 64);
+        int reduceMaxLevels = boundedInt("REVIEW_MR_REDUCE_MAX_LEVELS", D_REDUCE_MAX_LEVELS, 1, 20);
+        int reduceChunkSummaryMaxChars = boundedInt("REVIEW_MR_REDUCE_CHUNK_SUMMARY_MAX_CHARS", D_REDUCE_CHUNK_SUMMARY_MAX_CHARS, 200, 20000);
+
+        int finalReduceMaxSummaries = boundedInt("REVIEW_MR_FINAL_REDUCE_MAX_SUMMARIES", D_FINAL_REDUCE_MAX_SUMMARIES, 1, 20);
+        int finalReduceSummaryMaxChars = boundedInt("REVIEW_MR_FINAL_REDUCE_SUMMARY_MAX_CHARS", D_FINAL_REDUCE_SUMMARY_MAX_CHARS, 200, 20000);
+        int finalReduceMaxAttempts = boundedInt("REVIEW_MR_FINAL_REDUCE_MAX_ATTEMPTS", D_FINAL_REDUCE_MAX_ATTEMPTS, 1, 20);
+
         // Safety normalization
         if (singlePassContextMaxChars > singlePassMessageMaxChars) {
             singlePassContextMaxChars = singlePassMessageMaxChars;
@@ -205,9 +242,12 @@ public final class MapReduceConfig {
             minBatchSize = batchSize;
         }
 
-        // In strict fixed-batch mode, force effective map batch to fixed size.
         if (strictFixedBatchMode) {
             batchSize = Math.max(minBatchSize, fixedBatchSize);
+        }
+
+        if (reduceMinChunkSize > reduceInitialChunkSize) {
+            reduceMinChunkSize = reduceInitialChunkSize;
         }
 
         return new MapReduceConfig(
@@ -234,7 +274,14 @@ public final class MapReduceConfig {
                 strictFixedBatchMode,
                 fixedBatchSize,
                 progressEnabled,
-                progressPollMs
+                progressPollMs,
+                reduceInitialChunkSize,
+                reduceMinChunkSize,
+                reduceMaxLevels,
+                reduceChunkSummaryMaxChars,
+                finalReduceMaxSummaries,
+                finalReduceSummaryMaxChars,
+                finalReduceMaxAttempts
         );
     }
 
@@ -287,7 +334,6 @@ public final class MapReduceConfig {
             return env;
         }
 
-        // alias: review.mr.batch.size
         String alias = key.toLowerCase(Locale.ROOT).replace('_', '.');
         String propAlias = System.getProperty(alias);
         if (propAlias != null && !propAlias.isBlank()) {
@@ -393,13 +439,40 @@ public final class MapReduceConfig {
         return fixedBatchSize;
     }
 
-    // NEW
     public boolean isProgressEnabled() {
         return progressEnabled;
     }
 
     public int getProgressPollMs() {
         return progressPollMs;
+    }
+
+    public int getReduceInitialChunkSize() {
+        return reduceInitialChunkSize;
+    }
+
+    public int getReduceMinChunkSize() {
+        return reduceMinChunkSize;
+    }
+
+    public int getReduceMaxLevels() {
+        return reduceMaxLevels;
+    }
+
+    public int getReduceChunkSummaryMaxChars() {
+        return reduceChunkSummaryMaxChars;
+    }
+
+    public int getFinalReduceMaxSummaries() {
+        return finalReduceMaxSummaries;
+    }
+
+    public int getFinalReduceSummaryMaxChars() {
+        return finalReduceSummaryMaxChars;
+    }
+
+    public int getFinalReduceMaxAttempts() {
+        return finalReduceMaxAttempts;
     }
 
     @Override
@@ -429,6 +502,13 @@ public final class MapReduceConfig {
                 + ", fixedBatchSize=" + fixedBatchSize
                 + ", progressEnabled=" + progressEnabled
                 + ", progressPollMs=" + progressPollMs
+                + ", reduceInitialChunkSize=" + reduceInitialChunkSize
+                + ", reduceMinChunkSize=" + reduceMinChunkSize
+                + ", reduceMaxLevels=" + reduceMaxLevels
+                + ", reduceChunkSummaryMaxChars=" + reduceChunkSummaryMaxChars
+                + ", finalReduceMaxSummaries=" + finalReduceMaxSummaries
+                + ", finalReduceSummaryMaxChars=" + finalReduceSummaryMaxChars
+                + ", finalReduceMaxAttempts=" + finalReduceMaxAttempts
                 + '}';
     }
 }

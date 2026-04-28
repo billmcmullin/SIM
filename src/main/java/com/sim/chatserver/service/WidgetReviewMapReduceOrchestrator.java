@@ -47,16 +47,14 @@ public class WidgetReviewMapReduceOrchestrator {
     private static final int DEFAULT_SEGMENT_PROMPT_CHARS = 3500;
     private static final int DEFAULT_SEGMENT_RESPONSE_CHARS = 5000;
 
-    // hierarchical reduce tuning
-    private static final int DEFAULT_REDUCE_MAX_LEVELS = 5;
-    private static final int DEFAULT_REDUCE_INITIAL_CHUNK_SIZE = 4;
+    private static final int DEFAULT_REDUCE_MAX_LEVELS = 3;
+    private static final int DEFAULT_REDUCE_INITIAL_CHUNK_SIZE = 6;
     private static final int DEFAULT_REDUCE_MIN_CHUNK_SIZE = 2;
-    private static final int DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS = 1400;
+    private static final int DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS = 900;
 
-    // final-pass hard limits (to avoid 8192 token overflow)
-    private static final int FINAL_REDUCE_MAX_SUMMARIES = 3;
-    private static final int FINAL_REDUCE_SUMMARY_MAX_CHARS = 900;
-    private static final int FINAL_REDUCE_MAX_ATTEMPTS = 4;
+    private static final int DEFAULT_FINAL_REDUCE_MAX_SUMMARIES = 3;
+    private static final int DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS = 900;
+    private static final int DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS = 2;
 
     private final WorkspaceClient workspaceClient;
     private final ReviewContextBuilderService contextBuilderService;
@@ -78,6 +76,15 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private final int segmentPromptChars;
     private final int segmentResponseChars;
+
+    private final int reduceInitialChunkSize;
+    private final int reduceMinChunkSize;
+    private final int reduceMaxLevels;
+    private final int reduceChunkSummaryMaxChars;
+
+    private final int finalReduceMaxSummaries;
+    private final int finalReduceSummaryMaxChars;
+    private final int finalReduceMaxAttempts;
 
     public interface ProgressListener {
 
@@ -124,7 +131,10 @@ public class WidgetReviewMapReduceOrchestrator {
                 workspaceClient, contextBuilderService, promptTemplateService, new ReviewOutputValidator(),
                 FIXED_BATCH_SIZE, 3, 45000, 38000, 55000, 48000, 18000, 24000,
                 DEFAULT_MAX_RETRY_ROUNDS, DEFAULT_MIN_BATCH_SIZE,
-                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS
+                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS,
+                DEFAULT_REDUCE_INITIAL_CHUNK_SIZE, DEFAULT_REDUCE_MIN_CHUNK_SIZE, DEFAULT_REDUCE_MAX_LEVELS,
+                DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS,
+                DEFAULT_FINAL_REDUCE_MAX_SUMMARIES, DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS, DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS
         );
     }
 
@@ -146,7 +156,10 @@ public class WidgetReviewMapReduceOrchestrator {
                 FIXED_BATCH_SIZE, mapMaxParallel, mapMessageMaxChars, mapContextMaxChars,
                 reduceMessageMaxChars, reduceContextMaxChars, retryContextChars, retryTotalMessageChars,
                 DEFAULT_MAX_RETRY_ROUNDS, DEFAULT_MIN_BATCH_SIZE,
-                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS
+                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS,
+                DEFAULT_REDUCE_INITIAL_CHUNK_SIZE, DEFAULT_REDUCE_MIN_CHUNK_SIZE, DEFAULT_REDUCE_MAX_LEVELS,
+                DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS,
+                DEFAULT_FINAL_REDUCE_MAX_SUMMARIES, DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS, DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS
         );
     }
 
@@ -169,7 +182,10 @@ public class WidgetReviewMapReduceOrchestrator {
                 FIXED_BATCH_SIZE, mapMaxParallel, mapMessageMaxChars, mapContextMaxChars,
                 reduceMessageMaxChars, reduceContextMaxChars, retryContextChars, retryTotalMessageChars,
                 DEFAULT_MAX_RETRY_ROUNDS, DEFAULT_MIN_BATCH_SIZE,
-                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS
+                DEFAULT_SEGMENT_PROMPT_CHARS, DEFAULT_SEGMENT_RESPONSE_CHARS,
+                DEFAULT_REDUCE_INITIAL_CHUNK_SIZE, DEFAULT_REDUCE_MIN_CHUNK_SIZE, DEFAULT_REDUCE_MAX_LEVELS,
+                DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS,
+                DEFAULT_FINAL_REDUCE_MAX_SUMMARIES, DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS, DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS
         );
     }
 
@@ -191,6 +207,58 @@ public class WidgetReviewMapReduceOrchestrator {
             int segmentPromptChars,
             int segmentResponseChars
     ) {
+        this(
+                workspaceClient,
+                contextBuilderService,
+                promptTemplateService,
+                reviewOutputValidator,
+                mapBatchSizeIgnored,
+                mapMaxParallel,
+                mapMessageMaxChars,
+                mapContextMaxChars,
+                reduceMessageMaxChars,
+                reduceContextMaxChars,
+                retryContextChars,
+                retryTotalMessageChars,
+                maxRetryRounds,
+                minBatchSize,
+                segmentPromptChars,
+                segmentResponseChars,
+                DEFAULT_REDUCE_INITIAL_CHUNK_SIZE,
+                DEFAULT_REDUCE_MIN_CHUNK_SIZE,
+                DEFAULT_REDUCE_MAX_LEVELS,
+                DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS,
+                DEFAULT_FINAL_REDUCE_MAX_SUMMARIES,
+                DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS,
+                DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS
+        );
+    }
+
+    public WidgetReviewMapReduceOrchestrator(
+            WorkspaceClient workspaceClient,
+            ReviewContextBuilderService contextBuilderService,
+            PromptTemplateService promptTemplateService,
+            ReviewOutputValidator reviewOutputValidator,
+            int mapBatchSizeIgnored,
+            int mapMaxParallel,
+            int mapMessageMaxChars,
+            int mapContextMaxChars,
+            int reduceMessageMaxChars,
+            int reduceContextMaxChars,
+            int retryContextChars,
+            int retryTotalMessageChars,
+            int maxRetryRounds,
+            int minBatchSize,
+            int segmentPromptChars,
+            int segmentResponseChars,
+            int reduceInitialChunkSize,
+            int reduceMinChunkSize,
+            int reduceMaxLevels,
+            int reduceChunkSummaryMaxChars,
+            int finalReduceMaxSummaries,
+            int finalReduceSummaryMaxChars,
+            int finalReduceMaxAttempts
+    ) {
         this.workspaceClient = Objects.requireNonNull(workspaceClient, "workspaceClient");
         this.contextBuilderService = Objects.requireNonNull(contextBuilderService, "contextBuilderService");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "promptTemplateService");
@@ -207,6 +275,15 @@ public class WidgetReviewMapReduceOrchestrator {
         this.minBatchSize = Math.max(1, minBatchSize);
         this.segmentPromptChars = Math.max(200, segmentPromptChars);
         this.segmentResponseChars = Math.max(200, segmentResponseChars);
+
+        this.reduceInitialChunkSize = Math.max(2, reduceInitialChunkSize);
+        this.reduceMinChunkSize = Math.max(1, Math.min(this.reduceInitialChunkSize, reduceMinChunkSize));
+        this.reduceMaxLevels = Math.max(1, reduceMaxLevels);
+        this.reduceChunkSummaryMaxChars = Math.max(200, reduceChunkSummaryMaxChars);
+
+        this.finalReduceMaxSummaries = Math.max(1, finalReduceMaxSummaries);
+        this.finalReduceSummaryMaxChars = Math.max(200, finalReduceSummaryMaxChars);
+        this.finalReduceMaxAttempts = Math.max(1, finalReduceMaxAttempts);
     }
 
     public OrchestrationResult run(
@@ -237,7 +314,7 @@ public class WidgetReviewMapReduceOrchestrator {
     ) throws Exception {
 
         ProgressListener listener = progress == null ? NOOP_PROGRESS_LISTENER : progress;
-        log.severe("[MR-ORCH-PROCESSING-COVERAGE-V5] ACTIVE requestId=" + requestId);
+        log.severe("[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId=" + requestId);
 
         if (selectedEntries == null || selectedEntries.isEmpty()) {
             WorkspaceResponse empty = new WorkspaceResponse(400, "{\"status\":\"error\",\"message\":\"No selected entries provided.\"}", "application/json");
@@ -441,13 +518,13 @@ public class WidgetReviewMapReduceOrchestrator {
 
         List<String> current = mapOutputs == null ? List.of() : new ArrayList<>(mapOutputs);
         int level = 1;
-        int chunkSize = DEFAULT_REDUCE_INITIAL_CHUNK_SIZE;
+        int chunkSize = reduceInitialChunkSize;
 
-        while (current.size() > 1 && level <= DEFAULT_REDUCE_MAX_LEVELS) {
+        while (current.size() > 1 && level <= reduceMaxLevels) {
             boolean levelSucceeded = false;
             int localChunk = chunkSize;
 
-            while (!levelSucceeded && localChunk >= DEFAULT_REDUCE_MIN_CHUNK_SIZE) {
+            while (!levelSucceeded && localChunk >= reduceMinChunkSize) {
                 List<List<String>> chunks = chunk(current, localChunk);
                 List<String> nextLevel = new ArrayList<>();
                 boolean anyChunkFailed = false;
@@ -481,7 +558,7 @@ public class WidgetReviewMapReduceOrchestrator {
                         break;
                     }
 
-                    String summary = trimTo(chunkResult.reduceResult.getFinalReport(), DEFAULT_REDUCE_CHUNK_SUMMARY_MAX_CHARS);
+                    String summary = trimTo(chunkResult.reduceResult.getFinalReport(), reduceChunkSummaryMaxChars);
                     nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + "\n" + summary);
                 }
 
@@ -499,25 +576,22 @@ public class WidgetReviewMapReduceOrchestrator {
             }
 
             level++;
-            chunkSize = Math.max(DEFAULT_REDUCE_MIN_CHUNK_SIZE, chunkSize - 1);
+            chunkSize = Math.max(reduceMinChunkSize, chunkSize - 1);
         }
 
         List<String> finalInputs = current.isEmpty() ? mapOutputs : current;
+        List<String> boundedFinalInputs = boundFinalInputs(finalInputs, finalReduceMaxSummaries, finalReduceSummaryMaxChars);
 
-        // Hard-final minimization envelope
-        List<String> boundedFinalInputs = boundFinalInputs(finalInputs, FINAL_REDUCE_MAX_SUMMARIES, FINAL_REDUCE_SUMMARY_MAX_CHARS);
-
-        // Try strict final pass with progressive shrinking if still too large.
         int attempts = 0;
-        int maxSummaries = FINAL_REDUCE_MAX_SUMMARIES;
-        int perSummaryChars = FINAL_REDUCE_SUMMARY_MAX_CHARS;
+        int maxSummaries = finalReduceMaxSummaries;
+        int perSummaryChars = finalReduceSummaryMaxChars;
 
         ReduceExecutionResult last = null;
-        while (attempts < FINAL_REDUCE_MAX_ATTEMPTS) {
+        while (attempts < finalReduceMaxAttempts) {
             attempts++;
             List<String> trialInputs = boundFinalInputs(boundedFinalInputs, maxSummaries, perSummaryChars);
 
-            listener.onReduceChunkStarted(requestId, 999, attempts, FINAL_REDUCE_MAX_ATTEMPTS, trialInputs.size(), maxSummaries);
+            listener.onReduceChunkStarted(requestId, 999, attempts, finalReduceMaxAttempts, trialInputs.size(), maxSummaries);
 
             last = executeReduce(
                     targetUrl, apiKey, controlledPrompt, mode, sessionId, attachments,
@@ -533,7 +607,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     && last.reduceResult.isSuccess();
 
             listener.onReduceChunkCompleted(
-                    requestId, 999, attempts, FINAL_REDUCE_MAX_ATTEMPTS, ok,
+                    requestId, 999, attempts, finalReduceMaxAttempts, ok,
                     last == null || last.response == null ? 500 : last.response.statusCode()
             );
 
@@ -831,7 +905,9 @@ public class WidgetReviewMapReduceOrchestrator {
         List<String> expectedIds = normalizeIds(req.batchChatIds());
 
         String mapPrompt = req.getControlledPrompt() + "\n\n" + deterministicHeader + "\nExpected chat IDs in this batch: " + expectedIds
-                + "\nBatch Task:\nProduce markdown analysis for this batch.";
+                + "\nBatch Task:\nProduce markdown analysis for this batch with aggregate insights and metrics.\n"
+                + "Do NOT produce per-chat sections unless explicitly requested.\n"
+                + "Include covered_chat_ids: [..] contract line if possible.";
 
         String mapContext = contextBuilderService.buildMapBatchContext(
                 mapPrompt, req.getEntries(), req.getBatchIndex(), req.getTotalBatches(), mapContextMaxChars, expectedIds
@@ -970,7 +1046,11 @@ public class WidgetReviewMapReduceOrchestrator {
                         String.valueOf(coverageComplete), allIdsNorm.size(), usedIdsNorm.size(), missingIdsNorm.size()
                 );
 
-        String reducePrompt = controlledPrompt + "\n\n" + deterministicReduceHeader + "\nReduce Task:\nSynthesize final report.";
+        String reducePrompt = controlledPrompt + "\n\n" + deterministicReduceHeader + "\nReduce Task:\n"
+                + "Synthesize a manager-ready final report.\n"
+                + "Do NOT include 'Per-Chat Analysis'.\n"
+                + "Provide overall executive analysis, metrics, risks/opportunities, recommendations, and coverage.";
+
         String reduceContext = contextBuilderService.buildReduceContext(
                 reducePrompt, mapOutputs, failedBatches, allIdsNorm, missingIdsNorm, minimalHeader ? Math.max(800, retryContextChars) : reduceContextMaxChars
         );
@@ -1018,8 +1098,9 @@ public class WidgetReviewMapReduceOrchestrator {
         }
 
         String reduceText = extractPrimaryTextFromWorkspaceResponse(reduceResponse.body());
+
         ReviewOutputValidator.ValidationResult validation
-                = reviewOutputValidator.validateFinalReportStrict(reduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
+                = reviewOutputValidator.validateFinalReportHierarchical(reduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
 
         boolean reduceSuccess = reduceResponse.statusCode() < 400 && validation.isValid() && coverageComplete;
 

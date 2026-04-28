@@ -26,9 +26,10 @@ public class ReviewContextBuilderService {
 
     private static final int DEFAULT_MAP_BATCH_SIZE = 50;
 
-    // Tightened for token safety in reduce stage.
-    private static final int MAX_MAP_OUTPUT_ITEM_CHARS = 4000;
-    private static final int MAX_MAP_OUTPUT_ITEMS_IN_REDUCE = 8;
+    // tighter default reduce payload profile for speed + token safety
+    private static final int MAX_MAP_OUTPUT_ITEM_CHARS = 2500;
+    private static final int MAX_MAP_OUTPUT_ITEMS_IN_REDUCE = 5;
+    private static final int MAX_IDS_PREVIEW_IN_REDUCE = 60;
 
     private static final int MAX_OMITTED_IDS_LIST = 1200;
     private static final int MAX_SEGMENTS_PER_ENTRY = 256;
@@ -242,9 +243,8 @@ public class ReviewContextBuilderService {
         appendWithinLimit(sb, "- all_selected_ids_count: " + allDistinct.size() + "\n", maxChars);
         appendWithinLimit(sb, "- missing_ids_count: " + missingDistinct.size() + "\n", maxChars);
 
-        // Keep IDs compact to reduce token load.
-        appendWithinLimit(sb, "- all_selected_ids_preview: " + toBracketedIds(allDistinct, 120) + "\n", maxChars);
-        appendWithinLimit(sb, "- missing_ids_preview: " + toBracketedIds(missingDistinct, 120) + "\n", maxChars);
+        appendWithinLimit(sb, "- all_selected_ids_preview: " + toBracketedIds(allDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + "\n", maxChars);
+        appendWithinLimit(sb, "- missing_ids_preview: " + toBracketedIds(missingDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + "\n", maxChars);
         appendWithinLimit(sb, "- user_request: " + safe(userMessage, "") + "\n", maxChars);
 
         appendWithinLimit(sb, "\nMap outputs (truncated):\n", maxChars);

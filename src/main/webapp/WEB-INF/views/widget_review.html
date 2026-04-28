@@ -73,6 +73,21 @@
             color: #1f2937;
             font-size: 0.92em;
         }
+
+        .export-inline {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .analyze-toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 
@@ -100,13 +115,10 @@
     </div>
 
     <div class="container">
-
         <section class="section">
             <h1>Review Selected Chats</h1>
             <p class="helper-note">Currently reviewing ${subjectType}: <strong>${subjectLabel}</strong></p>
-            <p class="helper-note">
-                Check a row OR click a row to open full prompt/response and translation tools.
-            </p>
+            <p class="helper-note">Check a row OR click a row to open full prompt/response and translation tools.</p>
         </section>
 
         <section class="widget-review-wrapper">
@@ -119,6 +131,7 @@
                     <label for="reviewSearchInput">Search prompt, response, or session ID</label>
                     <input type="search" id="reviewSearchInput" placeholder="Enter search text">
                 </div>
+
                 <div class="form-group">
                     <label for="reviewPageSize">Show per page</label>
                     <select id="reviewPageSize">
@@ -128,38 +141,50 @@
                         <option value="100">100</option>
                     </select>
                 </div>
+
                 <div class="form-group">
                     <label>&nbsp;</label>
                     <div class="button-row">
                         <button type="button" id="selectAllEntriesBtn">Select all entries</button>
                         <button type="button" id="deselectAllBtn">Deselect all</button>
-                        <button type="button" id="manualMessageToggleBtn">Ask IDA?</button>
+                        <button type="button" id="manualMessageToggleBtn">Analyze with IDA</button>
 
-                        <label for="exportFormat" style="margin-left:12px; align-self:center;">Export:</label>
-                        <select id="exportFormat" style="margin-left:6px;">
-                            <option value="csv" selected>CSV</option>
-                            <option value="json">JSON</option>
-                            <option value="text">TEXT</option>
-                        </select>
-                        <button type="button" id="exportSelectedBtn" style="margin-left:6px;">Export</button>
+                        <div class="export-inline" style="margin-left:12px;">
+                            <label for="exportFormatSelect" style="margin:0;">Export:</label>
+                            <select id="exportFormatSelect">
+                                <option value="csv" selected>CSV</option>
+                                <option value="json">JSON</option>
+                                <option value="text">TEXT</option>
+                                <option value="pdf">PDF (Manager Report)</option>
+                            </select>
+                            <button type="button" id="exportSelectedBtn">Export</button>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="manual-message-section" id="manualMessageSection" aria-hidden="true" hidden>
-                <div class="form-group">
-                    <label for="manualMessageText">Message</label>
-                    <textarea id="manualMessageText" placeholder="Type your manual workspace message here"></textarea>
-                </div>
+                <div class="analyze-toolbar">
+                    <button type="button" id="manualMessageSendBtn" class="primary">Analyze</button>
 
-                <div class="form-group" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" id="quickPdfAfterAnalyzeBtn" class="ghost-btn" hidden disabled>
+                        Quick PDF
+                    </button>
+
                     <label style="display:flex; gap:8px; align-items:center; margin:0;">
                         <input type="checkbox" id="manualMessageAsyncMode" checked>
                         Run in background (recommended)
                     </label>
+
                     <button type="button" id="manualMessageCancelJobBtn" class="ghost-btn" disabled>
                         Cancel Running Job
                     </button>
+                    <button type="button" id="manualMessageClearBtn">Clear</button>
+                    <button type="button" id="manualMessageCloseBtn">Hide</button>
+                </div>
+
+                <div class="helper-note" style="margin-bottom:10px;">
+                    Uses the default analysis prompt and selected chat context.
                 </div>
 
                 <div class="manual-message-status" id="manualMessageStatus" aria-live="polite"></div>
@@ -200,15 +225,10 @@
                 </div>
 
                 <div class="manual-message-response-wrapper form-group">
-                    <label>Workspace response</label>
-                    <div class="manual-message-response manual-message-box markdown-body" id="manualMessageResponse">No
-                        response yet.</div>
-                </div>
-
-                <div class="manual-message-buttons">
-                    <button type="button" id="manualMessageClearBtn">Clear</button>
-                    <button type="button" id="manualMessageCloseBtn">Hide</button>
-                    <button type="button" id="manualMessageSendBtn" class="primary">Send</button>
+                    <label>Analysis report</label>
+                    <div class="manual-message-response manual-message-box markdown-body" id="manualMessageResponse">
+                        No analysis yet.
+                    </div>
                 </div>
             </div>
 
@@ -295,7 +315,9 @@
             subjectType: '${subjectType}',
             manualMessageEndpoint: '${contextPath}/dashboard/drilldown/widget-review/manual-message',
             jobStatusEndpoint: '${contextPath}/dashboard/drilldown/widget-review/job-status',
-            translateEndpoint: '${contextPath}/dashboard/widgets/drilldown/review/translate'
+            translateEndpoint: '${contextPath}/dashboard/widgets/drilldown/review/translate',
+            exportEndpoint: '${contextPath}/dashboard/widgets/drilldown/export',
+            defaultAnalyzePrompt: 'Analyze the selected chats and produce a manager-ready report with: Executive Chat Analysis, Key Metrics table, Risks and Opportunities, Recommendations, and Coverage and Methodology. Use concise evidence-based language and include coverage accounting.'
         };
     </script>
 

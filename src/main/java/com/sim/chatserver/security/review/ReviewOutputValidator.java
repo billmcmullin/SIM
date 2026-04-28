@@ -12,11 +12,9 @@ import java.util.regex.Pattern;
 /**
  * Validates generated review outputs before using them in reduce/final flows.
  *
- * Tightened strict behavior: - map strict checks require deterministic ### Chat
- * <id> coverage for expected IDs - found/missing are deterministic and
- * normalized - duplicate headings are detected and warned - final strict checks
- * verify deterministic coverage metadata consistency - fixed-window map-reduce
- * mode: strict metadata and heading checks stay authoritative
+ * Manager-report update: - Supports manager-style final report sections - Keeps
+ * strict map validation for deterministic batch coverage - Adds
+ * relaxed/hierarchical final validation for aggregate synthesis flows
  */
 public class ReviewOutputValidator {
 
@@ -37,17 +35,27 @@ public class ReviewOutputValidator {
     // Optional metadata counts
     private static final Pattern META_EXACT_TOTAL_SELECTED = Pattern.compile("(?im)^\\s*[-*]\\s*exact_total_selected\\s*:\\s*(\\d+)\\s*$");
 
-    // Human-readable coverage lines (optional consistency cross-check)
+    // Human-readable coverage lines
     private static final Pattern COVERAGE_CHATS_PROVIDED = Pattern.compile("(?im)^\\s*[-*]\\s*chats\\s+provided\\s*:\\s*(\\d+)\\s*$");
     private static final Pattern COVERAGE_CHATS_USED = Pattern.compile("(?im)^\\s*[-*]\\s*chats\\s+used\\s+in\\s+analysis\\s*:\\s*(\\d+)\\s*$");
     private static final Pattern COVERAGE_CHATS_NOT_USED = Pattern.compile("(?im)^\\s*[-*]\\s*chats\\s+not\\s+used\\s*:\\s*(\\d+)\\s*$");
+    private static final Pattern COVERAGE_PERCENTAGE = Pattern.compile("(?im)^\\s*[-*]\\s*coverage\\s+percentage\\s*:\\s*([0-9]{1,3})\\s*%?\\s*$");
 
-    private static final List<String> REQUIRED_SECTIONS = List.of(
+    private static final List<String> REQUIRED_MAP_SECTIONS = List.of(
             "## executive summary",
             "## per-chat analysis",
             "## cross-conversation findings",
             "## recommended actions",
             "## coverage and carry-forward"
+    );
+
+    // New manager style required sections
+    private static final List<String> REQUIRED_MANAGER_FINAL_SECTIONS = List.of(
+            "## executive chat analysis",
+            "## key metrics",
+            "## risks and opportunities",
+            "## recommendations",
+            "## coverage and methodology"
     );
 
     private static final List<String> REQUIRED_FINAL_METADATA_KEYS = List.of(
@@ -82,7 +90,7 @@ public class ReviewOutputValidator {
             errors.add("Output appears to be JSON; markdown report expected.");
         }
 
-        for (String section : REQUIRED_SECTIONS) {
+        for (String section : REQUIRED_MAP_SECTIONS) {
             if (!lower.contains(section)) {
                 errors.add("Missing required section: " + section);
             }
@@ -204,7 +212,7 @@ public class ReviewOutputValidator {
             errors.add("Final report appears to be JSON; markdown report expected.");
         }
 
-        for (String section : REQUIRED_SECTIONS) {
+        for (String section : REQUIRED_MANAGER_FINAL_SECTIONS) {
             if (!lower.contains(section)) {
                 errors.add("Missing required section: " + section);
             }
@@ -214,6 +222,10 @@ public class ReviewOutputValidator {
             if (!lower.contains(k)) {
                 errors.add("Coverage section missing '" + toTitleCase(k) + "'.");
             }
+        }
+
+        if (!lower.contains("metric | value | notes") && !lower.contains("| metric | value | notes |")) {
+            warnings.add("Key Metrics table not detected in expected format (Metric | Value | Notes).");
         }
 
         if (containsLikelyPromptLeak(lower)) {
@@ -242,6 +254,10 @@ public class ReviewOutputValidator {
         );
     }
 
+    /**
+     * Strict legacy mode: - Requires explicit ### Chat headings for all
+     * expected IDs - Requires deterministic metadata consistency
+     */
     public ValidationResult validateFinalReportStrict(String report, List<String> expectedChatIds, int maxChars) {
         ValidationResult base = validateFinalReport(report, maxChars);
 
@@ -271,87 +287,7 @@ public class ReviewOutputValidator {
             warnings.add("Final report contains chat headings not in expected set: " + unexpected);
         }
 
-        boolean hasDeterministicFields = lower.contains("all_selected_chat_ids")
-                && lower.contains("used_chat_ids")
-                && lower.contains("missing_chat_ids");
-
-        if (!hasDeterministicFields) {
-            warnings.add("Final report missing one or more deterministic coverage metadata fields: all_selected_chat_ids, used_chat_ids, missing_chat_ids.");
-        } else {
-            List<String> metaAll = parseIdsFromMetadataLine(normalized, META_ALL_SELECTED);
-            List<String> metaUsed = parseIdsFromMetadataLine(normalized, META_USED);
-            List<String> metaMissing = parseIdsFromMetadataLine(normalized, META_MISSING);
-            Boolean metaCoverageComplete = parseCoverageComplete(normalized);
-            Integer exactTotalSelected = parseIntMetadata(normalized, META_EXACT_TOTAL_SELECTED);
-
-            if (metaAll.isEmpty()) {
-                errors.add("Coverage metadata mismatch: all_selected_chat_ids is missing/empty.");
-            } else {
-                List<String> expectedNorm = normalizeIds(expected);
-                List<String> metaAllNorm = normalizeIds(metaAll);
-                List<String> metaUsedNorm = normalizeIds(metaUsed);
-                List<String> metaMissingNorm = normalizeIds(metaMissing);
-
-                Set<String> expectedSet = new LinkedHashSet<>(expectedNorm);
-                Set<String> metaAllSet = new LinkedHashSet<>(metaAllNorm);
-                Set<String> metaUsedSet = new LinkedHashSet<>(metaUsedNorm);
-                Set<String> metaMissingSet = new LinkedHashSet<>(metaMissingNorm);
-
-                if (!metaAllSet.equals(expectedSet)) {
-                    errors.add("Coverage metadata mismatch: all_selected_chat_ids does not match expected selected IDs.");
-                }
-
-                if (!metaAllSet.containsAll(metaUsedSet)) {
-                    errors.add("Coverage metadata mismatch: used_chat_ids contains IDs outside all_selected_chat_ids.");
-                }
-                if (!metaAllSet.containsAll(metaMissingSet)) {
-                    errors.add("Coverage metadata mismatch: missing_chat_ids contains IDs outside all_selected_chat_ids.");
-                }
-
-                Set<String> overlap = new LinkedHashSet<>(metaUsedSet);
-                overlap.retainAll(metaMissingSet);
-                if (!overlap.isEmpty()) {
-                    errors.add("Coverage metadata mismatch: used_chat_ids and missing_chat_ids overlap: " + overlap);
-                }
-
-                Set<String> union = new LinkedHashSet<>(metaUsedSet);
-                union.addAll(metaMissingSet);
-                if (!union.equals(metaAllSet)) {
-                    errors.add("Coverage metadata mismatch: used_chat_ids ∪ missing_chat_ids does not equal all_selected_chat_ids.");
-                }
-
-                if (metaCoverageComplete != null) {
-                    boolean derivedComplete = metaMissingSet.isEmpty();
-                    if (metaCoverageComplete.booleanValue() != derivedComplete) {
-                        errors.add("Coverage metadata mismatch: coverage_complete does not match missing_chat_ids emptiness.");
-                    }
-                }
-
-                if (exactTotalSelected != null && exactTotalSelected.intValue() != metaAllSet.size()) {
-                    errors.add("Coverage metadata mismatch: exact_total_selected does not match all_selected_chat_ids size.");
-                }
-
-                // Optional cross-check: human-readable coverage lines
-                Integer chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
-                Integer chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
-                Integer chatsNotUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
-
-                if (chatsProvided != null && chatsProvided.intValue() != metaAllSet.size()) {
-                    errors.add("Coverage metadata mismatch: 'Chats provided' does not match all_selected_chat_ids size.");
-                }
-                if (chatsUsed != null && chatsUsed.intValue() != metaUsedSet.size()) {
-                    errors.add("Coverage metadata mismatch: 'Chats used in analysis' does not match used_chat_ids size.");
-                }
-                if (chatsNotUsed != null && chatsNotUsed.intValue() != metaMissingSet.size()) {
-                    errors.add("Coverage metadata mismatch: 'Chats not used' does not match missing_chat_ids size.");
-                }
-                if (chatsProvided != null && chatsUsed != null && chatsNotUsed != null) {
-                    if (chatsUsed.intValue() + chatsNotUsed.intValue() != chatsProvided.intValue()) {
-                        errors.add("Coverage metadata mismatch: chats_used + chats_not_used does not equal chats_provided.");
-                    }
-                }
-            }
-        }
+        validateDeterministicCoverageMetadata(normalized, expected, errors);
 
         return new ValidationResult(
                 errors.isEmpty(),
@@ -365,8 +301,174 @@ public class ReviewOutputValidator {
         );
     }
 
+    /**
+     * Relaxed manager/hierarchical mode: - Does NOT require explicit ### Chat
+     * headings for every expected ID - Still requires deterministic metadata
+     * consistency when present - Requires coverage counts consistency
+     */
+    public ValidationResult validateFinalReportHierarchical(String report, List<String> expectedChatIds, int maxChars) {
+        ValidationResult base = validateFinalReport(report, maxChars);
+
+        List<String> errors = new ArrayList<>(base.getErrors());
+        List<String> warnings = new ArrayList<>(base.getWarnings());
+
+        String normalized = normalize(report);
+        String lower = normalized.toLowerCase(Locale.ROOT);
+
+        List<String> expected = normalizeIds(expectedChatIds);
+        List<String> found = normalizeIds(base.getFoundChatIds());
+
+        // In hierarchical mode, chat headings are optional and non-authoritative.
+        if (!found.isEmpty()) {
+            Set<String> unexpectedSet = new LinkedHashSet<>(found);
+            unexpectedSet.removeAll(expected);
+            if (!unexpectedSet.isEmpty()) {
+                warnings.add("Final report contains chat headings not in expected set: " + new ArrayList<>(unexpectedSet));
+            }
+        }
+
+        validateDeterministicCoverageMetadata(normalized, expected, errors);
+        validateCoveragePercentageConsistency(normalized, errors, warnings);
+
+        // If deterministic IDs are absent, fallback to human-readable coverage lines being present and coherent.
+        boolean hasDeterministicFields = lower.contains("all_selected_chat_ids")
+                && lower.contains("used_chat_ids")
+                && lower.contains("missing_chat_ids");
+
+        if (!hasDeterministicFields) {
+            Integer provided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+            Integer used = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+            Integer notUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
+
+            if (provided == null || used == null || notUsed == null) {
+                errors.add("Coverage metadata incomplete: expected deterministic ID fields or complete coverage count lines.");
+            } else if (used.intValue() + notUsed.intValue() != provided.intValue()) {
+                errors.add("Coverage metadata mismatch: chats_used + chats_not_used does not equal chats_provided.");
+            }
+        }
+
+        return new ValidationResult(
+                errors.isEmpty(),
+                errors,
+                warnings,
+                base.getLength(),
+                expected,
+                found,
+                List.of(),
+                List.of()
+        );
+    }
+
     public List<String> extractChatIds(String output) {
         return parseChatIds(normalize(output));
+    }
+
+    private void validateDeterministicCoverageMetadata(String normalized, List<String> expected, List<String> errors) {
+        String lower = normalized.toLowerCase(Locale.ROOT);
+
+        boolean hasDeterministicFields = lower.contains("all_selected_chat_ids")
+                && lower.contains("used_chat_ids")
+                && lower.contains("missing_chat_ids");
+
+        if (!hasDeterministicFields) {
+            return;
+        }
+
+        List<String> metaAll = parseIdsFromMetadataLine(normalized, META_ALL_SELECTED);
+        List<String> metaUsed = parseIdsFromMetadataLine(normalized, META_USED);
+        List<String> metaMissing = parseIdsFromMetadataLine(normalized, META_MISSING);
+        Boolean metaCoverageComplete = parseCoverageComplete(normalized);
+        Integer exactTotalSelected = parseIntMetadata(normalized, META_EXACT_TOTAL_SELECTED);
+
+        if (metaAll.isEmpty()) {
+            errors.add("Coverage metadata mismatch: all_selected_chat_ids is missing/empty.");
+            return;
+        }
+
+        List<String> expectedNorm = normalizeIds(expected);
+        List<String> metaAllNorm = normalizeIds(metaAll);
+        List<String> metaUsedNorm = normalizeIds(metaUsed);
+        List<String> metaMissingNorm = normalizeIds(metaMissing);
+
+        Set<String> expectedSet = new LinkedHashSet<>(expectedNorm);
+        Set<String> metaAllSet = new LinkedHashSet<>(metaAllNorm);
+        Set<String> metaUsedSet = new LinkedHashSet<>(metaUsedNorm);
+        Set<String> metaMissingSet = new LinkedHashSet<>(metaMissingNorm);
+
+        if (!expectedSet.isEmpty() && !metaAllSet.equals(expectedSet)) {
+            errors.add("Coverage metadata mismatch: all_selected_chat_ids does not match expected selected IDs.");
+        }
+
+        if (!metaAllSet.containsAll(metaUsedSet)) {
+            errors.add("Coverage metadata mismatch: used_chat_ids contains IDs outside all_selected_chat_ids.");
+        }
+        if (!metaAllSet.containsAll(metaMissingSet)) {
+            errors.add("Coverage metadata mismatch: missing_chat_ids contains IDs outside all_selected_chat_ids.");
+        }
+
+        Set<String> overlap = new LinkedHashSet<>(metaUsedSet);
+        overlap.retainAll(metaMissingSet);
+        if (!overlap.isEmpty()) {
+            errors.add("Coverage metadata mismatch: used_chat_ids and missing_chat_ids overlap: " + overlap);
+        }
+
+        Set<String> union = new LinkedHashSet<>(metaUsedSet);
+        union.addAll(metaMissingSet);
+        if (!union.equals(metaAllSet)) {
+            errors.add("Coverage metadata mismatch: used_chat_ids ∪ missing_chat_ids does not equal all_selected_chat_ids.");
+        }
+
+        if (metaCoverageComplete != null) {
+            boolean derivedComplete = metaMissingSet.isEmpty();
+            if (metaCoverageComplete.booleanValue() != derivedComplete) {
+                errors.add("Coverage metadata mismatch: coverage_complete does not match missing_chat_ids emptiness.");
+            }
+        }
+
+        if (exactTotalSelected != null && exactTotalSelected.intValue() != metaAllSet.size()) {
+            errors.add("Coverage metadata mismatch: exact_total_selected does not match all_selected_chat_ids size.");
+        }
+
+        Integer chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+        Integer chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+        Integer chatsNotUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
+
+        if (chatsProvided != null && chatsProvided.intValue() != metaAllSet.size()) {
+            errors.add("Coverage metadata mismatch: 'Chats provided' does not match all_selected_chat_ids size.");
+        }
+        if (chatsUsed != null && chatsUsed.intValue() != metaUsedSet.size()) {
+            errors.add("Coverage metadata mismatch: 'Chats used in analysis' does not match used_chat_ids size.");
+        }
+        if (chatsNotUsed != null && chatsNotUsed.intValue() != metaMissingSet.size()) {
+            errors.add("Coverage metadata mismatch: 'Chats not used' does not match missing_chat_ids size.");
+        }
+        if (chatsProvided != null && chatsUsed != null && chatsNotUsed != null) {
+            if (chatsUsed.intValue() + chatsNotUsed.intValue() != chatsProvided.intValue()) {
+                errors.add("Coverage metadata mismatch: chats_used + chats_not_used does not equal chats_provided.");
+            }
+        }
+    }
+
+    private void validateCoveragePercentageConsistency(String normalized, List<String> errors, List<String> warnings) {
+        Integer chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+        Integer chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+        Integer coveragePct = parseIntMetadata(normalized, COVERAGE_PERCENTAGE);
+
+        if (coveragePct == null || chatsProvided == null || chatsUsed == null) {
+            return;
+        }
+
+        if (coveragePct < 0 || coveragePct > 100) {
+            errors.add("Coverage metadata mismatch: coverage percentage out of valid range 0..100.");
+            return;
+        }
+
+        if (chatsProvided > 0) {
+            int derived = (int) Math.round((chatsUsed.doubleValue() * 100.0) / chatsProvided.doubleValue());
+            if (Math.abs(derived - coveragePct.intValue()) > 1) {
+                warnings.add("Coverage percentage may be inconsistent with used/provided counts (derived=" + derived + "%).");
+            }
+        }
     }
 
     private String normalize(String value) {
@@ -475,7 +577,6 @@ public class ReviewOutputValidator {
             return List.of();
         }
 
-        // Expected format is bracket list like [a, b, c]
         String inner = raw;
         if (inner.startsWith("[")) {
             inner = inner.substring(1);

@@ -115,7 +115,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 mrConfig.getMaxCoveragePasses(),
                 mrConfig.getMinBatchSize(),
                 mrConfig.getSegmentPromptChars(),
-                mrConfig.getSegmentResponseChars()
+                mrConfig.getSegmentResponseChars(),
+                mrConfig.getReduceInitialChunkSize(),
+                mrConfig.getReduceMinChunkSize(),
+                mrConfig.getReduceMaxLevels(),
+                mrConfig.getReduceChunkSummaryMaxChars(),
+                mrConfig.getFinalReduceMaxSummaries(),
+                mrConfig.getFinalReduceSummaryMaxChars(),
+                mrConfig.getFinalReduceMaxAttempts()
         );
 
         log.info("[manual-message][init] loaded config: " + mrConfig);
@@ -298,7 +305,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     List<String> missingIds = subtract(allIds, usedIds);
 
                     ReviewOutputValidator.ValidationResult finalValidation
-                            = reviewOutputValidator.validateFinalReportStrict(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                            = reviewOutputValidator.validateFinalReportHierarchical(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
                     boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
                     boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -341,11 +348,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 AtomicInteger liveCompletedBatches = new AtomicInteger(0);
                 AtomicInteger liveFailedBatches = new AtomicInteger(0);
 
-                final int[] reduceLevel = {0};
-                final int[] reduceChunks = {0};
-                final int[] reduceChunk = {0};
-                final int[] reduceFinalAttempt = {0};
-                final int reduceFinalAttemptTotal = 4;
+                final int reduceFinalAttemptTotal = mrConfig.getFinalReduceMaxAttempts();
 
                 WidgetReviewMapReduceOrchestrator.ProgressListener progressListener = new WidgetReviewMapReduceOrchestrator.ProgressListener() {
                     @Override
@@ -356,10 +359,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                allIds,
-                                List.of(),
+                                allIds, List.of(), allIds, List.of(),
                                 "Map round " + round + "/" + totalRounds + " started • remaining=" + remainingBeforeRound
                         );
                     }
@@ -373,10 +373,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                allIds,
-                                List.of(),
+                                allIds, List.of(), allIds, List.of(),
                                 "Sending batch " + batchIndex + " (round " + round + ", size=" + expectedIdsInBatch + ")..."
                         );
                     }
@@ -385,8 +382,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     public void onMapBatchCompleted(String reqId, int batchIndex, int totalBatchesSoFar, boolean success, int usedSoFar, int missingSoFar, int round) {
                         liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
                         if (success) {
-                            liveCompletedBatches.incrementAndGet();
-                        } else {
+                            liveCompletedBatches.incrementAndGet(); 
+                        }else {
                             liveFailedBatches.incrementAndGet();
                         }
 
@@ -396,10 +393,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
+                                allIds, List.of(), List.of(), List.of(),
                                 "Batch " + batchIndex + " " + (success ? "completed" : "failed")
                                 + " • " + liveCompletedBatches.get() + "/" + Math.max(1, liveTotalBatches.get())
                                 + " complete"
@@ -415,10 +409,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
+                                allIds, List.of(), List.of(), List.of(),
                                 "Synthesizing final report..."
                         );
                     }
@@ -426,26 +417,17 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     @Override
                     public void onReduceChunkStarted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, int chunkSize, int currentChunkSizeConfig) {
                         if (level == 999) {
-                            reduceFinalAttempt[0] = chunkIndex;
                             jobs.updateReduceProgress(
                                     jid,
                                     Math.max(liveTotalBatches.get(), 0),
                                     Math.max(liveCompletedBatches.get(), 0),
                                     Math.max(liveFailedBatches.get(), 0),
                                     0,
-                                    allIds,
-                                    List.of(),
-                                    List.of(),
-                                    List.of(),
-                                    "Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal
-                                    + " • summaries=" + chunkSize
+                                    allIds, List.of(), List.of(), List.of(),
+                                    "Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal + " • summaries=" + chunkSize
                             );
                             return;
                         }
-
-                        reduceLevel[0] = level;
-                        reduceChunk[0] = chunkIndex;
-                        reduceChunks[0] = totalChunksAtLevel;
 
                         jobs.updateReduceProgress(
                                 jid,
@@ -453,10 +435,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
+                                allIds, List.of(), List.of(), List.of(),
                                 "Synthesis L" + level + " • chunk " + chunkIndex + "/" + totalChunksAtLevel
                                 + " • size=" + chunkSize + " • cfg=" + currentChunkSizeConfig
                         );
@@ -474,10 +453,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
+                                allIds, List.of(), List.of(), List.of(),
                                 phaseText + " " + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ")"
                         );
                     }
@@ -490,12 +466,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
-                                "Synthesis level " + level + " complete • chunks=" + totalChunksAtLevel
-                                + " • summaries=" + producedSummaries
+                                allIds, List.of(), List.of(), List.of(),
+                                "Synthesis level " + level + " complete • chunks=" + totalChunksAtLevel + " • summaries=" + producedSummaries
                         );
                     }
 
@@ -507,10 +479,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveCompletedBatches.get(), 0),
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
-                                allIds,
-                                List.of(),
-                                List.of(),
-                                List.of(),
+                                allIds, List.of(), List.of(), List.of(),
                                 "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ")"
                         );
                     }
@@ -541,7 +510,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 usedIds = subtract(allIds, missingIds);
 
                 ReviewOutputValidator.ValidationResult finalValidation
-                        = reviewOutputValidator.validateFinalReportStrict(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                        = reviewOutputValidator.validateFinalReportHierarchical(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
                 boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
                 boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -724,7 +693,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String finalText = extractPrimaryText(finalResp.body());
         ReviewOutputValidator.ValidationResult finalValidation
-                = reviewOutputValidator.validateFinalReportStrict(finalText, allIds, mrConfig.getReduceMessageMaxChars());
+                = reviewOutputValidator.validateFinalReportHierarchical(finalText, allIds, mrConfig.getReduceMessageMaxChars());
 
         if (!finalValidation.isValid()) {
             log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + finalValidation.getErrors());
@@ -756,7 +725,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 + " missingCount=" + coverage.getNotUsedChatIds().size()
                 + " metadataMismatch=" + metadataMismatch
                 + " strictFixedBatchMode=" + mrConfig.isStrictFixedBatchMode()
-                + " fixedBatchSize=" + mrConfig.getFixedBatchSize());
+                + " fixedBatchSize=" + mrConfig.getFixedBatchSize()
+                + " reduceInitialChunkSize=" + mrConfig.getReduceInitialChunkSize()
+                + " reduceMaxLevels=" + mrConfig.getReduceMaxLevels()
+                + " finalReduceMaxAttempts=" + mrConfig.getFinalReduceMaxAttempts());
 
         return new MapReduceExecutionResult(finalResp, orchestration);
     }
@@ -831,7 +803,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private List<String> extractUsedIdsFromText(String text, List<String> expected) {
         ReviewOutputValidator.ValidationResult v
-                = reviewOutputValidator.validateFinalReportStrict(text == null ? "" : text, expected, mrConfig.getReduceMessageMaxChars());
+                = reviewOutputValidator.validateFinalReportHierarchical(text == null ? "" : text, expected, mrConfig.getReduceMessageMaxChars());
         return distinctIds(v.getFoundChatIds());
     }
 
@@ -1023,8 +995,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String normalized = host.trim();
         StringBuilder builder = new StringBuilder();
         if (normalized.contains("://")) {
-            builder.append(normalized);
-        } else {
+            builder.append(normalized); 
+        }else {
             builder.append("https://").append(normalized);
         }
 
