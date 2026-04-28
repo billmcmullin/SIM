@@ -17,10 +17,48 @@ export function renderError(el, message, requestId = "") {
   `;
 }
 
+/**
+ * Hardened markdown rendering:
+ * 1) marked.parse(md)
+ * 2) DOMPurify.sanitize(html)
+ * 3) el.innerHTML = sanitized
+ */
 export function renderMarkdown(el, md) {
     if (!el) return;
-    // If you use a markdown lib, plug it in here. For now plain preformatted fallback:
-    el.innerHTML = `<pre class="wr-markdown">${escapeHtml(md || "")}</pre>`;
+
+    const markdown = (md ?? "").toString();
+
+    try {
+        const markedApi = globalThis.marked;
+        const purifier = globalThis.DOMPurify;
+
+        // Safe fallback if libraries are unavailable
+        if (!markedApi || typeof markedApi.parse !== "function" || !purifier || typeof purifier.sanitize !== "function") {
+            el.innerHTML = `<pre class="wr-markdown">${escapeHtml(markdown)}</pre>`;
+            return;
+        }
+
+        if (typeof markedApi.setOptions === "function") {
+            markedApi.setOptions({
+                gfm: true,
+                breaks: true,
+                mangle: false,
+                headerIds: false
+            });
+        }
+
+        const html = markedApi.parse(markdown || "");
+        const sanitized = purifier.sanitize(html, {
+            USE_PROFILES: { html: true },
+            FORBID_TAGS: ["style", "script", "iframe", "object", "embed", "form"],
+            FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover"]
+        });
+
+        el.innerHTML = sanitized || `<pre class="wr-markdown"></pre>`;
+    } catch {
+        // Final safe fallback
+        el.innerHTML = `<pre class="wr-markdown">${escapeHtml(markdown)}</pre>`;
+    }
 }
 
 export function renderStatusPill(el, text, tone = "neutral") {

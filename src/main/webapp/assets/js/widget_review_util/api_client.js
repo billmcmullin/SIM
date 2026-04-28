@@ -1,6 +1,7 @@
 // widget_review_util/api_client.js
 
 import { warn } from "./logger.js";
+import { extractFilenameFromContentDisposition } from "./dom_util.js";
 
 /**
  * Builds default headers for widget review API calls.
@@ -30,12 +31,18 @@ async function parseBody(res) {
 /**
  * Converts a failed HTTP response to a rich Error object.
  */
-async function toHttpError(res, url) {
+async function toHttpError(res, method, url) {
     const data = await parseBody(res);
-    const err = new Error(`POST ${url} failed with ${res.status}`);
+    const requestId = data?.requestId || "";
+    const messageText = data?.message || data?.error || "";
+    const err = new Error(
+        `${method} ${url} failed with ${res.status}`
+        + (requestId ? ` [${requestId}]` : "")
+        + (messageText ? `: ${messageText}` : "")
+    );
     err.status = res.status;
     err.data = data;
-    err.requestId = data?.requestId || "";
+    err.requestId = requestId;
     return err;
 }
 
@@ -54,12 +61,7 @@ export async function getJson(url, options = {}) {
     });
 
     if (!res.ok) {
-        const data = await parseBody(res);
-        const err = new Error(`GET ${url} failed with ${res.status}`);
-        err.status = res.status;
-        err.data = data;
-        err.requestId = data?.requestId || "";
-        throw err;
+        throw await toHttpError(res, "GET", url);
     }
 
     return parseBody(res);
@@ -82,7 +84,28 @@ export async function postJson(url, payload = {}, options = {}) {
     });
 
     if (!res.ok) {
-        throw await toHttpError(res, url);
+        throw await toHttpError(res, "POST", url);
+    }
+
+    return parseBody(res);
+}
+
+/**
+ * Generic DELETE JSON helper.
+ */
+export async function deleteJson(url, options = {}) {
+    const res = await fetch(url, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+            "Accept": "application/json",
+            ...(options.headers || {})
+        },
+        ...options
+    });
+
+    if (!res.ok) {
+        throw await toHttpError(res, "DELETE", url);
     }
 
     return parseBody(res);
@@ -90,7 +113,7 @@ export async function postJson(url, payload = {}, options = {}) {
 
 /**
  * POST x-www-form-urlencoded helper.
- * Added for manual-message endpoint compatibility when servlet expects form data.
+ * Useful if endpoint expects form data.
  */
 export async function postForm(url, formObj = {}, options = {}) {
     const form = new URLSearchParams();
@@ -113,7 +136,7 @@ export async function postForm(url, formObj = {}, options = {}) {
     });
 
     if (!res.ok) {
-        throw await toHttpError(res, url);
+        throw await toHttpError(res, "POST", url);
     }
 
     return parseBody(res);
@@ -142,4 +165,48 @@ export async function postJsonWithFormFallback(url, payload = {}, options = {}) 
 
         return await postForm(url, formObj, options);
     }
+}
+
+/**
+ * Download helper for export endpoints that return binary files.
+ * Returns { blob, filename, contentDisposition, contentType }.
+ */
+export async function postForDownload(url, payload = {}, options = {}) {
+    const headers = {
+        ...buildHeaders(),
+        "Accept": "*/*",
+        ...(options.headers || {})
+    };
+
+    const res = await fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        headers,
+        body: JSON.stringify(payload ?? {}),
+        ...options
+    });
+
+    if (!res.ok) {
+        // Try to parse JSON/text for meaningful error
+        const text = await res.text().catch(() => "");
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
+        const err = new Error(
+            `POST ${url} failed with ${res.status}`
+            + (data?.requestId ? ` [${data.requestId}]` : "")
+            + (data?.message ? `: ${data.message}` : (text ? `: ${text}` : ""))
+        );
+        err.status = res.status;
+        err.data = data;
+        err.requestId = data?.requestId || "";
+        throw err;
+    }
+
+    const blob = await res.blob();
+    const contentDisposition = res.headers.get("Content-Disposition") || "";
+    const contentType = res.headers.get("Content-Type") || "";
+    const filename = extractFilenameFromContentDisposition(contentDisposition);
+
+    return { blob, filename, contentDisposition, contentType };
 }
