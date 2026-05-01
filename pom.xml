@@ -38,6 +38,8 @@
 
         <dependency-check.version>12.2.1</dependency-check.version>
         <dependency-check.failBuildOnCVSS>15</dependency-check.failBuildOnCVSS>
+        <!-- parent should run aggregate -->
+        <dependency-check.skip>false</dependency-check.skip>
 
         <openpdf.version>1.4.2</openpdf.version>
         <flexmark.version>0.64.8</flexmark.version>
@@ -83,27 +85,34 @@
                     <artifactId>dependency-check-maven</artifactId>
                     <version>${dependency-check.version}</version>
                     <configuration>
+                        <skip>${dependency-check.skip}</skip>
                         <formats>
                             <format>HTML</format>
                             <format>JSON</format>
                             <format>XML</format>
                         </formats>
+                        <dataDirectory>/opt/odc-data</dataDirectory>
                         <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
-                        <skipProvidedScope>true</skipProvidedScope>
-                        <failOnError>false</failOnError>
-                        <autoUpdate>true</autoUpdate>
                     </configuration>
-                    <executions>
-                        <execution>
-                            <id>dependency-check</id>
-                            <phase>verify</phase>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <!-- This is what actually executes -->
+        <plugins>
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <executions>
+                    <execution>
+                        <id>aggregate-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>aggregate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

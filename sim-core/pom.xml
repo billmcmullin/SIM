@@ -162,6 +162,10 @@
             <plugin>
                 <groupId>org.owasp</groupId>
                 <artifactId>dependency-check-maven</artifactId>
+                <!-- no executions here -->
+                <configuration>
+                    <skip>${dependency-check.skip}</skip>
+                </configuration>
             </plugin>
         </plugins>
     </build>
