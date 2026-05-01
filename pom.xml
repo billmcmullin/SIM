@@ -91,7 +91,7 @@
                             <format>JSON</format>
                             <format>XML</format>
                         </formats>
-                        <dataDirectory>/opt/odc-data</dataDirectory>
+                        <!--<dataDirectory>/opt/odc-data</dataDirectory>-->
                         <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
                     </configuration>
                 </plugin>
