@@ -18,7 +18,7 @@
     </modules>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>18</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <jakarta.ws.rs.version>4.0.0</jakarta.ws.rs.version>
@@ -39,7 +39,7 @@
         <dependency-check.version>12.2.1</dependency-check.version>
         <dependency-check.failBuildOnCVSS>15</dependency-check.failBuildOnCVSS>
 
-        <openpdf.version>3.0.3</openpdf.version>
+        <openpdf.version>1.4.2</openpdf.version>
         <flexmark.version>0.64.8</flexmark.version>
 
         <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
