@@ -60,12 +60,9 @@ public final class DashboardRowsRenderer {
 
             String deltaText = (delta > 0 ? "+" : "") + delta;
             String deltaClass = switch (stat.getDirection()) {
-                case "up" ->
-                    "progression-up";
-                case "down" ->
-                    "progression-down";
-                default ->
-                    "progression-flat";
+                case "up" -> "progression-up";
+                case "down" -> "progression-down";
+                default -> "progression-flat";
             };
 
             b.append("<tr>")
@@ -99,7 +96,6 @@ public final class DashboardRowsRenderer {
             String termHref = contextPath + "/dashboard/term-review?term="
                     + URLEncoder.encode(label, StandardCharsets.UTF_8);
 
-            // Enhancement: route term/day drilldown to Popular Topics day-filtered view.
             String todayHref = contextPath + "/dashboard/topics?day="
                     + URLEncoder.encode(todayYmd, StandardCharsets.UTF_8)
                     + "&q=" + URLEncoder.encode(label, StandardCharsets.UTF_8);
@@ -213,18 +209,7 @@ public final class DashboardRowsRenderer {
     }
 
     private static String extractDisplayName(SessionLabelStore.SessionLabel info) {
-        if (info == null) {
-            return null;
-        }
-        try {
-            return (String) info.getClass().getMethod("getDisplayName").invoke(info);
-        } catch (Exception ignore) {
-            try {
-                return (String) info.getClass().getMethod("displayName").invoke(info);
-            } catch (Exception ignore2) {
-                return null;
-            }
-        }
+        return info == null ? null : info.getDisplayName();
     }
 
     private static String formatTs(Timestamp ts) {

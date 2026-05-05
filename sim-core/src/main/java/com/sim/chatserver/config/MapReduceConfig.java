@@ -7,8 +7,7 @@ import java.util.Locale;
 /**
  * Central configuration for widget-review map-reduce orchestration.
  *
- * Loads from System properties first, then environment variables, then
- * defaults.
+ * Loads from environment variables, then defaults.
  */
 public final class MapReduceConfig {
 
@@ -187,9 +186,9 @@ public final class MapReduceConfig {
         int maxParallel = boundedInt("REVIEW_MR_MAX_PARALLEL", D_MAX_PARALLEL, 1, 16);
         int maxCoveragePasses = boundedInt("REVIEW_MR_MAX_COVERAGE_PASSES", D_MAX_COVERAGE_PASSES, 1, 20);
 
-        boolean exhaustiveMode = booleanFromPropertyOrEnv("REVIEW_MR_EXHAUSTIVE_MODE", D_EXHAUSTIVE_MODE);
-        boolean rebatchOnContextLimit = booleanFromPropertyOrEnv("REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT", D_REBATCH_ON_CONTEXT_LIMIT);
-        boolean retryReduceOnContextLimit = booleanFromPropertyOrEnv("REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT", D_RETRY_REDUCE_ON_CONTEXT_LIMIT);
+        boolean exhaustiveMode = booleanFromEnv("REVIEW_MR_EXHAUSTIVE_MODE", D_EXHAUSTIVE_MODE);
+        boolean rebatchOnContextLimit = booleanFromEnv("REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT", D_REBATCH_ON_CONTEXT_LIMIT);
+        boolean retryReduceOnContextLimit = booleanFromEnv("REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT", D_RETRY_REDUCE_ON_CONTEXT_LIMIT);
 
         int singlePassMessageMaxChars = boundedInt("REVIEW_MR_SINGLE_PASS_MESSAGE_MAX_CHARS", D_SINGLE_PASS_MESSAGE_MAX_CHARS, 1000, 500000);
         int singlePassContextMaxChars = boundedInt("REVIEW_MR_SINGLE_PASS_CONTEXT_MAX_CHARS", D_SINGLE_PASS_CONTEXT_MAX_CHARS, 1000, 500000);
@@ -209,10 +208,10 @@ public final class MapReduceConfig {
         int segmentPromptChars = boundedInt("REVIEW_MR_SEGMENT_PROMPT_CHARS", D_SEGMENT_PROMPT_CHARS, 200, 200000);
         int segmentResponseChars = boundedInt("REVIEW_MR_SEGMENT_RESPONSE_CHARS", D_SEGMENT_RESPONSE_CHARS, 200, 200000);
 
-        boolean strictFixedBatchMode = booleanFromPropertyOrEnv("REVIEW_MR_STRICT_FIXED_BATCH_MODE", D_STRICT_FIXED_BATCH_MODE);
+        boolean strictFixedBatchMode = booleanFromEnv("REVIEW_MR_STRICT_FIXED_BATCH_MODE", D_STRICT_FIXED_BATCH_MODE);
         int fixedBatchSize = boundedInt("REVIEW_MR_FIXED_BATCH_SIZE", D_FIXED_BATCH_SIZE, 1, 128);
 
-        boolean progressEnabled = booleanFromPropertyOrEnv("REVIEW_MR_PROGRESS_ENABLED", D_PROGRESS_ENABLED);
+        boolean progressEnabled = booleanFromEnv("REVIEW_MR_PROGRESS_ENABLED", D_PROGRESS_ENABLED);
         int progressPollMs = boundedInt("REVIEW_MR_PROGRESS_POLL_MS", D_PROGRESS_POLL_MS, 250, 15000);
 
         int reduceInitialChunkSize = boundedInt("REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE", D_REDUCE_INITIAL_CHUNK_SIZE, 2, 64);
@@ -286,7 +285,7 @@ public final class MapReduceConfig {
     }
 
     private static int boundedInt(String key, int defaultValue, int min, int max) {
-        int v = parseIntFromPropertyOrEnv(key, defaultValue);
+        int v = parseIntFromEnv(key, defaultValue);
         if (v < min) {
             return min;
         }
@@ -296,8 +295,8 @@ public final class MapReduceConfig {
         return v;
     }
 
-    private static boolean booleanFromPropertyOrEnv(String key, boolean defaultValue) {
-        String v = valueFromPropertyOrEnv(key);
+    private static boolean booleanFromEnv(String key, boolean defaultValue) {
+        String v = valueFromEnv(key);
         if (v == null || v.isBlank()) {
             return defaultValue;
         }
@@ -312,8 +311,8 @@ public final class MapReduceConfig {
         return defaultValue;
     }
 
-    private static int parseIntFromPropertyOrEnv(String key, int defaultValue) {
-        String v = valueFromPropertyOrEnv(key);
+    private static int parseIntFromEnv(String key, int defaultValue) {
+        String v = valueFromEnv(key);
         if (v != null && !v.isBlank()) {
             Integer parsed = parseInt(v);
             if (parsed != null) {
@@ -323,23 +322,11 @@ public final class MapReduceConfig {
         return defaultValue;
     }
 
-    private static String valueFromPropertyOrEnv(String key) {
-        String prop = System.getProperty(key);
-        if (prop != null && !prop.isBlank()) {
-            return prop;
-        }
-
+    private static String valueFromEnv(String key) {
         String env = System.getenv(key);
         if (env != null && !env.isBlank()) {
             return env;
         }
-
-        String alias = key.toLowerCase(Locale.ROOT).replace('_', '.');
-        String propAlias = System.getProperty(alias);
-        if (propAlias != null && !propAlias.isBlank()) {
-            return propAlias;
-        }
-
         return null;
     }
 

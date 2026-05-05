@@ -1,3 +1,15 @@
 target/
 notes/
 wildflyLocal/
+.idea/
+.project
+sim-app/.project
+sim-app/.classpath
+sim-core/.project
+sim-core/.classpath
+sim-web/.project
+sim-web/.classpath
+.settings/
+sim-app/.settings/
+sim-core/.settings/
+sim-web/.settings/

@@ -105,7 +105,9 @@ public final class EncryptedDbConfigStore {
 
         DataSource ds = requireDataSource();
 
-        try (Connection conn = ds.getConnection(); PreparedStatement ps = conn.prepareStatement(SELECT_SQL); ResultSet rs = ps.executeQuery()) {
+        try (Connection conn = ds.getConnection();
+             PreparedStatement ps = conn.prepareStatement(SELECT_SQL);
+             ResultSet rs = ps.executeQuery()) {
 
             if (rs.next()) {
                 log.fine("load: row found in server_config");
@@ -143,7 +145,6 @@ public final class EncryptedDbConfigStore {
 
         String encryptedApiKey = encryptIfPresent(config != null ? config.getApiKey() : null);
         String encryptedSalesforceApiKey = encryptIfPresent(config != null ? config.getSalesforceApiKey() : null);
-
         String encryptedSalesforceClientId = encryptIfPresent(config != null ? config.getSalesforceClientId() : null);
         String encryptedSalesforceClientSecret = encryptIfPresent(config != null ? config.getSalesforceClientSecret() : null);
         String encryptedSalesforceRefreshToken = encryptIfPresent(config != null ? config.getSalesforceRefreshToken() : null);
@@ -287,10 +288,9 @@ public final class EncryptedDbConfigStore {
     }
 
     /**
-     * Derives an AES-256 key from CONFIG_ENCRYPTION_KEY with improved handling:
-     * Preferred format: - Base64-encoded 32-byte key (recommended for
-     * production) Backward-compatible fallback: - SHA-256 hash of raw env
-     * string bytes (stable deterministic key)
+     * Derives an AES key from CONFIG_ENCRYPTION_KEY:
+     * - Preferred: Base64-encoded AES key bytes (16/24/32 bytes)
+     * - Fallback: SHA-256 derived key (32 bytes)
      */
     private static byte[] getAesKeyBytes() {
         String secret = System.getenv(ENC_KEY_ENV);
@@ -331,46 +331,36 @@ public final class EncryptedDbConfigStore {
         }
     }
 
-    // NEW: clear, null-safe datasource resolution to avoid NPEs in tests/scheduler paths
     private static DataSource requireDataSource() throws SQLException {
-        DataSource ds = getDataSource();
-        if (ds == null) {
-            IllegalStateException ex = new IllegalStateException(
-                    "DataSource is not initialized. Ensure AppDataSourceHolder is set before using EncryptedDbConfigStore.");
-            log.log(Level.SEVERE, "requireDataSource: datasource is null", ex);
-            throw new SQLException("DataSource is not initialized", ex);
+        try {
+            return getDataSourceOrThrow();
+        } catch (RuntimeException e) {
+            log.log(Level.SEVERE, "requireDataSource: datasource resolution failed", e);
+            throw new SQLException("DataSource is not initialized", e);
         }
-        return ds;
     }
 
-    private static DataSource getDataSource() {
+    private static DataSource getDataSourceOrThrow() {
         AppDataSourceHolder holder = dsHolder;
         if (holder == null) {
-            log.fine("getDataSource: dsHolder null, resolving via CDI");
+            log.fine("getDataSourceOrThrow: dsHolder null, resolving via CDI");
             try {
                 holder = CDI.current().select(AppDataSourceHolder.class).get();
                 dsHolder = holder;
             } catch (Exception e) {
-                log.log(Level.WARNING, "getDataSource: CDI lookup failed for AppDataSourceHolder", e);
-                return null;
+                throw new IllegalStateException("CDI lookup failed for AppDataSourceHolder", e);
             }
-        }
-        if (holder == null) {
-            log.severe("getDataSource: holder is null after CDI lookup");
-            return null;
         }
 
         try {
             DataSource ds = holder.getDataSource();
             if (ds == null) {
-                log.severe("getDataSource: holder returned null DataSource");
-            } else {
-                log.fine("getDataSource: datasource acquired");
+                throw new IllegalStateException("AppDataSourceHolder returned null DataSource");
             }
+            log.fine("getDataSourceOrThrow: datasource acquired");
             return ds;
         } catch (Exception e) {
-            log.log(Level.SEVERE, "getDataSource: failed to get datasource from holder", e);
-            return null;
+            throw new IllegalStateException("Failed to get DataSource from AppDataSourceHolder", e);
         }
     }
 }

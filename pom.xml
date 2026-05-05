@@ -91,14 +91,11 @@
                             <format>JSON</format>
                             <format>XML</format>
                         </formats>
-                        <!--<dataDirectory>/opt/odc-data</dataDirectory>-->
                         <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
-
-        <!-- This is what actually executes -->
         <plugins>
             <plugin>
                 <groupId>org.owasp</groupId>
