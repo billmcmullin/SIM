@@ -109,6 +109,12 @@ public final class TextSanitizer {
         s = normalizeUnicodePunctuation(s);
         // Decode entities like &amp; &nbsp; -> & and space (so Markdown text shows correctly)
         s = decodeHtmlEntities(s);
+
+        // Null-safe guard for static analysis and defensive safety
+        if (s == null) {
+            return "";
+        }
+
         // Escape literal ampersands and angle-brackets so raw HTML doesn't break display
         s = s.replace("&", "&amp;");
         s = s.replace("<", "&lt;");

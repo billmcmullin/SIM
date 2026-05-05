@@ -8,6 +8,6 @@ import jakarta.ws.rs.core.Application;
  * available under /api.
  */
 @ApplicationPath("/api")
-public class SIMApplication extends Application {
+public class SIMApplication extends Application { // parasoft-suppress PB.USC.EC "review + justify/suppress"
     // empty – relies on classpath scanning of @Path resources
 }

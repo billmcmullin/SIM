@@ -14,34 +14,36 @@ import jakarta.servlet.http.HttpServletRequest;
  * Centralized security validation helpers for request validation and outbound
  * URL checks.
  *
- * Defensive defaults: - JSON content-type required - strict mode allow-list -
- * SSRF protections for upstream URL
+ * Defensive defaults:
+ * - JSON content-type required
+ * - strict mode allow-list
+ * - SSRF protections for upstream URL
  *
- * Update: - Allows explicit allow-listed hosts (including localhost/127.0.0.1)
- * even when private-network blocking is enabled. - Adds detailed diagnostics
- * for blocked URL decisions.
+ * Update:
+ * - Allows explicit allow-listed hosts (including localhost/127.0.0.1)
+ *   even when private-network blocking is enabled.
+ * - Adds detailed diagnostics for blocked URL decisions.
  */
 public class SecurityValidationService {
 
     private static final Set<String> DEFAULT_ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
     /**
-     * If non-empty, upstream host must match this allow-list (exact or
-     * subdomain).
+     * If non-empty, upstream host must match this allow-list (exact or subdomain).
      */
     private final Set<String> allowedUpstreamHosts;
 
     private final Set<String> allowedModes;
 
     /**
-     * If true, block private/local/reserved target addresses (unless host is
-     * explicitly allow-listed).
+     * If true, block private/local/reserved target addresses
+     * (unless host is explicitly allow-listed).
      */
     private final boolean blockPrivateNetworkTargets;
 
     /**
-     * If true, resolve host and reject if DNS maps to private/local/reserved
-     * ranges (unless host is explicitly allow-listed).
+     * If true, resolve host and reject if DNS maps to private/local/reserved ranges
+     * (unless host is explicitly allow-listed).
      */
     private final boolean resolveDnsForValidation;
 
@@ -54,9 +56,9 @@ public class SecurityValidationService {
     }
 
     public SecurityValidationService(Set<String> allowedUpstreamHosts,
-            Set<String> allowedModes,
-            boolean blockPrivateNetworkTargets,
-            boolean resolveDnsForValidation) {
+                                     Set<String> allowedModes,
+                                     boolean blockPrivateNetworkTargets,
+                                     boolean resolveDnsForValidation) {
         this.allowedUpstreamHosts = normalizeSet(allowedUpstreamHosts);
         this.allowedModes = normalizeSet(
                 (allowedModes == null || allowedModes.isEmpty()) ? DEFAULT_ALLOWED_MODES : allowedModes
@@ -112,25 +114,30 @@ public class SecurityValidationService {
             URI uri = URI.create(trimmed);
 
             String scheme = lower(uri.getScheme());
+            String safeScheme = (scheme == null || scheme.isBlank()) ? "(missing)" : scheme;
+
             if (!"https".equals(scheme) && !"http".equals(scheme)) {
-                return UrlValidationResult.blocked("Scheme not allowed: " + scheme);
+                return UrlValidationResult.blocked("Scheme not allowed: " + safeScheme);
             }
 
             String host = lower(uri.getHost());
+            String safeHost = (host == null || host.isBlank()) ? "(missing)" : host;
+
             if (host == null || host.isBlank()) {
                 return UrlValidationResult.blocked("Host missing in URL");
             }
 
             if (host.contains("..") || host.startsWith(".") || host.endsWith(".")) {
-                return UrlValidationResult.blocked("Host failed sanity check: " + host);
+                return UrlValidationResult.blocked("Host failed sanity check: " + safeHost);
             }
 
             boolean hostExplicitlyAllowed = !allowedUpstreamHosts.isEmpty() && isHostAllowed(host);
 
             // If allow-list is configured and host not matched -> reject immediately
             if (!allowedUpstreamHosts.isEmpty() && !hostExplicitlyAllowed) {
-                return UrlValidationResult.blocked("Host not in allow-list: " + host
-                        + " | allowList=" + allowedUpstreamHosts);
+                return UrlValidationResult.blocked(
+                        "Host not in allow-list: " + safeHost + " | allowList=" + allowedUpstreamHosts
+                );
             }
 
             // If host is explicitly allow-listed, permit without private-range rejection.
@@ -142,21 +149,30 @@ public class SecurityValidationService {
             if (resolveDnsForValidation && blockPrivateNetworkTargets) {
                 InetAddress[] addrs = InetAddress.getAllByName(host);
                 if (addrs == null || addrs.length == 0) {
-                    return UrlValidationResult.blocked("DNS resolution returned no addresses for host: " + host);
+                    return UrlValidationResult.blocked(
+                            "DNS resolution returned no addresses for host: " + safeHost
+                    );
                 }
 
                 for (InetAddress addr : addrs) {
                     if (isBlockedAddress(addr)) {
+                        String addrText = (addr == null || addr.getHostAddress() == null)
+                                ? "(unknown)"
+                                : addr.getHostAddress();
                         return UrlValidationResult.blocked(
-                                "Host resolved to blocked/private address: " + addr.getHostAddress());
+                                "Host resolved to blocked/private address: " + addrText
+                        );
                     }
                 }
             }
 
             return UrlValidationResult.allowed(host, scheme, "Validated");
         } catch (Exception ex) {
-            return UrlValidationResult.blocked("URL parse/validation exception: " + ex.getClass().getSimpleName()
-                    + ": " + ex.getMessage());
+            String msg = ex.getMessage();
+            String safeMsg = (msg == null || msg.isBlank()) ? "(no detail)" : msg;
+            return UrlValidationResult.blocked(
+                    "URL parse/validation exception: " + ex.getClass().getSimpleName() + ": " + safeMsg
+            );
         }
     }
 

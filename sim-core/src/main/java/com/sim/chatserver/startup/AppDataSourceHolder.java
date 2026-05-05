@@ -26,8 +26,9 @@ import jakarta.persistence.Persistence;
 public class AppDataSourceHolder {
 
     private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getName());
+
     private static final String DRIVER = "org.postgresql.Driver";
-    //private static final String DIALECT = "org.hibernate.dialect.PostgreSQLDialect";
+    private static final String DIALECT = "org.hibernate.dialect.PostgreSQLDialect";
     private static final String PU_NAME = "ChatsPU-Local";
 
     // Volatile for fast, thread-safe reads without synchronized getters.
@@ -154,6 +155,13 @@ public class AppDataSourceHolder {
                 throw new IllegalArgumentException("Only PostgreSQL is supported. jdbcUrl=" + jdbcUrl);
             }
 
+            if (cfg.getUsername() == null || cfg.getUsername().isBlank()) {
+                throw new IllegalArgumentException("Username is required.");
+            }
+            if (cfg.getPassword() == null) {
+                throw new IllegalArgumentException("Password is required.");
+            }
+
             callback.accept("Creating HikariDataSource for: " + jdbcUrl);
 
             int maxPool = cfg.getMaxPoolSize() > 0 ? cfg.getMaxPoolSize() : 10;
@@ -163,7 +171,10 @@ public class AppDataSourceHolder {
                 callback.accept("Connection test succeeded");
             }
 
-            Map<String, Object> props = createJpaPropsWithDataSource(newDs, "update");
+            String hbm2ddl = "update";
+
+
+            Map<String, Object> props = createJpaPropsWithDataSource(newDs, hbm2ddl);
             newEmf = Persistence.createEntityManagerFactory(PU_NAME, props);
 
             HikariDataSource oldDs;
@@ -227,7 +238,7 @@ public class AppDataSourceHolder {
         hc.setMinimumIdle(minIdle);
         hc.setConnectionTimeout(connectionTimeoutMs);
 
-        // Fail fast (preserves "fail fast" behavior intent).
+        // Fail fast
         hc.setInitializationFailTimeout(1);
 
         return new HikariDataSource(hc);
@@ -236,8 +247,8 @@ public class AppDataSourceHolder {
     private static Map<String, Object> createJpaPropsWithDataSource(DataSource dataSource, String hbm2ddl) {
         Map<String, Object> props = new HashMap<>();
         props.put("jakarta.persistence.nonJtaDataSource", dataSource);
-        //props.put("hibernate.dialect", DIALECT);
-        //props.put("hibernate.hbm2ddl.auto", hbm2ddl);
+        props.put("hibernate.dialect", DIALECT);
+        props.put("hibernate.hbm2ddl.auto", hbm2ddl);
         return props;
     }
 

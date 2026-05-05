@@ -39,28 +39,17 @@ public class AuthResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response login(Map<String, String> payload) {
-        if (payload == null) {
-            return badRequest();
-        }
-
-        String rawUsername = payload.get(KEY_USERNAME);
-        String password = payload.get(KEY_PASSWORD);
-
-        if (rawUsername == null || password == null) {
-            return badRequest();
-        }
-
-        String username = rawUsername.trim();
-        if (username.isEmpty()) {
+        Credentials credentials = extractCredentials(payload);
+        if (credentials == null) {
             return badRequest();
         }
 
         // Single lookup/authentication call (no double lookup)
-        UserAccount user = userService.authenticateAndGetUser(username, password);
+        UserAccount user = userService.authenticateAndGetUser(credentials.username(), credentials.password());
 
         if (user == null) {
             if (log.isLoggable(Level.WARNING)) {
-                log.log(Level.WARNING, "Authentication failed for username: {0}", username);
+                log.log(Level.WARNING, "Authentication failed for username: {0}", credentials.username());
             }
             return Response.status(Response.Status.UNAUTHORIZED)
                     .entity(Map.of(KEY_AUTHENTICATED, false))
@@ -69,8 +58,7 @@ public class AuthResource {
 
         HttpSession session = servletRequest.getSession(true);
         String resolvedUsername = user.getUsername();
-        String rawRole = user.getRole();
-        String role = (rawRole == null) ? null : rawRole.toUpperCase();
+        String role = normalizeRole(user.getRole());
 
         session.setAttribute("user", resolvedUsername);
         session.setAttribute("role", role);
@@ -83,9 +71,36 @@ public class AuthResource {
         return Response.ok(Map.of(KEY_AUTHENTICATED, true, KEY_USERNAME, resolvedUsername)).build();
     }
 
+    private static Credentials extractCredentials(Map<String, String> payload) {
+        if (payload == null) {
+            return null;
+        }
+
+        String rawUsername = payload.get(KEY_USERNAME);
+        String password = payload.get(KEY_PASSWORD);
+
+        if (rawUsername == null || password == null) {
+            return null;
+        }
+
+        String username = rawUsername.trim();
+        if (username.isEmpty()) {
+            return null;
+        }
+
+        return new Credentials(username, password);
+    }
+
+    private static String normalizeRole(String role) {
+        return role == null ? null : role.toUpperCase();
+    }
+
     private static Response badRequest() {
         return Response.status(Response.Status.BAD_REQUEST)
                 .entity(Map.of(KEY_ERROR, "username and password required"))
                 .build();
+    }
+
+    private record Credentials(String username, String password) {
     }
 }
