@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.sim.chatserver</groupId>
@@ -18,7 +18,7 @@
     </modules>
 
     <properties>
-        <maven.compiler.release>18</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <jakarta.ws.rs.version>4.0.0</jakarta.ws.rs.version>
@@ -31,17 +31,17 @@
         <jakarta.inject.version>2.0.1</jakarta.inject.version>
 
         <hikaricp.version>7.0.2</hikaricp.version>
-        <postgres.version>42.7.9</postgres.version>
+        <postgres.version>42.7.11</postgres.version>
 
         <junit.version>5.14.2</junit.version>
         <mockito.version>5.21.0</mockito.version>
 
         <dependency-check.version>12.2.1</dependency-check.version>
-        <dependency-check.failBuildOnCVSS>15</dependency-check.failBuildOnCVSS>
-        <!-- parent should run aggregate -->
+        <dependency-check.failBuildOnCVSS>10</dependency-check.failBuildOnCVSS>
         <dependency-check.skip>false</dependency-check.skip>
 
-        <openpdf.version>1.4.2</openpdf.version>
+        <openpdf.version>3.0.4</openpdf.version>
+        <pdfbox.version>3.0.7</pdfbox.version>
         <flexmark.version>0.64.8</flexmark.version>
 
         <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
@@ -58,10 +58,8 @@
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
-                        <generatedSourcesDirectory>
-                            ${project.build.directory}/generated-sources/annotations</generatedSourcesDirectory>
-                        <generatedTestSourcesDirectory>
-                            ${project.build.directory}/generated-test-sources/test-annotations</generatedTestSourcesDirectory>
+                        <generatedSourcesDirectory>${project.build.directory}/generated-sources/annotations</generatedSourcesDirectory>
+                        <generatedTestSourcesDirectory>${project.build.directory}/generated-test-sources/test-annotations</generatedTestSourcesDirectory>
                     </configuration>
                 </plugin>
 
@@ -96,6 +94,7 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
         <plugins>
             <plugin>
                 <groupId>org.owasp</groupId>
@@ -109,6 +108,15 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <skip>${dependency-check.skip}</skip>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                        <format>XML</format>
+                    </formats>
+                    <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -265,12 +265,12 @@
             setConditionalMetricLink(
                 todayUsersEl,
                 d.today,
-                `${contextPath}/dashboard/new-users/day?day=${encodeURIComponent(dates.today)}`
+                `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.today)}`
             );
             setConditionalMetricLink(
                 yesterdayUsersEl,
                 d.yesterday,
-                `${contextPath}/dashboard/new-users/day?day=${encodeURIComponent(dates.yesterday)}`
+                `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.yesterday)}`
             );
 
             if (usersDeltaEl) {
@@ -291,12 +291,12 @@
             setConditionalMetricLink(
                 todayTermsEl,
                 d.today,
-                buildTermDayLink(dates.today, contextPath)
+                `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.today)}`
             );
             setConditionalMetricLink(
                 yesterdayTermsEl,
                 d.yesterday,
-                buildTermDayLink(dates.yesterday, contextPath)
+                `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.yesterday)}`
             );
 
             if (termsDeltaEl) {

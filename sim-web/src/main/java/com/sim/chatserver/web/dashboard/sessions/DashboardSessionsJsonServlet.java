@@ -80,6 +80,27 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             }
             int activeUsers = Math.max(0, totalUsers - inactiveUsers);
 
+            // Yesterday baseline for active-users day-over-day comparison
+            Instant cutoffYesterday = Instant.now()
+                    .minus(1, ChronoUnit.DAYS)
+                    .minus(ACTIVE_DAYS, ChronoUnit.DAYS);
+
+            int inactiveUsersYesterday = 0;
+            for (SessionAccumulator acc : accumulators.values()) {
+                if (acc == null || acc.lastEntry == null || acc.lastEntry.toInstant().isBefore(cutoffYesterday)) {
+                    inactiveUsersYesterday++;
+                }
+            }
+            int activeUsersYesterday = Math.max(0, totalUsers - inactiveUsersYesterday);
+
+            int activeUsersDelta = activeUsers - activeUsersYesterday;
+            double activeUsersDeltaPct = activeUsersYesterday == 0
+                    ? (activeUsers > 0 ? 100.0 : 0.0)
+                    : (activeUsersDelta * 100.0) / activeUsersYesterday;
+            String activeUsersDirection = activeUsersDelta > 0 ? "up"
+                    : activeUsersDelta < 0 ? "down"
+                            : "flat";
+
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
             accumulators.entrySet()
                     .stream()
@@ -109,6 +130,10 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     .add("total", totalUsers)
                     .add("activeDays", ACTIVE_DAYS)
                     .add("activeUsers", activeUsers)
+                    .add("activeUsersYesterday", activeUsersYesterday)
+                    .add("activeUsersDelta", activeUsersDelta)
+                    .add("activeUsersDeltaPct", activeUsersDeltaPct)
+                    .add("activeUsersDirection", activeUsersDirection)
                     .add("inactiveUsers", inactiveUsers)
                     .add("sessions", sessionsArray)
                     .build();

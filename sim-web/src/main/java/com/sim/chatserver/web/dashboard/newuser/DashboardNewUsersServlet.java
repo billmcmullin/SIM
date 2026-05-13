@@ -47,7 +47,8 @@ import jakarta.servlet.http.HttpSession;
         urlPatterns = {
             "/dashboard/new-users",
             "/dashboard/new-users/data",
-            "/dashboard/new-users/day"
+            "/dashboard/new-users/day",
+            "/dashboard/new-users/day-data" // optional alias for clearer API intent; keeps existing /day intact
         }
 )
 public class DashboardNewUsersServlet extends HttpServlet {
@@ -68,7 +69,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         try {
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
-                if (req.getServletPath().endsWith("/data") || req.getServletPath().endsWith("/day")) {
+                if (reqExpectsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
                 } else {
                     resp.sendRedirect(req.getContextPath() + "/login");
@@ -82,7 +83,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 handleData(req, resp);
                 return;
             }
-            if (path.endsWith("/day")) {
+            if (path.endsWith("/day") || path.endsWith("/day-data")) {
                 handleDay(req, resp);
                 return;
             }
@@ -104,7 +105,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     private boolean reqExpectsJson(HttpServletRequest req) {
         String path = req.getServletPath();
-        return path.endsWith("/data") || path.endsWith("/day");
+        return path.endsWith("/data") || path.endsWith("/day") || path.endsWith("/day-data");
     }
 
     private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) throws Exception {
