@@ -68,6 +68,32 @@
 
             <div class="daily-progress-grid"
                 style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
+
+                <!-- Daily Summary with progress bar -->
+                <article class="progress-card" style="grid-column:1 / -1;">
+                    <div
+                        style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                        <h3 style="margin:0;">Summary</h3>
+                        <p id="dailySummaryMeta" class="helper-note" style="margin:0;">Loading latest summary…</p>
+                    </div>
+
+                    <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <div
+                                style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
+                                <div id="dailySummaryProgressBar"
+                                    style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;">
+                                </div>
+                            </div>
+                            <span id="dailySummaryProgressText" class="helper-note" style="font-size:12px;">0%</span>
+                        </div>
+                    </div>
+
+                    <div id="dailySummaryBody" style="margin-top:10px;">
+                        <p style="margin:0;">Generating summary of quality, response, and usage for today…</p>
+                    </div>
+                </article>
+
                 <article class="progress-card">
                     <h3 style="margin-top:0;">Chats</h3>
                     <p style="margin:6px 0;">
@@ -117,6 +143,14 @@
                         </strong>
                     </p>
                     <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
+                </article>
+
+                <article class="progress-card">
+                    <h3 style="margin-top:0;">Last 5 Days Trend</h3>
+                    <p style="margin:6px 0 10px 0;">Total widget entries per day</p>
+                    <div class="chart-area" style="height:220px; margin:0;">
+                        <canvas id="lastFiveDaysTrendChart"></canvas>
+                    </div>
                 </article>
 
                 <article class="progress-card" style="grid-column:1 / -1;">
@@ -225,7 +259,6 @@
                 <canvas id="termChart"></canvas>
             </div>
             <div id="termChartLegend" class="term-legend"></div>
-
         </section>
 
         <section class="section session-overview-section">
@@ -286,6 +319,7 @@
         window.termIncreaseMapJson = '${termIncreaseMapJson}';
         window.termTotalMapJson = '${termTotalMapJson}';
         window.termLegendDefaultMode = '${termLegendDefaultMode}';
+        window.lastFiveDaysTrendData = '${lastFiveDaysTrendData}';
         window.dashboardConfig = { contextPath: '${contextPath}' };
         window.chatProgressionDirection = '${chatProgressionDirection}';
         window.newUsersProgressionDirection = '${newUsersProgressionDirection}';

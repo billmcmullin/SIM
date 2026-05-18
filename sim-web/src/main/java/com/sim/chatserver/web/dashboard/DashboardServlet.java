@@ -3,7 +3,11 @@ package com.sim.chatserver.web.dashboard;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -43,11 +47,13 @@ import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -195,6 +201,11 @@ public class DashboardServlet extends HttpServlet {
                 DASHBOARD_EXECUTOR
         );
 
+        CompletableFuture<String> lastFiveDaysTrendFuture = CompletableFuture.supplyAsync(
+                this::buildLastFiveDaysTrendJson,
+                DASHBOARD_EXECUTOR
+        );
+
         List<WidgetStat> widgetStats = safeJoin(widgetStatsFuture, List.of(), "widget stats");
         ProgressStat fallbackChatProgression = safeJoin(chatProgressionFuture, new ProgressStat(0, 0), "chat progression");
         DashboardProgressMetrics dashboardProgress = safeJoin(
@@ -209,6 +220,7 @@ public class DashboardServlet extends HttpServlet {
         TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
         TermSummary allTimeTermSummary = safeJoin(allTimeTermSummaryFuture, null, "all-time term summary");
         SessionOverview sessionOverview = safeJoin(sessionOverviewFuture, null, "session overview");
+        String lastFiveDaysTrendJson = safeJoin(lastFiveDaysTrendFuture, "{\"labels\":[],\"values\":[],\"days\":5}", "last 5 days trend");
 
         int totalChats = widgetStats.stream().mapToInt(WidgetStat::getCount).sum();
 
@@ -323,7 +335,8 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("sessionNewToday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsToday))),
                 Map.entry("sessionNewYesterday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsYesterday))),
                 Map.entry("sessionNewProgression", formatProgressionHtml(newSessionsProgression)),
-                Map.entry("sessionNewProgressionDirection", DashboardTemplateRenderer.escapeHtml(newSessionsProgression.getDirection()))
+                Map.entry("sessionNewProgressionDirection", DashboardTemplateRenderer.escapeHtml(newSessionsProgression.getDirection())),
+                Map.entry("lastFiveDaysTrendData", DashboardTemplateRenderer.escapeForJs(lastFiveDaysTrendJson))
         ));
 
         resp.setContentType("text/html;charset=UTF-8");
@@ -377,6 +390,104 @@ public class DashboardServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to compute session overview", e);
             return null;
         }
+    }
+
+    private String buildLastFiveDaysTrendJson() {
+        LocalDate end = LocalDate.now(ZoneId.systemDefault());
+        LocalDate start = end.minusDays(4);
+
+        Map<LocalDate, Integer> totalDaily = new LinkedHashMap<>();
+        for (int i = 0; i < 5; i++) {
+            totalDaily.put(start.plusDays(i), 0);
+        }
+
+        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            List<WidgetEntry> widgets = WidgetStore.list(null);
+
+            for (WidgetEntry widget : widgets) {
+                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                    continue;
+                }
+
+                String tableName = sanitizeWidgetTableName(widget.getWidgetId());
+                if (!tableExists(conn, tableName)) {
+                    continue;
+                }
+
+                String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
+                        + " WHERE created_at >= ? AND created_at < ?";
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
+                    ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            if (ts == null) {
+                                continue;
+                            }
+
+                            LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                            if (!totalDaily.containsKey(entryDate)) {
+                                continue;
+                            }
+
+                            totalDaily.put(entryDate, totalDaily.get(entryDate) + 1);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to load 5-day trend data", e);
+        }
+
+        JsonArrayBuilder labels = Json.createArrayBuilder();
+        JsonArrayBuilder values = Json.createArrayBuilder();
+        for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
+            labels.add(entry.getKey().toString());
+            values.add(entry.getValue());
+        }
+
+        return Json.createObjectBuilder()
+                .add("labels", labels)
+                .add("values", values)
+                .add("days", 5)
+                .build()
+                .toString();
+    }
+
+    private boolean tableExists(Connection conn, String tableName) throws Exception {
+        DatabaseMetaData meta = conn.getMetaData();
+        for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private String sanitizeWidgetTableName(String widgetId) {
+        if (widgetId == null || widgetId.isBlank()) {
+            return "widget";
+        }
+        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        if (normalized.isEmpty()) {
+            normalized = "widget";
+        }
+        if (!Character.isLetter(normalized.charAt(0))) {
+            normalized = "w_" + normalized;
+        }
+        if (normalized.length() > 60) {
+            normalized = normalized.substring(0, 60);
+        }
+        return normalized;
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private Optional<LocalDate> parseLocalDate(String value) {
