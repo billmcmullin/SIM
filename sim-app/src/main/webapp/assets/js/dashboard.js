@@ -23,18 +23,29 @@
         }
     }
 
+    function parseTrendData(input) {
+        if (input && typeof input === 'object' && !Array.isArray(input)) return input;
+        if (typeof input !== 'string') return { labels: [], values: [], days: 5 };
+        try {
+            const parsed = JSON.parse(input);
+            return (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+                ? parsed
+                : { labels: [], values: [], days: 5 };
+        } catch {
+            return { labels: [], values: [], days: 5 };
+        }
+    }
+
     function buildSeries(slices, palette) {
         const labels = new Array(slices.length);
         const values = new Array(slices.length);
         const colors = new Array(slices.length);
-
         for (let i = 0; i < slices.length; i++) {
             const slice = slices[i] || {};
             labels[i] = slice.label ?? '';
             values[i] = typeof slice.count === 'number' ? slice.count : 0;
             colors[i] = palette[i % palette.length];
         }
-
         return { labels, values, colors };
     }
 
@@ -71,12 +82,7 @@
 
     function renderProgressPill(deltaObj, forcedDirection) {
         const direction = (forcedDirection || deltaObj.direction || 'flat').toLowerCase();
-        const cls = direction === 'up'
-            ? 'progression-up'
-            : direction === 'down'
-                ? 'progression-down'
-                : 'progression-flat';
-
+        const cls = direction === 'up' ? 'progression-up' : direction === 'down' ? 'progression-down' : 'progression-flat';
         const text = `${formatSignedInt(deltaObj.delta)} (${formatPct(deltaObj.pct)}%) vs yesterday`;
         return `<span class="progression ${cls}" data-direction="${esc(direction)}">${esc(text)}</span>`;
     }
@@ -92,11 +98,9 @@
     function parseChatSummaryValues() {
         const summary = document.querySelector('.chat-progression-summary');
         if (!summary) return { today: null, yesterday: null };
-
         const txt = summary.textContent || '';
         const todayMatch = txt.match(/Today:\s*([0-9]+)/i);
         const yMatch = txt.match(/Yesterday:\s*([0-9]+)/i);
-
         return {
             today: todayMatch ? parseInt(todayMatch[1], 10) : null,
             yesterday: yMatch ? parseInt(yMatch[1], 10) : null
@@ -104,37 +108,28 @@
     }
 
     function parseNewUsersFromServerRenderedDom() {
-        const t1 = document.getElementById('serverNewUsersToday');
-        const y1 = document.getElementById('serverNewUsersYesterday');
-
         return {
-            today: parseIntFromText(t1?.textContent),
-            yesterday: parseIntFromText(y1?.textContent)
+            today: parseIntFromText(document.getElementById('serverNewUsersToday')?.textContent),
+            yesterday: parseIntFromText(document.getElementById('serverNewUsersYesterday')?.textContent)
         };
     }
 
     function parseTermsFromServerRenderedDom() {
-        const t1 = document.getElementById('serverTermsToday');
-        const y1 = document.getElementById('serverTermsYesterday');
-
         return {
-            today: parseIntFromText(t1?.textContent),
-            yesterday: parseIntFromText(y1?.textContent)
+            today: parseIntFromText(document.getElementById('serverTermsToday')?.textContent),
+            yesterday: parseIntFromText(document.getElementById('serverTermsYesterday')?.textContent)
         };
     }
 
     function applyProgressionDirectionStyling() {
         const direction = (window.chatProgressionDirection || '').toLowerCase().trim();
         if (!direction) return;
-
         const el = document.querySelector('.chat-progression-summary .progression');
         if (!el) return;
-
         el.classList.remove('progression-up', 'progression-down', 'progression-flat');
         if (direction === 'up') el.classList.add('progression-up');
         else if (direction === 'down') el.classList.add('progression-down');
         else el.classList.add('progression-flat');
-
         el.setAttribute('data-direction', direction);
     }
 
@@ -160,10 +155,6 @@
         return `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=${encodeURIComponent(dayToken)}`;
     }
 
-    function buildTermDayLink(dayYmd, contextPath) {
-        return `${contextPath}/dashboard/topics?day=${encodeURIComponent(dayYmd)}`;
-    }
-
     function buildTermReviewUrl(contextPath, term, increaseOnly) {
         const qp = new URLSearchParams();
         qp.set('term', term || '');
@@ -178,7 +169,6 @@
             el.textContent = 'N/A';
             return;
         }
-
         if (n > 0 && hrefOrBuilder) {
             const href = typeof hrefOrBuilder === 'string' ? hrefOrBuilder : '#';
             el.innerHTML = `<a class="metric-link metric-dynamic-link" href="${esc(href)}">${esc(String(n))}</a>`;
@@ -195,10 +185,8 @@
         document.addEventListener('click', async (event) => {
             const a = event.target.closest('a.metric-dynamic-link');
             if (!a || !a.__buildHref) return;
-
             event.preventDefault();
             if (a.dataset.loading === '1') return;
-
             try {
                 a.dataset.loading = '1';
                 const href = await a.__buildHref();
@@ -217,11 +205,137 @@
         nodes.forEach(node => {
             const txt = (node.textContent || '').trim();
             node.classList.remove('progression-up', 'progression-down', 'progression-flat');
-
             if (txt.startsWith('+')) node.classList.add('progression-up');
             else if (txt.startsWith('-')) node.classList.add('progression-down');
             else node.classList.add('progression-flat');
         });
+    }
+
+    function ensureSummaryProgressUi() {
+        const bodyEl = document.getElementById('dailySummaryBody');
+        if (!bodyEl) return;
+        if (document.getElementById('dailySummaryProgressWrap')) return;
+
+        const wrap = document.createElement('div');
+        wrap.id = 'dailySummaryProgressWrap';
+        wrap.style.marginBottom = '10px';
+
+        wrap.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <div style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
+                    <div id="dailySummaryProgressBar" style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;"></div>
+                </div>
+                <span id="dailySummaryProgressText" class="helper-note" style="font-size:12px;">0%</span>
+            </div>
+        `;
+        bodyEl.parentNode.insertBefore(wrap, bodyEl);
+    }
+
+    function setSummaryProgress(pct, message) {
+        const bar = document.getElementById('dailySummaryProgressBar');
+        const txt = document.getElementById('dailySummaryProgressText');
+        const p = Math.max(0, Math.min(100, Number(pct) || 0));
+        if (bar) bar.style.width = `${p}%`;
+        if (txt) txt.textContent = `${p}%${message ? ` • ${message}` : ''}`;
+    }
+
+    function hideSummaryProgressIfDone(inProgress) {
+        const wrap = document.getElementById('dailySummaryProgressWrap');
+        if (!wrap) return;
+        wrap.style.display = inProgress ? '' : 'none';
+    }
+
+    async function loadDailySummary(contextPath) {
+        const bodyEl = document.getElementById('dailySummaryBody');
+        const metaEl = document.getElementById('dailySummaryMeta');
+        if (!bodyEl) return;
+
+        ensureSummaryProgressUi();
+        bodyEl.innerHTML = '<p style="margin:0;">Loading latest summary…</p>';
+        if (metaEl) metaEl.textContent = 'Loading latest daily analysis…';
+        setSummaryProgress(5, 'loading');
+
+        let pollCount = 0;
+        const maxPolls = 30;
+
+        while (pollCount < maxPolls) {
+            pollCount++;
+            let data = null;
+
+            try {
+                const resp = await fetch(`${contextPath}/dashboard/daily-summary.json`, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' }
+                });
+
+                if (!resp.ok) {
+                    bodyEl.innerHTML = '<p style="margin:0;">Unable to load summary right now.</p>';
+                    if (metaEl) metaEl.textContent = `Status: ${resp.status}`;
+                    setSummaryProgress(0, 'error');
+                    hideSummaryProgressIfDone(false);
+                    return;
+                }
+
+                data = await resp.json();
+            } catch (e) {
+                console.warn('Unable to load daily summary:', e);
+                bodyEl.innerHTML = '<p style="margin:0;">Unable to load summary right now.</p>';
+                if (metaEl) metaEl.textContent = 'Request failed.';
+                setSummaryProgress(0, 'request failed');
+                hideSummaryProgressIfDone(false);
+                return;
+            }
+
+            if (!data || data.status !== 'ok' || !data.summary) {
+                bodyEl.innerHTML = '<p style="margin:0;">Summary is not available yet.</p>';
+                if (metaEl) metaEl.textContent = 'No summary returned.';
+                setSummaryProgress(0, 'not ready');
+                hideSummaryProgressIfDone(false);
+                return;
+            }
+
+            const s = data.summary || {};
+            const m = data.meta || {};
+            const inProgress = !!m.inProgress;
+            const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
+
+            setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
+
+            bodyEl.innerHTML = `
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
+                    <div>
+                        <h4 style="margin:0 0 6px 0;">Overall</h4>
+                        <p style="margin:0; white-space:pre-wrap;">${esc(s.overall || '—')}</p>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 6px 0;">Quality</h4>
+                        <p style="margin:0; white-space:pre-wrap;">${esc(s.quality || '—')}</p>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 6px 0;">Response</h4>
+                        <p style="margin:0; white-space:pre-wrap;">${esc(s.response || '—')}</p>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 6px 0;">Usage</h4>
+                        <p style="margin:0; white-space:pre-wrap;">${esc(s.usage || '—')}</p>
+                    </div>
+                </div>
+            `;
+
+            const entryCount = Number.isFinite(Number(s.entryCount)) ? Number(s.entryCount) : 0;
+            const generatedAt = m.generatedAt ? String(m.generatedAt) : '';
+            const slot = Number.isFinite(Number(m.slot)) ? Number(m.slot) : 0;
+            if (metaEl) {
+                metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt || '—'}${inProgress ? ' • updating…' : ''}`;
+            }
+
+            hideSummaryProgressIfDone(inProgress);
+
+            if (!inProgress) return;
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        if (metaEl) metaEl.textContent = 'Summary is still generating. Please refresh shortly.';
     }
 
     function hydrateDailyProgressSection(contextPath) {
@@ -243,10 +357,8 @@
         const chatVals = parseChatSummaryValues();
         if (Number.isFinite(chatVals.today) && Number.isFinite(chatVals.yesterday)) {
             const d = computeDelta(chatVals.today, chatVals.yesterday);
-
             setConditionalMetricLink(todayChatsEl, d.today, () => buildWidgetReviewSelectionLink('today', contextPath));
             setConditionalMetricLink(yesterdayChatsEl, d.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
-
             if (chatDeltaEl) {
                 const forcedDir = (window.chatProgressionDirection || d.direction || 'flat').toLowerCase();
                 chatDeltaEl.innerHTML = renderProgressPill(d, forcedDir);
@@ -262,16 +374,8 @@
             const d = computeDelta(newUserVals.today, newUserVals.yesterday);
             const dates = getTodayYesterday();
 
-            setConditionalMetricLink(
-                todayUsersEl,
-                d.today,
-                `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.today)}`
-            );
-            setConditionalMetricLink(
-                yesterdayUsersEl,
-                d.yesterday,
-                `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.yesterday)}`
-            );
+            setConditionalMetricLink(todayUsersEl, d.today, `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.today)}`);
+            setConditionalMetricLink(yesterdayUsersEl, d.yesterday, `${contextPath}/dashboard/new-users/drilldown?day=${encodeURIComponent(dates.yesterday)}`);
 
             if (usersDeltaEl) {
                 const forcedDir = (window.newUsersProgressionDirection || d.direction || 'flat').toLowerCase();
@@ -288,16 +392,8 @@
             const d = computeDelta(termVals.today, termVals.yesterday);
             const dates = getTodayYesterday();
 
-            setConditionalMetricLink(
-                todayTermsEl,
-                d.today,
-                `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.today)}`
-            );
-            setConditionalMetricLink(
-                yesterdayTermsEl,
-                d.yesterday,
-                `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.yesterday)}`
-            );
+            setConditionalMetricLink(todayTermsEl, d.today, `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.today)}`);
+            setConditionalMetricLink(yesterdayTermsEl, d.yesterday, `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.yesterday)}`);
 
             if (termsDeltaEl) {
                 const forcedDir = (window.termsProgressionDirection || d.direction || 'flat').toLowerCase();
@@ -311,13 +407,8 @@
 
         const summaryToday = document.getElementById('summaryTodayChats');
         const summaryYesterday = document.getElementById('summaryYesterdayChats');
-
-        if (Number.isFinite(chatVals.today)) {
-            setConditionalMetricLink(summaryToday, chatVals.today, () => buildWidgetReviewSelectionLink('today', contextPath));
-        }
-        if (Number.isFinite(chatVals.yesterday)) {
-            setConditionalMetricLink(summaryYesterday, chatVals.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
-        }
+        if (Number.isFinite(chatVals.today)) setConditionalMetricLink(summaryToday, chatVals.today, () => buildWidgetReviewSelectionLink('today', contextPath));
+        if (Number.isFinite(chatVals.yesterday)) setConditionalMetricLink(summaryYesterday, chatVals.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
 
         applyDeltaClasses(section);
     }
@@ -347,22 +438,82 @@
             return;
         }
 
-        if (!Number.isFinite(pct)) {
-            pct = 0;
-        }
-
-        if (!direction) {
-            direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
-        }
+        if (!Number.isFinite(pct)) pct = 0;
+        if (!direction) direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
 
         deltaEl.classList.remove('progression-up', 'progression-down', 'progression-flat');
-        deltaEl.classList.add(
-            direction === 'up' ? 'progression-up'
-                : direction === 'down' ? 'progression-down'
-                    : 'progression-flat'
-        );
+        deltaEl.classList.add(direction === 'up' ? 'progression-up' : direction === 'down' ? 'progression-down' : 'progression-flat');
         deltaEl.setAttribute('data-direction', direction);
         deltaEl.textContent = `${formatSignedInt(delta)} (${formatPct(pct)}%) vs yesterday`;
+    }
+
+    function renderLastFiveDaysTrendChart() {
+        const el = document.getElementById('lastFiveDaysTrendChart');
+        if (!el || typeof Chart === 'undefined') return;
+
+        const trend = parseTrendData(window.lastFiveDaysTrendData || {});
+        const labelsRaw = Array.isArray(trend.labels) ? trend.labels : [];
+        const valuesRaw = Array.isArray(trend.values) ? trend.values : [];
+
+        const labels = labelsRaw.map(v => {
+            const s = String(v || '');
+            const d = new Date(`${s}T00:00:00`);
+            if (Number.isNaN(d.getTime())) return s;
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        });
+
+        const values = valuesRaw.map(v => {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : 0;
+        });
+
+        if (!labels.length || !values.length || labels.length !== values.length) return;
+
+        const ctx = el.getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Total Entries',
+                    data: values,
+                    borderColor: '#1d4ed8',
+                    backgroundColor: 'rgba(29, 78, 216, 0.12)',
+                    fill: true,
+                    tension: 0.28,
+                    pointRadius: 3,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: items => {
+                                const i = items?.[0]?.dataIndex ?? -1;
+                                return i >= 0 ? String(labelsRaw[i] || labels[i] || '') : '';
+                            },
+                            label: item => `Total entries: ${item.parsed?.y ?? 0}`
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                },
+                onClick: (_event, elements) => {
+                    if (!elements?.length) return;
+                    const i = elements[0].index;
+                    const rawDate = String(labelsRaw[i] || '').trim();
+                    const value = Number(values[i]);
+                    if (!rawDate) return;
+                    if (!Number.isFinite(value) || value <= 0) return;
+                    window.location.href = `${contextPath}/dashboard/sessions/drilldown/date-review-relative?date=${encodeURIComponent(rawDate)}`;
+                }
+            }
+        });
     }
 
     const dashboardConfig = window.dashboardConfig || {};
@@ -370,7 +521,6 @@
 
     const termSlices = parseSlices(window.termChartData || []);
     const widgetSlices = parseSlices(window.widgetPieChartData || []);
-
     const termIncreaseMap = parseObject(window.termIncreaseMapJson || {});
     const termTotalMap = parseObject(window.termTotalMapJson || {});
     let legendMode = String(window.termLegendDefaultMode || 'increase').toLowerCase() === 'total' ? 'total' : 'increase';
@@ -416,13 +566,11 @@
     function updateTermModeSummary(mode) {
         const summaryEl = document.getElementById('termLegendModeSummary');
         if (!summaryEl) return;
-
         let total = 0;
         for (let i = 0; i < termSlices.length; i++) {
             const s = termSlices[i] || {};
             total += getTermValueForMode(s.term || '', s.count, mode);
         }
-
         summaryEl.textContent = mode === 'increase'
             ? `Showing increases (today): ${total} total entries`
             : `Showing totals (all entries): ${total} total entries`;
@@ -438,10 +586,7 @@
         if (!termChartInstance) {
             termChartInstance = new Chart(ctx, {
                 type: 'pie',
-                data: {
-                    labels,
-                    datasets: [{ data: values, backgroundColor: colors }]
-                },
+                data: { labels, datasets: [{ data: values, backgroundColor: colors }] },
                 options: {
                     plugins: {
                         tooltip: {
@@ -484,10 +629,7 @@
 
         new Chart(widgetPieCtx, {
             type: 'pie',
-            data: {
-                labels,
-                datasets: [{ data: values, backgroundColor: colors }]
-            },
+            data: { labels, datasets: [{ data: values, backgroundColor: colors }] },
             options: {
                 plugins: {
                     tooltip: {
@@ -506,10 +648,8 @@
                     if (!elements?.length) return;
                     const slice = widgetSlices[elements[0].index];
                     if (!slice) return;
-
                     const widgetId = slice.widgetId || slice.label;
                     if (!widgetId) return;
-
                     window.location.href = `${contextPath}/dashboard/widgets/view?widgetId=${encodeURIComponent(widgetId)}`;
                 }
             }
@@ -539,11 +679,9 @@
         nameLink.title = label;
         nameLink.textContent = label;
 
-        if (legendMode === 'total') {
-            nameLink.href = buildTermReviewUrl(contextPath, term, false);
-        } else if (hasIncrease) {
-            nameLink.href = buildTermReviewUrl(contextPath, term, true);
-        } else {
+        if (legendMode === 'total') nameLink.href = buildTermReviewUrl(contextPath, term, false);
+        else if (hasIncrease) nameLink.href = buildTermReviewUrl(contextPath, term, true);
+        else {
             nameLink.removeAttribute('href');
             nameLink.setAttribute('aria-disabled', 'true');
             nameLink.classList.add('is-disabled');
@@ -586,7 +724,6 @@
     function renderLegend() {
         if (!legendEl) return;
         legendEl.innerHTML = '';
-
         if (!termSlices.length) return;
 
         const frag = document.createDocumentFragment();
@@ -625,8 +762,7 @@
                 if (!(Number.isFinite(inc) && inc > 0)) return;
             }
 
-            const increaseOnly = mode === 'increase';
-            window.location.href = buildTermReviewUrl(contextPath, term, increaseOnly);
+            window.location.href = buildTermReviewUrl(contextPath, term, mode === 'increase');
         });
     }
 
@@ -639,6 +775,8 @@
     }
 
     renderOrUpdateTermChart(legendMode);
+    renderLastFiveDaysTrendChart();
+    loadDailySummary(contextPath);
 
     (async function loadTopSessions() {
         const totalEl = document.getElementById('totalSessions');
@@ -712,18 +850,16 @@
                 html += `<tr>
                     <td>${rank}</td>
                     <td>
-                    <div>
-                        ${sessionId
+                        <div>
+                            ${sessionId
                         ? `<a class="customer-profile-link" href="${contextPath}/customer-profile?sessionId=${encodeURIComponent(sessionId)}">${esc(label)}</a>`
                         : esc(label)}
-                    </div>
+                        </div>
                         ${label !== sessionId && sessionId
                         ? `<div class="session-id-muted"><a class="customer-profile-link" href="${contextPath}/customer-profile?sessionId=${encodeURIComponent(sessionId)}">${esc(sessionId)}</a></div>`
                         : ''}
                     </td>
-                    <td>
-                        <a class="session-count-link" href="${esc(reviewUrl)}">${count} chats</a>
-                    </td>
+                    <td><a class="session-count-link" href="${esc(reviewUrl)}">${count} chats</a></td>
                     <td>${esc(last)}</td>
                 </tr>`;
             }

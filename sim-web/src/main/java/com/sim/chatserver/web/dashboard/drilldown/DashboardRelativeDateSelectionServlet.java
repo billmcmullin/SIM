@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -38,16 +39,17 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 /**
- * Convenience endpoint for relative day drilldowns:
- * /dashboard/sessions/drilldown/date-review-relative?day=today|yesterday
- * Optional term filtering:
- * /dashboard/sessions/drilldown/date-review-relative?day=today&term=Your%20Term
+ * Convenience endpoint for date drilldowns: -
+ * /dashboard/sessions/drilldown/date-review-relative?day=today|yesterday -
+ * /dashboard/sessions/drilldown/date-review-relative?date=YYYY-MM-DD Optional
+ * term filtering: - ...&term=Your%20Term
  */
 @WebServlet(name = "DashboardRelativeDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review-relative"})
 public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getName());
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -63,23 +65,9 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String day = req.getParameter("day");
-        if (day == null || day.isBlank()) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "day parameter required (today|yesterday).");
-            return;
-        }
-
-        LocalDate date;
-        switch (day.trim().toLowerCase()) {
-            case "today":
-                date = LocalDate.now(ZoneId.systemDefault());
-                break;
-            case "yesterday":
-                date = LocalDate.now(ZoneId.systemDefault()).minusDays(1);
-                break;
-            default:
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid day value. Use today or yesterday.");
-                return;
+        LocalDate date = resolveDate(req, resp);
+        if (date == null) {
+            return; // error already sent
         }
 
         String rawTerm = req.getParameter("term");
@@ -142,6 +130,35 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         resp.sendRedirect(redirect.toString());
+    }
+
+    private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        String dateParam = req.getParameter("date");
+        if (dateParam != null && !dateParam.isBlank()) {
+            try {
+                return LocalDate.parse(dateParam.trim(), DATE_FMT);
+            } catch (Exception ex) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
+                return null;
+            }
+        }
+
+        String day = req.getParameter("day");
+        if (day == null || day.isBlank()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
+            return null;
+        }
+
+        return switch (day.trim().toLowerCase()) {
+            case "today" ->
+                LocalDate.now(ZoneId.systemDefault());
+            case "yesterday" ->
+                LocalDate.now(ZoneId.systemDefault()).minusDays(1);
+            default -> {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid day value. Use today or yesterday.");
+                yield null;
+            }
+        };
     }
 
     private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {
