@@ -1,6 +1,6 @@
 target/
 notes/
-wildflyLocal/
+resources/
 .idea/
 .project
 sim-app/.project
