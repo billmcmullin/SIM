@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard Summary Markdown</title>
+    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <div class="brand"><strong>SIM</strong></div>
+            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <span>Signed in as <strong>${user}</strong></span>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
+                    Back to Dashboard
+                </button>
+                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div>
+                    <h1 style="margin:0;">Daily Summary</h1>
+                    <p class="helper-note" style="margin:6px 0 0 0;">
+                        Day: <strong>${metaDay}</strong> • Slot: <strong>${metaSlot}</strong> • Generated:
+                        <strong>${metaGeneratedAt}</strong>
+                    </p>
+                </div>
+                <span class="status-pill ${statusClass}">${statusText}</span>
+            </div>
+        </section>
+
+        <section class="section summary-md-wrap">
+            <div class="summary-md-actions">
+                <button id="copyMarkdownBtn" type="button" class="ghost-btn">Copy Summary Text</button>
+                <span id="copyStatus" class="helper-note"></span>
+            </div>
+
+            <!-- Hidden source used only for copy -->
+            <input type="hidden" id="markdownSource" value="${markdownSourceAttr}" />
+
+            <div>
+                <h3 style="margin:0 0 8px 0;">Summary</h3>
+                <div id="markdownPreview" class="summary-md-preview">${previewHtml}</div>
+            </div>
+
+            <div class="summary-next-action">
+                <h3 style="margin:0 0 8px 0;">Suggested Next Action</h3>
+                <p style="margin:0; white-space:pre-wrap;">${suggestedNextAction}</p>
+            </div>
+        </section>
+    </div>
+
+    <script src="${contextPath}/assets/js/dashboard_summary_markdown.js"></script>
+</body>
+
+</html>

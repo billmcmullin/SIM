@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.summary;
 
 import java.sql.Connection;
 import java.sql.Date;

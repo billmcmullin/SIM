@@ -103,7 +103,6 @@
                         <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
 
                         <nvdApiKey>${nvdApiKey}</nvdApiKey>
-                        <dataDirectory>${dataDirectory}</dataDirectory>
                         <nvdMaxRetryCount>${nvdMaxRetryCount}</nvdMaxRetryCount>
                         <nvdApiDelay>${nvdApiDelay}</nvdApiDelay>
                         <connectionTimeout>${connectionTimeout}</connectionTimeout>

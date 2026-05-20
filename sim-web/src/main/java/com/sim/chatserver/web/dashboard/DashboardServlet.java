@@ -70,6 +70,7 @@ public class DashboardServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
     private static final String TERM_INCREASE_SNAPSHOT_SESSION_KEY = "termDistributionIncreaseSnapshots";
+    private static final String TERM_YESTERDAY_SNAPSHOT_SESSION_KEY = "termDistributionYesterdaySnapshots";
 
     private static final int DEFAULT_RANGE_DAYS = 14;
     private static final int DEFAULT_ACTIVE_DAYS = 7;
@@ -140,6 +141,7 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate prevRangeStart = prevRangeEnd.minusDays(windowDays - 1);
 
         final LocalDate dayToday = rangeEndFinal;
+        final LocalDate dayYesterday = dayToday.minusDays(1);
 
         DashboardMetricsService metricsService = new DashboardMetricsService(dsHolder, termsStore, TOP_TOPIC_LIMIT);
         DashboardTermService termService = new DashboardTermService(termsStore);
@@ -187,6 +189,11 @@ public class DashboardServlet extends HttpServlet {
                 DASHBOARD_EXECUTOR
         );
 
+        CompletableFuture<TermSummary> yesterdayTermSummaryFuture = CompletableFuture.supplyAsync(
+                () -> loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
+                DASHBOARD_EXECUTOR
+        );
+
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
@@ -216,8 +223,9 @@ public class DashboardServlet extends HttpServlet {
         ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
         List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
         TermSummary termSummary = safeJoin(termSummaryFuture, null, "term summary");
-        safeJoin(prevTermSummaryFuture, null, "previous term summary");
+        TermSummary prevTermSummary = safeJoin(prevTermSummaryFuture, null, "previous term summary");
         TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
+        TermSummary yesterdayTermSummary = safeJoin(yesterdayTermSummaryFuture, null, "yesterday term summary");
         TermSummary allTimeTermSummary = safeJoin(allTimeTermSummaryFuture, null, "all-time term summary");
         SessionOverview sessionOverview = safeJoin(sessionOverviewFuture, null, "session overview");
         String lastFiveDaysTrendJson = safeJoin(lastFiveDaysTrendFuture, "{\"labels\":[],\"values\":[],\"days\":5}", "last 5 days trend");
@@ -260,6 +268,10 @@ public class DashboardServlet extends HttpServlet {
 
         Map<String, List<TermChatSnapshot>> increaseOnlySnapshots = copySnapshots(todayTermSummary);
         storeIncreaseSnapshots(session, increaseOnlySnapshots);
+
+        // store strict yesterday-only snapshots for Top 3 Yesterday drilldown
+        Map<String, List<TermChatSnapshot>> yesterdayOnlySnapshots = copySnapshots(yesterdayTermSummary);
+        storeYesterdaySnapshots(session, yesterdayOnlySnapshots);
 
         String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
         String sessionChartJson = sessionService.buildEmptySessionPayload(rangeStart, rangeEnd);
@@ -349,6 +361,9 @@ public class DashboardServlet extends HttpServlet {
         String m = msg == null ? "" : msg.trim();
         if ("noIncreaseForTerm".equalsIgnoreCase(m)) {
             return "<div class=\"dashboard-info-banner\" role=\"status\">No increased chats found for that term today.</div>";
+        }
+        if ("noYesterdayForTerm".equalsIgnoreCase(m)) {
+            return "<div class=\"dashboard-info-banner\" role=\"status\">No chats found for that term yesterday.</div>";
         }
         return "";
     }
@@ -537,6 +552,19 @@ public class DashboardServlet extends HttpServlet {
             copy.put(e.getKey(), e.getValue() == null ? List.of() : new ArrayList<>(e.getValue()));
         }
         session.setAttribute(TERM_INCREASE_SNAPSHOT_SESSION_KEY, copy);
+    }
+
+    private void storeYesterdaySnapshots(HttpSession session, Map<String, List<TermChatSnapshot>> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            session.removeAttribute(TERM_YESTERDAY_SNAPSHOT_SESSION_KEY);
+            return;
+        }
+
+        Map<String, List<TermChatSnapshot>> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, List<TermChatSnapshot>> e : snapshots.entrySet()) {
+            copy.put(e.getKey(), e.getValue() == null ? List.of() : new ArrayList<>(e.getValue()));
+        }
+        session.setAttribute(TERM_YESTERDAY_SNAPSHOT_SESSION_KEY, copy);
     }
 
     private Map<String, List<TermChatSnapshot>> copySnapshots(TermSummary summary) {

@@ -60,9 +60,12 @@ public final class DashboardRowsRenderer {
 
             String deltaText = (delta > 0 ? "+" : "") + delta;
             String deltaClass = switch (stat.getDirection()) {
-                case "up" -> "progression-up";
-                case "down" -> "progression-down";
-                default -> "progression-flat";
+                case "up" ->
+                    "progression-up";
+                case "down" ->
+                    "progression-down";
+                default ->
+                    "progression-flat";
             };
 
             b.append("<tr>")
@@ -87,22 +90,18 @@ public final class DashboardRowsRenderer {
         StringBuilder b = new StringBuilder(Math.max(256, terms.size() * 220));
         int rank = 1;
 
-        String todayYmd = LocalDate.now(ZoneId.systemDefault()).toString();
-        String yesterdayYmd = LocalDate.now(ZoneId.systemDefault()).minusDays(1).toString();
-
         for (TopTopic t : terms) {
             String label = t.getLabel() == null ? "" : t.getLabel();
+            String encodedLabel = URLEncoder.encode(label, StandardCharsets.UTF_8);
 
-            String termHref = contextPath + "/dashboard/term-review?term="
-                    + URLEncoder.encode(label, StandardCharsets.UTF_8);
+            String termHref = contextPath + "/dashboard/term-review?term=" + encodedLabel;
 
-            String todayHref = contextPath + "/dashboard/topics?day="
-                    + URLEncoder.encode(todayYmd, StandardCharsets.UTF_8)
-                    + "&q=" + URLEncoder.encode(label, StandardCharsets.UTF_8);
+            String todayHref = contextPath + "/dashboard/term-review?term="
+                    + encodedLabel + "&mode=increaseOnly";
 
-            String yesterdayHref = contextPath + "/dashboard/topics?day="
-                    + URLEncoder.encode(yesterdayYmd, StandardCharsets.UTF_8)
-                    + "&q=" + URLEncoder.encode(label, StandardCharsets.UTF_8);
+            // FIX: yesterday now explicitly uses yesterdayOnly mode
+            String yesterdayHref = contextPath + "/dashboard/term-review?term="
+                    + encodedLabel + "&mode=yesterdayOnly";
 
             String todayCell = t.getToday() > 0
                     ? "<a class=\"metric-link\" href=\"" + todayHref + "\">" + t.getToday() + "</a>"

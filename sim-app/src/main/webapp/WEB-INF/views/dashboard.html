@@ -69,31 +69,6 @@
             <div class="daily-progress-grid"
                 style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
 
-                <!-- Daily Summary with progress bar -->
-                <article class="progress-card" style="grid-column:1 / -1;">
-                    <div
-                        style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-                        <h3 style="margin:0;">Summary</h3>
-                        <p id="dailySummaryMeta" class="helper-note" style="margin:0;">Loading latest summary…</p>
-                    </div>
-
-                    <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
-                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                            <div
-                                style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
-                                <div id="dailySummaryProgressBar"
-                                    style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;">
-                                </div>
-                            </div>
-                            <span id="dailySummaryProgressText" class="helper-note" style="font-size:12px;">0%</span>
-                        </div>
-                    </div>
-
-                    <div id="dailySummaryBody" style="margin-top:10px;">
-                        <p style="margin:0;">Generating summary of quality, response, and usage for today…</p>
-                    </div>
-                </article>
-
                 <article class="progress-card">
                     <h3 style="margin-top:0;">Chats</h3>
                     <p style="margin:6px 0;">
@@ -154,6 +129,37 @@
                 </article>
 
                 <article class="progress-card" style="grid-column:1 / -1;">
+                    <div
+                        style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                        <h3 style="margin:0;">Summary</h3>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <button id="copyDailySummaryBtn" type="button" class="ghost-btn">Copy Summary Text</button>
+                            <span id="dailySummaryCopyStatus" class="helper-note"></span>
+                        </div>
+                    </div>
+
+                    <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summary…</p>
+
+                    <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <div
+                                style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
+                                <div id="dailySummaryProgressBar"
+                                    style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;">
+                                </div>
+                            </div>
+                            <span id="dailySummaryProgressText" class="helper-note" style="font-size:12px;">0%</span>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="dailySummaryCopyText" value="">
+
+                    <div id="dailySummaryBody" style="margin-top:10px;">
+                        <p style="margin:0;">Generating summary of quality, response, and usage for today…</p>
+                    </div>
+                </article>
+
+                <article class="progress-card" style="grid-column:1 / -1;">
                     <h3 style="margin-top:0;">Top 3 Terms (Today vs Yesterday)</h3>
                     <div class="table-scroll">
                         <table class="widget-table" style="margin:0;">
@@ -177,7 +183,7 @@
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                     <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
                     <a class="metric-link"
-                        href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match">Show all</a>
+                        href="${contextPath}/dashboard/term-review/select?term=Other%20Parasoft%20Match">Show all</a>
                 </div>
                 <div class="table-scroll">
                     <table class="widget-table other-parasoft-table">

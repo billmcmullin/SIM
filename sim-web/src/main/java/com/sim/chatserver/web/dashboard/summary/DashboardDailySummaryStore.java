@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.summary;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -24,7 +24,6 @@ import jakarta.json.JsonObject;
 public class DashboardDailySummaryStore {
 
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
-
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final String TABLE_SQL = """
@@ -39,6 +38,7 @@ public class DashboardDailySummaryStore {
                 summary_quality TEXT,
                 summary_response TEXT,
                 summary_usage TEXT,
+                suggested_next_action TEXT,
                 entry_count INTEGER NOT NULL DEFAULT 0,
                 started_at TIMESTAMP,
                 generated_at TIMESTAMP,
@@ -56,9 +56,22 @@ public class DashboardDailySummaryStore {
     public void ensureTable() {
         try (Connection conn = dataSource.getConnection(); Statement st = conn.createStatement()) {
             st.execute(TABLE_SQL);
+            ensureSuggestedNextActionColumn(conn);
         } catch (Exception e) {
             log.log(Level.SEVERE, "Unable to ensure dashboard_daily_summary table", e);
             throw new IllegalStateException("Unable to ensure dashboard_daily_summary table", e);
+        }
+    }
+
+    private void ensureSuggestedNextActionColumn(Connection conn) {
+        final String sql = """
+                ALTER TABLE dashboard_daily_summary
+                ADD COLUMN IF NOT EXISTS suggested_next_action TEXT
+                """;
+        try (Statement st = conn.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Unable to ensure suggested_next_action column", e);
         }
     }
 
@@ -72,7 +85,7 @@ public class DashboardDailySummaryStore {
             boolean markStarted,
             boolean markGenerated
     ) {
-        upsert(day, slot, status, progressPct, message, null, null, null, null, entryCount, markStarted, markGenerated);
+        upsert(day, slot, status, progressPct, message, null, null, null, null, null, entryCount, markStarted, markGenerated);
     }
 
     public void upsertSummary(
@@ -89,7 +102,29 @@ public class DashboardDailySummaryStore {
             boolean markStarted,
             boolean markGenerated
     ) {
-        upsert(day, slot, status, progressPct, message, overall, quality, response, usage, entryCount, markStarted, markGenerated);
+        String suggested = suggestNextAction(status, quality, response, usage);
+        upsert(day, slot, status, progressPct, message, overall, quality, response, usage, suggested, entryCount, markStarted, markGenerated);
+    }
+
+    public void upsertSummary(
+            LocalDate day,
+            int slot,
+            String status,
+            int progressPct,
+            String message,
+            String overall,
+            String quality,
+            String response,
+            String usage,
+            String suggestedNextAction,
+            int entryCount,
+            boolean markStarted,
+            boolean markGenerated
+    ) {
+        String suggested = (suggestedNextAction == null || suggestedNextAction.isBlank())
+                ? suggestNextAction(status, quality, response, usage)
+                : suggestedNextAction.trim();
+        upsert(day, slot, status, progressPct, message, overall, quality, response, usage, suggested, entryCount, markStarted, markGenerated);
     }
 
     private void upsert(
@@ -102,6 +137,7 @@ public class DashboardDailySummaryStore {
             String quality,
             String response,
             String usage,
+            String suggestedNextAction,
             int entryCount,
             boolean markStarted,
             boolean markGenerated
@@ -109,10 +145,10 @@ public class DashboardDailySummaryStore {
         String sql = """
                 INSERT INTO dashboard_daily_summary
                     (summary_day, slot, status, progress_pct, message,
-                     summary_overall, summary_quality, summary_response, summary_usage,
+                     summary_overall, summary_quality, summary_response, summary_usage, suggested_next_action,
                      entry_count, started_at, generated_at, updated_at)
                 VALUES
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON CONFLICT (summary_day, slot)
                 DO UPDATE SET
                     status = EXCLUDED.status,
@@ -122,6 +158,7 @@ public class DashboardDailySummaryStore {
                     summary_quality = COALESCE(EXCLUDED.summary_quality, dashboard_daily_summary.summary_quality),
                     summary_response = COALESCE(EXCLUDED.summary_response, dashboard_daily_summary.summary_response),
                     summary_usage = COALESCE(EXCLUDED.summary_usage, dashboard_daily_summary.summary_usage),
+                    suggested_next_action = COALESCE(EXCLUDED.suggested_next_action, dashboard_daily_summary.suggested_next_action),
                     entry_count = EXCLUDED.entry_count,
                     started_at = COALESCE(dashboard_daily_summary.started_at, EXCLUDED.started_at),
                     generated_at = CASE
@@ -147,10 +184,11 @@ public class DashboardDailySummaryStore {
             ps.setString(7, blankToNull(quality));
             ps.setString(8, blankToNull(response));
             ps.setString(9, blankToNull(usage));
+            ps.setString(10, blankToNull(suggestedNextAction));
 
-            ps.setInt(10, Math.max(0, entryCount));
-            ps.setTimestamp(11, startedAt);
-            ps.setTimestamp(12, generatedAt);
+            ps.setInt(11, Math.max(0, entryCount));
+            ps.setTimestamp(12, startedAt);
+            ps.setTimestamp(13, generatedAt);
 
             ps.executeUpdate();
         } catch (Exception e) {
@@ -162,7 +200,7 @@ public class DashboardDailySummaryStore {
     public JsonObject fetchExactOrLatest(LocalDate day, int slot) {
         String exactSql = """
                 SELECT summary_day, slot, status, progress_pct, message,
-                       summary_overall, summary_quality, summary_response, summary_usage,
+                       summary_overall, summary_quality, summary_response, summary_usage, suggested_next_action,
                        entry_count, started_at, generated_at, updated_at
                 FROM dashboard_daily_summary
                 WHERE summary_day = ? AND slot = ?
@@ -172,7 +210,7 @@ public class DashboardDailySummaryStore {
 
         String latestSql = """
                 SELECT summary_day, slot, status, progress_pct, message,
-                       summary_overall, summary_quality, summary_response, summary_usage,
+                       summary_overall, summary_quality, summary_response, summary_usage, suggested_next_action,
                        entry_count, started_at, generated_at, updated_at
                 FROM dashboard_daily_summary
                 ORDER BY summary_day DESC, slot DESC, updated_at DESC
@@ -196,6 +234,8 @@ public class DashboardDailySummaryStore {
                 }
             }
 
+            String fallbackSuggested = "Review Top Terms and Latest Chats to identify one repeated issue and apply a focused prompt update.";
+
             return Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("summary", Json.createObjectBuilder()
@@ -203,6 +243,7 @@ public class DashboardDailySummaryStore {
                             .add("quality", "—")
                             .add("response", "—")
                             .add("usage", "—")
+                            .add("suggestedNextAction", fallbackSuggested)
                             .add("entryCount", 0))
                     .add("meta", Json.createObjectBuilder()
                             .add("day", day.toString())
@@ -235,6 +276,7 @@ public class DashboardDailySummaryStore {
         String quality = value(rs.getString("summary_quality"), "");
         String response = value(rs.getString("summary_response"), "");
         String usage = value(rs.getString("summary_usage"), "");
+        String suggested = value(rs.getString("suggested_next_action"), "");
         int entryCount = Math.max(0, rs.getInt("entry_count"));
 
         Timestamp startedAt = rs.getTimestamp("started_at");
@@ -255,6 +297,9 @@ public class DashboardDailySummaryStore {
         if (usage.isBlank()) {
             usage = "—";
         }
+        if (suggested.isBlank()) {
+            suggested = suggestNextAction(status, quality, response, usage);
+        }
 
         return Json.createObjectBuilder()
                 .add("status", "ok")
@@ -263,6 +308,7 @@ public class DashboardDailySummaryStore {
                         .add("quality", quality)
                         .add("response", response)
                         .add("usage", usage)
+                        .add("suggestedNextAction", suggested)
                         .add("entryCount", entryCount))
                 .add("meta", Json.createObjectBuilder()
                         .add("day", rs.getDate("summary_day") == null ? "" : rs.getDate("summary_day").toLocalDate().toString())
@@ -276,6 +322,39 @@ public class DashboardDailySummaryStore {
                         .add("message", message)
                         .add("fromFallback", fromFallback))
                 .build();
+    }
+
+    private String suggestNextAction(String status, String quality, String response, String usage) {
+        String st = value(status, "idle").toLowerCase();
+        String q = value(quality, "").toLowerCase();
+        String r = value(response, "").toLowerCase();
+        String u = value(usage, "").toLowerCase();
+
+        if ("running".equals(st) || "queued".equals(st)) {
+            return "Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.";
+        }
+        if (containsAny(q, "low", "inconsistent", "hallucination", "incorrect", "poor")) {
+            return "Review low-quality conversations first and tighten prompt instructions/guardrails for affected widgets.";
+        }
+        if (containsAny(r, "slow", "latency", "timeout", "delayed")) {
+            return "Investigate response latency by widget and reduce prompt/context size where possible.";
+        }
+        if (containsAny(u, "low", "drop", "decline", "underused")) {
+            return "Promote underused high-value widgets and add clearer in-app guidance for users.";
+        }
+        return "Review Top Terms and Latest Chats to identify one repeated issue and apply a focused prompt update.";
+    }
+
+    private boolean containsAny(String text, String... terms) {
+        if (text == null || text.isBlank() || terms == null) {
+            return false;
+        }
+        for (String t : terms) {
+            if (t != null && !t.isBlank() && text.contains(t.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String fmtTs(Timestamp ts) {

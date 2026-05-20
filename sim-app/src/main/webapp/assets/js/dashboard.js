@@ -155,11 +155,37 @@
         return `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=${encodeURIComponent(dayToken)}`;
     }
 
-    function buildTermReviewUrl(contextPath, term, increaseOnly) {
+    async function buildTermReviewSelectionLink(contextPath, term, increaseOnly) {
         const qp = new URLSearchParams();
         qp.set('term', term || '');
         if (increaseOnly) qp.set('mode', 'increaseOnly');
-        return `${contextPath}/dashboard/term-review?${qp.toString()}`;
+
+        const url = `${contextPath}/dashboard/term-review/select?${qp.toString()}`;
+        const resp = await fetch(url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' }
+        });
+
+        const text = await resp.text();
+        let data = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch {
+            data = null;
+        }
+
+        if (!resp.ok) {
+            const msg = data?.message || `Unable to open term review (HTTP ${resp.status})`;
+            throw new Error(msg);
+        }
+
+        if (!data || data.status !== 'ok' || !data.selectionId) {
+            throw new Error(data?.message || 'Unable to create term review selection.');
+        }
+
+        return data.reviewUrl
+            || `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
     }
 
     function setConditionalMetricLink(el, value, hrefOrBuilder) {
@@ -245,9 +271,122 @@
         wrap.style.display = inProgress ? '' : 'none';
     }
 
+    function containsAny(text, terms) {
+        const s = String(text || '').toLowerCase();
+        return terms.some(t => s.includes(String(t).toLowerCase()));
+    }
+
+    function inferSuggestedNextAction(summary, meta) {
+        const status = String(meta?.statusText || '').toLowerCase();
+        const quality = String(summary?.quality || '').toLowerCase();
+        const response = String(summary?.response || '').toLowerCase();
+        const usage = String(summary?.usage || '').toLowerCase();
+
+        if (status === 'running' || status === 'queued') {
+            return 'Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.';
+        }
+        if (containsAny(quality, ['low', 'inconsistent', 'hallucination', 'incorrect', 'poor'])) {
+            return 'Review low-quality conversations first and tighten prompt instructions/guardrails for affected widgets.';
+        }
+        if (containsAny(response, ['slow', 'latency', 'timeout', 'delayed'])) {
+            return 'Investigate response latency by widget and reduce prompt/context size where possible.';
+        }
+        if (containsAny(usage, ['low', 'drop', 'decline', 'underused'])) {
+            return 'Promote underused high-value widgets and add clearer in-app guidance for users.';
+        }
+        return 'Review Top Terms and Latest Chats, pick one repeated issue, and apply a focused prompt update.';
+    }
+
+    function buildCopySummaryText(summary, meta, suggested) {
+        const day = meta?.day || '—';
+        const slot = Number.isFinite(Number(meta?.slot)) ? Number(meta.slot) : '—';
+        const status = meta?.statusText || 'idle';
+        const progress = Number.isFinite(Number(meta?.progressPct)) ? Number(meta.progressPct) : 0;
+        const entryCount = Number.isFinite(Number(summary?.entryCount)) ? Number(summary.entryCount) : 0;
+        const generatedAt = meta?.generatedAt || '—';
+        const startedAt = meta?.startedAt || '—';
+        const updatedAt = meta?.updatedAt || '—';
+        const message = meta?.message || '';
+
+        return [
+            'Daily Dashboard Summary',
+            '',
+            `Day: ${day}`,
+            `Slot: ${slot}`,
+            `Status: ${status}`,
+            `Progress: ${progress}%`,
+            `Entries analyzed: ${entryCount}`,
+            `Generated at: ${generatedAt}`,
+            `Started at: ${startedAt}`,
+            `Updated at: ${updatedAt}`,
+            ...(message ? [`Message: ${message}`] : []),
+            '',
+            'Overall',
+            String(summary?.overall || '—'),
+            '',
+            'Quality',
+            String(summary?.quality || '—'),
+            '',
+            'Response',
+            String(summary?.response || '—'),
+            '',
+            'Usage',
+            String(summary?.usage || '—'),
+            '',
+            'Suggested Next Action',
+            String(suggested || '—')
+        ].join('\n');
+    }
+
+    function wireSummaryCopyButton() {
+        const btn = document.getElementById('copyDailySummaryBtn');
+        const src = document.getElementById('dailySummaryCopyText');
+        const status = document.getElementById('dailySummaryCopyStatus');
+        if (!btn || !src) return;
+
+        const setStatus = (msg) => {
+            if (status) status.textContent = msg || '';
+        };
+
+        btn.addEventListener('click', async () => {
+            const text = src.value || '';
+            if (!text) {
+                setStatus('No summary text available.');
+                setTimeout(() => setStatus(''), 2000);
+                return;
+            }
+
+            let ok = false;
+            try {
+                await navigator.clipboard.writeText(text);
+                ok = true;
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', 'readonly');
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try {
+                    ok = document.execCommand('copy');
+                } catch {
+                    ok = false;
+                } finally {
+                    ta.remove();
+                }
+            }
+
+            setStatus(ok ? 'Copied summary text.' : 'Unable to copy automatically. Press Ctrl/Cmd+C.');
+            setTimeout(() => setStatus(''), 2200);
+        });
+    }
+
     async function loadDailySummary(contextPath) {
         const bodyEl = document.getElementById('dailySummaryBody');
         const metaEl = document.getElementById('dailySummaryMeta');
+        const copyEl = document.getElementById('dailySummaryCopyText');
         if (!bodyEl) return;
 
         ensureSummaryProgressUi();
@@ -298,29 +437,32 @@
             const m = data.meta || {};
             const inProgress = !!m.inProgress;
             const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
+            const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
 
             setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
 
             bodyEl.innerHTML = `
-                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
-                    <div>
-                        <h4 style="margin:0 0 6px 0;">Overall</h4>
-                        <p style="margin:0; white-space:pre-wrap;">${esc(s.overall || '—')}</p>
-                    </div>
-                    <div>
-                        <h4 style="margin:0 0 6px 0;">Quality</h4>
-                        <p style="margin:0; white-space:pre-wrap;">${esc(s.quality || '—')}</p>
-                    </div>
-                    <div>
-                        <h4 style="margin:0 0 6px 0;">Response</h4>
-                        <p style="margin:0; white-space:pre-wrap;">${esc(s.response || '—')}</p>
-                    </div>
-                    <div>
-                        <h4 style="margin:0 0 6px 0;">Usage</h4>
-                        <p style="margin:0; white-space:pre-wrap;">${esc(s.usage || '—')}</p>
-                    </div>
+                <div>
+                    <h4 style="margin:0 0 6px 0;">Overall</h4>
+                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${esc(s.overall || '—')}</p>
+
+                    <h4 style="margin:0 0 6px 0;">Quality</h4>
+                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${esc(s.quality || '—')}</p>
+
+                    <h4 style="margin:0 0 6px 0;">Response</h4>
+                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${esc(s.response || '—')}</p>
+
+                    <h4 style="margin:0 0 6px 0;">Usage</h4>
+                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${esc(s.usage || '—')}</p>
+
+                    <h4 style="margin:0 0 6px 0;">Suggested Next Action</h4>
+                    <p style="margin:0; white-space:pre-wrap;">${esc(suggested || '—')}</p>
                 </div>
             `;
+
+            if (copyEl) {
+                copyEl.value = buildCopySummaryText(s, m, suggested);
+            }
 
             const entryCount = Number.isFinite(Number(s.entryCount)) ? Number(s.entryCount) : 0;
             const generatedAt = m.generatedAt ? String(m.generatedAt) : '';
@@ -534,14 +676,20 @@
 
     let termChartInstance = null;
 
-    function openTermReview(term) {
+    async function openTermReview(term) {
         if (!term) return;
         const increaseOnly = legendMode === 'increase';
         if (increaseOnly) {
             const inc = Number(termIncreaseMap[term] || 0);
             if (!(Number.isFinite(inc) && inc > 0)) return;
         }
-        window.location.href = buildTermReviewUrl(contextPath, term, increaseOnly);
+        try {
+            const href = await buildTermReviewSelectionLink(contextPath, term, increaseOnly);
+            if (href) window.location.href = href;
+        } catch (e) {
+            console.warn('Unable to open term review:', e);
+            alert(e?.message || 'Unable to open chat review for this term right now.');
+        }
     }
 
     function getTermValueForMode(term, fallbackCount, mode) {
@@ -608,11 +756,11 @@
                     },
                     responsive: true,
                     maintainAspectRatio: false,
-                    onClick: (_event, elements) => {
+                    onClick: async (_event, elements) => {
                         if (!elements?.length) return;
                         const slice = termSlices[elements[0].index];
                         if (!slice) return;
-                        openTermReview(slice.term);
+                        await openTermReview(slice.term);
                     }
                 }
             });
@@ -659,6 +807,17 @@
     const legendEl = document.getElementById('termChartLegend');
     const legendToggleBtn = document.getElementById('termLegendValueToggleBtn');
 
+    function makeTermDynamicLink(term, increaseOnly, cssClass, text, title) {
+        const a = document.createElement('a');
+        a.className = `${cssClass} metric-dynamic-link`;
+        a.href = '#';
+        a.dataset.term = term || '';
+        a.textContent = text || '';
+        if (title) a.title = title;
+        a.__buildHref = async () => buildTermReviewSelectionLink(contextPath, term, increaseOnly);
+        return a;
+    }
+
     function buildLegendChip(slice, index) {
         const term = slice.term || '';
         const label = slice.label ?? '';
@@ -673,19 +832,21 @@
         chip.dataset.term = term;
         chip.dataset.mode = legendMode;
 
-        const nameLink = document.createElement('a');
-        nameLink.className = 'legend-chip-name-link';
-        nameLink.dataset.term = term;
-        nameLink.title = label;
-        nameLink.textContent = label;
+        const nameLink = makeTermDynamicLink(
+            term,
+            legendMode === 'increase',
+            'legend-chip-name-link',
+            label,
+            label
+        );
 
-        if (legendMode === 'total') nameLink.href = buildTermReviewUrl(contextPath, term, false);
-        else if (hasIncrease) nameLink.href = buildTermReviewUrl(contextPath, term, true);
-        else {
+        if (legendMode === 'increase' && !hasIncrease) {
             nameLink.removeAttribute('href');
+            nameLink.removeAttribute('__buildHref');
             nameLink.setAttribute('aria-disabled', 'true');
             nameLink.classList.add('is-disabled');
             nameLink.title = `${label} (no increases today)`;
+            nameLink.__buildHref = null;
         }
 
         chip.appendChild(nameLink);
@@ -695,12 +856,13 @@
 
         if (legendMode === 'increase') {
             if (hasIncrease) {
-                const incLink = document.createElement('a');
-                incLink.className = 'legend-chip-increase-link';
-                incLink.href = buildTermReviewUrl(contextPath, term, true);
-                incLink.dataset.term = term;
+                const incLink = makeTermDynamicLink(
+                    term,
+                    true,
+                    'legend-chip-increase-link',
+                    `+${inc}`
+                );
                 incLink.dataset.increaseOnly = '1';
-                incLink.textContent = `+${inc}`;
                 valueWrap.appendChild(incLink);
             } else {
                 const zero = document.createElement('span');
@@ -709,11 +871,12 @@
                 valueWrap.appendChild(zero);
             }
         } else {
-            const totalLink = document.createElement('a');
-            totalLink.className = 'legend-chip-total-link';
-            totalLink.href = buildTermReviewUrl(contextPath, term, false);
-            totalLink.dataset.term = term;
-            totalLink.textContent = String(Number.isFinite(total) ? total : 0);
+            const totalLink = makeTermDynamicLink(
+                term,
+                false,
+                'legend-chip-total-link',
+                String(Number.isFinite(total) ? total : 0)
+            );
             valueWrap.appendChild(totalLink);
         }
 
@@ -746,9 +909,9 @@
     if (legendEl) {
         renderLegend();
 
-        legendEl.addEventListener('click', event => {
+        legendEl.addEventListener('click', async event => {
             const a = event.target.closest('a');
-            if (a && legendEl.contains(a)) return;
+            if (a && legendEl.contains(a) && a.__buildHref) return;
 
             const chip = event.target.closest('.legend-chip');
             if (!chip || !legendEl.contains(chip)) return;
@@ -762,7 +925,13 @@
                 if (!(Number.isFinite(inc) && inc > 0)) return;
             }
 
-            window.location.href = buildTermReviewUrl(contextPath, term, mode === 'increase');
+            try {
+                const href = await buildTermReviewSelectionLink(contextPath, term, mode === 'increase');
+                if (href) window.location.href = href;
+            } catch (e) {
+                console.warn('Unable to open term review:', e);
+                alert(e?.message || 'Unable to open chat review for this term right now.');
+            }
         });
     }
 
@@ -776,6 +945,7 @@
 
     renderOrUpdateTermChart(legendMode);
     renderLastFiveDaysTrendChart();
+    wireSummaryCopyButton();
     loadDailySummary(contextPath);
 
     (async function loadTopSessions() {
