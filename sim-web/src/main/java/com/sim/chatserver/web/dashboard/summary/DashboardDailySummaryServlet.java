@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.summary;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,7 +51,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
 
         ZoneId zone = ZoneId.systemDefault();
         LocalDate day = parseDay(req.getParameter("day"), zone);
-        int slot = resolveCurrentSlot();
+        int slot = parseSlotOrCurrent(req.getParameter("slot"), zone);
 
         try {
             if (summaryStore == null) {
@@ -60,14 +60,11 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             }
 
             JsonObject payload = summaryStore.fetchExactOrLatest(day, slot);
-            writeJson(resp, payload.toString());
+            writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload.toString());
+
         } catch (Exception e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
-            writeJson(resp, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to load summary.")
-                    .build()
-                    .toString());
+            writeJson(resp, errorJson("Unable to load summary."));
         }
     }
 
@@ -75,25 +72,35 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            writeJson(resp, "{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeJson(resp, errorJson("Authentication required."));
             return false;
         }
         return true;
     }
 
-    private LocalDate parseDay(String day, ZoneId zone) {
-        if (day == null || day.isBlank()) {
+    private LocalDate parseDay(String raw, ZoneId zone) {
+        if (raw == null || raw.isBlank()) {
             return LocalDate.now(zone);
         }
         try {
-            return LocalDate.parse(day.trim(), DATE_FMT);
+            return LocalDate.parse(raw.trim(), DATE_FMT);
         } catch (Exception e) {
             return LocalDate.now(zone);
         }
     }
 
-    private int resolveCurrentSlot() {
-        int hour = java.time.LocalTime.now(ZoneId.systemDefault()).getHour();
+    private int parseSlotOrCurrent(String raw, ZoneId zone) {
+        if (raw != null && !raw.isBlank()) {
+            try {
+                int s = Integer.parseInt(raw.trim());
+                if (s >= 0 && s <= 3) {
+                    return s;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        int hour = java.time.LocalTime.now(zone).getHour();
         if (hour < 6) {
             return 0;
         }
@@ -106,9 +113,17 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         return 3;
     }
 
+    private String errorJson(String message) {
+        return Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", message == null ? "Unable to load summary." : message)
+                .build()
+                .toString();
+    }
+
     private void writeJson(HttpServletResponse resp, String body) throws IOException {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body);
+        resp.getWriter().write(body == null ? "{}" : body);
     }
 }

@@ -55,7 +55,7 @@ import com.sim.chatserver.service.WorkspaceClient;
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SqlTimeUtil;
-import com.sim.chatserver.web.dashboard.DashboardDailySummaryStore;
+import com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 

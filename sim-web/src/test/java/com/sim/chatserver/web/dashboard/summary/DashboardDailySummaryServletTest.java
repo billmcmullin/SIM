@@ -1,4 +1,4 @@
-package com.sim.chatserver.web.dashboard;
+package com.sim.chatserver.web.dashboard.summary;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
