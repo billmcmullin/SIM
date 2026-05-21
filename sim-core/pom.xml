@@ -98,7 +98,6 @@
         <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-core</artifactId>
-            <scope>provided</scope>
             <version>7.3.2.Final</version>
         </dependency>
 

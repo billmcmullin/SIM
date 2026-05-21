@@ -28,10 +28,32 @@ public class UserService {
     AppDataSourceHolder dsHolder;
 
     /**
+     * Setter for non-CDI fallback wiring (e.g., local Jetty UI test runtime).
+     */
+    public void setDsHolder(AppDataSourceHolder dsHolder) {
+        this.dsHolder = dsHolder;
+    }
+
+    /**
+     * Internal guard to fail fast with clear message when datasource is not
+     * wired.
+     */
+    private EntityManagerFactory requireEmf() {
+        if (dsHolder == null) {
+            throw new IllegalStateException("AppDataSourceHolder is not initialized in UserService");
+        }
+        EntityManagerFactory emf = dsHolder.getEmf();
+        if (emf == null) {
+            throw new IllegalStateException("EntityManagerFactory is null in AppDataSourceHolder");
+        }
+        return emf;
+    }
+
+    /**
      * Find a user by username or return null.
      */
     public UserAccount findByUsername(String username) {
-        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManagerFactory emf = requireEmf();
         EntityManager em = emf.createEntityManager();
         try {
             return em.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
@@ -92,7 +114,7 @@ public class UserService {
      */
     @Transactional
     public UserAccount createUser(String username, String password, String role) {
-        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManagerFactory emf = requireEmf();
         EntityManager em = emf.createEntityManager();
         try {
             em.getTransaction().begin();
@@ -126,7 +148,7 @@ public class UserService {
      */
     @Transactional
     public UserAccount updateCredentials(String currentUsername, String newUsername, String newPassword) {
-        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManagerFactory emf = requireEmf();
         EntityManager em = emf.createEntityManager();
         try {
             em.getTransaction().begin();
@@ -157,7 +179,7 @@ public class UserService {
      * List all users.
      */
     public List<UserAccount> listAllUsers() {
-        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManagerFactory emf = requireEmf();
         EntityManager em = emf.createEntityManager();
         try {
             TypedQuery<UserAccount> query
@@ -173,7 +195,7 @@ public class UserService {
      */
     @Transactional
     public boolean deleteUser(String userId) {
-        EntityManagerFactory emf = dsHolder.getEmf();
+        EntityManagerFactory emf = requireEmf();
         EntityManager em = emf.createEntityManager();
         try {
             em.getTransaction().begin();

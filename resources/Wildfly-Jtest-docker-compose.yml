@@ -1,0 +1,54 @@
+services:
+  wildfly:
+    #Wildfly server instance for the Jtest Coverage agent
+    image: quay.io/wildfly/wildfly:latest
+    #image: quay.io/wildfly/wildfly:26.1.2.Final-jdk17
+    hostname: wildflylocal
+    container_name: wildflyLocal
+    user: root
+    command: >
+      bash -lc '
+        microdnf install -y tzdata &&
+        ln -snf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime &&
+        echo America/Los_Angeles > /etc/timezone || true;
+        su -s /bin/bash jboss -c "/opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0"
+      '
+    #ports:
+    #  - 8080:8080
+    # Needs the command to start up the server.
+    volumes:
+      - type: volume
+        source: shared_volume
+        target: /opt/jboss/wildfly/shared
+      # Have a copy of the standalone.conf on the host machine before using the below.
+      - .\conf\standalone.conf:/opt/jboss/wildfly/bin/standalone.conf
+      - ..\sim-app\target\chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war
+    environment:
+      DB_HOST: vectorpost
+      DB_PORT: 5432
+      DB_NAME: chat
+      DB_USER: postgres
+      DB_PASSWORD: root
+      SIM_TRANSLATE_URL: http://libretranslate:5000/translate
+      CONFIG_ENCRYPTION_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
+      TZ: America/Los_Angeles
+    networks:
+      - dtp-net
+  libreTranslate:
+    image: libretranslate/libretranslate:latest
+    hostname: libretranslate
+    container_name: libretranslate
+    stdin_open: true
+    tty: true
+    environment:
+      TZ: America/Los_Angeles
+    networks:
+      - dtp-net
+networks:
+  dtp-net:
+    external: true
+    name: dtp-net
+volumes:
+  shared_volume:
+    name: shared_volume
+    external: true
