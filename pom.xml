@@ -15,6 +15,7 @@
         <module>sim-core</module>
         <module>sim-web</module>
         <module>sim-app</module>
+        <module>sim-playwright</module>
     </modules>
 
     <properties>

@@ -3,8 +3,10 @@ package com.sim.chatserver.web.login;
 import java.io.IOException;
 
 import com.sim.chatserver.service.UserService;
+import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.inject.Inject;
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -21,13 +23,36 @@ public class LoginServlet extends HttpServlet {
     private static final String VIEW = "/WEB-INF/views/login.html";
 
     @Override
+    public void init() throws ServletException {
+        super.init();
+
+        // Fallback for non-CDI runtime (plain Jetty in UI tests)
+        if (userService == null) {
+            ServletContext ctx = getServletContext();
+
+            AppDataSourceHolder dsHolder = (AppDataSourceHolder) ctx.getAttribute("appDataSourceHolder");
+            if (dsHolder == null) {
+                dsHolder = new AppDataSourceHolder();
+                dsHolder.init(); // uses DB_* env vars; fails fast if missing
+                ctx.setAttribute("appDataSourceHolder", dsHolder);
+            }
+
+            UserService manual = new UserService();
+            manual.setDsHolder(dsHolder);
+            this.userService = manual;
+        }
+    }
+
+    @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        userService.ensureAdminExists(); // make sure admin/admin exists
+        userService.ensureAdminExists(); // creates admin/admin if absent
+
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
             resp.sendRedirect(req.getContextPath() + "/dashboard");
             return;
         }
+
         req.getRequestDispatcher(VIEW).forward(req, resp);
     }
 
