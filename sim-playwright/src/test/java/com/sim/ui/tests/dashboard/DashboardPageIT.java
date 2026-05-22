@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.options.WaitUntilState;
 import com.sim.ui.base.BaseUiIT;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -21,8 +23,14 @@ public class DashboardPageIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticated_dashboardRedirectsToLogin() {
-        page.navigate(baseUrl + "/dashboard");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        page.navigate(
+                baseUrl + "/dashboard",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/login"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
 
         assertTrue(page.url().contains("/chat-server/login"),
                 "Expected redirect to /chat-server/login, got: " + page.url());
@@ -33,8 +41,18 @@ public class DashboardPageIT extends BaseUiIT {
     void admin_seesDashboardCoreSections_andAdminLink() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
+        page.navigate(
+                baseUrl + "/dashboard",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/dashboard"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
+
+        // Wait for core content to be visible before assertions
+        page.waitForSelector("h1:has-text('Welcome')");
+        page.waitForSelector("h2:has-text('Daily Progress')");
 
         assertTrue(page.locator("h1").first().innerText().contains("Welcome"),
                 "Expected Welcome heading");
@@ -43,11 +61,9 @@ public class DashboardPageIT extends BaseUiIT {
         assertTrue(page.locator("h2:has-text('Term Distribution based on Prompts')").count() > 0);
         assertTrue(page.locator("h2:has-text('Top 10 Sessions')").count() > 0);
 
-        // Admin link rendered from ${adminLink}
         assertTrue(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration')").count() > 0,
                 "Admin should see Admin Configuration link");
 
-        // Key IDs from template
         assertTrue(page.locator("#dpTodayChats").count() > 0);
         assertTrue(page.locator("#dpTopTermsBody").count() > 0);
         assertTrue(page.locator("#otherParasoftLatestBody").count() > 0);
@@ -60,8 +76,16 @@ public class DashboardPageIT extends BaseUiIT {
     void user_doesNotSeeAdminLink() {
         login(userUsername, userPassword);
 
-        page.navigate(baseUrl + "/dashboard");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
+        page.navigate(
+                baseUrl + "/dashboard",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/dashboard"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
+
+        page.waitForSelector("h1:has-text('Welcome')");
 
         assertFalse(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration')").count() > 0,
                 "Non-admin user should not see Admin Configuration link");
@@ -72,8 +96,16 @@ public class DashboardPageIT extends BaseUiIT {
     void msg_noIncreaseForTerm_showsBanner() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard?msg=noIncreaseForTerm");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
+        page.navigate(
+                baseUrl + "/dashboard?msg=noIncreaseForTerm",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/dashboard"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
+
+        page.waitForSelector(".dashboard-info-banner");
 
         assertTrue(page.locator(".dashboard-info-banner:has-text('No increased chats found for that term today.')").count() > 0);
     }
@@ -83,15 +115,29 @@ public class DashboardPageIT extends BaseUiIT {
     void msg_noYesterdayForTerm_showsBanner() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard?msg=noYesterdayForTerm");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
+        page.navigate(
+                baseUrl + "/dashboard?msg=noYesterdayForTerm",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/dashboard"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
+
+        page.waitForSelector(".dashboard-info-banner");
 
         assertTrue(page.locator(".dashboard-info-banner:has-text('No chats found for that term yesterday.')").count() > 0);
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        page.navigate(
+                baseUrl + "/login",
+                new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
+        );
+        page.waitForURL(
+                url -> url.contains("/chat-server/login"),
+                new Page.WaitForURLOptions().setTimeout(30000)
+        );
 
         page.fill("#username", username);
         page.fill("#password", password);
@@ -99,7 +145,7 @@ public class DashboardPageIT extends BaseUiIT {
 
         page.waitForURL(
                 url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new com.microsoft.playwright.Page.WaitForURLOptions().setTimeout(15000)
+                new Page.WaitForURLOptions().setTimeout(30000)
         );
 
         assertTrue(
