@@ -21,7 +21,7 @@ services:
         source: shared_volume
         target: /opt/jboss/wildfly/shared
       # Have a copy of the standalone.conf on the host machine before using the below.
-      - ./conf/standalone.conf:/opt/jboss/wildfly/bin/standalone.conf
+      - ./conf/standalone.conf:/opt/jboss/wildfly/bin/standalone.conf:ro
       - ../sim-app/target/chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war
     environment:
       DB_HOST: vectorpost
