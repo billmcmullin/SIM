@@ -66,41 +66,60 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
                         sh '''
-                            set -e
-                            mkdir -p "$DC_DATA_DIR"
-
-                            $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor \
-                              -Djtest.settings="jtest_${JOB_NAME}.properties" \
-                              -Djtest.publish="${PUBLISH}" \
-                              -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
-                              -Dmaven.test.failure.ignore=true \
-                              -Dmaven.test.error.ignore=true \
-                              -DnvdApiKey="$NVD_API_KEY" \
-                              -DdataDirectory="$DC_DATA_DIR" \
-                              -DautoUpdate=false
+                            $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app \
+                            -Djtest.settings="jtest_${JOB_NAME}.properties" \
+                            -Djtest.publish="${PUBLISH}" \
+                            -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
+                            -Dmaven.test.failure.ignore=true \
+                            -Dmaven.test.error.ignore=true \
+                            -DautoUpdate=false
                         '''
                     }
                 }
             }
         }
-
-        stage('Run OWASP') {
-            when {
-                expression {
-                    fileExists("${env.WORKSPACE}/target/dependency-check-report.xml")
+        stage('Run Jtestcli') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh """
+                        \$JTEST_HOME/jtestcli -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
+                        -config "${TEST_CONFIG}" \
+                        -settings jtest_${JOB_NAME}.properties \
+                        -publish \
+                        -report "${WORKSPACE}/report/team"
+                    """
                 }
             }
+        }
+        stage('Run Jtest OWASP') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
                         $JTEST_HOME/jtestcli \
-                          -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
-                          -config "${SEC_TEST_CONFIG}" \
-                          -settings jtest_${JOB_NAME}.properties \
-                          -publish \
-                          -report "${WORKSPACE}/report/OWASP" \
-                          -exclude "**/test/**/*Test.java"
+                        -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
+                        -config "${SEC_TEST_CONFIG}" \
+                        -settings jtest_${JOB_NAME}.properties \
+                        -publish \
+                        -report "${WORKSPACE}/report/OWASP" \
+                        -exclude "**/test/**/*Test.java"
                     '''
+                }
+            }
+        }
+
+        stage('Run Maven OWASP') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
+                        sh '''
+                            set -e
+                            mkdir -p "$DC_DATA_DIR"
+
+                            $MAVEN_HOME/mvn org.owasp:dependency-check-maven:12.2.2:aggregate \
+                              -DnvdApiKey="$NVD_API_KEY" \
+                              -DdataDirectory="$DC_DATA_DIR"
+                        '''
+                    }
                 }
             }
         }
@@ -124,23 +143,9 @@ pipeline {
                         echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_OWASP.properties
 
                         $DEPENDENCY_CHECK/dependencycheck.sh \
-                          -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
-                          -settings "jtest_${JOB_NAME}_OWASP.properties"
+                        -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
+                        -settings "jtest_${JOB_NAME}_OWASP.properties"
                     '''
-                }
-            }
-        }
-
-        stage('Run Jtestcli') {
-            steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh """
-                    \$JTEST_HOME/jtestcli -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
-                      -config "${TEST_CONFIG}" \
-                      -settings jtest_${JOB_NAME}.properties \
-                      -publish \
-                      -report "${WORKSPACE}/report/team"
-                    """
                 }
             }
         }
@@ -173,19 +178,19 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                    set -e
-                    DEST_DIR="${SHARED_DIR}"
-                    MONITOR_DIR="${WORKSPACE}/target/jtest/monitor"
-                    MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
+                        set -e
+                        DEST_DIR="${SHARED_DIR}"
+                        MONITOR_DIR="${WORKSPACE}/target/jtest/monitor"
+                        MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
 
-                    mkdir -p "${DEST_DIR}"
+                        mkdir -p "${DEST_DIR}"
 
-                    if [ -f "${MONITOR_ZIP}" ]; then
-                        echo "Found monitor.zip: ${MONITOR_ZIP}"
-                        unzip -o "${MONITOR_ZIP}" -d "${DEST_DIR}"
-                    else
-                        echo "WARNING: monitor.zip not found at ${MONITOR_ZIP}"
-                    fi
+                        if [ -f "${MONITOR_ZIP}" ]; then
+                            echo "Found monitor.zip: ${MONITOR_ZIP}"
+                            unzip -o "${MONITOR_ZIP}" -d "${DEST_DIR}"
+                        else
+                            echo "WARNING: monitor.zip not found at ${MONITOR_ZIP}"
+                        fi
                     '''
                 }
             }
@@ -195,60 +200,63 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                    set -e
-                    AGENT_FILE="${SHARED_DIR}/monitor/agent.properties"
+                        set -e
+                        AGENT_FILE="${SHARED_DIR}/monitor/agent.properties"
 
-                    if [ ! -f "${AGENT_FILE}" ]; then
-                        echo "WARNING: ${AGENT_FILE} not found. Skipping update."
-                        exit 0
-                    fi
+                        if [ ! -f "${AGENT_FILE}" ]; then
+                            echo "WARNING: ${AGENT_FILE} not found. Skipping update."
+                            exit 0
+                        fi
 
-                    if grep -q '^jtest\\.agent\\.enableMultiuserCoverage=' "${AGENT_FILE}"; then
-                        sed -i 's/^jtest\\.agent\\.enableMultiuserCoverage=.*/jtest.agent.enableMultiuserCoverage=true/' "${AGENT_FILE}"
-                    else
-                        echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
-                    fi
+                        if grep -q '^jtest\\.agent\\.enableMultiuserCoverage=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.enableMultiuserCoverage=.*/jtest.agent.enableMultiuserCoverage=true/' "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
+                        fi
 
-                    if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
-                        sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
-                    else
-                        echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
-                    fi
+                        if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
+                        fi
 
-                    echo "Updated ${AGENT_FILE}:"
-                    grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart)=' "${AGENT_FILE}" || true
+                        echo "Updated ${AGENT_FILE}:"
+                        grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart)=' "${AGENT_FILE}" || true
                     '''
                 }
             }
         }
+
         stage('Start app with Docker Compose') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                set -e
-                docker compose -f "resources/${DOCKER_COMPOSE_FILE}" up -d --build
-                docker compose -f "resources/${DOCKER_COMPOSE_FILE}" ps
-                '''
+                        set -e
+                        docker compose -f "resources/${DOCKER_COMPOSE_FILE}" up -d --build
+                        docker compose -f "resources/${DOCKER_COMPOSE_FILE}" ps
+                    '''
                 }
             }
         }
+
         stage('Run Playwright Integration Tests') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                  set -e
-                  $MAVEN_HOME/mvn verify -pl sim-playwright \
-                  -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
-                  -Dheadless=true \
-                  -DignoreHttpsErrors=true \
-                  -DadminUsername=admin \
-                  -DadminPassword=admin \
-                  -DuserUsername=jonnytest \
-                  -DuserPassword=test1234
-                  '''
+                        set -e
+                        $MAVEN_HOME/mvn verify -pl sim-playwright \
+                        -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
+                        -Dheadless=true \
+                        -DignoreHttpsErrors=true \
+                        -DadminUsername=admin \
+                        -DadminPassword=admin \
+                        -DuserUsername=jonnytest \
+                        -DuserPassword=test1234
+                    '''
                 }
             }
         }
+
         stage('Publish Unit Test results') {
             steps {
                 xunit checksName: '', thresholds: [failed(failureNewThreshold: '200', failureThreshold: '200', unstableNewThreshold: '500', unstableThreshold: '500')], tools: [[$class: 'ParasoftType', deleteOutputFiles: true, failIfNotNew: true, pattern: '**/report/team/report.xml', skipNoTestFiles: false, stopProcessingIfError: true]]

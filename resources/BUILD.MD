@@ -48,7 +48,7 @@ mvn clean test-compile jtest:agent verify jtest:jtest -pl sim-core,sim-web,sim-a
 -Run OWASP
 
 ```bash
-mvn clean verify -pl sim-core,sim-web,sim-app -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DnvdApiKey=<API KEY>
+mvn org.owasp:dependency-check-maven:12.2.2:aggregate -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DnvdApiKey=<API KEY> -DdataDirectory=<DC_DB_DIRECTORY>
 ```
 
 - Purge OWASP:
