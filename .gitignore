@@ -8,6 +8,9 @@ sim-app/.settings/
 sim-core/.project
 sim-core/.classpath
 sim-core/.settings/
+sim-playwright/.project
+sim-playwright/.classpath
+sim-playwright/.settings/
 sim-web/.project
 sim-web/.classpath
 sim-web/.settings/

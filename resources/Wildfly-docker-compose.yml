@@ -15,7 +15,6 @@ services:
       '
     #ports:
     #  - 8080:8080
-    # Needs the command to start up the server.
     volumes:
       - ..\sim-app\target\chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war
     environment:
