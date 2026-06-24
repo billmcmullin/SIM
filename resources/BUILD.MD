@@ -2,11 +2,11 @@
 
 ## Build Information
 
-Requirements: Make sure a PosgreSQL DB is available with the "chat" Table created. Locate the SQL scripts in the  [resources/posgres](resources/posgres) directory to create these if needed. Docker is supported with this WAR file. 
+Requirements: Make sure a PostgreSQL DB is available with the "chat" Table created. Locate the SQL scripts in the  [resources/postgres](resources/postgres) directory to create these if needed. Docker is supported with this WAR file. 
 
 `NOTE: Make sure to have configured for Parasoft Jtest if you are using it. The instructions below assumes you have it configured for a Parasoft License already.`
 
-Current [Jenkin Pipeline flow](resources/SIM_Jenkins_Pipeline.groovy) execution summary:
+Current [Jenkin Pipeline flow](SIM_Jenkins_Pipeline.groovy) execution summary:
 
 1. **Checkout** – Pull the `release` branch from GitHub.  
 2. **Create Jtest properties** – Generate Parasoft config files for standard analysis and OWASP/A6 publishing.  
@@ -19,7 +19,9 @@ Current [Jenkin Pipeline flow](resources/SIM_Jenkins_Pipeline.groovy) execution 
 9. **Post actions** – Run success/failure notifications based on final build outcome.
 
 ## WAR File location
+
 After building the war file, it is located here:
+
 ```bash
 <PATH TO PROJECT>\SIM_JAVA\sim-app\target\chat-server.war
 ```

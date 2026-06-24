@@ -183,7 +183,8 @@
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                     <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
                     <a class="metric-link"
-                        href="${contextPath}/dashboard/term-review/select?term=Other%20Parasoft%20Match">Show all</a>
+                        href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match&mode=increaseOnly">Show
+                        all</a>
                 </div>
                 <div class="table-scroll">
                     <table class="widget-table other-parasoft-table">
@@ -347,8 +348,76 @@
         };
     </script>
 
+    <script>
+        (function () {
+            const banner = document.getElementById('widgetAvailabilityBanner');
+            if (!banner) return;
+
+            const endpoint = '${contextPath}/admin/widget-availability.json';
+
+            function showBanner(ok, text) {
+                banner.style.display = 'block';
+                banner.style.padding = '10px 12px';
+                banner.style.borderRadius = '6px';
+                banner.style.marginBottom = '12px';
+                banner.style.fontWeight = '600';
+
+                if (ok) {
+                    banner.style.background = '#ecfdf3';
+                    banner.style.border = '1px solid #a7f3d0';
+                    banner.style.color = '#065f46';
+                    banner.textContent = text || 'Chat Widget Service Available';
+                } else {
+                    banner.style.background = '#fef2f2';
+                    banner.style.border = '1px solid #fecaca';
+                    banner.style.color = '#991b1b';
+                    banner.textContent = text || 'Chat Widget Service Unavailable — responses may fail';
+                }
+            }
+
+            async function pollWidgetAvailability() {
+                try {
+                    const res = await fetch(endpoint, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                        headers: { 'Accept': 'application/json' }
+                    });
+
+                    if (res.status === 401) {
+                        banner.style.display = 'none';
+                        return;
+                    }
+
+                    const data = await res.json();
+                    const ok = !!data.available;
+                    const details = data && data.details ? ` (${data.details})` : '';
+
+                    showBanner(
+                        ok,
+                        ok
+                            ? 'Chat Widget Service Available'
+                            : 'Chat Widget Service Unavailable — responses may fail' + details
+                    );
+                } catch (e) {
+                    showBanner(false, 'Chat Widget Service Unavailable — status check failed');
+                }
+            }
+
+            pollWidgetAvailability();
+            setInterval(pollWidgetAvailability, 30000);
+        })();
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/core.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/metrics.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/termReview.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/charts.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/summary.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/sessions.js"></script>
+    <script src="${contextPath}/assets/js/dashboard_util/init.js"></script>
     <script src="${contextPath}/assets/js/dashboard.js"></script>
+
 </body>
 
 </html>

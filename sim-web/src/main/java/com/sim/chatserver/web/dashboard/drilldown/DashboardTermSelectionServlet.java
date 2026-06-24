@@ -145,7 +145,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 req.getContextPath() + "/dashboard"
         );
 
-        if (selectionId == null) {
+        if (selectionId == null || selectionId.isBlank()) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create term selection.");
             } else {

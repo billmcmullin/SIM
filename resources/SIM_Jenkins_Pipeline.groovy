@@ -24,9 +24,10 @@ pipeline {
         DOCKER_COMPOSE_FILE  = 'Wildfly-Jtest-docker-compose.yml'
         PLAYWRIGHT_BASE_URL  = 'http://wildflylocal:8080/chat-server'
 
-        // ---- Java selection for Maven----
+        // ---- Java selection ----
         JAVA_VERSION         = '24.0.2'
         JAVA_HOME            = "/home/jenkins/agent/jdk-${JAVA_VERSION}"
+        // JAVA_HOME         = "/opt/java/openjdk"
         PATH                 = "${JAVA_HOME}/bin:${env.PATH}"
     }
 
@@ -107,6 +108,76 @@ pipeline {
             }
         }
 
+        stage('Prepare and Run Integration Tests') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh '''
+                        set -e
+                        DEST_DIR="${SHARED_DIR}"
+                        MONITOR_DIR="${WORKSPACE}/sim-core/target/jtest/monitor"
+                        MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
+                        AGENT_FILE="${SHARED_DIR}/monitor/agent.properties"
+
+                        mkdir -p "${DEST_DIR}"
+
+                        if [ -f "${MONITOR_ZIP}" ]; then
+                            echo "Found monitor.zip: ${MONITOR_ZIP}"
+                            unzip -o "${MONITOR_ZIP}" -d "${DEST_DIR}"
+                        else
+                            echo "WARNING: monitor.zip not found at ${MONITOR_ZIP}"
+                        fi
+
+                        if [ ! -f "${AGENT_FILE}" ]; then
+                            echo "WARNING: ${AGENT_FILE} not found. Skipping update."
+                            exit 0
+                        fi
+
+                        if grep -q '^jtest\\.agent\\.enableMultiuserCoverage=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.enableMultiuserCoverage=.*/jtest.agent.enableMultiuserCoverage=true/' "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
+                        fi
+
+                        if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
+                        fi
+
+                        if grep -q '^jtest\\.agent\\.jbossCompatibilityMode=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\agent\\.jbossCompatibilityMode=.*/jtest.agent.jbossCompatibilityMode=true/'  "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.jbossCompatibilityMode=true' >> "${AGENT_FILE}"
+                        fi
+
+                        if grep -q '^jtest\\.agent\\.restServerEnabled=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\agent\\.restServerEnabled=.*/jtest.agent.restServerEnabled=true/'  "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.restServerEnabled=true' >> "${AGENT_FILE}"
+                        fi
+
+                        echo "Updated ${AGENT_FILE}:"
+                        grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode)=' "${AGENT_FILE}" || true
+
+                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
+                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
+
+                        $MAVEN_HOME/mvn verify -pl sim-playwright \
+                            -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
+                            -Dheadless=true \
+                            -DignoreHttpsErrors=true \
+                            -DadminUsername=admin \
+                            -DadminPassword=admin \
+                            -DuserUsername=jonnytest \
+                            -DuserPassword=test1234 \
+                            -Dexec.args="install --with-deps chromium" \
+                            -Dmaven.test.failure.ignore=true \
+                            -Dmaven.test.error.ignore=true \
+                            -Dexec.mainClass=com.microsoft.playwright.CLI
+                    '''
+                }
+            }
+        }
         stage('Run Maven OWASP for A6') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
@@ -147,65 +218,6 @@ pipeline {
 
                         echo "ESLint exit code: ${ESLINT_EXIT}"
                         exit 0
-                    '''
-                }
-            }
-        }
-
-        stage('Prepare and Run Integration Tests') {
-            steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh '''
-                        set -e
-                        DEST_DIR="${SHARED_DIR}"
-                        MONITOR_DIR="${WORKSPACE}/target/jtest/monitor"
-                        MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
-                        AGENT_FILE="${SHARED_DIR}/monitor/agent.properties"
-
-                        mkdir -p "${DEST_DIR}"
-
-                        if [ -f "${MONITOR_ZIP}" ]; then
-                            echo "Found monitor.zip: ${MONITOR_ZIP}"
-                            unzip -o "${MONITOR_ZIP}" -d "${DEST_DIR}"
-                        else
-                            echo "WARNING: monitor.zip not found at ${MONITOR_ZIP}"
-                        fi
-
-                        if [ ! -f "${AGENT_FILE}" ]; then
-                            echo "WARNING: ${AGENT_FILE} not found. Skipping update."
-                            exit 0
-                        fi
-
-                        if grep -q '^jtest\\.agent\\.enableMultiuserCoverage=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\.agent\\.enableMultiuserCoverage=.*/jtest.agent.enableMultiuserCoverage=true/' "${AGENT_FILE}"
-                        else
-                            echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
-                        fi
-
-                        if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
-                        else
-                            echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
-                        fi
-
-                        echo "Updated ${AGENT_FILE}:"
-                        grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart)=' "${AGENT_FILE}" || true
-
-                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
-                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
-
-                        $MAVEN_HOME/mvn verify -pl sim-playwright \
-                            -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
-                            -Dheadless=true \
-                            -DignoreHttpsErrors=true \
-                            -DadminUsername=admin \
-                            -DadminPassword=admin \
-                            -DuserUsername=jonnytest \
-                            -DuserPassword=test1234 \
-                            -Dexec.args="install --with-deps chromium" \
-                            -Dmaven.test.failure.ignore=true \
-                            -Dmaven.test.error.ignore=true \
-                            -Dexec.mainClass=com.microsoft.playwright.CLI
                     '''
                 }
             }
@@ -261,6 +273,7 @@ pipeline {
                                 localSettingsPath: "${WORKSPACE}/jtest_${JOB_NAME}.properties"
                             )
                         ]
+
                     )
                 }
             }

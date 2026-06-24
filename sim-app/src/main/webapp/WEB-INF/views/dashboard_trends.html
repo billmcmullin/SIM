@@ -35,13 +35,27 @@
             <h1>Entry Trends</h1>
             <p>Entries per day across all widget tables.</p>
 
-            <div class="trend-period-row">
-                <label for="trendDaysSelect">Period</label>
-                <select id="trendDaysSelect">
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                    <option value="90">Last 90 days</option>
-                </select>
+            <div class="trend-period-row" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <div>
+                    <label for="trendDaysSelect">Period</label>
+                    <select id="trendDaysSelect">
+                        <option value="10">Last 10 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                        <option value="120">Last 120 days</option>
+                        <option value="180">Last 180 days</option>
+                    </select>
+                </div>
+
+                <div>
+                    <div style="font-size:12px; opacity:0.8;">Average Posts / Day</div>
+                    <div id="avgPostsPerDay" style="font-size:22px; font-weight:700;">0.00</div>
+                </div>
+
+                <div>
+                    <div style="font-size:12px; opacity:0.8;">Total Posts</div>
+                    <div id="totalPosts" style="font-size:22px; font-weight:700;">0</div>
+                </div>
             </div>
         </section>
 

@@ -19,3 +19,29 @@ CREATE TABLE IF NOT EXISTS widget_entries (
     display_name VARCHAR(256) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- setup EMAIL SMTP table --
+CREATE TABLE IF NOT EXISTS email_smtp_config (
+  id INT PRIMARY KEY,
+  host VARCHAR(255) NOT NULL,
+  port INT NOT NULL,
+  auth BOOLEAN NOT NULL,
+  starttls BOOLEAN NOT NULL,
+  ssl BOOLEAN NOT NULL,
+  username VARCHAR(255),
+  password_enc TEXT,
+  default_from VARCHAR(255),
+  updated_by VARCHAR(100),
+  updated_at TIMESTAMP NOT NULL
+);
+-- setup Healthcheck --
+CREATE TABLE IF NOT EXISTS widget_health_config (
+  id INT PRIMARY KEY,
+  healthcheck_url TEXT NOT NULL,
+  method VARCHAR(10) NOT NULL DEFAULT 'GET',
+  timeout_ms INT NOT NULL DEFAULT 8000,
+  expect_json_field VARCHAR(100),
+  expect_json_value VARCHAR(255),
+  widget_id VARCHAR(255),
+  updated_by VARCHAR(100),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

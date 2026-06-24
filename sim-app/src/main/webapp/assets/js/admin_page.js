@@ -79,7 +79,8 @@
         safeInit('Workspace', () => window.AdminPage.Workspace?.init(window.AdminPage.Config));
         safeInit('Salesforce', () => window.AdminPage.Salesforce?.init(window.AdminPage.Config));
         safeInit('DbImport', () => window.AdminPage.DbImport?.init({ contextPath }));
-
+        safeInit('Email', () => window.AdminPage.Email?.init(contextPath));
+        
         // Page actions
         document.getElementById('testConnectionBtn')?.addEventListener('click', testConnection);
         document.getElementById('saveConfigBtn')?.addEventListener('click', saveConfiguration);
