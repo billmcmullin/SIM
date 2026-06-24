@@ -18,7 +18,7 @@ Inteded to read the Chat Server's messages and provide reported analysis on them
   - `AdminSettings`
   - `Playwright Tests`
 - Contains SQL scripts for initializing the Database and Default admin user
-  - See [resources/posgres](resources/posgres) directory for scripts
+  - See [resources/postgres](resources/postgres) directory for scripts
 
 ## Build & Deploy
 

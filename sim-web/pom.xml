@@ -59,6 +59,12 @@
             <version>${openpdf.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.sim.chatserver</groupId>
+            <artifactId>sim-email</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

@@ -73,5 +73,22 @@
         <url-pattern>/admin/db/import</url-pattern>
     </servlet-mapping>
 
+    <servlet>
+        <servlet-name>WidgetAvailabilityServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.WidgetAvailabilityServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>WidgetAvailabilityServlet</servlet-name>
+        <url-pattern>/admin/widget-availability.json</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>WidgetHealthConfigServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.WidgetHealthConfigServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>WidgetHealthConfigServlet</servlet-name>
+        <url-pattern>/admin/widget-health-config</url-pattern>
+    </servlet-mapping>
 
 </web-app>

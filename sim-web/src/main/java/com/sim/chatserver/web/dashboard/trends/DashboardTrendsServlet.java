@@ -130,21 +130,33 @@ public class DashboardTrendsServlet extends HttpServlet {
             String widgetId = widgetNameToId.getOrDefault(widgetName, widgetName);
 
             JsonArrayBuilder widgetValues = Json.createArrayBuilder();
+            int widgetTotal = 0;
             for (LocalDate d : totalDaily.keySet()) {
-                widgetValues.add(entry.getValue().getOrDefault(d, 0));
+                int count = entry.getValue().getOrDefault(d, 0);
+                widgetValues.add(count);
+                widgetTotal += count;
             }
+
+            double widgetAverage = days > 0 ? (double) widgetTotal / days : 0.0;
 
             widgetSeries.add(Json.createObjectBuilder()
                     .add("name", widgetName)
                     .add("widgetId", widgetId)
-                    .add("values", widgetValues));
+                    .add("values", widgetValues)
+                    .add("total", widgetTotal)
+                    .add("avgPerDay", widgetAverage));
         }
+
+        int grandTotal = totalDaily.values().stream().mapToInt(Integer::intValue).sum();
+        double averagePostsPerDay = days > 0 ? (double) grandTotal / days : 0.0;
 
         JsonObject trendData = Json.createObjectBuilder()
                 .add("labels", labels)
                 .add("values", values)
                 .add("widgetSeries", widgetSeries)
                 .add("days", days)
+                .add("totalPosts", grandTotal)
+                .add("averagePostsPerDay", averagePostsPerDay)
                 .build();
 
         String template = loadTemplate(req, TEMPLATE_PATH);
@@ -167,7 +179,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
         try {
             int d = Integer.parseInt(raw.trim());
-            return (d == 7 || d == 30 || d == 90) ? d : 30;
+            return (d == 10 || d == 30 || d == 90 || d == 120 || d == 180) ? d : 30;
         } catch (Exception e) {
             return 30;
         }

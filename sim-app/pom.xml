@@ -52,6 +52,12 @@
             <version>${jakarta.annotation.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>com.sim.chatserver</groupId>
+            <artifactId>sim-email</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
     </dependencies>
 
     <build>

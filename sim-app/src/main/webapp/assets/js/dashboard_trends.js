@@ -8,7 +8,7 @@
         try {
             trendData = JSON.parse(trendData);
         } catch (e) {
-            trendData = { labels: [], values: [], widgetSeries: [] };
+            trendData = { labels: [], values: [], widgetSeries: [], averagePostsPerDay: 0, totalPosts: 0 };
         }
     }
 
@@ -17,6 +17,8 @@
     const labels = Array.isArray(trendData.labels) ? trendData.labels : [];
     const totalValues = Array.isArray(trendData.values) ? trendData.values : [];
     const widgetSeries = Array.isArray(trendData.widgetSeries) ? trendData.widgetSeries : [];
+    const averagePostsPerDay = Number(trendData.averagePostsPerDay || 0);
+    const totalPosts = Number(trendData.totalPosts || 0);
 
     const palette = ['#1d4ed8', '#047857', '#c0392b', '#d97706', '#0f172a', '#6366f1', '#af7b1b', '#0ea5e9'];
 
@@ -27,6 +29,17 @@
             const days = daySelect.value || '30';
             window.location.href = `${contextPath}/dashboard/trends?days=${encodeURIComponent(days)}`;
         });
+    }
+
+    // Summary stats
+    const avgEl = document.getElementById('avgPostsPerDay');
+    if (avgEl) {
+        avgEl.textContent = Number.isFinite(averagePostsPerDay) ? averagePostsPerDay.toFixed(2) : '0.00';
+    }
+
+    const totalEl = document.getElementById('totalPosts');
+    if (totalEl) {
+        totalEl.textContent = Number.isFinite(totalPosts) ? String(totalPosts) : '0';
     }
 
     async function openReviewForDay(dayLabel, widgetId) {
@@ -97,7 +110,7 @@
                     pointHoverRadius: 5
                 }]
             },
-            options: trendChartOptions(null) // total chart => all widgets on selected date
+            options: trendChartOptions(null)
         });
     }
 
@@ -115,7 +128,10 @@
         card.style.marginTop = '20px';
 
         const title = document.createElement('h3');
-        title.textContent = `${series.name || `Widget ${index + 1}`} — Entries per day`;
+        const name = series.name || `Widget ${index + 1}`;
+        const widgetAvg = Number(series.avgPerDay || 0);
+        const widgetTotal = Number(series.total || 0);
+        title.textContent = `${name} — Entries per day (Avg: ${widgetAvg.toFixed(2)}, Total: ${widgetTotal})`;
         title.style.marginTop = '0';
         card.appendChild(title);
 
@@ -134,7 +150,7 @@
             data: {
                 labels,
                 datasets: [{
-                    label: series.name || `Widget ${index + 1}`,
+                    label: name,
                     data: Array.isArray(series.values) ? series.values : [],
                     borderColor: palette[index % palette.length],
                     backgroundColor: 'rgba(99, 102, 241, 0.10)',
@@ -145,7 +161,7 @@
                     pointHoverRadius: 5
                 }]
             },
-            options: trendChartOptions(series.widgetId || null) // widget chart => only that widget/date
+            options: trendChartOptions(series.widgetId || null)
         });
     });
 })();

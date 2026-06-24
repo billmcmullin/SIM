@@ -2,20 +2,18 @@ services:
   wildfly:
     #Wildfly server instance for the Jtest Coverage agent
     image: quay.io/wildfly/wildfly:latest
-    #image: quay.io/wildfly/wildfly:26.1.2.Final-jdk17
-    hostname: wildflylocal
-    container_name: wildflyLocal
+    hostname: chatserver
+    container_name: chatserver
     user: root
     command: >
       bash -lc '
         microdnf install -y tzdata &&
         ln -snf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime &&
         echo America/Los_Angeles > /etc/timezone || true;
-        su -s /bin/bash jboss -c "/opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0"
+        su -s /bin/bash jboss -c "/opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0 -Dapp.session.cookie.name=JSESSIONID_CHAT"
       '
-    #ports:
-    #  - 8080:8080
-    # Needs the command to start up the server.
+    ports:
+      - 8080:8080
     volumes:
       - type: volume
         source: shared_volume
@@ -30,7 +28,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: root
       SIM_TRANSLATE_URL: http://libretranslate:5000/translate
+      # Generic Key, made by randomkeygen.com
       CONFIG_ENCRYPTION_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
+      SIM_EMAIL_CRYPTO_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
       TZ: America/Los_Angeles
     networks:
       - dtp-net

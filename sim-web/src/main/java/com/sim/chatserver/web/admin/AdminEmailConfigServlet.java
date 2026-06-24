@@ -1,0 +1,299 @@
+package com.sim.chatserver.web.admin;
+
+import com.sim.chatserver.email.DbEmailConfigProvider;
+import com.sim.chatserver.email.EmailConfig;
+import com.sim.chatserver.email.EmailConfigResolver;
+import com.sim.chatserver.email.EmailFactory;
+import com.sim.chatserver.email.EmailMessage;
+import com.sim.chatserver.email.EmailService;
+import com.sim.chatserver.email.ResolvedEmailConfig;
+
+import jakarta.inject.Inject;
+import jakarta.json.Json;
+import jakarta.json.JsonException;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonReader;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+
+import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
+
+@WebServlet(name = "AdminEmailConfigServlet", urlPatterns = {"/admin/email/config"})
+public class AdminEmailConfigServlet extends HttpServlet {
+
+    private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getName());
+
+    @Inject
+    DbEmailConfigProvider dbProvider;
+
+    private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (!isAdmin(req, resp)) {
+            return;
+        }
+
+        EmailConfigResolver resolver = new EmailConfigResolver(dbProvider);
+        ResolvedEmailConfig resolved = resolver.resolve();
+
+        EmailConfig effective = resolved.config();
+
+        JsonObjectBuilder effectiveJson = Json.createObjectBuilder()
+                .add("source", safe(resolved.source() == null ? "NONE" : resolved.source().name()))
+                .add("valid", resolved.valid())
+                .add("message", safe(resolved.message()));
+
+        if (effective != null) {
+            effectiveJson
+                    .add("host", safe(effective.host()))
+                    .add("port", effective.port())
+                    .add("auth", effective.auth())
+                    .add("starttls", effective.startTls())
+                    .add("ssl", effective.ssl())
+                    .add("username", safe(effective.username()))
+                    // IMPORTANT: never return password or password_enc
+                    .add("passwordConfigured", hasText(effective.password()))
+                    .add("defaultFrom", safe(effective.defaultFrom()));
+        }
+
+        boolean dbConfigured = false;
+        try {
+            EmailConfig db = dbProvider == null ? null : dbProvider.load();
+            dbConfigured = db != null && hasText(db.host()) && db.port() > 0;
+        } catch (Exception e) {
+            log.log(Level.WARNING, "Failed checking DB SMTP config", e);
+        }
+
+        JsonObject response = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("effective", effectiveJson)
+                .add("dbConfigured", dbConfigured)
+                .build();
+
+        writeJson(resp, HttpServletResponse.SC_OK, response);
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (!isAdmin(req, resp)) {
+            return;
+        }
+
+        JsonObject payload;
+        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+            payload = reader.readObject();
+        } catch (JsonException | IOException e) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            return;
+        }
+
+        String action = payload.getString("action", "save").trim().toLowerCase();
+        if ("test".equals(action)) {
+            handleTest(payload, resp);
+            return;
+        }
+
+        handleSave(req, payload, resp);
+    }
+
+    private void handleSave(HttpServletRequest req, JsonObject payload, HttpServletResponse resp) throws IOException {
+        if (dbProvider == null) {
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "DB SMTP provider is not available.");
+            return;
+        }
+
+        String host = payload.getString("host", "").trim();
+        int port = payload.getInt("port", -1);
+        boolean auth = payload.getBoolean("auth", false);
+        boolean starttls = payload.getBoolean("starttls", false);
+        boolean ssl = payload.getBoolean("ssl", false);
+        String username = payload.getString("username", "").trim();
+        String password = payload.getString("password", "");
+        String defaultFrom = payload.getString("defaultFrom", "").trim();
+
+        if (!hasText(host) || port < 1 || port > 65535) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "host and valid port are required.");
+            return;
+        }
+
+        if (hasText(defaultFrom) && !isValidEmail(defaultFrom)) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
+            return;
+        }
+
+        String finalPassword = password;
+        if (!hasText(finalPassword)) {
+            EmailConfig existing = null;
+            try {
+                existing = dbProvider.load();
+            } catch (Exception e) {
+                log.log(Level.WARNING, "Unable to load existing SMTP config for password retention", e);
+            }
+            finalPassword = existing == null ? "" : safe(existing.password());
+        }
+
+        EmailConfig config = new EmailConfig(
+                host, port, auth, starttls, ssl, username, finalPassword, defaultFrom
+        );
+
+        String updatedBy = getUser(req);
+
+        try {
+            // IMPORTANT: Do not log plaintext password
+            log.info("Saving SMTP config: host=" + host
+                    + ", port=" + port
+                    + ", auth=" + auth
+                    + ", starttls=" + starttls
+                    + ", ssl=" + ssl
+                    + ", username=" + username
+                    + ", password=" + redact(finalPassword)
+                    + ", defaultFrom=" + defaultFrom
+                    + ", updatedBy=" + updatedBy);
+
+            dbProvider.save(config, updatedBy);
+
+            JsonObject response = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("message", "SMTP configuration saved.")
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_OK, response);
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "Failed to save SMTP configuration", e);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to save SMTP configuration.");
+        }
+    }
+
+    private void handleTest(JsonObject payload, HttpServletResponse resp) throws IOException {
+        try {
+            EmailConfig cfg;
+
+            if (hasText(payload.getString("host", ""))) {
+                String host = payload.getString("host", "").trim();
+                int port = payload.getInt("port", -1);
+                boolean auth = payload.getBoolean("auth", false);
+                boolean starttls = payload.getBoolean("starttls", false);
+                boolean ssl = payload.getBoolean("ssl", false);
+                String username = payload.getString("username", "").trim();
+                String password = payload.getString("password", "");
+                String defaultFrom = payload.getString("defaultFrom", "").trim();
+
+                if (!hasText(host) || port < 1 || port > 65535) {
+                    writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "host and valid port are required for test.");
+                    return;
+                }
+
+                if (hasText(defaultFrom) && !isValidEmail(defaultFrom)) {
+                    writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
+                    return;
+                }
+
+                cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);
+            } else {
+                EmailConfigResolver resolver = new EmailConfigResolver(dbProvider);
+                ResolvedEmailConfig resolved = resolver.resolve();
+                if (!resolved.valid() || resolved.config() == null) {
+                    writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid effective SMTP config to test.");
+                    return;
+                }
+                cfg = resolved.config();
+            }
+
+            String testTo = payload.getString("testTo", "").trim();
+            if (!hasText(testTo) || !isValidEmail(testTo)) {
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "A valid testTo email is required.");
+                return;
+            }
+
+            String from = payload.getString("from", "").trim();
+            if (!hasText(from)) {
+                from = safe(cfg.defaultFrom());
+            }
+            if (!hasText(from) || !isValidEmail(from)) {
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "A valid from/defaultFrom email is required.");
+                return;
+            }
+
+            EmailService service = EmailFactory.smtp(cfg);
+
+            EmailMessage message = EmailMessage.builder()
+                    .from(from)
+                    .to(testTo)
+                    .subject("SIM SMTP Test Email")
+                    .textBody("This is a test email from SIM Admin SMTP configuration.")
+                    .build();
+
+            service.send(message);
+
+            JsonObject response = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("message", "SMTP test email sent.")
+                    .build();
+
+            writeJson(resp, HttpServletResponse.SC_OK, response);
+        } catch (Exception e) {
+            log.log(Level.SEVERE, "SMTP test failed", e);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "SMTP test failed.");
+        }
+    }
+
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        HttpSession session = req.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            return false;
+        }
+        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
+        if (!"ADMIN".equalsIgnoreCase(role)) {
+            writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+            return false;
+        }
+        return true;
+    }
+
+    private String getUser(HttpServletRequest req) {
+        HttpSession session = req.getSession(false);
+        if (session == null) {
+            return "UNKNOWN";
+        }
+        Object user = session.getAttribute("user");
+        return user == null ? "UNKNOWN" : user.toString();
+    }
+
+    private boolean hasText(String s) {
+        return s != null && !s.trim().isEmpty();
+    }
+
+    private boolean isValidEmail(String s) {
+        return s != null && EMAIL_RX.matcher(s.trim()).matches();
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s;
+    }
+
+    private String redact(String v) {
+        return (v == null || v.isBlank()) ? "" : "****";
+    }
+
+    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+        JsonObject obj = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", safe(message))
+                .build();
+        writeJson(resp, status, obj);
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject obj) throws IOException {
+        resp.setStatus(status);
+        resp.setContentType("application/json");
+        resp.getWriter().write(obj.toString());
+    }
+}
