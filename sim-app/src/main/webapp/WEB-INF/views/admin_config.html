@@ -60,7 +60,7 @@
                 </div>
 
                 <button type="button" id="testWidgetHealthConfigBtn">Test Now</button>
-
+                
                 <div class="form-group">
                     <label for="whcTimeoutMs">Timeout (ms)</label>
                     <input type="number" id="whcTimeoutMs" min="1" max="120000" step="1" placeholder="8000" required>
@@ -81,17 +81,16 @@
                     <input type="text" id="whcWidgetId" placeholder="specific-widget-id">
                 </div>
 
-                <!-- NEW: Request shaping fields for POST synthetic checks -->
+                <!-- Added fields for request-shaping -->
                 <div class="form-group">
                     <label for="whcRequestOrigin">Request Origin (optional)</label>
                     <input type="text" id="whcRequestOrigin" placeholder="https://heavyarms">
-                    <div class="small-note">Set this if upstream requires Origin to match host.</div>
                 </div>
 
                 <div class="form-group">
                     <label for="whcRequestReferer">Request Referer (optional)</label>
-                    <input type="text" id="whcRequestReferer" placeholder="https://heavyarms/dtp/...">
-                    <div class="small-note">Set this if upstream/proxy enforces referer checks.</div>
+                    <input type="text" id="whcRequestReferer"
+                        placeholder="https://heavyarms/dtp/grs/widget/internal/customHTMLWidget.jsp?...">
                 </div>
 
                 <div class="form-group">
@@ -100,9 +99,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="whcRequestCookie">Request Cookie (optional, use only if required)</label>
+                    <label for="whcRequestCookie">Request Cookie (optional)</label>
                     <input type="text" id="whcRequestCookie" placeholder="SESSION=...; XSRF-TOKEN=...">
-                    <div class="small-note">Avoid unless required; session cookies can expire.</div>
                 </div>
 
                 <div class="actions">
@@ -163,6 +161,7 @@
             </div>
         </section>
 
+
         <section class="section">
             <h2>Server Configuration</h2>
             <form id="serverConfigForm">
@@ -192,9 +191,349 @@
             </form>
         </section>
 
-        <!-- (rest of file unchanged) -->
-        <!-- Keeping all remaining sections/scripts exactly as before -->
+        <section class="section">
+            <h2>Salesforce Configuration</h2>
+            <form id="salesforceConfigForm">
+                <div class="form-group">
+                    <label for="salesforceInstanceUrl">Salesforce Instance URL</label>
+                    <input type="text" id="salesforceInstanceUrl" name="salesforceInstanceUrl"
+                        placeholder="https://yourInstance.my.salesforce.com" value="${salesforceInstanceUrl}">
+                </div>
 
+                <div class="form-group">
+                    <label for="salesforceApiKey">Salesforce API Key / Access Token</label>
+                    <input type="password" id="salesforceApiKey" name="salesforceApiKey"
+                        placeholder="Enter token to set or replace">
+                    <div class="small-note">
+                        <span id="salesforceApiKeyStoredNote" style="display:none;">
+                            A Salesforce API key is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceLoginUrl">Salesforce Login URL</label>
+                    <input type="text" id="salesforceLoginUrl" name="salesforceLoginUrl"
+                        placeholder="https://login.salesforce.com or https://test.salesforce.com"
+                        value="${salesforceLoginUrl}">
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceClientId">Salesforce Client ID</label>
+                    <input type="text" id="salesforceClientId" name="salesforceClientId"
+                        placeholder="Connected App Consumer Key" value="${salesforceClientId}">
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceClientSecret">Salesforce Client Secret</label>
+                    <input type="password" id="salesforceClientSecret" name="salesforceClientSecret"
+                        placeholder="Enter Salesforce Connected App client secret">
+                    <div class="small-note">
+                        <span id="salesforceClientSecretStoredNote" style="display:none;">
+                            A client secret is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceRefreshToken">Salesforce Refresh Token</label>
+                    <input type="password" id="salesforceRefreshToken" name="salesforceRefreshToken"
+                        placeholder="Enter refresh token to set or replace">
+                    <div class="small-note">
+                        <span id="salesforceRefreshTokenStoredNote" style="display:none;">
+                            A refresh token is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="button" id="testSalesforceConnectionBtn">Test Salesforce Connection</button>
+                    <button type="button" id="saveSalesforceConfigBtn">Save Salesforce Configuration</button>
+                    <button type="button" id="connectSalesforceOAuthBtn">Connect Salesforce (OAuth)</button>
+                </div>
+                <div id="salesforceTestResult" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+            </form>
+        </section>
+
+        <section class="section">
+            <h2>Workspace Management</h2>
+            <form id="workspaceForm">
+                <div class="form-group">
+                    <label for="workspaceNameInput">Workspace Name</label>
+                    <input type="text" id="workspaceNameInput" name="workspaceName"
+                        placeholder="e.g. North America Support" value="${workspaceName}">
+                </div>
+                <div class="actions">
+                    <button type="button" id="saveWorkspaceBtn">Save Workspace Name</button>
+                </div>
+                <div id="workspaceMessage" class="widget-message"></div>
+            </form>
+        </section>
+
+        <section class="section widget-section">
+            <h2>Widget Registry</h2>
+            <div class="search-row">
+                <input type="text" id="widgetSearch" placeholder="Search widget ID or name">
+                <button type="button" id="searchWidgetsBtn">Search</button>
+                <button type="button" id="clearWidgetSearchBtn">Clear</button>
+            </div>
+            <div class="widget-controls">
+                <div>
+                    <label for="widgetIdInput">Widget ID</label>
+                    <input type="text" id="widgetIdInput" placeholder="Enter widget identifier">
+                </div>
+                <div>
+                    <label for="widgetNameInput">Widget Name</label>
+                    <input type="text" id="widgetNameInput" placeholder="Friendly name">
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button type="button" id="saveWidgetEntryBtn" style="width:100%;">Save Widget</button>
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button type="button" id="clearWidgetFormBtn" style="width:100%;">Clear Form</button>
+                </div>
+            </div>
+            <div id="widgetMessage" class="widget-message" style="color:#047857;"></div>
+            <div style="overflow-x:auto;">
+                <table class="widget-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="widgetSelectAll"></th>
+                            <th>Widget ID</th>
+                            <th>Name</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetTableBody">
+                        <tr>
+                            <td colspan="4" class="empty-row">Loading widget entries…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="actions">
+                <button type="button" id="deleteSelectedWidgetsBtn">Delete Selected</button>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Widget Table Explorer</h2>
+            <p>This section lists every widget ID from the registry, ensures their tables exist, and syncs embedded
+                chat content.</p>
+            <div class="actions">
+                <button type="button" id="syncWidgetTablesBtn">Sync Widget Tables</button>
+            </div>
+            <div class="automated-sync">
+                <h3>Automatic Sync Timer</h3>
+                <div class="form-group">
+                    <label for="syncInterval">Sync Interval (minutes)</label>
+                    <input type="number" id="syncInterval" min="1" placeholder="Enter interval">
+                </div>
+                <div class="actions">
+                    <button type="button" id="saveSyncIntervalBtn">Save Interval</button>
+                </div>
+                <div id="syncIntervalMessage" class="widget-message" style="color:#047857; margin-top:8px;"></div>
+            </div>
+            <div id="widgetTableExplorerMessage" class="widget-message" style="color:#047857;"></div>
+            <div style="overflow-x:auto;">
+                <table class="widget-table" id="widgetTableExplorerTable">
+                    <thead>
+                        <tr>
+                            <th>Widget ID</th>
+                            <th>Table Status</th>
+                            <th>Sync Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="widgetTableExplorerBody">
+                        <tr>
+                            <td colspan="4" class="empty-row">Widget IDs will appear here once the registry loads.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="section terms-section">
+            <h2>Term Definitions</h2>
+            <p>Define how prompts/responses should match saved terms. You can specify a regex or a wildcard pattern.</p>
+
+            <form id="termCreateForm">
+                <input type="hidden" id="termId">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="termName">Term Name</label>
+                        <input type="text" id="termName" name="name" placeholder="Term name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="termDescription">Description</label>
+                        <input type="text" id="termDescription" name="description" placeholder="What it matches"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="termPattern">Match Pattern</label>
+                        <input type="text" id="termPattern" name="matchPattern" placeholder="Regex or wildcard pattern">
+                    </div>
+                    <div class="form-group">
+                        <label for="termType">Match Type</label>
+                        <select id="termType" name="matchType">
+                            <option value="WILDCARD">Wildcard</option>
+                            <option value="REGEX">Regular Expression</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit" id="saveTermBtn">Save Term</button>
+                    <button type="button" id="cancelTermEditBtn" style="display:none;">Cancel</button>
+                </div>
+            </form>
+
+            <div class="terms-csv-controls" aria-hidden="false">
+                <button type="button" id="exportTermsBtn">Export terms (CSV)</button>
+
+                <form id="termsImportForm" action="/admin/terms/import" method="post" enctype="multipart/form-data">
+                    <input id="termsCsvFile" name="file" type="file" accept=".csv,text/csv" style="display:none;">
+                    <button id="importTermsBtn" type="button">Import Terms CSV</button>
+                </form>
+
+                <div class="csv-hint small-note" style="display:inline-block; margin-left:12px;">
+                    CSV columns: name,description,match_pattern,match_type,system_flag
+                </div>
+            </div>
+
+            <div id="termMessage" class="widget-message"></div>
+
+            <div style="overflow-x:auto;">
+                <table class="widget-table" id="termTable">
+                    <thead>
+                        <tr>
+                            <th>Term</th>
+                            <th>Description</th>
+                            <th>Pattern</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="termTableBody">
+                        <tr>
+                            <td colspan="5" class="empty-row">Loading terms…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="section user-section">
+            <h2>Create User</h2>
+            <p>Only admins may create new admin or regular users. Choose the role below.</p>
+            <form id="userCreateForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="newUsername">Username</label>
+                        <input type="text" id="newUsername" name="username" placeholder="Enter username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword">Password</label>
+                        <input type="password" id="newPassword" name="password" placeholder="Enter password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="roleSelect">Role</label>
+                        <select id="roleSelect" name="role">
+                            <option value="USER" selected>USER</option>
+                            <option value="ADMIN">ADMIN</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button type="submit">Create User</button>
+                </div>
+                <div id="userResult" class="result" style="color:#047857;"></div>
+            </form>
+            <div class="user-list">
+                <h3>Existing Users</h3>
+                <div style="overflow-x:auto;">
+                    <table class="widget-table" id="userTable">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <tr>
+                                <td colspan="3" class="empty-row">Loading users…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>SMTP Configuration</h2>
+            <p>Priority: ENV → properties file → database.</p>
+            <div class="small-note">Effective source: <strong id="smtpEffectiveSource">UNKNOWN</strong></div>
+
+            <form id="smtpConfigForm" onsubmit="return false;">
+                <div class="form-group"><label for="smtpHost">SMTP Host</label><input type="text" id="smtpHost"
+                        required></div>
+                <div class="form-group"><label for="smtpPort">SMTP Port</label><input type="number" id="smtpPort"
+                        min="1" max="65535" required></div>
+                <div class="form-group"><label for="smtpUsername">Username</label><input type="text" id="smtpUsername">
+                </div>
+                <div class="form-group">
+                    <label for="smtpPassword">Password</label>
+                    <input type="password" id="smtpPassword"
+                        placeholder="Leave blank to keep existing DB password on save">
+                    <div class="small-note"><span id="smtpPasswordStoredNote" style="display:none;">A password is
+                            already configured.</span></div>
+                </div>
+                <div class="form-group"><label for="smtpFrom">Default From</label><input type="text" id="smtpFrom">
+                </div>
+
+                <div class="form-group">
+                    <label><input type="checkbox" id="smtpAuth"> Auth</label>
+                    <label style="margin-left:12px;"><input type="checkbox" id="smtpStartTls"> StartTLS</label>
+                    <label style="margin-left:12px;"><input type="checkbox" id="smtpSsl"> SSL</label>
+                </div>
+
+                <h3>SMTP Test</h3>
+                <div class="form-group"><label for="smtpTestTo">Test To</label><input type="text" id="smtpTestTo"
+                        placeholder="recipient@example.com"></div>
+                <div class="form-group"><label for="smtpTestFrom">Test From (optional)</label><input type="text"
+                        id="smtpTestFrom" placeholder="Uses defaultFrom if blank"></div>
+
+                <div class="actions">
+                    <button type="button" id="loadSmtpConfigBtn">Reload Effective Config</button>
+                    <button type="button" id="saveSmtpConfigBtn">Save SMTP Config (DB)</button>
+                    <button type="button" id="testSmtpConfigBtn">Send SMTP Test</button>
+                </div>
+
+                <div id="smtpConfigResult" class="widget-message"></div>
+                <div id="smtpTestResult" class="widget-message"></div>
+            </form>
+        </section>
+
+        <section class="section">
+            <h2>Manual Email (Admin)</h2>
+            <form id="adminEmailForm">
+                <div class="form-group"><label>From (optional)</label><input type="text" id="emailFrom"></div>
+                <div class="form-group"><label>To (comma-separated)</label><input type="text" id="emailTo" required>
+                </div>
+                <div class="form-group"><label>CC (comma-separated)</label><input type="text" id="emailCc"></div>
+                <div class="form-group"><label>BCC (comma-separated)</label><input type="text" id="emailBcc"></div>
+                <div class="form-group"><label>Subject</label><input type="text" id="emailSubject" required></div>
+                <div class="form-group"><label>Text Body</label><textarea id="emailTextBody"></textarea></div>
+                <div class="form-group"><label>HTML Body</label><textarea id="emailHtmlBody"></textarea></div>
+                <div class="form-group"><label>Markdown Body</label><textarea id="emailMarkdownBody"></textarea></div>
+                <div class="actions"><button type="button" id="sendAdminEmailBtn">Send Email</button></div>
+                <div id="adminEmailResult" class="widget-message"></div>
+            </form>
+        </section>
     </div>
 
     <script>
@@ -262,7 +601,8 @@
 
                     showBanner(
                         ok,
-                        ok ? 'Chat Widget Service Available'
+                        ok
+                            ? 'Chat Widget Service Available'
                             : 'Chat Widget Service Unavailable — responses may fail' + details
                     );
                 } catch (e) {
