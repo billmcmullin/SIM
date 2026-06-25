@@ -38,6 +38,7 @@
 
         <junit.version>5.14.2</junit.version>
         <mockito.version>5.21.0</mockito.version>
+        <mockito-inline.version>5.2.0</mockito-inline.version>
 
         <dependency-check.version>12.2.2</dependency-check.version>
         <dependency-check.failBuildOnCVSS>10</dependency-check.failBuildOnCVSS>
