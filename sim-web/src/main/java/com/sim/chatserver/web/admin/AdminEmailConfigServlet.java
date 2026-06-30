@@ -59,7 +59,6 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .add("starttls", effective.startTls())
                     .add("ssl", effective.ssl())
                     .add("username", safe(effective.username()))
-                    // IMPORTANT: never return password or password_enc
                     .add("passwordConfigured", hasText(effective.password()))
                     .add("defaultFrom", safe(effective.defaultFrom()));
         }
@@ -147,7 +146,6 @@ public class AdminEmailConfigServlet extends HttpServlet {
         String updatedBy = getUser(req);
 
         try {
-            // IMPORTANT: Do not log plaintext password
             log.info("Saving SMTP config: host=" + host
                     + ", port=" + port
                     + ", auth=" + auth
@@ -193,6 +191,26 @@ public class AdminEmailConfigServlet extends HttpServlet {
                 if (hasText(defaultFrom) && !isValidEmail(defaultFrom)) {
                     writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
                     return;
+                }
+
+                // FIX: fallback to DB values when payload fields are blank (especially password)
+                if (!hasText(password) || !hasText(username) || !hasText(defaultFrom)) {
+                    try {
+                        EmailConfig existing = dbProvider == null ? null : dbProvider.load();
+                        if (existing != null) {
+                            if (!hasText(password)) {
+                                password = safe(existing.password());
+                            }
+                            if (!hasText(username)) {
+                                username = safe(existing.username());
+                            }
+                            if (!hasText(defaultFrom)) {
+                                defaultFrom = safe(existing.defaultFrom());
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
+                    }
                 }
 
                 cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);

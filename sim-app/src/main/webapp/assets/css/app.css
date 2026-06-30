@@ -86,6 +86,88 @@ body {
     margin-bottom: 32px;
 }
 
+/* ----------------------------------
+   Dashboard admin button spacing (NEW)
+----------------------------------- */
+.dashboard-admin-btn-row {
+    margin: 16px 0 24px 0;
+    /* increased bottom gap */
+}
+
+.dashboard-admin-btn-row .ghost-btn {
+    margin-right: 0;
+    /* prevents extra horizontal bleed */
+}
+
+.dashboard-admin-btn-row+.button-row {
+    margin-top: 10px;
+    /* extra separation from next row */
+}
+
+
+/* ----------------------------------
+   Admin Tabs (NEW)
+----------------------------------- */
+.admin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 14px 0;
+    padding: 0 0 10px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-tab-btn {
+    appearance: none;
+    border: 1px solid #dbe3ef;
+    background: #ffffff;
+    /* same as section/card background */
+    color: #0f172a;
+    padding: 8px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 700;
+    margin-right: 0;
+    transition:
+        background-color 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease,
+        box-shadow 140ms ease,
+        transform 120ms ease;
+}
+
+/* Hover = inverse */
+.admin-tab-btn:hover {
+    background: #111827;
+    color: #f8fafc;
+    border-color: #111827;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+}
+
+/* Active = inverse (persistent selected state) */
+.admin-tab-btn.active {
+    background: #111827;
+    color: #ffffff;
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.14) inset, 0 6px 14px rgba(15, 23, 42, 0.16);
+}
+
+/* Keyboard focus */
+.admin-tab-btn:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+}
+
+.section.tab-panel {
+    display: none;
+    margin-top: 0;
+}
+
+.section.tab-panel.active {
+    display: block;
+}
+
 .chart-area {
     position: relative;
     width: 100%;
@@ -1612,6 +1694,11 @@ hr {
     .legend-chip-name-link.is-disabled:focus {
         text-decoration: none;
         color: #1d4ed8;
+    }
+
+    .admin-tab-btn {
+        padding: 7px 10px;
+        font-size: 0.92rem;
     }
 
     /* ==========================================

@@ -1,5 +1,5 @@
 // File: src/main/webapp/assets/js/admin_page.js
-// admin_page.js (bootstrap)
+// admin_page.js (bootstrap + tabbed sections with merged groups)
 (function () {
     'use strict';
     window.AdminPage = window.AdminPage || {};
@@ -13,14 +13,20 @@
 
     let initialWidgetList = [];
     let initialTermList = [];
+
     try {
-        initialWidgetList = Array.isArray(config.widgetListJson) ? config.widgetListJson : JSON.parse(config.widgetListJson || '[]');
+        initialWidgetList = Array.isArray(config.widgetListJson)
+            ? config.widgetListJson
+            : JSON.parse(config.widgetListJson || '[]');
     } catch (e) {
         initialWidgetList = [];
         console.warn('[AdminPage] Failed parsing widgetListJson:', e);
     }
+
     try {
-        initialTermList = Array.isArray(config.termsListJson) ? config.termsListJson : JSON.parse(config.termsListJson || '[]');
+        initialTermList = Array.isArray(config.termsListJson)
+            ? config.termsListJson
+            : JSON.parse(config.termsListJson || '[]');
     } catch (e) {
         initialTermList = [];
         console.warn('[AdminPage] Failed parsing termsListJson:', e);
@@ -50,6 +56,145 @@
         }
     }
 
+    function initAdminTabs() {
+        const container = document.querySelector('.container');
+        const tabsHost = document.getElementById('adminTabs');
+        if (!container || !tabsHost) return;
+
+        const sections = Array.from(container.querySelectorAll(':scope > section.section'));
+        if (!sections.length) return;
+
+        tabsHost.innerHTML = '';
+        tabsHost.setAttribute('role', 'tablist');
+
+        // Map by h2 title
+        const byTitle = new Map();
+        sections.forEach((section) => {
+            const h2 = section.querySelector('h2');
+            if (!h2) return;
+            byTitle.set(h2.textContent.trim(), section);
+        });
+
+        // Merged + single tabs
+        const tabGroups = [
+            {
+                panelId: 'tab-widget-health',
+                label: 'Widget Health',
+                sectionTitles: ['Widget Availability Health Check']
+            },
+            {
+                panelId: 'tab-database',
+                label: 'Database Import / Export',
+                sectionTitles: ['Database Data Export', 'Database Data Import']
+            },
+            {
+                panelId: 'tab-server-workspace',
+                label: 'Server & Workspace',
+                sectionTitles: ['Server Configuration', 'Workspace Management']
+            },
+            {
+                panelId: 'tab-salesforce',
+                label: 'Salesforce',
+                sectionTitles: ['Salesforce Configuration']
+            },
+            {
+                panelId: 'tab-widgets',
+                label: 'Widgets & Explorer',
+                sectionTitles: ['Widget Registry', 'Widget Table Explorer']
+            },
+            {
+                panelId: 'tab-terms',
+                label: 'Terms',
+                sectionTitles: ['Term Definitions']
+            },
+            {
+                panelId: 'tab-users',
+                label: 'Users',
+                sectionTitles: ['Create User']
+            },
+            {
+                panelId: 'tab-smtp',
+                label: 'SMTP',
+                sectionTitles: ['SMTP Configuration']
+            },
+            {
+                panelId: 'tab-email',
+                label: 'Manual Email',
+                sectionTitles: ['Manual Email (Admin)']
+            }
+        ];
+
+        const tabs = [];
+
+        tabGroups.forEach((group) => {
+            const groupedSections = group.sectionTitles
+                .map((title) => byTitle.get(title))
+                .filter(Boolean);
+
+            if (!groupedSections.length) return;
+
+            groupedSections.forEach((section, idx) => {
+                section.classList.add('tab-panel');
+                section.setAttribute('role', 'tabpanel');
+                section.setAttribute('aria-labelledby', `${group.panelId}-tab`);
+                section.setAttribute('data-tab-group', group.panelId);
+
+                // make first section of group hash-targetable
+                if (idx === 0) section.id = group.panelId;
+            });
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'admin-tab-btn';
+            btn.id = `${group.panelId}-tab`;
+            btn.setAttribute('role', 'tab');
+            btn.setAttribute('aria-controls', group.panelId);
+            btn.setAttribute('aria-selected', 'false');
+            btn.textContent = group.label;
+
+            tabsHost.appendChild(btn);
+            tabs.push({ panelId: group.panelId, button: btn, sections: groupedSections });
+        });
+
+        if (!tabs.length) return;
+
+        function activate(panelId, updateHash) {
+            tabs.forEach((t) => {
+                const active = t.panelId === panelId;
+                t.button.classList.toggle('active', active);
+                t.button.setAttribute('aria-selected', String(active));
+
+                t.sections.forEach((section) => {
+                    section.classList.toggle('active', active);
+                });
+            });
+
+            try {
+                localStorage.setItem('admin.activeTab', panelId);
+            } catch (_) { /* ignore */ }
+
+            if (updateHash) {
+                history.replaceState(null, '', `#${panelId}`);
+            }
+        }
+
+        tabs.forEach((t) => {
+            t.button.addEventListener('click', () => activate(t.panelId, true));
+        });
+
+        const hashId = (window.location.hash || '').replace(/^#/, '');
+        let stored = '';
+        try {
+            stored = localStorage.getItem('admin.activeTab') || '';
+        } catch (_) { /* ignore */ }
+
+        const initial = tabs.find((t) => t.panelId === hashId)?.panelId
+            || tabs.find((t) => t.panelId === stored)?.panelId
+            || tabs[0].panelId;
+
+        activate(initial, false);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         if (apiKeyStored) {
             const note = document.getElementById('apiKeyStoredNote');
@@ -71,6 +216,8 @@
             if (sfRefreshNote) sfRefreshNote.style.display = 'block';
         }
 
+        safeInit('AdminTabs', initAdminTabs);
+
         // Initialize modules safely so one failure doesn't break all others.
         safeInit('Users', () => window.AdminPage.Users?.init(contextPath));
         safeInit('Sync', () => window.AdminPage.Sync?.init(contextPath));
@@ -80,7 +227,7 @@
         safeInit('Salesforce', () => window.AdminPage.Salesforce?.init(window.AdminPage.Config));
         safeInit('DbImport', () => window.AdminPage.DbImport?.init({ contextPath }));
         safeInit('Email', () => window.AdminPage.Email?.init(contextPath));
-        
+
         // Page actions
         document.getElementById('testConnectionBtn')?.addEventListener('click', testConnection);
         document.getElementById('saveConfigBtn')?.addEventListener('click', saveConfiguration);

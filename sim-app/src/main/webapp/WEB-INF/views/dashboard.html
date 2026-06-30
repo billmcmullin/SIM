@@ -1,423 +1,429 @@
-<!doctype html>
-<html lang="en">
+<%@ taglib prefix="sec" uri="http://www.springframework.org/security/tags" %>
+    <!doctype html>
+    <html lang="en">
 
-<head>
-    <meta charset="utf-8">
-    <title>Dashboard</title>
-    <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
-</head>
+    <head>
+        <meta charset="utf-8">
+        <title>Dashboard</title>
+        <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
+    </head>
 
-<body>
-    <div class="top-bar" data-role="${role}">
-        <div class="top-bar-inner">
-            <div class="brand"><strong>SIM</strong></div>
-            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <span>Signed in as <strong>${user}</strong></span>
-                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
-                    Profile
-                </button>
-                <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
-                    Logout
-                </button>
+    <body>
+        <div class="top-bar" data-role="${role}">
+            <div class="top-bar-inner">
+                <div class="brand"><strong>SIM</strong></div>
+                <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <span>Signed in as <strong>${user}</strong></span>
+                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/profile'">
+                        Profile
+                    </button>
+                    <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/logout'">
+                        Logout
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="container">
-        <section class="section">
-            <h1>Welcome, ${user}</h1>
-            ${adminLink}
-            ${dashboardInfoMessage}
-            <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/trends'">
-                    Entry Trends
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/topics'">
-                    Popular Topics
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/session-names'">
-                    Username Catalog
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/latest-chats'">
-                    Latest Chats
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/new-users'">
-                    New Users
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/inactive-users'">
-                    Inactive Users
-                </button>
-                <button type="button" class="ghost-btn"
-                    onclick="window.location.href='${contextPath}/dashboard/sessions?activity=active&activeDays=7'">
-                    Active Users
-                </button>
-            </div>
-        </section>
+        <div class="container">
+            <section class="section">
+                <h1>Welcome, ${user}</h1>
+                ${adminLink}
+                ${dashboardInfoMessage}
+                <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/trends'">
+                        Entry Trends
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/topics'">
+                        Popular Topics
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/session-names'">
+                        Username Catalog
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/latest-chats'">
+                        Latest Chats
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/new-users'">
+                        New Users
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/inactive-users'">
+                        Inactive Users
+                    </button>
+                    <button type="button" class="ghost-btn"
+                        onclick="window.location.href='${contextPath}/dashboard/sessions?activity=active&activeDays=7'">
+                        Active Users
+                    </button>
+                </div>
+            </section>
 
-        <section id="dailyProgressSection" class="section daily-progress-section">
-            <div class="section-header">
-                <h2>Daily Progress</h2>
-                <p>Comparison of today vs yesterday across key metrics.</p>
-            </div>
+            <section id="dailyProgressSection" class="section daily-progress-section">
+                <div class="section-header">
+                    <h2>Daily Progress</h2>
+                    <p>Comparison of today vs yesterday across key metrics.</p>
+                </div>
 
-            <div class="daily-progress-grid"
-                style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
+                <div class="daily-progress-grid"
+                    style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
 
-                <article class="progress-card">
-                    <h3 style="margin-top:0;">Chats</h3>
-                    <p style="margin:6px 0;">
-                        Today:
-                        <strong id="dpTodayChats" data-value="${todayChats}">
-                            ${todayChats}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">
-                        Yesterday:
-                        <strong id="dpYesterdayChats" data-value="${yesterdayChats}">
-                            ${yesterdayChats}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">Change: <span id="dpChatDelta">${chatProgression}</span></p>
-                </article>
+                    <article class="progress-card">
+                        <h3 style="margin-top:0;">Chats</h3>
+                        <p style="margin:6px 0;">
+                            Today:
+                            <strong id="dpTodayChats" data-value="${todayChats}">
+                                ${todayChats}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">
+                            Yesterday:
+                            <strong id="dpYesterdayChats" data-value="${yesterdayChats}">
+                                ${yesterdayChats}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">Change: <span id="dpChatDelta">${chatProgression}</span></p>
+                    </article>
 
-                <article class="progress-card">
-                    <h3 style="margin-top:0;">Term Entries</h3>
-                    <p style="margin:6px 0;">
-                        Today:
-                        <strong id="dpTodayTerms" data-value="${termsToday}">
-                            ${termsToday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">
-                        Yesterday:
-                        <strong id="dpYesterdayTerms" data-value="${termsYesterday}">
-                            ${termsYesterday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">Change: <span id="dpTermsDelta">${termsProgression}</span></p>
-                </article>
+                    <article class="progress-card">
+                        <h3 style="margin-top:0;">Term Entries</h3>
+                        <p style="margin:6px 0;">
+                            Today:
+                            <strong id="dpTodayTerms" data-value="${termsToday}">
+                                ${termsToday}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">
+                            Yesterday:
+                            <strong id="dpYesterdayTerms" data-value="${termsYesterday}">
+                                ${termsYesterday}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">Change: <span id="dpTermsDelta">${termsProgression}</span></p>
+                    </article>
 
-                <article class="progress-card">
-                    <h3 style="margin-top:0;">New Users</h3>
-                    <p style="margin:6px 0;">
-                        Today:
-                        <strong id="dpTodayUsers" data-value="${newUsersToday}">
-                            ${newUsersToday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">
-                        Yesterday:
-                        <strong id="dpYesterdayUsers" data-value="${newUsersYesterday}">
-                            ${newUsersYesterday}
-                        </strong>
-                    </p>
-                    <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
-                </article>
+                    <article class="progress-card">
+                        <h3 style="margin-top:0;">New Users</h3>
+                        <p style="margin:6px 0;">
+                            Today:
+                            <strong id="dpTodayUsers" data-value="${newUsersToday}">
+                                ${newUsersToday}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">
+                            Yesterday:
+                            <strong id="dpYesterdayUsers" data-value="${newUsersYesterday}">
+                                ${newUsersYesterday}
+                            </strong>
+                        </p>
+                        <p style="margin:6px 0;">Change: <span id="dpUsersDelta">${newUsersProgression}</span></p>
+                    </article>
 
-                <article class="progress-card">
-                    <h3 style="margin-top:0;">Last 5 Days Trend</h3>
-                    <p style="margin:6px 0 10px 0;">Total widget entries per day</p>
-                    <div class="chart-area" style="height:220px; margin:0;">
-                        <canvas id="lastFiveDaysTrendChart"></canvas>
-                    </div>
-                </article>
+                    <article class="progress-card">
+                        <h3 style="margin-top:0;">Last 5 Days Trend</h3>
+                        <p style="margin:6px 0 10px 0;">Total widget entries per day</p>
+                        <div class="chart-area" style="height:220px; margin:0;">
+                            <canvas id="lastFiveDaysTrendChart"></canvas>
+                        </div>
+                    </article>
 
-                <article class="progress-card" style="grid-column:1 / -1;">
+                    <article class="progress-card" style="grid-column:1 / -1;">
+                        <div
+                            style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                            <h3 style="margin:0;">Summary</h3>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <button id="copyDailySummaryBtn" type="button" class="ghost-btn">Copy Summary
+                                    Text</button>
+                                <span id="dailySummaryCopyStatus" class="helper-note"></span>
+                            </div>
+                        </div>
+
+                        <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summary…
+                        </p>
+
+                        <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <div
+                                    style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
+                                    <div id="dailySummaryProgressBar"
+                                        style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;">
+                                    </div>
+                                </div>
+                                <span id="dailySummaryProgressText" class="helper-note"
+                                    style="font-size:12px;">0%</span>
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="dailySummaryCopyText" value="">
+
+                        <div id="dailySummaryBody" style="margin-top:10px;">
+                            <p style="margin:0;">Generating summary of quality, response, and usage for today…</p>
+                        </div>
+                    </article>
+
+                    <article class="progress-card" style="grid-column:1 / -1;">
+                        <h3 style="margin-top:0;">Top 3 Terms (Today vs Yesterday)</h3>
+                        <div class="table-scroll">
+                            <table class="widget-table" style="margin:0;">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Term</th>
+                                        <th>Today</th>
+                                        <th>Yesterday</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dpTopTermsBody">
+                                    ${dailyTopTermsRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="section" style="margin-top:16px; padding:0;">
                     <div
                         style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-                        <h3 style="margin:0;">Summary</h3>
-                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                            <button id="copyDailySummaryBtn" type="button" class="ghost-btn">Copy Summary Text</button>
-                            <span id="dailySummaryCopyStatus" class="helper-note"></span>
-                        </div>
+                        <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
+                        <a class="metric-link"
+                            href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match&mode=increaseOnly">Show
+                            all</a>
                     </div>
-
-                    <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summary…</p>
-
-                    <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
-                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                            <div
-                                style="flex:1 1 260px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
-                                <div id="dailySummaryProgressBar"
-                                    style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;">
-                                </div>
-                            </div>
-                            <span id="dailySummaryProgressText" class="helper-note" style="font-size:12px;">0%</span>
-                        </div>
-                    </div>
-
-                    <input type="hidden" id="dailySummaryCopyText" value="">
-
-                    <div id="dailySummaryBody" style="margin-top:10px;">
-                        <p style="margin:0;">Generating summary of quality, response, and usage for today…</p>
-                    </div>
-                </article>
-
-                <article class="progress-card" style="grid-column:1 / -1;">
-                    <h3 style="margin-top:0;">Top 3 Terms (Today vs Yesterday)</h3>
                     <div class="table-scroll">
-                        <table class="widget-table" style="margin:0;">
+                        <table class="widget-table other-parasoft-table">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Term</th>
-                                    <th>Today</th>
-                                    <th>Yesterday</th>
+                                    <th>Widget</th>
+                                    <th>Prompt</th>
+                                    <th>Session</th>
+                                    <th>Created</th>
                                 </tr>
                             </thead>
-                            <tbody id="dpTopTermsBody">
-                                ${dailyTopTermsRows}
-                            </tbody>
-                        </table>
-                    </div>
-                </article>
-            </div>
-
-            <div class="section" style="margin-top:16px; padding:0;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-                    <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
-                    <a class="metric-link"
-                        href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match&mode=increaseOnly">Show
-                        all</a>
-                </div>
-                <div class="table-scroll">
-                    <table class="widget-table other-parasoft-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Widget</th>
-                                <th>Prompt</th>
-                                <th>Session</th>
-                                <th>Created</th>
-                            </tr>
-                        </thead>
-                        <tbody id="otherParasoftLatestBody">
-                            ${otherParasoftLatestRows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <section class="section stats-section">
-            <h2>Widget Chat Overview</h2>
-            <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
-
-            <p class="chat-progression-summary">
-                Today:
-                <strong id="summaryTodayChats" data-value="${todayChats}">
-                    ${todayChats}
-                </strong>
-                |
-                Yesterday:
-                <strong id="summaryYesterdayChats" data-value="${yesterdayChats}">
-                    ${yesterdayChats}
-                </strong>
-                |
-                Change: ${chatProgression}
-            </p>
-
-            <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
-                <div style="flex:1 1 520px; min-width:420px;">
-                    <div class="table-scroll">
-                        <table class="widget-table">
-                            <thead>
-                                <tr>
-                                    <th>Widget Name</th>
-                                    <th>Total Chats</th>
-                                    <th>Today</th>
-                                    <th>Yesterday</th>
-                                    <th>Difference From Day Before</th>
-                                </tr>
-                            </thead>
-                            <tbody id="widgetStatsBody">
-                                ${widgetStatsRows}
+                            <tbody id="otherParasoftLatestBody">
+                                ${otherParasoftLatestRows}
                             </tbody>
                         </table>
                     </div>
                 </div>
+            </section>
 
-                <div style="flex:0 0 360px; width:360px; max-width:100%;">
-                    <div class="chart-area" style="height:320px; margin:0;">
-                        <canvas id="widgetOverviewPieChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </section>
+            <section class="section stats-section">
+                <h2>Widget Chat Overview</h2>
+                <p>Total chats across all widgets: <strong>${totalChats}</strong></p>
 
-        <section class="chart-wrapper">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                <h2 style="margin:0;">Term Distribution based on Prompts</h2>
-                <p id="termLegendModeSummary" class="helper-note" style="margin:6px 0 10px 0;">
-                    Total entries shown: —
+                <p class="chat-progression-summary">
+                    Today:
+                    <strong id="summaryTodayChats" data-value="${todayChats}">
+                        ${todayChats}
+                    </strong>
+                    |
+                    Yesterday:
+                    <strong id="summaryYesterdayChats" data-value="${yesterdayChats}">
+                        ${yesterdayChats}
+                    </strong>
+                    |
+                    Change: ${chatProgression}
                 </p>
-                <button id="termLegendValueToggleBtn" type="button" class="ghost-btn">
-                    Show Totals
-                </button>
-            </div>
 
-            <div class="chart-area">
-                <canvas id="termChart"></canvas>
-            </div>
-            <div id="termChartLegend" class="term-legend"></div>
-        </section>
-
-        <section class="section session-overview-section">
-            <div class="session-list-card">
-                <div class="section-header" style="display:flex; align-items:center; justify-content:space-between;">
-                    <div>
-                        <h2>Top 10 Sessions</h2>
-                        <p>Most frequent Session IDs across all widget tables.</p>
-                        <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
-                        <p style="margin:4px 0 0 0;">
-                            Active (<span id="activeDaysLabel">7</span> days):
-                            <strong><a id="activeSessionsLink"
-                                    href="${contextPath}/dashboard/sessions?activity=active&activeDays=7">—</a></strong>
-                            <span id="activeUsersDelta" class="progression progression-flat"
-                                style="margin-left:8px;">—</span>
-                            &nbsp;|&nbsp;
-                            Inactive:
-                            <strong><a id="inactiveSessionsLink"
-                                    href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">—</a></strong>
-                        </p>
+                <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
+                    <div style="flex:1 1 520px; min-width:420px;">
+                        <div class="table-scroll">
+                            <table class="widget-table">
+                                <thead>
+                                    <tr>
+                                        <th>Widget Name</th>
+                                        <th>Total Chats</th>
+                                        <th>Today</th>
+                                        <th>Yesterday</th>
+                                        <th>Difference From Day Before</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="widgetStatsBody">
+                                    ${widgetStatsRows}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="button-row">
-                        <div>
-                            <button type="button" class="ghost-btn"
-                                onclick="window.location.href='${contextPath}/dashboard/sessions'">
-                                View all sessions
-                            </button>
+
+                    <div style="flex:0 0 360px; width:360px; max-width:100%;">
+                        <div class="chart-area" style="height:320px; margin:0;">
+                            <canvas id="widgetOverviewPieChart"></canvas>
                         </div>
                     </div>
                 </div>
-                <div class="table-scroll">
-                    <table class="session-table">
-                        <thead>
-                            <tr>
-                                <th scope="col">Rank</th>
-                                <th scope="col">Session ID</th>
-                                <th scope="col">Chat Entries</th>
-                                <th scope="col">Last Entry</th>
-                            </tr>
-                        </thead>
-                        <tbody id="topSessionList">
-                            ${sessionRows}
-                        </tbody>
-                    </table>
+            </section>
+
+            <section class="chart-wrapper">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <h2 style="margin:0;">Term Distribution based on Prompts</h2>
+                    <p id="termLegendModeSummary" class="helper-note" style="margin:6px 0 10px 0;">
+                        Total entries shown: —
+                    </p>
+                    <button id="termLegendValueToggleBtn" type="button" class="ghost-btn">
+                        Show Totals
+                    </button>
                 </div>
-            </div>
-        </section>
-    </div>
 
-    <span id="serverNewUsersToday" style="display:none;">${newUsersToday}</span>
-    <span id="serverNewUsersYesterday" style="display:none;">${newUsersYesterday}</span>
-    <span id="serverTermsToday" style="display:none;">${termsToday}</span>
-    <span id="serverTermsYesterday" style="display:none;">${termsYesterday}</span>
+                <div class="chart-area">
+                    <canvas id="termChart"></canvas>
+                </div>
+                <div id="termChartLegend" class="term-legend"></div>
+            </section>
 
-    <script>
-        window.termChartData = '${termChartData}';
-        window.widgetPieChartData = '${widgetPieChartData}';
-        window.termIncreaseMapJson = '${termIncreaseMapJson}';
-        window.termTotalMapJson = '${termTotalMapJson}';
-        window.termLegendDefaultMode = '${termLegendDefaultMode}';
-        window.lastFiveDaysTrendData = '${lastFiveDaysTrendData}';
-        window.dashboardConfig = { contextPath: '${contextPath}' };
-        window.chatProgressionDirection = '${chatProgressionDirection}';
-        window.newUsersProgressionDirection = '${newUsersProgressionDirection}';
-        window.termsProgressionDirection = '${termsProgressionDirection}';
-        window.dashboardDates = {
-            today: '${sessionRangeEnd}',
-            yesterday: (() => {
-                try {
-                    const d = new Date('${sessionRangeEnd}T00:00:00');
-                    d.setDate(d.getDate() - 1);
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                } catch {
-                    return '';
-                }
-            })()
-        };
-    </script>
+            <section class="section session-overview-section">
+                <div class="session-list-card">
+                    <div class="section-header"
+                        style="display:flex; align-items:center; justify-content:space-between;">
+                        <div>
+                            <h2>Top 10 Sessions</h2>
+                            <p>Most frequent Session IDs across all widget tables.</p>
+                            <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">—</strong></p>
+                            <p style="margin:4px 0 0 0;">
+                                Active (<span id="activeDaysLabel">7</span> days):
+                                <strong><a id="activeSessionsLink"
+                                        href="${contextPath}/dashboard/sessions?activity=active&activeDays=7">—</a></strong>
+                                <span id="activeUsersDelta" class="progression progression-flat"
+                                    style="margin-left:8px;">—</span>
+                                &nbsp;|&nbsp;
+                                Inactive:
+                                <strong><a id="inactiveSessionsLink"
+                                        href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">—</a></strong>
+                            </p>
+                        </div>
+                        <div class="button-row">
+                            <div>
+                                <button type="button" class="ghost-btn"
+                                    onclick="window.location.href='${contextPath}/dashboard/sessions'">
+                                    View all sessions
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="session-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Rank</th>
+                                    <th scope="col">Session ID</th>
+                                    <th scope="col">Chat Entries</th>
+                                    <th scope="col">Last Entry</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topSessionList">
+                                ${sessionRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
 
-    <script>
-        (function () {
-            const banner = document.getElementById('widgetAvailabilityBanner');
-            if (!banner) return;
+        <span id="serverNewUsersToday" style="display:none;">${newUsersToday}</span>
+        <span id="serverNewUsersYesterday" style="display:none;">${newUsersYesterday}</span>
+        <span id="serverTermsToday" style="display:none;">${termsToday}</span>
+        <span id="serverTermsYesterday" style="display:none;">${termsYesterday}</span>
 
-            const endpoint = '${contextPath}/admin/widget-availability.json';
-
-            function showBanner(ok, text) {
-                banner.style.display = 'block';
-                banner.style.padding = '10px 12px';
-                banner.style.borderRadius = '6px';
-                banner.style.marginBottom = '12px';
-                banner.style.fontWeight = '600';
-
-                if (ok) {
-                    banner.style.background = '#ecfdf3';
-                    banner.style.border = '1px solid #a7f3d0';
-                    banner.style.color = '#065f46';
-                    banner.textContent = text || 'Chat Widget Service Available';
-                } else {
-                    banner.style.background = '#fef2f2';
-                    banner.style.border = '1px solid #fecaca';
-                    banner.style.color = '#991b1b';
-                    banner.textContent = text || 'Chat Widget Service Unavailable — responses may fail';
-                }
-            }
-
-            async function pollWidgetAvailability() {
-                try {
-                    const res = await fetch(endpoint, {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                        headers: { 'Accept': 'application/json' }
-                    });
-
-                    if (res.status === 401) {
-                        banner.style.display = 'none';
-                        return;
+        <script>
+            window.termChartData = '${termChartData}';
+            window.widgetPieChartData = '${widgetPieChartData}';
+            window.termIncreaseMapJson = '${termIncreaseMapJson}';
+            window.termTotalMapJson = '${termTotalMapJson}';
+            window.termLegendDefaultMode = '${termLegendDefaultMode}';
+            window.lastFiveDaysTrendData = '${lastFiveDaysTrendData}';
+            window.dashboardConfig = { contextPath: '${contextPath}' };
+            window.chatProgressionDirection = '${chatProgressionDirection}';
+            window.newUsersProgressionDirection = '${newUsersProgressionDirection}';
+            window.termsProgressionDirection = '${termsProgressionDirection}';
+            window.dashboardDates = {
+                today: '${sessionRangeEnd}',
+                yesterday: (() => {
+                    try {
+                        const d = new Date('${sessionRangeEnd}T00:00:00');
+                        d.setDate(d.getDate() - 1);
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${y}-${m}-${day}`;
+                    } catch {
+                        return '';
                     }
+                })()
+            };
+        </script>
 
-                    const data = await res.json();
-                    const ok = !!data.available;
-                    const details = data && data.details ? ` (${data.details})` : '';
+        <script>
+            (function () {
+                const banner = document.getElementById('widgetAvailabilityBanner');
+                if (!banner) return;
 
-                    showBanner(
-                        ok,
-                        ok
-                            ? 'Chat Widget Service Available'
-                            : 'Chat Widget Service Unavailable — responses may fail' + details
-                    );
-                } catch (e) {
-                    showBanner(false, 'Chat Widget Service Unavailable — status check failed');
+                const endpoint = '${contextPath}/admin/widget-availability.json';
+
+                function showBanner(ok, text) {
+                    banner.style.display = 'block';
+                    banner.style.padding = '10px 12px';
+                    banner.style.borderRadius = '6px';
+                    banner.style.marginBottom = '12px';
+                    banner.style.fontWeight = '600';
+
+                    if (ok) {
+                        banner.style.background = '#ecfdf3';
+                        banner.style.border = '1px solid #a7f3d0';
+                        banner.style.color = '#065f46';
+                        banner.textContent = text || 'Chat Widget Service Available';
+                    } else {
+                        banner.style.background = '#fef2f2';
+                        banner.style.border = '1px solid #fecaca';
+                        banner.style.color = '#991b1b';
+                        banner.textContent = text || 'Chat Widget Service Unavailable — responses may fail';
+                    }
                 }
-            }
 
-            pollWidgetAvailability();
-            setInterval(pollWidgetAvailability, 30000);
-        })();
-    </script>
+                async function pollWidgetAvailability() {
+                    try {
+                        const res = await fetch(endpoint, {
+                            method: 'GET',
+                            credentials: 'same-origin',
+                            headers: { 'Accept': 'application/json' }
+                        });
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/core.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/metrics.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/termReview.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/charts.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/summary.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/sessions.js"></script>
-    <script src="${contextPath}/assets/js/dashboard_util/init.js"></script>
-    <script src="${contextPath}/assets/js/dashboard.js"></script>
+                        if (res.status === 401) {
+                            banner.style.display = 'none';
+                            return;
+                        }
 
-</body>
+                        const data = await res.json();
+                        const ok = !!data.available;
+                        const details = data && data.details ? ` (${data.details})` : '';
 
-</html>
+                        showBanner(
+                            ok,
+                            ok
+                                ? 'Chat Widget Service Available'
+                                : 'Chat Widget Service Unavailable — responses may fail' + details
+                        );
+                    } catch (e) {
+                        showBanner(false, 'Chat Widget Service Unavailable — status check failed');
+                    }
+                }
+
+                pollWidgetAvailability();
+                setInterval(pollWidgetAvailability, 30000);
+            })();
+        </script>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/core.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/metrics.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/termReview.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/charts.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/summary.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/sessions.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/init.js"></script>
+        <script src="${contextPath}/assets/js/dashboard.js"></script>
+
+    </body>
+
+    </html>

@@ -32,13 +32,12 @@
     </div>
 
     <div class="container">
+        <!-- Restored banner element used by polling script -->
         <div id="widgetAvailabilityBanner" class="dashboard-info-banner" role="status" aria-live="polite"
             style="display:none;"></div>
 
-        <section class="section">
-            <h1>Admin Configuration</h1>
-            <p>Hello, ${user}. Configure the chat server connection below.</p>
-        </section>
+        <!-- Tabs host (JS builds tab buttons here) -->
+        <nav id="adminTabs" class="admin-tabs" aria-label="Admin sections"></nav>
 
         <section class="section">
             <h2>Widget Availability Health Check</h2>
@@ -60,7 +59,7 @@
                 </div>
 
                 <button type="button" id="testWidgetHealthConfigBtn">Test Now</button>
-                
+
                 <div class="form-group">
                     <label for="whcTimeoutMs">Timeout (ms)</label>
                     <input type="number" id="whcTimeoutMs" min="1" max="120000" step="1" placeholder="8000" required>
@@ -81,7 +80,6 @@
                     <input type="text" id="whcWidgetId" placeholder="specific-widget-id">
                 </div>
 
-                <!-- Added fields for request-shaping -->
                 <div class="form-group">
                     <label for="whcRequestOrigin">Request Origin (optional)</label>
                     <input type="text" id="whcRequestOrigin" placeholder="https://heavyarms">
@@ -160,7 +158,6 @@
                 </table>
             </div>
         </section>
-
 
         <section class="section">
             <h2>Server Configuration</h2>
