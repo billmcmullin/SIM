@@ -116,7 +116,10 @@ public class DashboardServlet extends HttpServlet {
 
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
         String adminLink = "ADMIN".equalsIgnoreCase(role)
-                ? "<p><a href=\"" + req.getContextPath() + "/admin\">Go to Admin Configuration</a></p>"
+                ? "<div class=\"dashboard-admin-btn-row\">"
+                + "<button type=\"button\" class=\"ghost-btn\" onclick=\"window.location.href='"
+                + req.getContextPath() + "/admin'\">Admin</button>"
+                + "</div>"
                 : "";
 
         String infoMessageHtml = buildInfoMessageHtml(req.getParameter("msg"));
