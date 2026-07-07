@@ -49,6 +49,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
@@ -213,10 +214,10 @@ public class DatabaseImportServlet extends HttpServlet {
 
                 json(resp, HttpServletResponse.SC_OK, out.build());
 
-            } catch (Exception e) {
+            } catch (IOException | RuntimeException | SQLException e) {
                 try {
                     conn.rollback();
-                } catch (Exception rb) {
+                } catch (SQLException rb) {
                     log.log(Level.WARNING, "Rollback failed", rb);
                 }
                 throw e;
@@ -230,7 +231,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("rowNumber", ie.rowNumber)
                     .add("column", ie.column == null ? "" : ie.column)
                     .build());
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException | SQLException e) {
             log.log(Level.SEVERE, "Import run failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
@@ -269,15 +270,20 @@ public class DatabaseImportServlet extends HttpServlet {
             boolean ok = code >= 200 && code < 300;
 
             if (!ok) {
-                log.warning("Post-import widget sync returned HTTP " + code + ": " + truncate(response.body()));
+                log.log(Level.WARNING, "Post-import widget sync returned HTTP {0}: {1}",
+                        new Object[]{code, truncate(response.body())});
             }
 
             return new PostImportSyncResult(true, ok, code, ok
                     ? "Widget sync executed after import."
                     : "Widget sync call failed with HTTP " + code);
-        } catch (Exception e) {
+        } catch (IOException e) {
             log.log(Level.WARNING, "Post-import widget sync trigger failed", e);
             return new PostImportSyncResult(true, false, 0, "Widget sync trigger failed.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.log(Level.WARNING, "Post-import widget sync trigger interrupted", e);
+            return new PostImportSyncResult(true, false, 0, "Widget sync trigger interrupted.");
         }
     }
 
@@ -415,7 +421,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
                     try {
                         bindTyped(ps, idx, normalized, ci.sqlType);
-                    } catch (Exception bindErr) {
+                    } catch (SQLException | RuntimeException bindErr) {
                         throw new ImportException(
                                 "Import failed at table '" + table + "', row " + csvRowNumber + ", column '" + column + "': " + safe(bindErr.getMessage()),
                                 table, csvRowNumber, column, bindErr
@@ -488,7 +494,10 @@ public class DatabaseImportServlet extends HttpServlet {
         try {
             ps.executeBatch();
         } catch (BatchUpdateException bue) {
-            Throwable root = bue.getNextException() != null ? bue.getNextException() : bue;
+            SQLException root = bue.getNextException();
+            if (root == null) {
+                root = bue;
+            }
             throw new ImportException(
                     "Batch insert failed at table '" + table + "' near CSV row " + csvRowNumber + ": " + safe(root.getMessage()),
                     table, csvRowNumber, null, bue
@@ -736,7 +745,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
             return false;
         }
-        if (uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+        if (uri.getUserInfo() != null) {
             return false;
         }
         return true;
@@ -761,9 +770,11 @@ public class DatabaseImportServlet extends HttpServlet {
 
     private void json(HttpServletResponse resp, int status, JsonObject obj) throws IOException {
         resp.setStatus(status);
-        resp.setContentType("application/json");
-        resp.setCharacterEncoding("UTF-8");
-        resp.getWriter().write(obj.toString());
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(obj);
+        }
     }
 
     private String safe(String s) {
@@ -781,7 +792,8 @@ public class DatabaseImportServlet extends HttpServlet {
     private JsonObject toJsonObject(Map<String, Integer> m) {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
-            b.add(e.getKey(), e.getValue() == null ? 0 : e.getValue());
+            Integer value = e.getValue();
+            b.add(e.getKey(), value == null ? 0 : value);
         }
         return b.build();
     }

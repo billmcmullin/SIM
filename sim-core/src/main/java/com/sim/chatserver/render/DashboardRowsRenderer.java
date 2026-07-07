@@ -3,11 +3,14 @@ package com.sim.chatserver.render;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
 import com.sim.chatserver.model.DashboardViewModels.SessionStat;
@@ -18,6 +21,7 @@ import com.sim.chatserver.util.SessionLabelStore;
 public final class DashboardRowsRenderer {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Logger LOG = Logger.getLogger(DashboardRowsRenderer.class.getName());
 
     private DashboardRowsRenderer() {
     }
@@ -217,7 +221,8 @@ public final class DashboardRowsRenderer {
         }
         try {
             return ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime().format(TS_FMT);
-        } catch (Exception e) {
+        } catch (DateTimeException e) {
+            LOG.log(Level.FINE, "Unable to format timestamp", e);
             return ts.toString();
         }
     }

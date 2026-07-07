@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -33,6 +34,7 @@ import com.sim.chatserver.widget.WidgetStore;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonString;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
@@ -53,6 +55,10 @@ public class AllSessionsServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AllSessionsServlet.class.getName());
     private static final int ACTIVE_DAYS = 7;
+    private static final int MAX_SEARCH_LENGTH = 128;
+    private static final int MAX_SESSION_ID_LENGTH = 128;
+    private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -131,18 +137,15 @@ public class AllSessionsServlet extends HttpServlet {
         boolean returnAll = "true".equalsIgnoreCase(req.getParameter("all"));
         boolean labeledOnly = "true".equalsIgnoreCase(req.getParameter("labeledOnly"));
 
-        String search = req.getParameter("search");
-        boolean hasSearch = search != null && !search.isBlank();
-        String normalizedSearch = hasSearch ? "%" + search.trim() + "%" : null;
+        String search = sanitizeTextParam(req.getParameter("search"), MAX_SEARCH_LENGTH);
+        String searchTerm = search == null ? "" : search.trim();
+        boolean hasSearch = !searchTerm.isBlank();
+        String normalizedSearch = hasSearch ? "%" + searchTerm + "%" : null;
 
-        String activity = req.getParameter("activity");
-        if (activity == null || activity.isBlank()) {
-            activity = "all";
-        }
-        activity = activity.trim().toLowerCase();
+        String activity = sanitizeActivity(req.getParameter("activity"));
 
-        int limit = parseInteger(req.getParameter("limit"), 10);
-        int page = parseInteger(req.getParameter("page"), 1);
+        int limit = clamp(parseInteger(req.getParameter("limit"), 10), 1, 200);
+        int page = clamp(parseInteger(req.getParameter("page"), 1), 1, Integer.MAX_VALUE);
         if (page < 1) {
             page = 1;
         }
@@ -213,12 +216,10 @@ public class AllSessionsServlet extends HttpServlet {
         int activeUsers = Math.max(0, totalUsers - inactiveUsers);
 
         Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
-        if ("inactive".equals(activity)) {
-            sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
-        } else if ("active".equals(activity)) {
-            sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
-        } else {
-            activity = "all";
+        switch (activity) {
+            case "inactive" -> sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
+            case "active" -> sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
+            default -> activity = "all";
         }
 
         // New: only show sessions with friendly name and/or email if labeledOnly=true
@@ -307,7 +308,7 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = req.getParameter("sessionId");
+        String sessionId = sanitizeSessionId(req.getParameter("sessionId"));
         if (sessionId == null || sessionId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -318,7 +319,7 @@ public class AllSessionsServlet extends HttpServlet {
 
         List<WidgetEntry> widgets = listWidgets();
         List<ChatRow> rows = new ArrayList<>();
-        String sid = sessionId.trim();
+        String sid = sessionId;
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
@@ -399,7 +400,12 @@ public class AllSessionsServlet extends HttpServlet {
         Set<String> selected = new LinkedHashSet<>();
         try {
             payload.getJsonArray("selectedChatIds").forEach(v -> {
-                String val = v == null ? "" : v.toString().replace("\"", "").trim();
+                String val;
+                if (v instanceof JsonString js) {
+                    val = js.getString().trim();
+                } else {
+                    val = v == null ? "" : v.toString().trim();
+                }
                 if (!val.isBlank()) {
                     selected.add(val);
                 }
@@ -623,10 +629,11 @@ public class AllSessionsServlet extends HttpServlet {
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            JsonObject body = Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Authentication required.")
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, body);
             return false;
         }
         return true;
@@ -635,7 +642,7 @@ public class AllSessionsServlet extends HttpServlet {
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets", e);
             return List.of();
         }
@@ -671,6 +678,9 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
@@ -686,8 +696,54 @@ public class AllSessionsServlet extends HttpServlet {
     private int parseInteger(String value, int fallback) {
         try {
             return Integer.parseInt(value);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private int clamp(int value, int min, int max) {
+        if (value < min) {
+            return min;
+        }
+        return Math.min(value, max);
+    }
+
+    private String sanitizeTextParam(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        if (trimmed.length() > maxLength) {
+            return trimmed.substring(0, maxLength);
+        }
+        return trimmed;
+    }
+
+    private String sanitizeActivity(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "all";
+        }
+        String normalized = raw.trim().toLowerCase();
+        if ("active".equals(normalized) || "inactive".equals(normalized) || "all".equals(normalized)) {
+            return normalized;
+        }
+        return "all";
+    }
+
+    private String sanitizeSessionId(String sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+        String trimmed = sessionId.trim();
+        if (trimmed.isEmpty() || trimmed.length() > MAX_SESSION_ID_LENGTH) {
+            return null;
+        }
+        if (!SAFE_SESSION_ID.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
     }
 }

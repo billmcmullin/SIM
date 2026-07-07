@@ -12,12 +12,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.Database;
 
 public final class CustomerIdentityStore {
 
     private static final Logger log = Logger.getLogger(CustomerIdentityStore.class.getName());
+    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
     private static final String IDENTITY_TABLE = "customer_identity";
     private static final String SESSION_TABLE = "customer_identity_session";
@@ -151,7 +153,7 @@ public final class CustomerIdentityStore {
 
             // We intentionally keep legacy column for compatibility instead of dropping automatically.
             // If you want to remove it later, do explicit migration.
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Legacy migration for customer_identity.session_id failed", e);
         }
     }
@@ -362,7 +364,8 @@ public final class CustomerIdentityStore {
     private static void ensureNowDefault(Connection conn, String table, String column) {
         try (Statement s = conn.createStatement()) {
             s.executeUpdate("ALTER TABLE " + q(table) + " ALTER COLUMN " + q(column) + " SET DEFAULT NOW()");
-        } catch (SQLException ignore) {
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to set NOW() default for {0}.{1}", new Object[]{table, column});
         }
     }
 
@@ -381,13 +384,15 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to verify primary key for table {0}", table);
             return;
         }
 
         try (Statement s = conn.createStatement()) {
             s.executeUpdate("ALTER TABLE " + q(table) + " ADD CONSTRAINT " + q(constraintName)
                     + " PRIMARY KEY (" + q(column) + ")");
-        } catch (SQLException ignore) {
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to add primary key {0} on table {1}", new Object[]{constraintName, table});
         }
     }
 
@@ -409,6 +414,7 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to verify foreign key {0} on table {1}", new Object[]{fkName, sourceTable});
             return;
         }
 
@@ -417,7 +423,8 @@ public final class CustomerIdentityStore {
                     + " ADD CONSTRAINT " + q(fkName)
                     + " FOREIGN KEY (" + q(sourceColumn) + ") REFERENCES "
                     + q(targetTable) + " (" + q(targetColumn) + ") ON DELETE CASCADE");
-        } catch (SQLException ignore) {
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to add foreign key {0} on table {1}", new Object[]{fkName, sourceTable});
         }
     }
 
@@ -437,17 +444,22 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to verify constraint {0} on table {1}", new Object[]{constraint, table});
             return;
         }
 
         try (Statement s = conn.createStatement()) {
             s.executeUpdate("ALTER TABLE " + q(table) + " DROP CONSTRAINT " + q(constraint));
-        } catch (SQLException ignore) {
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to drop constraint {0} on table {1}", new Object[]{constraint, table});
         }
     }
 
     private static String q(String ident) {
-        return "\"" + ident.replace("\"", "\"\"") + "\"";
+        if (ident == null || !SQL_IDENTIFIER.matcher(ident).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
+        return "\"" + ident + "\"";
     }
 
     private static boolean isBlank(String v) {
