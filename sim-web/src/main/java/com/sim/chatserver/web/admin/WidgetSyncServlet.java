@@ -67,6 +67,7 @@ import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
 import jakarta.json.JsonStructure;
 import jakarta.json.JsonValue;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -95,6 +96,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final long HTTP_RETRY_BASE_MS = 500L;
     private static final long HTTP_RETRY_MAX_MS = 5000L;
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(90);
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -178,7 +180,7 @@ public class WidgetSyncServlet extends HttpServlet {
             this.summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
             this.summaryStore.ensureTable();
             loadSyncSettings();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to initialize sync settings/store", e);
         }
 
@@ -239,8 +241,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("widgetStatus", arr)
                     .build();
 
-            resp.setContentType("application/json");
-            resp.getWriter().write(payload.toString());
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (Exception e) {
             log.log(Level.WARNING, "Widget sync failed", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
@@ -260,8 +261,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .add("intervalSeconds", syncIntervalSeconds)
                 .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
                 .build();
-        resp.setContentType("application/json");
-        resp.getWriter().write(payload.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private void handleTimerUpdate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -271,11 +271,12 @@ public class WidgetSyncServlet extends HttpServlet {
 
         long intervalSeconds;
         try {
-            intervalSeconds = Long.parseLong(req.getParameter("intervalSeconds"));
+            String raw = req.getParameter("intervalSeconds");
+            intervalSeconds = Long.parseLong(raw == null ? "" : raw.trim());
             if (intervalSeconds < MIN_INTERVAL_SECONDS) {
                 intervalSeconds = MIN_INTERVAL_SECONDS;
             }
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid interval specified.");
             return;
         }
@@ -288,8 +289,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .add("intervalSeconds", syncIntervalSeconds)
                 .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
                 .build();
-        resp.setContentType("application/json");
-        resp.getWriter().write(payload.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private synchronized void updateInterval(long newIntervalSeconds) {
@@ -320,7 +320,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 log.log(Level.WARNING, "Daily summary generation failed", summaryEx);
             }
 
-            log.info("Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
+            log.log(Level.INFO, "Automatic widget sync completed. Synced {0} widget entries.", statuses.size());
         } catch (Exception e) {
             log.log(Level.WARNING, "Automatic widget sync failed", e);
         } finally {
@@ -494,7 +494,7 @@ public class WidgetSyncServlet extends HttpServlet {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception ex) {
+        } catch (SQLException ex) {
             log.log(Level.WARNING, "Unable to list widgets for daily summary", ex);
             return out;
         }
@@ -621,7 +621,8 @@ public class WidgetSyncServlet extends HttpServlet {
                 List<JsonObject> result = fetchWidgetChatsOnce(config, widgetId);
                 long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
                 if (attempt > 1) {
-                    log.info("Widget " + widgetId + " sync fetch succeeded on retry attempt " + attempt + " in " + ms + "ms");
+                    log.log(Level.INFO, "Widget {0} sync fetch succeeded on retry attempt {1} in {2}ms",
+                            new Object[]{widgetId, attempt, ms});
                 }
                 return result;
             } catch (InterruptedException ie) {
@@ -636,10 +637,10 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
 
                 long backoff = computeBackoffWithJitterMs(attempt);
-                log.log(Level.WARNING, "Transient sync fetch failure for widget " + widgetId
-                        + " (attempt " + attempt + "/" + HTTP_MAX_ATTEMPTS + "), retrying in "
-                        + backoff + "ms: " + ioe.getMessage());
-                Thread.sleep(backoff);
+                log.log(Level.WARNING,
+                    "Transient sync fetch failure for widget {0} (attempt {1}/{2}), retrying in {3}ms: {4}",
+                    new Object[]{widgetId, attempt, HTTP_MAX_ATTEMPTS, backoff, ioe.getMessage()});
+                TimeUnit.MILLISECONDS.sleep(backoff);
             }
         }
 
@@ -824,7 +825,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try (Statement stmt = conn.createStatement()) {
             int removed = stmt.executeUpdate(sql);
             if (removed > 0) {
-                log.info("Removed " + removed + " duplicate rows from " + tableName);
+                log.log(Level.INFO, "Removed {0} duplicate rows from {1}", new Object[]{removed, tableName});
             }
         }
     }
@@ -953,7 +954,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             return Timestamp.from(OffsetDateTime.parse(created).toInstant());
         } catch (DateTimeParseException e) {
-            log.fine("Unable to parse timestamp: " + created);
+            log.log(Level.FINE, "Unable to parse timestamp: {0}", created);
             return null;
         }
     }
@@ -1053,20 +1054,27 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType("application/json");
-        resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(message) + "\"}");
+        JsonObject payload = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", message == null ? "" : message)
+                .build();
+        writeJson(resp, status, payload);
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(payload);
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", " ");
     }
 
     private Set<String> parseCsvToSet(String csv) {
