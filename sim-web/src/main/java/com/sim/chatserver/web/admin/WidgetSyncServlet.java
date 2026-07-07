@@ -3,7 +3,6 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -244,7 +243,7 @@ public class WidgetSyncServlet extends HttpServlet {
             resp.getWriter().write(payload.toString());
         } catch (Exception e) {
             log.log(Level.WARNING, "Widget sync failed", e);
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed: " + e.getMessage());
+            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
         } finally {
             syncRunning.set(false);
         }
@@ -356,9 +355,8 @@ public class WidgetSyncServlet extends HttpServlet {
             try {
                 statuses.add(f.get());
             } catch (ExecutionException ee) {
-                Throwable cause = ee.getCause();
                 statuses.add(new WidgetSyncStatus("unknown", "unknown", false, false,
-                        "Sync failed: " + (cause == null ? "unknown error" : cause.getMessage())));
+                        "Sync failed. Check server logs."));
             }
         }
         return statuses;
@@ -379,8 +377,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
         } catch (Exception e) {
-            log.log(Level.WARNING, "Failed to sync widget " + widgetId, e);
-            return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed: " + e.getMessage());
+            log.log(Level.WARNING, "Failed to sync widget " + String.valueOf(widgetId), e);
+            return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed. Check server logs.");
         }
     }
 
@@ -972,7 +970,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         try {
-            URI base = new URI(normalizedHost);
+            URI base = URI.create(normalizedHost);
             String path = base.getPath() == null ? "" : base.getPath();
             if (path.endsWith("/")) {
                 path = path.substring(0, path.length() - 1);
@@ -981,8 +979,9 @@ public class WidgetSyncServlet extends HttpServlet {
                 path = path + "/api";
             }
             String apiPath = path + "/v1/embed/" + URLEncoder.encode(widgetId, StandardCharsets.UTF_8) + "/chats";
-            return new URI(base.getScheme(), base.getAuthority(), apiPath, null, null);
-        } catch (URISyntaxException e) {
+            String baseAuthority = base.getScheme() + "://" + base.getAuthority();
+            return URI.create(baseAuthority + apiPath);
+        } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid base URL for sync endpoint", e);
         }
     }
@@ -1126,7 +1125,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .replace("http://https://", "https://")
                 .replace("https://http://", "http://");
         try {
-            URI u = new URI(s);
+            URI u = URI.create(s);
             String scheme = u.getScheme();
             String host = u.getHost();
             int port = u.getPort();

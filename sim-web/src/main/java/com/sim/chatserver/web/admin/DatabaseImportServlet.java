@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -60,6 +61,7 @@ import jakarta.servlet.http.Part;
 public class DatabaseImportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
+    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -84,6 +86,10 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
+        private static final String POST_IMPORT_SYNC_URL =
+            Optional.ofNullable(System.getProperty("sim.postImportSyncUrl"))
+                .orElse("")
+                .trim();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -149,7 +155,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("status", "error")
                     .add("connectionOk", false)
                     .add("readyForImport", false)
-                    .add("message", "Precheck failed: " + safe(e.getMessage()))
+                    .add("message", "Precheck failed.")
                     .build());
         }
     }
@@ -194,7 +200,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
                 conn.commit();
 
-                PostImportSyncResult syncResult = triggerPostImportSync(req);
+                PostImportSyncResult syncResult = triggerPostImportSync();
 
                 JsonObjectBuilder out = Json.createObjectBuilder()
                         .add("status", "ok")
@@ -219,28 +225,40 @@ public class DatabaseImportServlet extends HttpServlet {
             log.log(Level.SEVERE, "Import run failed", ie);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
-                    .add("message", ie.getMessage())
+                    .add("message", "Import failed due to invalid or incompatible data.")
                     .add("table", ie.table == null ? "" : ie.table)
                     .add("rowNumber", ie.rowNumber)
                     .add("column", ie.column == null ? "" : ie.column)
-                    .add("rawValue", ie.rawValue == null ? "" : ie.rawValue)
                     .build());
         } catch (Exception e) {
             log.log(Level.SEVERE, "Import run failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
-                    .add("message", "Import failed: " + safe(e.getMessage()))
+                    .add("message", "Import failed.")
                     .build());
         }
     }
 
-    private PostImportSyncResult triggerPostImportSync(HttpServletRequest req) {
-        String contextPath = req.getContextPath();
-        String base = req.getScheme() + "://" + req.getServerName() + ":" + req.getServerPort();
-        String endpoint = base + contextPath + "/admin/widgets/sync";
+    private PostImportSyncResult triggerPostImportSync() {
+        if (POST_IMPORT_SYNC_URL.isEmpty()) {
+            return new PostImportSyncResult(false, true, 0, "Widget sync skipped.");
+        }
+
+        URI endpointUri;
+        try {
+            endpointUri = URI.create(POST_IMPORT_SYNC_URL);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.WARNING, "Invalid post-import widget sync URL", ex);
+            return new PostImportSyncResult(false, false, 0, "Widget sync URL is invalid.");
+        }
+
+        if (!isSafeSyncEndpoint(endpointUri)) {
+            log.warning("Rejected unsafe post-import widget sync URL");
+            return new PostImportSyncResult(false, false, 0, "Widget sync URL is not allowed.");
+        }
 
         try {
-            HttpRequest httpReq = HttpRequest.newBuilder(URI.create(endpoint))
+            HttpRequest httpReq = HttpRequest.newBuilder(endpointUri)
                     .timeout(Duration.ofSeconds(120))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(""))
@@ -259,7 +277,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     : "Widget sync call failed with HTTP " + code);
         } catch (Exception e) {
             log.log(Level.WARNING, "Post-import widget sync trigger failed", e);
-            return new PostImportSyncResult(true, false, 0, "Widget sync trigger failed: " + safe(e.getMessage()));
+            return new PostImportSyncResult(true, false, 0, "Widget sync trigger failed.");
         }
     }
 
@@ -371,7 +389,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (insertHeaders.isEmpty()) {
             throw new ImportException(
                     "No matching columns between CSV and table '" + table + "'.",
-                    table, 1, null, null, null
+                    table, 1, null, null
             );
         }
 
@@ -400,7 +418,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     } catch (Exception bindErr) {
                         throw new ImportException(
                                 "Import failed at table '" + table + "', row " + csvRowNumber + ", column '" + column + "': " + safe(bindErr.getMessage()),
-                                table, csvRowNumber, column, raw, bindErr
+                                table, csvRowNumber, column, bindErr
                         );
                     }
                 }
@@ -421,13 +439,12 @@ public class DatabaseImportServlet extends HttpServlet {
 
     private Map<String, ColumnInfo> loadColumnInfo(Connection conn, String table) throws SQLException {
         Map<String, ColumnInfo> info = new LinkedHashMap<>();
-        String sql = "SELECT * FROM " + q(table) + " WHERE 1=0";
-        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
-            var md = rs.getMetaData();
-            for (int i = 1; i <= md.getColumnCount(); i++) {
-                String name = md.getColumnLabel(i).toLowerCase();
-                int type = md.getColumnType(i);
-                boolean nullable = md.isNullable(i) != ResultSetMetaData.columnNoNulls;
+        DatabaseMetaData meta = conn.getMetaData();
+        try (ResultSet rs = meta.getColumns(null, "public", table, null)) {
+            while (rs.next()) {
+                String name = rs.getString("COLUMN_NAME").toLowerCase();
+                int type = rs.getInt("DATA_TYPE");
+                boolean nullable = rs.getInt("NULLABLE") != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
         }
@@ -474,7 +491,7 @@ public class DatabaseImportServlet extends HttpServlet {
             Throwable root = bue.getNextException() != null ? bue.getNextException() : bue;
             throw new ImportException(
                     "Batch insert failed at table '" + table + "' near CSV row " + csvRowNumber + ": " + safe(root.getMessage()),
-                    table, csvRowNumber, null, null, bue
+                    table, csvRowNumber, null, bue
             );
         }
     }
@@ -701,7 +718,28 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String q(String ident) {
-        return "\"" + ident.replace("\"", "\"\"") + "\"";
+        if (ident == null || !SQL_IDENTIFIER.matcher(ident).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
+        return "\"" + ident + "\"";
+    }
+
+    private boolean isSafeSyncEndpoint(URI uri) {
+        if (uri == null) {
+            return false;
+        }
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || host == null) {
+            return false;
+        }
+        if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+            return false;
+        }
+        if (uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+            return false;
+        }
+        return true;
     }
 
     private boolean isAdmin(HttpServletRequest req) {
@@ -775,14 +813,12 @@ public class DatabaseImportServlet extends HttpServlet {
         final String table;
         final int rowNumber;
         final String column;
-        final String rawValue;
 
-        ImportException(String message, String table, int rowNumber, String column, String rawValue, Throwable cause) {
+        ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);
             this.table = table;
             this.rowNumber = rowNumber;
             this.column = column;
-            this.rawValue = rawValue;
         }
     }
 

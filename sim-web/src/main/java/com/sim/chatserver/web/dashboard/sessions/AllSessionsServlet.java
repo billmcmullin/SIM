@@ -36,6 +36,7 @@ import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -298,10 +299,7 @@ public class AllSessionsServlet extends HttpServlet {
                 .add("widgetNames", widgetNamesObj.build())
                 .add("sessions", array)
                 .build();
-
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body.toString());
+            writeJson(resp, HttpServletResponse.SC_OK, body);
     }
 
     private void handleChats(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -371,10 +369,7 @@ public class AllSessionsServlet extends HttpServlet {
                 .add("status", "ok")
                 .add("rows", array)
                 .build();
-
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, body);
     }
 
     private void handleSelect(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -500,10 +495,7 @@ public class AllSessionsServlet extends HttpServlet {
                 .add("selectionId", selectionId)
                 .add("count", snapshots.size())
                 .build();
-
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, body);
     }
 
     private Map<String, String> buildWidgetDisplayNameMap(List<WidgetEntry> widgets) {
@@ -680,6 +672,15 @@ public class AllSessionsServlet extends HttpServlet {
 
     private String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
+        }
     }
 
     private int parseInteger(String value, int fallback) {

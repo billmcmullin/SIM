@@ -74,15 +74,14 @@ public class WidgetApiServlet extends HttpServlet {
             resp.getWriter().write("{\"status\":\"ok\",\"widget\":" + widgetToJson(saved) + "}");
         } catch (DuplicateWidgetIdException ex) {
             resp.setStatus(HttpServletResponse.SC_CONFLICT);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(ex.getMessage()) + "\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Widget ID already exists.\"}");
         } catch (IllegalArgumentException ex) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(ex.getMessage()) + "\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid widget input.\"}");
         } catch (SQLException ex) {
             log("Widget persistence error", ex);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to persist widget entry: "
-                    + escapeJson(ex.getMessage()) + "\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to persist widget entry.\"}");
         }
     }
 

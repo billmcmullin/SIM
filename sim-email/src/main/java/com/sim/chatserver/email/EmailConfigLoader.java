@@ -143,15 +143,15 @@ public final class EmailConfigLoader {
 
         Path path = Path.of(pathValue);
         if (!Files.exists(path) || !Files.isRegularFile(path)) {
-            log.warning("MAIL_CONFIG_FILE is set but file does not exist or is not a regular file: " + path);
+            log.warning("MAIL_CONFIG_FILE is set but file does not exist or is not a regular file.");
             return p;
         }
 
         try (InputStream in = Files.newInputStream(path)) {
             p.load(in);
-            log.info("Loaded SMTP properties from external file: " + path);
+            log.info("Loaded SMTP properties from external file.");
         } catch (IOException e) {
-            log.log(Level.WARNING, "Failed to load SMTP properties from external file: " + path, e);
+            log.log(Level.WARNING, "Failed to load SMTP properties from external file.", e);
         }
 
         return p;
@@ -159,9 +159,9 @@ public final class EmailConfigLoader {
 
     private static Properties loadClasspathProps() {
         Properties p = new Properties();
-        try (InputStream in = Thread.currentThread()
-                .getContextClassLoader()
-                .getResourceAsStream("email.properties")) {
+        try (InputStream in = EmailConfigLoader.class
+            .getClassLoader()
+            .getResourceAsStream("email.properties")) {
 
             if (in == null) {
                 return p;
@@ -181,12 +181,12 @@ public final class EmailConfigLoader {
         try {
             int port = Integer.parseInt(value.trim());
             if (port < 1 || port > 65535) {
-                log.warning("Invalid SMTP port out of range in " + sourceLabel + ": " + value);
+                log.log(Level.WARNING, "Invalid SMTP port out of range in {0}.", sourceLabel);
                 return null;
             }
             return port;
         } catch (NumberFormatException e) {
-            log.warning("Invalid SMTP port in " + sourceLabel + ": " + value);
+            log.log(Level.WARNING, "Invalid SMTP port in {0}.", sourceLabel);
             return null;
         }
     }

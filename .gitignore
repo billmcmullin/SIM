@@ -14,3 +14,6 @@ sim-playwright/.settings/
 sim-web/.project
 sim-web/.classpath
 sim-web/.settings/
+sim-email/.project
+sim-email/.classpath
+sim-email/.settings/

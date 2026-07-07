@@ -6,8 +6,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.CustomerIdentity;
 import com.sim.chatserver.model.CustomerIdentitySessionLink;
@@ -27,18 +30,30 @@ import jakarta.servlet.http.HttpSession;
 public class CustomerProfileServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/customer_profile.html";
+    private static final String LOGIN_PATH = "/login";
+    private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
+    private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
     private final CustomerIdentityService identityService = new CustomerIdentityService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            resp.sendRedirect(LOGIN_PATH);
             return;
         }
 
         String sessionId = trimToNull(req.getParameter("sessionId"));
         String friendlyNameParam = trimToNull(req.getParameter("friendlyName"));
+
+        if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid sessionId format.");
+            return;
+        }
+        if (friendlyNameParam != null && !FRIENDLY_NAME_PATTERN.matcher(friendlyNameParam).matches()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid friendlyName format.");
+            return;
+        }
 
         if (sessionId == null && friendlyNameParam == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "sessionId or friendlyName is required.");
@@ -48,7 +63,7 @@ public class CustomerProfileServlet extends HttpServlet {
         try {
             // Resolve a sessionId if only friendlyName was passed (best effort)
             String resolvedSessionId = sessionId;
-            if (resolvedSessionId == null && friendlyNameParam != null) {
+            if (resolvedSessionId == null) {
                 // Current identity service is sessionId-centric; keep old behavior for now
                 resolvedSessionId = "friendly:" + friendlyNameParam;
             }
@@ -90,8 +105,8 @@ public class CustomerProfileServlet extends HttpServlet {
                     .replace("${salesforceContactId}", escapeHtml(nullToDash(profile != null ? profile.getSalesforceContactId() : (identity != null ? identity.getSalesforceContactId() : null))))
                     .replace("${salesforceAccountId}", escapeHtml(nullToDash(profile != null ? profile.getSalesforceAccountId() : (identity != null ? identity.getSalesforceAccountId() : null))))
                     .replace("${lastSyncedAt}", escapeHtml(profile != null && profile.getLastSyncedAt() != null
-                            ? profile.getLastSyncedAt().toString()
-                            : (identity != null && identity.getLastSyncedAt() != null ? identity.getLastSyncedAt().toString() : "Never")))
+                            ? formatOffsetDateTime(profile.getLastSyncedAt())
+                            : (identity != null && identity.getLastSyncedAt() != null ? formatOffsetDateTime(identity.getLastSyncedAt()) : "Never")))
                     // Add this placeholder to your HTML where you want the related sessions table body/rows
                     .replace("${linkedSessionsRows}", linkedSessionsHtml);
 
@@ -114,7 +129,7 @@ public class CustomerProfileServlet extends HttpServlet {
             String sid = nullToEmpty(link.getSessionId());
             String display = nullToEmpty(link.getDisplayNameSnapshot());
             String email = nullToEmpty(link.getContactEmailSnapshot());
-            String updated = link.getUpdatedAt() == null ? "—" : link.getUpdatedAt().toString();
+            String updated = link.getUpdatedAt() == null ? "—" : formatOffsetDateTime(link.getUpdatedAt());
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
@@ -189,5 +204,12 @@ public class CustomerProfileServlet extends HttpServlet {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String formatOffsetDateTime(OffsetDateTime value) {
+        if (value == null) {
+            return "—";
+        }
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }
 }

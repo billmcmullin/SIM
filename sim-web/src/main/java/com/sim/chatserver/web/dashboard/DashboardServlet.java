@@ -11,7 +11,6 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -139,10 +138,6 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate rangeStartFinal = rangeStart;
         final LocalDate rangeEndFinal = rangeEnd;
 
-        long windowDays = Math.max(1, ChronoUnit.DAYS.between(rangeStartFinal, rangeEndFinal) + 1);
-        final LocalDate prevRangeEnd = rangeStartFinal.minusDays(1);
-        final LocalDate prevRangeStart = prevRangeEnd.minusDays(windowDays - 1);
-
         final LocalDate dayToday = rangeEndFinal;
         final LocalDate dayYesterday = dayToday.minusDays(1);
 
@@ -179,11 +174,6 @@ public class DashboardServlet extends HttpServlet {
 
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
-                DASHBOARD_EXECUTOR
-        );
-
-        CompletableFuture<TermSummary> prevTermSummaryFuture = CompletableFuture.supplyAsync(
-                () -> loadTermSummary(termService, widgetsFinal, prevRangeStart, prevRangeEnd),
                 DASHBOARD_EXECUTOR
         );
 
@@ -226,7 +216,6 @@ public class DashboardServlet extends HttpServlet {
         ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
         List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
         TermSummary termSummary = safeJoin(termSummaryFuture, null, "term summary");
-        TermSummary prevTermSummary = safeJoin(prevTermSummaryFuture, null, "previous term summary");
         TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
         TermSummary yesterdayTermSummary = safeJoin(yesterdayTermSummaryFuture, null, "yesterday term summary");
         TermSummary allTimeTermSummary = safeJoin(allTimeTermSummaryFuture, null, "all-time term summary");
@@ -276,7 +265,7 @@ public class DashboardServlet extends HttpServlet {
         Map<String, List<TermChatSnapshot>> yesterdayOnlySnapshots = copySnapshots(yesterdayTermSummary);
         storeYesterdaySnapshots(session, yesterdayOnlySnapshots);
 
-        String sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">No session activity available.</td></tr>";
+        String sessionRows;
         String sessionChartJson = sessionService.buildEmptySessionPayload(rangeStart, rangeEnd);
         int totalUsers = 0;
         int activeUsers = 0;
@@ -572,7 +561,7 @@ public class DashboardServlet extends HttpServlet {
 
     private Map<String, List<TermChatSnapshot>> copySnapshots(TermSummary summary) {
         Map<String, List<TermChatSnapshot>> out = new LinkedHashMap<>();
-        if (summary == null || summary.getTermSnapshots() == null) {
+        if (summary == null) {
             return out;
         }
 
@@ -620,7 +609,7 @@ public class DashboardServlet extends HttpServlet {
 
     private Map<String, Integer> buildTermTotalMap(TermSummary summary) {
         Map<String, Integer> out = new LinkedHashMap<>();
-        if (summary == null || summary.getTermCounts() == null) {
+        if (summary == null) {
             return out;
         }
         for (Map.Entry<String, Integer> e : summary.getTermCounts().entrySet()) {
