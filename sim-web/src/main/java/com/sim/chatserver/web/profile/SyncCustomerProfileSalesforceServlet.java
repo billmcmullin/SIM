@@ -3,6 +3,7 @@ package com.sim.chatserver.web.profile;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
@@ -20,6 +21,8 @@ import jakarta.servlet.http.HttpSession;
 public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
     private final SalesforceClient salesforceClient = new SalesforceClient();
+    private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
+    private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -33,6 +36,17 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
         String sessionId = trimToNull(req.getParameter("sessionId"));
         String friendlyName = trimToNull(req.getParameter("friendlyName"));
 
+        if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                "{\"status\":\"error\",\"message\":\"Invalid sessionId format.\"}");
+            return;
+        }
+        if (friendlyName != null && !FRIENDLY_NAME_PATTERN.matcher(friendlyName).matches()) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                "{\"status\":\"error\",\"message\":\"Invalid friendlyName format.\"}");
+            return;
+        }
+
         if (sessionId == null && friendlyName == null) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     "{\"status\":\"error\",\"message\":\"sessionId or friendlyName is required.\"}");
@@ -41,7 +55,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
         try {
             // If friendly name not provided, try cache lookup by session id first
-            if (friendlyName == null && sessionId != null) {
+            if (friendlyName == null) {
                 CustomerProfile existing = CustomerProfileStore.loadBySessionId(sessionId);
                 if (existing != null) {
                     friendlyName = trimToNull(existing.getFriendlyName());
@@ -56,11 +70,11 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 match = salesforceClient.findBestCustomerMatch(searchName);
             } catch (SalesforceClient.SalesforceClientException sce) {
                 writeJson(resp, sce.getStatusCode(),
-                        "{\"status\":\"error\",\"message\":\"" + escapeJson(sce.getMessage()) + "\"}");
+                        "{\"status\":\"error\",\"message\":\"Salesforce request failed.\"}");
                 return;
             } catch (IllegalStateException ise) {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                        "{\"status\":\"error\",\"message\":\"" + escapeJson(ise.getMessage()) + "\"}");
+                        "{\"status\":\"error\",\"message\":\"Invalid Salesforce request state.\"}");
                 return;
             }
 

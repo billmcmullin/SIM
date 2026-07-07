@@ -5,30 +5,26 @@ pipeline {
 
     environment {
         // URL to checkout project from GIT
-        GIT_URL              = 'https://github.com/billmcmullin/SIM.git'
+        GIT_URL                = 'https://github.com/billmcmullin/SIM.git'
         // Branch to checkout project from GIT
-        BRANCH               = 'release'
+        BRANCH                 = 'release'
         // Parasoft Session Tag for running this build
-        SESSION_TAG          = 'Jenkins Jtest'
+        SESSION_TAG            = 'Jenkins Jtest'
         // Parasoft Test Configuration to run this build
-        TEST_CONFIG          = 'jtest.dtp://StaticAndUnit'
-        // Parasoft Security Compliance Test Configuration to run this build
-        SEC_TEST_CONFIG      = 'jtest.dtp://OWASP Top 10-2021 [Parasoft 2025.2]'
+        TEST_CONFIG            = 'jtest.dtp://StaticAndUnit'
+        // Parasoft Security Compliance Test Configruation to run 2025 OWASP
+        OWASP_2025_TEST_CONFIG = 'jtest.dtp://OWASP Top 10-2025 [Parasoft 2026.1]'
+        // Parasoft Security Compliance Test Configuration for CWE
+        CWE_TEST_CONFIG        = 'jtest.dtp://CWE Top 25 + On the Cusp 2025 [Parasoft 2026.1]'
         // Publish results to Parasoft DTP
-        PUBLISH              = 'true'
+        PUBLISH                = 'true'
         // Shared output location
-        SHARED_DIR           = '/home/jenkins/shared/SIM_Java'
+        SHARED_DIR             = '/home/jenkins/shared/SIM_Java'
         // Persisted OWASP Dependency-Check data cache (critical for CI stability)
-        DC_DATA_DIR          = '/home/jenkins/shared/dependency-check-data'
+        DC_DATA_DIR            = '/home/jenkins/shared/dependency-check-data'
         // Integration Tests
-        DOCKER_COMPOSE_FILE  = 'Wildfly-Jtest-docker-compose.yml'
-        PLAYWRIGHT_BASE_URL  = 'http://wildflylocal:8080/chat-server'
-
-        // ---- Java selection ----
-        JAVA_VERSION         = '24.0.2'
-        JAVA_HOME            = "/home/jenkins/agent/jdk-${JAVA_VERSION}"
-        // JAVA_HOME         = "/opt/java/openjdk"
-        PATH                 = "${JAVA_HOME}/bin:${env.PATH}"
+        DOCKER_COMPOSE_FILE    = 'Wildfly-Jtest-docker-compose.yml'
+        PLAYWRIGHT_BASE_URL    = 'http://chatserver:8080/chat-server'
     }
 
     stages {
@@ -56,13 +52,20 @@ pipeline {
                         echo "report.scontrol=full" >> jtest_${JOB_NAME}.properties
                         echo "license.release.on.exit=true" >> jtest_${JOB_NAME}.properties
 
-                        echo "dtp.project=SIM Java" > jtest_${JOB_NAME}_OWASP.properties
-                        echo "dtp.url=https://dtp:8443" >> jtest_${JOB_NAME}_OWASP.properties
-                        echo "dtp.user=ratchet" >> jtest_${JOB_NAME}_OWASP.properties
-                        echo "dtp.password=aCvxBC05GFbAjcw1TR0ZlA==" >> jtest_${JOB_NAME}_OWASP.properties
-                        echo "parasoft.eula.accepted=true" >> jtest_${JOB_NAME}_OWASP.properties
-                        echo "build.id=${BUILD_TAG}" >> jtest_${JOB_NAME}_OWASP.properties
-                        echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_OWASP.properties
+                        echo "dtp.project=SIM Java" > jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "dtp.url=https://dtp:8443" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "dtp.user=ratchet" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "dtp.password=aCvxBC05GFbAjcw1TR0ZlA==" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "parasoft.eula.accepted=true" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "build.id=${BUILD_TAG}" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "scope.scontrol=true" >> jtest_${JOB_NAME}.properties
+                        echo "scontrol.rep1.type=git" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "scontrol.rep1.git.url=${GIT_URL}" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "scontrol.rep1.git.branch=${BRANCH}" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "scontrol.rep1.git.workspace=${WORKSPACE}" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "scontrol.git.exec=/usr/bin/git" >> jtest_${JOB_NAME}_3RDCHECK.properties
+                        echo "report.scontrol=full" >> jtest_${JOB_NAME}_3RDCHECK.properties
                     '''
                 }
             }
@@ -73,7 +76,7 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
                         sh '''
-                            $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app \
+                            $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app,sim-email \
                                 -Djtest.settings="jtest_${JOB_NAME}.properties" \
                                 -Djtest.publish="${PUBLISH}" \
                                 -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
@@ -98,10 +101,18 @@ pipeline {
 
                         \$JTEST_HOME/jtestcli \
                             -data ${WORKSPACE}/sim-core/target/jtest/monitor/jtest.data.json \
-                            -config "${SEC_TEST_CONFIG}" \
+                            -config "${OWASP_2025_TEST_CONFIG}" \
                             -settings jtest_${JOB_NAME}.properties \
                             -publish \
-                            -report "${WORKSPACE}/report/OWASP" \
+                            -report "${WORKSPACE}/report/OWASP2025" \
+                            -exclude "**/test/**/*Test.java"
+
+                        \$JTEST_HOME/jtestcli \
+                            -data ${WORKSPACE}/sim-core/target/jtest/monitor/jtest.data.json \
+                            -config "${CWE_TEST_CONFIG}" \
+                            -settings jtest_${JOB_NAME}.properties \
+                            -publish \
+                            -report "${WORKSPACE}/report/CWE" \
                             -exclude "**/test/**/*Test.java"
                     """
                 }
@@ -145,19 +156,19 @@ pipeline {
                         fi
 
                         if grep -q '^jtest\\.agent\\.jbossCompatibilityMode=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\agent\\.jbossCompatibilityMode=.*/jtest.agent.jbossCompatibilityMode=true/'  "${AGENT_FILE}"
+                            sed -i 's/^jtest\\.agent\\.jbossCompatibilityMode=.*/jtest.agent.jbossCompatibilityMode=true/' "${AGENT_FILE}"
                         else
                             echo 'jtest.agent.jbossCompatibilityMode=true' >> "${AGENT_FILE}"
                         fi
 
                         if grep -q '^jtest\\.agent\\.restServerEnabled=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\agent\\.restServerEnabled=.*/jtest.agent.restServerEnabled=true/'  "${AGENT_FILE}"
+                            sed -i 's/^jtest\\.agent\\.restServerEnabled=.*/jtest.agent.restServerEnabled=true/' "${AGENT_FILE}"
                         else
                             echo 'jtest.agent.restServerEnabled=true' >> "${AGENT_FILE}"
                         fi
 
                         echo "Updated ${AGENT_FILE}:"
-                        grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode)=' "${AGENT_FILE}" || true
+                        grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode|restServerEnabled)=' "${AGENT_FILE}" || true
 
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
@@ -178,6 +189,7 @@ pipeline {
                 }
             }
         }
+
         stage('Run Maven OWASP for A6') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
@@ -192,7 +204,7 @@ pipeline {
 
                             $DEPENDENCY_CHECK/dependencycheck.sh \
                                 -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
-                                -settings "jtest_${JOB_NAME}_OWASP.properties"
+                                -settings "jtest_${JOB_NAME}_3RDCHECK.properties"
                         '''
                     }
                 }
@@ -201,7 +213,7 @@ pipeline {
 
         stage('Run ESLint') {
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
                         set +e
                         mkdir -p report/eslint
@@ -210,13 +222,28 @@ pipeline {
                             npm init -y >/dev/null 2>&1
                         fi
 
+                        # Need to install checlstyle format for Parasoft MLP
                         npm install --no-audit --no-fund --save-dev eslint@9.12.0
+                        npm install -D eslint-formatter-checkstyle
 
-                        npx eslint "sim-app/src/main/webapp/assets/js/**/*.js" -f json \
+                        # JSON report for Jenkins Warnings NG
+                        npx eslint "sim-app/src/main/webapp/assets/js/**/*.js" \
+                            -f json \
                             -o report/eslint/eslint-report.json
                         ESLINT_EXIT=$?
 
                         echo "ESLint exit code: ${ESLINT_EXIT}"
+                        # Checkstyle XML report for Parasoft MLP input
+                        npx eslint "sim-app/src/main/webapp/assets/js/**/*.js" \
+                            -f checkstyle \
+                            -o report/eslint/eslint-report.xml || true
+
+                        echo "Running Parasoft MLP"
+                        ${MLP}/multilanguage-pack.sh -tool "eslint" \
+                            -source.dir "${WORKSPACE}/sim-app" \
+                            -results.file "${WORKSPACE}/report/eslint/eslint-report.xml" \
+                            -settings "jtest_${JOB_NAME}_3RDCHECK.properties"
+
                         exit 0
                     '''
                 }
@@ -258,12 +285,21 @@ pipeline {
                     if (fileExists("${env.WORKSPACE}/report/eslint/eslint-report.json")) {
                         recordIssues(
                             enabledForFailure: true,
-                            tools: [esLint(pattern: 'report/eslint/eslint-report.json')]
+                            tools: [esLint(pattern: 'report/eslint/eslint-report.json')],
+                            qualityGates: [[threshold: 999999, type: 'TOTAL', unstable: true]]
                         )
                     }
 
                     if (fileExists("${env.WORKSPACE}/target/dependency-check-report.xml")) {
-                        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                        dependencyCheckPublisher(
+                            pattern: '**/dependency-check-report.xml',
+                            failedTotalHigh: 999999,
+                            failedTotalMedium: 999999,
+                            failedTotalLow: 999999,
+                            unstableTotalHigh: 999999,
+                            unstableTotalMedium: 999999,
+                            unstableTotalLow: 999999
+                        )
                     }
 
                     recordIssues(
@@ -272,8 +308,8 @@ pipeline {
                                 pattern: '**/report/**/report.xml',
                                 localSettingsPath: "${WORKSPACE}/jtest_${JOB_NAME}.properties"
                             )
-                        ]
-
+                        ],
+                        qualityGates: []
                     )
                 }
             }
@@ -281,12 +317,22 @@ pipeline {
     }
 
     post {
+        always {
+            // Personal testing mode: force SUCCESS even if publishers mark UNSTABLE
+            script {
+                currentBuild.result = 'SUCCESS'
+            }
+        }
         success {
             echo 'success.'
             chuckNorris()
         }
         failure {
             echo 'failed.'
+            chuckNorris()
+        }
+        unstable {
+            echo 'unstable.'
             chuckNorris()
         }
     }

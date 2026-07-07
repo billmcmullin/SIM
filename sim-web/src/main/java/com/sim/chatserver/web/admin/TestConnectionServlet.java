@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -24,6 +25,8 @@ public class TestConnectionServlet extends HttpServlet {
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
+    private static final Pattern HOST_PATTERN = Pattern.compile("[A-Za-z0-9.-]{1,253}");
+    private static final Pattern PORT_PATTERN = Pattern.compile("\\d{1,5}");
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -64,7 +67,15 @@ public class TestConnectionServlet extends HttpServlet {
             return;
         }
 
-        String endpoint = buildEndpoint(host.trim(), port.trim());
+        String endpoint;
+        try {
+            endpoint = buildEndpoint(host.trim(), port.trim());
+        } catch (IllegalArgumentException ex) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid host or port format.\"}");
+            return;
+        }
+
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
@@ -80,24 +91,36 @@ public class TestConnectionServlet extends HttpServlet {
                 resp.getWriter().write("{\"status\":\"ok\"}");
             } else {
                 resp.setStatus(response.statusCode());
-                String message = response.body();
-                if (message == null || message.isBlank()) {
-                    message = "Upstream returned status " + response.statusCode();
-                }
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(message) + "\"}");
+                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Connection test failed with upstream status.\"}");
             }
         } catch (Exception e) {
             resp.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Connection test failed.\"}");
         }
     }
 
     private String buildEndpoint(String host, String port) {
+        if (!PORT_PATTERN.matcher(port).matches()) {
+            throw new IllegalArgumentException("Invalid port");
+        }
+        int portNumber = Integer.parseInt(port);
+        if (portNumber < 1 || portNumber > 65535) {
+            throw new IllegalArgumentException("Port out of range");
+        }
+
         String normalizedHost = host;
         if (!normalizedHost.startsWith("http://") && !normalizedHost.startsWith("https://")) {
             normalizedHost = "https://" + normalizedHost;
         }
-        return normalizedHost.replaceAll("/+$", "") + ":" + port + "/api/v1/auth";
+
+        URI base = URI.create(normalizedHost);
+        String scheme = base.getScheme();
+        String hostPart = base.getHost();
+        if (scheme == null || hostPart == null || !HOST_PATTERN.matcher(hostPart).matches()) {
+            throw new IllegalArgumentException("Invalid host");
+        }
+
+        return scheme + "://" + hostPart + ":" + portNumber + "/api/v1/auth";
     }
 
     private String escapeJson(String value) {

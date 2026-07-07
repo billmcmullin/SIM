@@ -2,7 +2,8 @@
 
 ## Build Information
 
-Requirements: Make sure a PostgreSQL DB is available with the "chat" Table created. Locate the SQL scripts in the  [resources/postgres](resources/postgres) directory to create these if needed. Docker is supported with this WAR file. 
+Requirements: Make sure a PostgreSQL DB is available with the "chat" Table created. Locate the SQL scripts in the  [resources/postgres](resources/postgres) directory to create these if needed.
+Docker is supported with this WAR file.
 
 `NOTE: Make sure to have configured for Parasoft Jtest if you are using it. The instructions below assumes you have it configured for a Parasoft License already.`
 
@@ -13,7 +14,7 @@ Current [Jenkin Pipeline flow](SIM_Jenkins_Pipeline.groovy) execution summary:
 3. **Run Maven build/test flow** – Build and run tests for core modules with Parasoft agent/monitor instrumentation.  
 4. **Run Parasoft CLI analyses** – Execute Static/Unit analysis and OWASP Top 10 analysis, then publish reports.  
 5. **Run Maven OWASP A6 scan** – Execute Dependency-Check using NVD API/cache and publish A6 results to Parasoft.  
-6. **Run ESLint** – Lint JavaScript assets and produce JSON findings.  
+6. **Run ESLint + Parasoft MLP** – Lint JavaScript assets and produce JSON and Checkstyle report findings. Used for Parasoft MLP to publish results.  
 7. **Prepare + run integration tests** – Prepare shared monitor/agent config, restart Docker services, and run Playwright integration tests.  
 8. **Publish consolidated results** – Publish unit/integration test reports, coverage, ESLint issues, dependency-check results, and Parasoft findings.  
 9. **Post actions** – Run success/failure notifications based on final build outcome.
@@ -23,10 +24,10 @@ Current [Jenkin Pipeline flow](SIM_Jenkins_Pipeline.groovy) execution summary:
 After building the war file, it is located here:
 
 ```bash
-<PATH TO PROJECT>\SIM_JAVA\sim-app\target\chat-server.war
+<PATH TO PROJECT>\sim-app\target\chat-server.war
 ```
 
-Place in the Standalone directory in the Wildfly server to deploy. 
+Place in the Standalone directory in the Wildfly server to deploy.
 
 ## Build Commands
 
@@ -35,7 +36,7 @@ Use the below to build the project with or without Parasoft Jtest:
 - Package war:
 
 ```bash
-mvn clean verify -pl sim-core,sim-web,sim-app -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true
+mvn clean verify -pl sim-core,sim-web,sim-app,sim-email -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true
 ```
 
 - Run Playwright after Docker Container is deployed
@@ -47,13 +48,13 @@ mvn verify -pl sim-playwright -DbaseUrl=<SERVER INFO>/chat-server -Dheadless=tru
 - Run Jtest Monitor for Application Coverage setup:
 
 ```bash
-mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DignoreHttpsErrors=true
+mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app,sim-email -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DignoreHttpsErrors=true
 ```
 
 - Run Jtest Analysis:
 
 ```bash
-mvn clean test-compile jtest:agent verify jtest:jtest -pl sim-core,sim-web,sim-app -Djtest.config="<TEST CONFIG>" -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DignoreHttpsErrors=true
+mvn clean test-compile jtest:agent verify jtest:jtest -pl sim-core,sim-web,sim-app,sim-email -Djtest.config="<TEST CONFIG>" -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DignoreHttpsErrors=true
 ```
 
 - Run OWASP
@@ -76,7 +77,7 @@ mvn org.owasp:dependency-check-maven:purge
 mvn versions:display-dependency-updates
 ```
 
-- Also check plugin updates
+- Check plugin updates
 
 ```bash
 mvn versions:display-plugin-updates
@@ -92,5 +93,5 @@ mvn versions:display-property-updates
 - For a specific module
 
 ```bash
-mvn -pl sim-playwright versions:display-dependency-updates
+mvn -pl <MODULE_NAME> versions:display-dependency-updates
 ```

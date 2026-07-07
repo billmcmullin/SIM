@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpSession;
 public class ProfileServlet extends HttpServlet {
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
+    private static final String LOGIN_PATH = "/login";
 
     @Inject
     UserService userService;
@@ -30,7 +31,7 @@ public class ProfileServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            resp.sendRedirect(LOGIN_PATH);
             return;
         }
 
@@ -57,9 +58,15 @@ public class ProfileServlet extends HttpServlet {
             return;
         }
 
-        String currentUsername = String.valueOf(session.getAttribute("user"));
-        String newUsername = req.getParameter("username");
-        String newPassword = req.getParameter("password");
+        Object sessionUser = session.getAttribute("user");
+        if (!(sessionUser instanceof String currentUsername) || currentUsername.isBlank()) {
+            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            writer.write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            return;
+        }
+
+        String newUsername = sanitizeInput(req.getParameter("username"));
+        String newPassword = sanitizeInput(req.getParameter("password"));
 
         if (newUsername == null || newUsername.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -69,15 +76,29 @@ public class ProfileServlet extends HttpServlet {
 
         try {
             UserAccount updated = userService.updateCredentials(currentUsername, newUsername, newPassword);
-            session.setAttribute("user", updated.getUsername());
-            writer.write("{\"status\":\"ok\",\"username\":\"" + escapeJson(updated.getUsername()) + "\"}");
+            String updatedUsername = updated == null ? null : sanitizeInput(updated.getUsername());
+            if (updatedUsername == null || updatedUsername.isBlank()) {
+                resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                writer.write("{\"status\":\"error\",\"message\":\"Profile update failed.\"}");
+                return;
+            }
+
+            session.setAttribute("user", updatedUsername);
+            writer.write("{\"status\":\"ok\",\"username\":\"" + escapeJson(updatedUsername) + "\"}");
         } catch (jakarta.persistence.PersistenceException pe) {
             resp.setStatus(HttpServletResponse.SC_CONFLICT);
-            writer.write("{\"status\":\"error\",\"message\":\"Could not update profile: " + escapeJson(pe.getMessage()) + "\"}");
+            writer.write("{\"status\":\"error\",\"message\":\"Could not update profile.\"}");
         } catch (Exception e) {
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            writer.write("{\"status\":\"error\",\"message\":\"Failed to update profile: " + escapeJson(e.getMessage()) + "\"}");
+            writer.write("{\"status\":\"error\",\"message\":\"Failed to update profile.\"}");
         }
+    }
+
+    private String sanitizeInput(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replace("\0", "").trim();
     }
 
     private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {
