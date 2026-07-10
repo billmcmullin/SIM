@@ -19,7 +19,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Duration;
@@ -382,8 +381,8 @@ public class DatabaseImportServlet extends HttpServlet {
             return 0;
         }
 
-        try (Statement st = conn.createStatement()) {
-            st.execute("TRUNCATE TABLE " + q(table) + " RESTART IDENTITY CASCADE");
+        try (PreparedStatement ps = conn.prepareStatement("TRUNCATE TABLE " + q(table) + " RESTART IDENTITY CASCADE")) {
+            ps.execute();
         }
 
         Map<String, ColumnInfo> columnInfo = loadColumnInfo(conn, table);
@@ -624,15 +623,15 @@ public class DatabaseImportServlet extends HttpServlet {
                 ddl = "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)";
         }
 
-        try (Statement st = conn.createStatement()) {
-            st.execute(ddl);
+        try (PreparedStatement ps = conn.prepareStatement(ddl)) {
+            ps.execute();
         }
     }
 
     private void createTableFromCsvHeader(Connection conn, String table, List<String> headers) throws SQLException {
         if (headers == null || headers.isEmpty()) {
-            try (Statement st = conn.createStatement()) {
-                st.execute("CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)");
+            try (PreparedStatement ps = conn.prepareStatement("CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)")) {
+                ps.execute();
             }
             return;
         }
@@ -646,8 +645,8 @@ public class DatabaseImportServlet extends HttpServlet {
         }
         ddl.append(")");
 
-        try (Statement st = conn.createStatement()) {
-            st.execute(ddl.toString());
+        try (PreparedStatement ps = conn.prepareStatement(ddl.toString())) {
+            ps.execute();
         }
     }
 

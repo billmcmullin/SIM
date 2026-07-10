@@ -12,7 +12,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -741,8 +740,8 @@ public class WidgetSyncServlet extends HttpServlet {
     private void ensureSyncSettingsTable(Connection conn) throws SQLException {
         String sql = "CREATE TABLE IF NOT EXISTS widget_sync_settings ("
                 + "id INTEGER PRIMARY KEY, interval_seconds BIGINT NOT NULL, last_synced TIMESTAMP)";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.execute();
         }
     }
 
@@ -790,8 +789,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
                 + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
                 + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createTableSql);
+        try (PreparedStatement ps = conn.prepareStatement(createTableSql)) {
+            ps.execute();
         }
 
         String idxName = (tableName + "_widget_chat_id_uidx");
@@ -800,14 +799,14 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         String quotedIdx = quoteIdentifier(idxName);
 
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
-                    + " ON " + quotedTable + " (widget_chat_id)");
+        try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
+                + " ON " + quotedTable + " (widget_chat_id)")) {
+            ps.execute();
         } catch (SQLException uniqueErr) {
             dedupeByWidgetChatId(conn, tableName);
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
-                        + " ON " + quotedTable + " (widget_chat_id)");
+            try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
+                    + " ON " + quotedTable + " (widget_chat_id)")) {
+                ps.execute();
             }
         }
 
@@ -822,8 +821,8 @@ public class WidgetSyncServlet extends HttpServlet {
                 + "OR (a.created_at = b.created_at AND a.db_id < b.db_id) "
                 + "OR (a.created_at IS NULL AND b.created_at IS NOT NULL) "
                 + "OR (a.created_at IS NULL AND b.created_at IS NULL AND a.db_id < b.db_id))";
-        try (Statement stmt = conn.createStatement()) {
-            int removed = stmt.executeUpdate(sql);
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int removed = ps.executeUpdate();
             if (removed > 0) {
                 log.log(Level.INFO, "Removed {0} duplicate rows from {1}", new Object[]{removed, tableName});
             }

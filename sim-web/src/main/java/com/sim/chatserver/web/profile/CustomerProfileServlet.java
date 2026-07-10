@@ -122,7 +122,13 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String buildLinkedSessionsRows(List<CustomerIdentitySessionLink> links, String contextPath) {
         if (links == null || links.isEmpty()) {
-            return "<tr><td colspan=\"4\" class=\"empty-row\">No linked sessions found.</td></tr>";
+            StringBuilder empty = new StringBuilder(96);
+            openTag(empty, "tr");
+            openTag(empty, "td", "colspan", "4", "class", "empty-row");
+            empty.append(escapeHtml("No linked sessions found."));
+            closeTag(empty, "td");
+            closeTag(empty, "tr");
+            return empty.toString();
         }
 
         return links.stream().map(link -> {
@@ -133,13 +139,46 @@ public class CustomerProfileServlet extends HttpServlet {
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
-            return "<tr>"
-                    + "<td><a href=\"" + escapeHtml(profileHref) + "\">" + escapeHtml(sid) + "</a></td>"
-                    + "<td>" + escapeHtml(display.isBlank() ? "—" : display) + "</td>"
-                    + "<td>" + escapeHtml(email.isBlank() ? "—" : email) + "</td>"
-                    + "<td>" + escapeHtml(updated) + "</td>"
-                    + "</tr>";
+            StringBuilder row = new StringBuilder(256);
+            openTag(row, "tr");
+
+            openTag(row, "td");
+            openTag(row, "a", "href", profileHref);
+            row.append(escapeHtml(sid));
+            closeTag(row, "a");
+            closeTag(row, "td");
+
+            openTag(row, "td");
+            row.append(escapeHtml(display.isBlank() ? "—" : display));
+            closeTag(row, "td");
+
+            openTag(row, "td");
+            row.append(escapeHtml(email.isBlank() ? "—" : email));
+            closeTag(row, "td");
+
+            openTag(row, "td");
+            row.append(escapeHtml(updated));
+            closeTag(row, "td");
+
+            closeTag(row, "tr");
+            return row.toString();
         }).collect(Collectors.joining());
+    }
+
+    private void openTag(StringBuilder out, String name, String... attrs) {
+        out.append('<').append(name);
+        for (int i = 0; i + 1 < attrs.length; i += 2) {
+            out.append(' ')
+                    .append(attrs[i])
+                    .append("=\"")
+                    .append(escapeHtml(attrs[i + 1]))
+                    .append('"');
+        }
+        out.append('>');
+    }
+
+    private void closeTag(StringBuilder out, String name) {
+        out.append('<').append('/').append(name).append('>');
     }
 
     private String loadTemplate(ServletContext context, String path) throws IOException {
