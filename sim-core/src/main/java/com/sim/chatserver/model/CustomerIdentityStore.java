@@ -5,7 +5,6 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -86,10 +85,12 @@ public final class CustomerIdentityStore {
             ensureForeignKey(c, SESSION_TABLE, "identity_id", IDENTITY_TABLE, "identity_id",
                     "fk_customer_identity_session_identity");
 
-            try (Statement s = c.createStatement()) {
-                s.executeUpdate("CREATE INDEX IF NOT EXISTS idx_customer_identity_email ON customer_identity (LOWER(canonical_email))");
-                s.executeUpdate("CREATE INDEX IF NOT EXISTS idx_customer_identity_name ON customer_identity (LOWER(canonical_name))");
-                s.executeUpdate("CREATE INDEX IF NOT EXISTS idx_customer_identity_session_identity ON customer_identity_session (identity_id)");
+            try (PreparedStatement ps1 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_email ON customer_identity (LOWER(canonical_email))");
+                    PreparedStatement ps2 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_name ON customer_identity (LOWER(canonical_name))");
+                    PreparedStatement ps3 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_session_identity ON customer_identity_session (identity_id)")) {
+                ps1.executeUpdate();
+                ps2.executeUpdate();
+                ps3.executeUpdate();
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Failed to ensure customer identity schema", e);
@@ -98,8 +99,7 @@ public final class CustomerIdentityStore {
     }
 
     private static void ensureIdentityTable(Connection c) throws SQLException {
-        try (Statement s = c.createStatement()) {
-            s.executeUpdate("""
+        try (PreparedStatement ps = c.prepareStatement("""
                 CREATE TABLE IF NOT EXISTS customer_identity (
                     identity_id BIGSERIAL PRIMARY KEY,
                     canonical_email TEXT,
@@ -116,13 +116,13 @@ public final class CustomerIdentityStore {
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     last_synced_at TIMESTAMPTZ
                 )
-            """);
+            """)) {
+            ps.executeUpdate();
         }
     }
 
     private static void ensureSessionTable(Connection c) throws SQLException {
-        try (Statement s = c.createStatement()) {
-            s.executeUpdate("""
+        try (PreparedStatement ps = c.prepareStatement("""
                 CREATE TABLE IF NOT EXISTS customer_identity_session (
                     session_id TEXT PRIMARY KEY,
                     identity_id BIGINT NOT NULL,
@@ -131,7 +131,8 @@ public final class CustomerIdentityStore {
                     linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
-            """);
+            """)) {
+            ps.executeUpdate();
         }
     }
 
@@ -142,8 +143,8 @@ public final class CustomerIdentityStore {
             }
 
             // Drop NOT NULL so inserts without session_id no longer fail.
-            try (Statement s = c.createStatement()) {
-                s.executeUpdate("ALTER TABLE customer_identity ALTER COLUMN session_id DROP NOT NULL");
+            try (PreparedStatement ps = c.prepareStatement("ALTER TABLE customer_identity ALTER COLUMN session_id DROP NOT NULL")) {
+                ps.executeUpdate();
             } catch (SQLException ignore) {
             }
 
@@ -349,8 +350,8 @@ public final class CustomerIdentityStore {
         if (columnExists(conn, table, column)) {
             return;
         }
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("ALTER TABLE " + q(table) + " ADD COLUMN " + q(column) + " " + sqlType);
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD COLUMN " + q(column) + " " + sqlType)) {
+            ps.executeUpdate();
         }
     }
 
@@ -362,8 +363,8 @@ public final class CustomerIdentityStore {
     }
 
     private static void ensureNowDefault(Connection conn, String table, String column) {
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("ALTER TABLE " + q(table) + " ALTER COLUMN " + q(column) + " SET DEFAULT NOW()");
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ALTER COLUMN " + q(column) + " SET DEFAULT NOW()")) {
+            ps.executeUpdate();
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to set NOW() default for {0}.{1}", new Object[]{table, column});
         }
@@ -388,9 +389,9 @@ public final class CustomerIdentityStore {
             return;
         }
 
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("ALTER TABLE " + q(table) + " ADD CONSTRAINT " + q(constraintName)
-                    + " PRIMARY KEY (" + q(column) + ")");
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD CONSTRAINT " + q(constraintName)
+                + " PRIMARY KEY (" + q(column) + ")")) {
+            ps.executeUpdate();
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to add primary key {0} on table {1}", new Object[]{constraintName, table});
         }
@@ -418,11 +419,11 @@ public final class CustomerIdentityStore {
             return;
         }
 
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("ALTER TABLE " + q(sourceTable)
-                    + " ADD CONSTRAINT " + q(fkName)
-                    + " FOREIGN KEY (" + q(sourceColumn) + ") REFERENCES "
-                    + q(targetTable) + " (" + q(targetColumn) + ") ON DELETE CASCADE");
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(sourceTable)
+                + " ADD CONSTRAINT " + q(fkName)
+                + " FOREIGN KEY (" + q(sourceColumn) + ") REFERENCES "
+                + q(targetTable) + " (" + q(targetColumn) + ") ON DELETE CASCADE")) {
+            ps.executeUpdate();
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to add foreign key {0} on table {1}", new Object[]{fkName, sourceTable});
         }
@@ -448,8 +449,8 @@ public final class CustomerIdentityStore {
             return;
         }
 
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("ALTER TABLE " + q(table) + " DROP CONSTRAINT " + q(constraint));
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " DROP CONSTRAINT " + q(constraint))) {
+            ps.executeUpdate();
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to drop constraint {0} on table {1}", new Object[]{constraint, table});
         }

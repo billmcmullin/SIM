@@ -35,6 +35,7 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -240,7 +241,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                     .add("limit", limit)
                     .build();
 
-            writeJson(resp, body.toString());
+            writeJson(resp, body);
 
             final long t3 = System.nanoTime();
             log.info(String.format(
@@ -338,7 +339,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 .add("limit", limit)
                 .build();
 
-        writeJson(resp, body.toString());
+        writeJson(resp, body);
 
         final long t1 = System.nanoTime();
         log.info(String.format(
@@ -587,6 +588,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType(JSON_UTF8);
         resp.getWriter().write(body);
+    }
+
+    private void writeJson(HttpServletResponse resp, JsonObject body) throws IOException {
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
+        }
     }
 
     private static final class QueryParts {

@@ -5,11 +5,12 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -119,7 +120,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                  ORDER BY tablename
                 """;
 
-        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 String table = rs.getString(1);
                 if (table == null || table.isBlank()) {
@@ -138,10 +139,10 @@ public class DatabaseBackupServlet extends HttpServlet {
     private void exportTableAsCsv(Connection conn, ZipOutputStream zip, String tableName) throws SQLException, IOException {
         String sql = "SELECT * FROM " + quoteIdent(tableName);
 
-        try (Statement st = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-            st.setFetchSize(1000);
+        try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setFetchSize(1000);
 
-            try (ResultSet rs = st.executeQuery(sql)) {
+            try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData md = rs.getMetaData();
                 int cols = md.getColumnCount();
 
@@ -163,8 +164,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                         if (i > 1) {
                             w.print(",");
                         }
-                        Object v = rs.getObject(i);
-                        w.print(csvEscape(toText(v)));
+                        w.print(csvEscape(readCellAsText(rs, md, i)));
                     }
                     w.print("\n");
                 }
@@ -194,20 +194,30 @@ public class DatabaseBackupServlet extends HttpServlet {
         zip.closeEntry();
     }
 
-    private String toText(Object v) {
-        if (v == null) {
+    private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) throws SQLException {
+        int sqlType = md.getColumnType(columnIndex);
+        if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
+            byte[] bytes = rs.getBytes(columnIndex);
+            if (bytes == null) {
+                return "";
+            }
+            return Base64.getEncoder().encodeToString(bytes);
+        }
+
+        String value = rs.getString(columnIndex);
+        if (value == null) {
             return "";
         }
-        if (v instanceof Timestamp ts) {
+
+        Object raw = rs.getObject(columnIndex);
+        if (raw instanceof Timestamp ts) {
             return ts.toInstant().toString();
         }
-        if (v instanceof Date d) {
+        if (raw instanceof Date d) {
             return new Timestamp(d.getTime()).toInstant().toString();
         }
-        if (v instanceof byte[] b) {
-            return Base64.getEncoder().encodeToString(b);
-        }
-        return String.valueOf(v);
+
+        return value;
     }
 
     private String csvEscape(String s) {
