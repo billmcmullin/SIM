@@ -110,7 +110,7 @@ function syncLabeledOnlyToUrl() {
             u.searchParams.delete('labeledOnly');
         }
         window.history.replaceState({}, '', u.toString());
-    } catch (e) {
+    } catch {
         // no-op
     }
 }
@@ -337,7 +337,7 @@ toggleLabeledOnlyBtn?.addEventListener('click', () => {
 try {
     const urlParams = new URLSearchParams(window.location.search);
     labeledOnly = (urlParams.get('labeledOnly') || 'false').toLowerCase() === 'true';
-} catch (e) {
+} catch {
     labeledOnly = false;
 }
 

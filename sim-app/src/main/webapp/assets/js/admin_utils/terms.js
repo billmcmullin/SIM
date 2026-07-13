@@ -189,7 +189,7 @@
             try {
                 const term = JSON.parse(payload);
                 this.startTermEdit(term.id, term.name, term.description, term.matchPattern, term.matchType);
-            } catch (err) {
+            } catch {
                 this.showTermMessage('Unable to parse term data for editing.', true);
             }
         },
@@ -288,7 +288,7 @@
                     if (imported) parts.push(`Imported ${imported}`);
                     if (updated) parts.push(`Updated ${updated}`);
                     if (errors) parts.push(`Errors: ${decodeURIComponent(errors)}`);
-                    this.showTermMessage(parts.join(' — '), errors != null);
+                    this.showTermMessage(parts.join(' — '), errors !== null && errors !== undefined);
                 } else {
                     this.showTermMessage('Import completed.');
                 }
@@ -312,12 +312,12 @@
                     if (imported) parts.push(`Imported ${imported}`);
                     if (updated) parts.push(`Updated ${updated}`);
                     if (errors) parts.push(`Errors: ${decodeURIComponent(errors)}`);
-                    this.showTermMessage(parts.join(' — '), errors != null);
+                    this.showTermMessage(parts.join(' — '), errors !== null && errors !== undefined);
                     const cleanUrl = window.location.pathname + window.location.hash;
                     history.replaceState(null, '', cleanUrl);
                     this.loadTermList();
                 }
-            } catch (e) {
+            } catch {
                 // ignore parsing issues
             }
         }

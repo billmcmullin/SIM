@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
@@ -55,6 +57,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Pattern SAFE_SELECTION_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
     private static final String[] ALLOWED_SORT_COLUMNS = {
         "widget_chat_id", "prompt", "created_at", "session_id"
@@ -79,14 +82,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = trimToNull(req.getParameter("selectionId"));
+        String selectionId = sanitizeSelectionId(firstParam(req, "selectionId"));
         if (selectionId == null) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"selectionId required.\"}");
             return;
         }
 
-        LocalDate selectedDate = parseDate(req.getParameter("date"), resp);
+        LocalDate selectedDate = parseDate(firstParam(req, "date"), resp);
         if (selectedDate == LocalDate.MIN) {
             return;
         }
@@ -102,7 +105,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if (selectedDate == null && selection.date != null && !selection.date.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(selection.date.trim(), DATE_FMT);
-            } catch (Exception ignore) {
+            } catch (DateTimeParseException ignore) {
                 // no date filter
             }
         }
@@ -116,11 +119,12 @@ public class WidgetReviewDataServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         String widgetDisplayName = resolveWidgetDisplayNameCached(widgetId);
 
-        Integer rawLimit = parseIntegerOrNull(req.getParameter("limit"));
-        boolean unboundedRequested = isUnlimitedLimit(req.getParameter("limit"), rawLimit);
+        String limitParam = firstParam(req, "limit");
+        Integer rawLimit = parseIntegerOrNull(limitParam);
+        boolean unboundedRequested = isUnlimitedLimit(limitParam, rawLimit);
 
-        int page = Math.max(DEFAULT_PAGE, parseInteger(req.getParameter("page"), DEFAULT_PAGE));
-        int offset = 0;
+        int page = Math.max(DEFAULT_PAGE, parseInteger(firstParam(req, "page"), DEFAULT_PAGE));
+        int offset;
         int limit;
 
         List<String> chatIds = selection.chatIds == null ? Collections.emptyList() : selection.chatIds;
@@ -136,14 +140,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
             page = 1;
             offset = 0;
         } else {
-            int parsed = rawLimit == null ? DEFAULT_LIMIT : rawLimit.intValue();
+            int parsed = rawLimit == null ? DEFAULT_LIMIT : rawLimit;
             limit = clampLimit(parsed);
             offset = (page - 1) * limit;
         }
 
-        String search = trimToNull(req.getParameter("search"));
-        String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
-        String sortDir = parseSortDirection(req.getParameter("sortDir"));
+        String search = trimToNull(firstParam(req, "search"));
+        String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
+        String sortDir = parseSortDirection(firstParam(req, "sortDir"));
 
         final long t1 = System.nanoTime();
 
@@ -163,7 +167,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             try (PreparedStatement ps = conn.prepareStatement(qp.sql)) {
                 int idx = 1;
 
-                Array chatIdArray = conn.createArrayOf("text", chatIds.toArray(new String[0]));
+                Array chatIdArray = conn.createArrayOf("text", chatIds.toArray(String[]::new));
                 ps.setArray(idx++, chatIdArray);
 
                 if (search != null) {
@@ -262,14 +266,15 @@ public class WidgetReviewDataServlet extends HttpServlet {
             HttpServletResponse resp,
             long t0) throws IOException {
 
-        String search = trimToNull(req.getParameter("search"));
-        String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
-        String sortDir = parseSortDirection(req.getParameter("sortDir"));
+        String search = trimToNull(firstParam(req, "search"));
+        String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
+        String sortDir = parseSortDirection(firstParam(req, "sortDir"));
 
-        Integer rawLimit = parseIntegerOrNull(req.getParameter("limit"));
-        boolean unboundedRequested = isUnlimitedLimit(req.getParameter("limit"), rawLimit);
+        String limitParam = firstParam(req, "limit");
+        Integer rawLimit = parseIntegerOrNull(limitParam);
+        boolean unboundedRequested = isUnlimitedLimit(limitParam, rawLimit);
 
-        int page = Math.max(DEFAULT_PAGE, parseInteger(req.getParameter("page"), DEFAULT_PAGE));
+        int page = Math.max(DEFAULT_PAGE, parseInteger(firstParam(req, "page"), DEFAULT_PAGE));
         int limit;
         int offset;
 
@@ -279,7 +284,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             page = 1;
             offset = 0;
         } else {
-            limit = clampLimit(rawLimit == null ? DEFAULT_LIMIT : rawLimit.intValue());
+            limit = clampLimit(rawLimit == null ? DEFAULT_LIMIT : rawLimit);
             offset = (page - 1) * limit;
         }
 
@@ -374,7 +379,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
         try {
             return LocalDate.parse(raw.trim(), DATE_FMT);
-        } catch (Exception ex) {
+        } catch (DateTimeParseException ex) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
             return LocalDate.MIN;
@@ -407,7 +412,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                     return (dn == null || dn.isBlank()) ? widgetId : dn;
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.FINE, "Unable to lookup widget display name", e);
         }
         return widgetId;
@@ -454,15 +459,38 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
             return true;
         }
-        return parsed != null && parsed.intValue() <= 0;
+        return parsed != null && parsed <= 0;
     }
 
     private Integer parseIntegerOrNull(String value) {
-        try {
-            return value == null ? null : Integer.valueOf(value.trim());
-        } catch (Exception ignored) {
+        if (value == null) {
             return null;
         }
+        try {
+            return Integer.valueOf(value.trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String sanitizeSelectionId(String rawSelectionId) {
+        String value = trimToNull(rawSelectionId);
+        if (value == null || !SAFE_SELECTION_ID.matcher(value).matches()) {
+            return null;
+        }
+        return value;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
@@ -530,9 +558,12 @@ public class WidgetReviewDataServlet extends HttpServlet {
     }
 
     private int parseInteger(String value, int fallback) {
+        if (value == null) {
+            return fallback;
+        }
         try {
-            return Integer.parseInt(value);
-        } catch (Exception ignored) {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
             return fallback;
         }
     }
@@ -602,7 +633,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
         final String sql;
 
-        QueryParts(String sql) {
+        private QueryParts(String sql) {
             this.sql = sql;
         }
     }
@@ -613,7 +644,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         final String prompt;
         final String response;
 
-        SearchTerms(String global, String prompt, String response) {
+        private SearchTerms(String global, String prompt, String response) {
             this.global = global;
             this.prompt = prompt;
             this.response = response;
@@ -628,7 +659,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         final String createdAt;
         final String sessionId;
 
-        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+        private ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.response = response;

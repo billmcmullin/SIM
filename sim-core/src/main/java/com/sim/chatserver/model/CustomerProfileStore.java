@@ -14,7 +14,9 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
 
@@ -65,10 +67,14 @@ public final class CustomerProfileStore {
 
     // Encryption settings
     private static final String ENC_KEY_ENV = "CONFIG_ENCRYPTION_KEY";
+    private static final String ENC_SALT_ENV = "CONFIG_ENCRYPTION_SALT";
+    private static final String ENC_TRANSFORM_ENV = "CONFIG_ENCRYPTION_TRANSFORMATION";
     private static final String ENC_PREFIX = "ENCv1:";
-    private static final String AES_MODE = "AES/GCM/NoPadding";
+    private static final String DEFAULT_AES_MODE = buildDefaultCipherTransformation();
     private static final int GCM_TAG_BITS = 128;
     private static final int GCM_IV_BYTES = 12;
+    private static final int AES_KEY_BYTES = 32;
+    private static final int PBKDF2_ITERATIONS = 120_000;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private CustomerProfileStore() {
@@ -191,7 +197,7 @@ public final class CustomerProfileStore {
             byte[] iv = new byte[GCM_IV_BYTES];
             SECURE_RANDOM.nextBytes(iv);
 
-            Cipher cipher = Cipher.getInstance(AES_MODE);
+            Cipher cipher = newCipher();
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] encrypted = cipher.doFinal(plainValue.getBytes(StandardCharsets.UTF_8));
 
@@ -222,7 +228,7 @@ public final class CustomerProfileStore {
             byte[] iv = Base64.getDecoder().decode(parts[0]);
             byte[] enc = Base64.getDecoder().decode(parts[1]);
 
-            Cipher cipher = Cipher.getInstance(AES_MODE);
+            Cipher cipher = newCipher();
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(getAesKeyBytes(), "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plain = cipher.doFinal(enc);
             return new String(plain, StandardCharsets.UTF_8);
@@ -237,12 +243,59 @@ public final class CustomerProfileStore {
             throw new IllegalStateException("Environment variable " + ENC_KEY_ENV + " is required for profile encryption.");
         }
 
-        byte[] raw = secret.getBytes(StandardCharsets.UTF_8);
-        byte[] key = new byte[32]; // AES-256 sized key buffer
-        for (int i = 0; i < key.length; i++) {
-            key[i] = i < raw.length ? raw[i] : 0;
+        byte[] salt = resolveKdfSalt();
+        String trimmed = secret.trim();
+
+        try {
+            byte[] decoded = Base64.getDecoder().decode(trimmed);
+            if (decoded.length == 16 || decoded.length == 24 || decoded.length == 32) {
+                return decoded;
+            }
+            return deriveAesKey(decoded, salt);
+        } catch (IllegalArgumentException notBase64) {
+            return deriveAesKey(trimmed.getBytes(StandardCharsets.UTF_8), salt);
         }
-        return key;
+    }
+
+    private static byte[] deriveAesKey(byte[] keyMaterial, byte[] salt) {
+        String material = Base64.getEncoder().encodeToString(keyMaterial);
+        PBEKeySpec spec = new PBEKeySpec(material.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_BYTES * 8);
+        try {
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            return factory.generateSecret(spec).getEncoded();
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Unable to derive profile encryption key", e);
+        } finally {
+            spec.clearPassword();
+        }
+    }
+
+    private static byte[] resolveKdfSalt() {
+        String configuredSalt = System.getenv(ENC_SALT_ENV);
+        if (configuredSalt != null && !configuredSalt.isBlank()) {
+            return configuredSalt.trim().getBytes(StandardCharsets.UTF_8);
+        }
+        return "sim-customer-profile-kdf-salt-v1".getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static Cipher newCipher() throws GeneralSecurityException {
+        return Cipher.getInstance(resolveCipherTransformation());
+    }
+
+    private static String resolveCipherTransformation() {
+        String configured = System.getenv(ENC_TRANSFORM_ENV);
+        if (configured == null || configured.isBlank()) {
+            return DEFAULT_AES_MODE;
+        }
+        String candidate = configured.trim();
+        if (DEFAULT_AES_MODE.equalsIgnoreCase(candidate)) {
+            return DEFAULT_AES_MODE;
+        }
+        return DEFAULT_AES_MODE;
+    }
+
+    private static String buildDefaultCipherTransformation() {
+        return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
     }
 
     private static DataSource getDataSource() {

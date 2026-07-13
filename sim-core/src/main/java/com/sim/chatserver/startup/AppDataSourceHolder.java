@@ -1,10 +1,12 @@
 package com.sim.chatserver.startup;
 
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -30,18 +32,21 @@ public class AppDataSourceHolder {
     private static final String DRIVER = "org.postgresql.Driver";
     private static final String DIALECT = "org.hibernate.dialect.PostgreSQLDialect";
     private static final String PU_NAME = "ChatsPU-Local";
+    private static final Pattern HOST_PATTERN = Pattern.compile("^[A-Za-z0-9.-]{1,253}$");
+    private static final Pattern DB_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,63}$");
+    private static final Pattern USER_PATTERN = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
 
     // Volatile for fast, thread-safe reads without synchronized getters.
     private volatile EntityManagerFactory emf;
     private volatile HikariDataSource ds;
 
     // Cache env-derived defaults once (startup-time constants for this process).
-    private final String envDbUrl = trimToNull(System.getenv("DB_URL"));
-    private final String envDbHost = trimToNull(System.getenv("DB_HOST"));
-    private final String envDbUser = trimToNull(System.getenv("DB_USER"));
+    private final String envDbUrl = sanitizeJdbcUrl(trimToNull(System.getenv("DB_URL")));
+    private final String envDbHost = sanitizeHost(trimToNull(System.getenv("DB_HOST")));
+    private final String envDbUser = sanitizeUser(trimToNull(System.getenv("DB_USER")));
     private final String envDbPassword = System.getenv("DB_PASSWORD"); // allow empty, but not null
-    private final String envDbName = defaultIfBlank(System.getenv("DB_NAME"), "chat");
-    private final String envDbPort = defaultIfBlank(System.getenv("DB_PORT"), "5432");
+    private final String envDbName = sanitizeDbName(defaultIfBlank(System.getenv("DB_NAME"), "chat"));
+    private final String envDbPort = sanitizePort(defaultIfBlank(System.getenv("DB_PORT"), "5432"));
 
     @PostConstruct
     public synchronized void init() {
@@ -73,6 +78,7 @@ public class AppDataSourceHolder {
             HikariDataSource newDs = createHikariDataSource(dbUrl, user, pass, 10, 2, 15000);
 
             try (var conn = newDs.getConnection()) {
+                conn.isValid(2);
                 log.log(Level.INFO, "PostgreSQL connectivity check succeeded: {0}", dbUrl);
             }
 
@@ -83,7 +89,7 @@ public class AppDataSourceHolder {
             this.emf = newEmf;
 
             log.info("EntityManagerFactory initialized (PostgreSQL only)");
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "Failed to initialize PostgreSQL datasource/EMF", e);
             throw new IllegalStateException("Failed to initialize PostgreSQL datasource/EMF", e);
         }
@@ -99,15 +105,15 @@ public class AppDataSourceHolder {
 
     public synchronized void setDataSource(DataSource dataSource) {
         try {
-            if (dataSource instanceof HikariDataSource) {
-                this.ds = (HikariDataSource) dataSource;
+            if (dataSource instanceof HikariDataSource hikariDataSource) {
+                this.ds = hikariDataSource;
             } else {
                 HikariConfig cfg = new HikariConfig();
                 cfg.setDataSource(dataSource);
                 this.ds = new HikariDataSource(cfg);
             }
             log.info("DataSource set on AppDataSourceHolder");
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Failed to set DataSource on AppDataSourceHolder: " + e.getMessage(), e);
         }
     }
@@ -130,7 +136,7 @@ public class AppDataSourceHolder {
         if (localDs != null) {
             try {
                 return localDs.getJdbcUrl();
-            } catch (Exception ignored) {
+            } catch (RuntimeException ignored) {
                 // fall back below
             }
         }
@@ -168,6 +174,7 @@ public class AppDataSourceHolder {
             newDs = createHikariDataSource(jdbcUrl, cfg.getUsername(), cfg.getPassword(), maxPool, 2, 15000);
 
             try (var conn = newDs.getConnection()) {
+                conn.isValid(2);
                 callback.accept("Connection test succeeded");
             }
 
@@ -193,7 +200,7 @@ public class AppDataSourceHolder {
             closeQuietly(oldDs);
 
             callback.accept("switchToExternalAndPersist: success; datasource and EMF updated.");
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             // If partially created, clean up new resources on failure.
             closeQuietly(newEmf);
             closeQuietly(newDs);
@@ -281,5 +288,63 @@ public class AppDataSourceHolder {
     private static String defaultIfBlank(String v, String fallback) {
         String t = trimToNull(v);
         return t == null ? fallback : t;
+    }
+
+    private static String sanitizeHost(String host) {
+        if (host == null) {
+            return null;
+        }
+        if (!HOST_PATTERN.matcher(host).matches()) {
+            throw new IllegalStateException("Invalid DB_HOST value");
+        }
+        return host;
+    }
+
+    private static String sanitizeDbName(String dbName) {
+        if (dbName == null) {
+            return "chat";
+        }
+        if (!DB_NAME_PATTERN.matcher(dbName).matches()) {
+            throw new IllegalStateException("Invalid DB_NAME value");
+        }
+        return dbName;
+    }
+
+    private static String sanitizeUser(String user) {
+        if (user == null) {
+            return null;
+        }
+        if (!USER_PATTERN.matcher(user).matches()) {
+            throw new IllegalStateException("Invalid DB_USER value");
+        }
+        return user;
+    }
+
+    private static String sanitizePort(String port) {
+        if (port == null) {
+            return "5432";
+        }
+        try {
+            int parsed = Integer.parseInt(port);
+            if (parsed < 1 || parsed > 65535) {
+                throw new IllegalStateException("DB_PORT must be between 1 and 65535");
+            }
+            return String.valueOf(parsed);
+        } catch (NumberFormatException ex) {
+            throw new IllegalStateException("Invalid DB_PORT value", ex);
+        }
+    }
+
+    private static String sanitizeJdbcUrl(String jdbcUrl) {
+        if (jdbcUrl == null) {
+            return null;
+        }
+        if (!jdbcUrl.startsWith("jdbc:postgresql:")) {
+            throw new IllegalStateException("Only PostgreSQL JDBC URL is allowed");
+        }
+        if (jdbcUrl.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalStateException("DB_URL contains invalid control characters");
+        }
+        return jdbcUrl;
     }
 }

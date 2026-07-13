@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
@@ -47,19 +50,19 @@ public final class ErrorResponseUtil {
         resp.setHeader("Pragma", "no-cache");
         resp.setHeader("X-Content-Type-Options", "nosniff");
 
-        StringBuilder json = new StringBuilder(256);
-        json.append("{")
-                .append("\"status\":\"error\"")
-                .append(",\"code\":\"").append(escapeJson(safeCode)).append("\"")
-                .append(",\"message\":\"").append(escapeJson(safeMessage)).append("\"")
-                .append(",\"timestamp\":\"").append(escapeJson(timestamp)).append("\"");
+        JsonObjectBuilder json = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("code", safeCode)
+                .add("message", safeMessage)
+                .add("timestamp", timestamp);
 
         if (requestId != null && !requestId.isBlank()) {
-            json.append(",\"requestId\":\"").append(escapeJson(requestId.trim())).append("\"");
+            json.add("requestId", requestId.trim());
         }
 
-        json.append("}");
-        resp.getWriter().write(json.toString());
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(json.build());
+        }
     }
 
     private static String defaultIfBlank(String value, String fallback) {
@@ -73,15 +76,4 @@ public final class ErrorResponseUtil {
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private static String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
 }

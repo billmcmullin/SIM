@@ -4,9 +4,12 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -24,7 +27,9 @@ import jakarta.servlet.http.HttpServletRequest;
  *   even when private-network blocking is enabled.
  * - Adds detailed diagnostics for blocked URL decisions.
  */
-public class SecurityValidationService {
+public final class SecurityValidationService {
+
+    private static final Logger log = Logger.getLogger(SecurityValidationService.class.getName());
 
     private static final Set<String> DEFAULT_ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
@@ -75,7 +80,10 @@ public class SecurityValidationService {
         if (ct == null) {
             return false;
         }
-        String v = ct.toLowerCase(Locale.ROOT);
+        String v = ct.trim().toLowerCase(Locale.ROOT);
+        if (v.length() > 128) {
+            return false;
+        }
         return v.contains("application/json");
     }
 
@@ -167,9 +175,10 @@ public class SecurityValidationService {
             }
 
             return UrlValidationResult.allowed(host, scheme, "Validated");
-        } catch (Exception ex) {
+        } catch (IllegalArgumentException | UnknownHostException | SecurityException ex) {
             String msg = ex.getMessage();
             String safeMsg = (msg == null || msg.isBlank()) ? "(no detail)" : msg;
+            log.log(Level.FINE, "validateUpstreamUrl blocked invalid URL", ex);
             return UrlValidationResult.blocked(
                     "URL parse/validation exception: " + ex.getClass().getSimpleName() + ": " + safeMsg
             );
@@ -181,21 +190,38 @@ public class SecurityValidationService {
             return "(unknown)";
         }
 
+        String remote = req.getRemoteAddr();
+        if (remote != null && !remote.isBlank()) {
+            return remote.trim();
+        }
+
+        // Only fall back to forwarding headers when remote address is unavailable.
         String xff = req.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
             String first = xff.split(",")[0].trim();
-            if (!first.isBlank()) {
+            if (isParseableAddress(first)) {
                 return first;
             }
         }
 
         String xri = req.getHeader("X-Real-IP");
-        if (xri != null && !xri.isBlank()) {
+        if (xri != null && !xri.isBlank() && isParseableAddress(xri.trim())) {
             return xri.trim();
         }
 
-        String remote = req.getRemoteAddr();
-        return (remote == null || remote.isBlank()) ? "(unknown)" : remote.trim();
+        return "(unknown)";
+    }
+
+    private boolean isParseableAddress(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            InetAddress.getByName(value);
+            return true;
+        } catch (UnknownHostException e) {
+            return false;
+        }
     }
 
     private boolean isHostAllowed(String host) {
@@ -245,8 +271,7 @@ public class SecurityValidationService {
                 return true;
             }
 
-        } else if (addr instanceof Inet6Address) {
-            Inet6Address a6 = (Inet6Address) addr;
+        } else if (addr instanceof Inet6Address a6) {
             if (a6.isIPv4CompatibleAddress()) {
                 return true;
             }

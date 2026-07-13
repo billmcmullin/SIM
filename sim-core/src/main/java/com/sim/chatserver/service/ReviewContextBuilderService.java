@@ -3,6 +3,7 @@ package com.sim.chatserver.service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -635,15 +636,15 @@ public class ReviewContextBuilderService {
 
     private String sha1Hex(String value) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (byte b : bytes) {
                 sb.append(String.format("%02x", b));
             }
             return sb.toString();
-        } catch (Exception ex) {
-            return "sha1_error";
+        } catch (NoSuchAlgorithmException ex) {
+            return Integer.toHexString((value == null ? "" : value).hashCode());
         }
     }
 

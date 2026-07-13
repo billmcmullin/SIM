@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,6 +12,20 @@ import java.util.stream.Collectors;
 import com.sim.chatserver.config.Database;
 
 public final class SessionLabelStore {
+
+    private static final String CREATE_TABLE_SQL = """
+            CREATE TABLE IF NOT EXISTS session_labels (
+                session_id TEXT PRIMARY KEY,
+                display_name VARCHAR(256) NOT NULL,
+                contact_email VARCHAR(256),
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+            """;
+    private static final String ADD_CONTACT_EMAIL_SQL = """
+            ALTER TABLE session_labels
+            ADD COLUMN IF NOT EXISTS contact_email VARCHAR(256)
+            """;
 
     private SessionLabelStore() {
         // utility class
@@ -23,20 +36,11 @@ public final class SessionLabelStore {
     }
 
     private static void ensureTable() {
-        try (Connection conn = Database.getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS session_labels (
-                        session_id TEXT PRIMARY KEY,
-                        display_name VARCHAR(256) NOT NULL,
-                        contact_email VARCHAR(256),
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-                    )
-                    """);
-            stmt.executeUpdate("""
-                    ALTER TABLE session_labels
-                    ADD COLUMN IF NOT EXISTS contact_email VARCHAR(256)
-                    """);
+        try (Connection conn = Database.getConnection();
+             PreparedStatement create = conn.prepareStatement(CREATE_TABLE_SQL);
+             PreparedStatement addContact = conn.prepareStatement(ADD_CONTACT_EMAIL_SQL)) {
+            create.executeUpdate();
+            addContact.executeUpdate();
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to ensure session_labels table exists", e);
         }
@@ -78,12 +82,29 @@ public final class SessionLabelStore {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    map.put(rs.getString("session_id"),
-                            new SessionLabel(rs.getString("display_name"), rs.getString("contact_email")));
+                    String id = sanitizeDbText(rs.getString("session_id"), 256);
+                    if (id.isBlank()) {
+                        continue;
+                    }
+                    map.put(id,
+                            new SessionLabel(
+                                    sanitizeDbText(rs.getString("display_name"), 256),
+                                    sanitizeDbText(rs.getString("contact_email"), 256)));
                 }
             }
         }
         return map;
+    }
+
+    private static String sanitizeDbText(String value, int maxChars) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (maxChars <= 0 || trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+        return trimmed.substring(0, maxChars);
     }
 
     public static String resolveDisplayLabel(String sessionId, SessionLabel label) {

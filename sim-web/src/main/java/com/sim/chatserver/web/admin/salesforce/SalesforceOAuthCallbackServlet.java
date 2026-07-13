@@ -10,8 +10,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -47,6 +49,8 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     private static final String OAUTH_STATE_KEY = "sf_oauth_state";
     private static final String OAUTH_STATE_TS_KEY = "sf_oauth_state_ts";
     private static final long OAUTH_STATE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
+    private static final Pattern SAFE_CONTEXT_PATH = Pattern.compile("^/[-A-Za-z0-9._~/]*$");
+    private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]+$");
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -60,16 +64,16 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return;
         }
 
-        String error = trimToNull(req.getParameter("error"));
+        String error = trimToNull(firstParam(req, "error"));
         if (error != null) {
-            String description = trimToNull(req.getParameter("error_description"));
+            String description = trimToNull(firstParam(req, "error_description"));
             redirectWithMessage(resp, req, false,
                     "Salesforce authorization failed: " + safe(description != null ? description : error));
             return;
         }
 
-        String code = trimToNull(req.getParameter("code"));
-        String state = trimToNull(req.getParameter("state"));
+        String code = trimToNull(firstParam(req, "code"));
+        String state = trimToNull(firstParam(req, "state"));
         if (code == null || state == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing OAuth code/state.");
             return;
@@ -143,7 +147,10 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             EncryptedDbConfigStore.save(cfg);
 
             redirectWithMessage(resp, req, true, "Salesforce OAuth connected successfully.");
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException | SQLException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.WARNING, "Salesforce OAuth callback failed", e);
             redirectWithMessage(resp, req, false, "Salesforce OAuth callback failed.");
         }
@@ -174,7 +181,8 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         long ts;
         try {
             ts = (tsObj instanceof Number) ? ((Number) tsObj).longValue() : Long.parseLong(String.valueOf(tsObj));
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid OAuth state timestamp in session", e);
             return false;
         }
 
@@ -221,17 +229,26 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             p.refreshToken = o.getString("refresh_token", null);
             p.instanceUrl = o.getString("instance_url", null);
             return p;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to parse Salesforce token payload", e);
             return null;
         }
     }
 
-    private void redirectWithMessage(HttpServletResponse resp, HttpServletRequest req, boolean ok, String message) throws IOException {
-        String url = req.getContextPath()
-                + "/admin?salesforceOAuthStatus=" + (ok ? "ok" : "error")
-                + "&salesforceOAuthMessage=" + enc(message);
-        resp.sendRedirect(url);
+    private void redirectWithMessage(HttpServletResponse resp, HttpServletRequest req, boolean ok, String message)
+            throws IOException, ServletException {
+        String status = ok ? "ok" : "error";
+        String safeMessage = safe(message);
+
+        HttpSession session = req.getSession(false);
+        if (session != null) {
+            session.setAttribute("salesforceOAuthStatus", status);
+            session.setAttribute("salesforceOAuthMessage", safeMessage);
+        }
+
+        req.setAttribute("salesforceOAuthStatus", status);
+        req.setAttribute("salesforceOAuthMessage", safeMessage);
+        req.getRequestDispatcher("/admin").forward(req, resp);
     }
 
     /**
@@ -239,9 +256,9 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
      * when present.
      */
     private String buildExternalRedirectUri(HttpServletRequest req) {
-        String scheme = firstToken(req.getHeader("X-Forwarded-Proto"));
+        String scheme = normalizeScheme(firstToken(req.getHeader("X-Forwarded-Proto")));
         if (isBlank(scheme)) {
-            scheme = req.getScheme();
+            scheme = req.isSecure() ? "https" : "http";
         }
 
         String hostHeader = firstToken(req.getHeader("X-Forwarded-Host"));
@@ -252,27 +269,29 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             String h = hostHeader.trim();
             int idx = h.lastIndexOf(':');
             if (idx > 0 && idx < h.length() - 1 && h.indexOf(']') < 0) {
-                host = h.substring(0, idx);
-                try {
-                    port = Integer.parseInt(h.substring(idx + 1));
-                } catch (NumberFormatException ignored) {
-                    port = -1;
-                }
+                host = sanitizeHost(h.substring(0, idx));
+                port = parsePort(h.substring(idx + 1));
             } else {
-                host = h;
+                host = sanitizeHost(h);
             }
         } else {
-            host = req.getServerName();
-            port = req.getServerPort();
+            host = sanitizeHost(req.getServerName());
+        }
+
+        if (isBlank(host)) {
+            host = "localhost";
         }
 
         String forwardedPort = firstToken(req.getHeader("X-Forwarded-Port"));
         if (!isBlank(forwardedPort)) {
-            try {
-                port = Integer.parseInt(forwardedPort);
-            } catch (NumberFormatException ignored) {
-                // keep prior value
+            int parsedPort = parsePort(forwardedPort);
+            if (parsedPort > 0) {
+                port = parsedPort;
             }
+        }
+
+        if (port <= 0) {
+            port = "https".equalsIgnoreCase(scheme) ? 443 : 80;
         }
 
         boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
@@ -283,7 +302,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (port > 0 && !defaultPort) {
             sb.append(':').append(port);
         }
-        sb.append(req.getContextPath()).append("/admin/salesforce/oauth/callback");
+        sb.append(safeContextPath(req.getServletContext().getContextPath())).append("/admin/salesforce/oauth/callback");
         return sb.toString();
     }
 
@@ -302,6 +321,68 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             x = "https://" + x;
         }
         return x.replaceAll("/+$", "");
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String normalizeScheme(String scheme) {
+        if (scheme == null) {
+            return null;
+        }
+        String normalized = scheme.trim().toLowerCase();
+        if ("http".equals(normalized) || "https".equals(normalized)) {
+            return normalized;
+        }
+        return null;
+    }
+
+    private int parsePort(String rawPort) {
+        if (rawPort == null) {
+            return -1;
+        }
+        try {
+            int parsed = Integer.parseInt(rawPort.trim());
+            return (parsed >= 1 && parsed <= 65535) ? parsed : -1;
+        } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid forwarded port value", e);
+            return -1;
+        }
+    }
+
+    private String sanitizeHost(String host) {
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        String h = host.trim();
+        if (h.startsWith("[") && h.endsWith("]")) {
+            String inner = h.substring(1, h.length() - 1);
+            if (!inner.isBlank() && inner.matches("[0-9A-Fa-f:]+")) {
+                return h;
+            }
+            return null;
+        }
+        return SAFE_HOST.matcher(h).matches() ? h : null;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!SAFE_CONTEXT_PATH.matcher(trimmed).matches() || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private String enc(String v) {

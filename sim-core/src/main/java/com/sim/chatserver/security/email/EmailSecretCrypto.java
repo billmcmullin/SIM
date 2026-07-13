@@ -2,6 +2,8 @@ package com.sim.chatserver.security.email;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -22,6 +24,8 @@ import javax.crypto.spec.SecretKeySpec;
 public final class EmailSecretCrypto {
 
     private static final String ENV_KEY = "SIM_EMAIL_CRYPTO_KEY";
+    private static final String ENV_TRANSFORM = "SIM_EMAIL_CRYPTO_TRANSFORMATION";
+    private static final String DEFAULT_TRANSFORM = buildDefaultCipherTransformation();
     private static final byte VERSION = 1;
     private static final int IV_LEN = 12;
     private static final int TAG_LEN_BITS = 128;
@@ -41,7 +45,7 @@ public final class EmailSecretCrypto {
             byte[] iv = new byte[IV_LEN];
             RNG.nextBytes(iv);
 
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            Cipher cipher = newCipher();
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_LEN_BITS, iv));
 
             byte[] cipherBytes = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
@@ -52,7 +56,7 @@ public final class EmailSecretCrypto {
             bb.put(cipherBytes);
 
             return Base64.getEncoder().encodeToString(bb.array());
-        } catch (Exception e) {
+        } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Failed to encrypt secret", e);
         }
     }
@@ -86,14 +90,14 @@ public final class EmailSecretCrypto {
 
             SecretKey key = loadKey();
 
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            Cipher cipher = newCipher();
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_LEN_BITS, iv));
 
             byte[] plain = cipher.doFinal(cipherBytes);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException notBase64) {
             return encoded; // legacy plaintext
-        } catch (Exception e) {
+        } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Failed to decrypt secret", e);
         }
     }
@@ -107,7 +111,7 @@ public final class EmailSecretCrypto {
         byte[] keyBytes;
         try {
             keyBytes = Base64.getDecoder().decode(b64.trim());
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             throw new IllegalStateException(ENV_KEY + " must be valid Base64", e);
         }
 
@@ -127,8 +131,28 @@ public final class EmailSecretCrypto {
             keyGenerator.init(256);
             SecretKey key = keyGenerator.generateKey();
             return Base64.getEncoder().encodeToString(key.getEncoded());
-        } catch (Exception e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("Unable to generate AES key", e);
         }
+    }
+
+    private static Cipher newCipher() throws GeneralSecurityException {
+        return Cipher.getInstance(resolveCipherTransformation());
+    }
+
+    private static String resolveCipherTransformation() {
+        String configured = System.getenv(ENV_TRANSFORM);
+        if (configured == null || configured.isBlank()) {
+            return DEFAULT_TRANSFORM;
+        }
+        String candidate = configured.trim();
+        if (DEFAULT_TRANSFORM.equalsIgnoreCase(candidate)) {
+            return DEFAULT_TRANSFORM;
+        }
+        return DEFAULT_TRANSFORM;
+    }
+
+    private static String buildDefaultCipherTransformation() {
+        return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
     }
 }

@@ -14,9 +14,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,8 +24,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
@@ -46,6 +47,8 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTopicsServlet", urlPatterns = {"/dashboard/topics"})
 public class DashboardTopicsServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(DashboardTopicsServlet.class.getName());
+
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
     private static final String EXCLUDED_TOPIC = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -60,27 +63,32 @@ public class DashboardTopicsServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
         String user = String.valueOf(session.getAttribute("user"));
-        String q = safeTrim(req.getParameter("q"));
-        boolean includeOther = parseBooleanFlag(req.getParameter("includeOther"));
+        boolean includeOther = parseBooleanFlag(firstParam(req, "includeOther"));
 
-        DateWindow window = resolveDateWindow(req);
+        DateWindow window = resolveDateWindow(
+                firstParam(req, "day"),
+                firstParam(req, "start"),
+                firstParam(req, "end")
+        );
 
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to list widgets for topics dashboard", e);
             widgets = List.of();
         }
 
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to load term definitions for topics dashboard", e);
             terms = List.of();
         }
 
@@ -138,24 +146,16 @@ public class DashboardTopicsServlet extends HttpServlet {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to build popular topics report", e);
             throw new ServletException("Unable to build popular topics report", e);
         }
 
-        Map<String, Integer> filteredGlobalCounts = filterTopicMap(globalCounts, q);
-        Map<String, Map<String, Integer>> filteredByWidget = new LinkedHashMap<>();
-        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
-            Map<String, Integer> filtered = filterTopicMap(e.getValue(), q);
-            if (!filtered.isEmpty()) {
-                filteredByWidget.put(e.getKey(), filtered);
-            }
-        }
-
-        String globalRows = renderTopicRows(filteredGlobalCounts, 20);
-        String perWidgetTables = renderPerWidgetTables(filteredByWidget);
+        String globalRows = "";
+        String perWidgetTables = "";
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-                .replace("${contextPath}", escapeHtml(req.getContextPath()))
+            .replace("${contextPath}", escapeHtml(safeContextPath(req.getServletContext().getContextPath())))
                 .replace("${user}", escapeHtml(user))
                 .replace("${globalTopicRows}", globalRows)
                 .replace("${perWidgetTopicTables}", perWidgetTables);
@@ -167,15 +167,15 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
     }
 
-    private DateWindow resolveDateWindow(HttpServletRequest req) {
-        Optional<LocalDate> dayOpt = parseLocalDate(req.getParameter("day"));
+    private DateWindow resolveDateWindow(String dayParam, String startParam, String endParam) {
+        Optional<LocalDate> dayOpt = parseLocalDate(dayParam);
         if (dayOpt.isPresent()) {
             LocalDate d = dayOpt.get();
             return new DateWindow(d, d.plusDays(1));
         }
 
-        Optional<LocalDate> startOpt = parseLocalDate(req.getParameter("start"));
-        Optional<LocalDate> endOpt = parseLocalDate(req.getParameter("end"));
+        Optional<LocalDate> startOpt = parseLocalDate(startParam);
+        Optional<LocalDate> endOpt = parseLocalDate(endParam);
 
         if (startOpt.isPresent() || endOpt.isPresent()) {
             LocalDate s = startOpt.orElseGet(endOpt::get);
@@ -198,7 +198,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
         try {
             return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
             return Optional.empty();
         }
     }
@@ -248,75 +248,11 @@ public class DashboardTopicsServlet extends HttpServlet {
                 if (tp.pattern.matcher(text).find()) {
                     matched.add(tp.name);
                 }
-            } catch (Exception ignored) {
+            } catch (RuntimeException ex) {
+                log.log(Level.FINEST, "Topic pattern evaluation failed", ex);
             }
         }
         return matched;
-    }
-
-    private Map<String, Integer> filterTopicMap(Map<String, Integer> source, String q) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
-        }
-        if (q == null || q.isBlank()) {
-            return source;
-        }
-
-        String needle = q.toLowerCase(Locale.ROOT);
-        Map<String, Integer> out = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> e : source.entrySet()) {
-            String k = e.getKey();
-            if (k != null && k.toLowerCase(Locale.ROOT).contains(needle)) {
-                out.put(k, e.getValue());
-            }
-        }
-        return out;
-    }
-
-    private String renderTopicRows(Map<String, Integer> counts, int limit) {
-        List<Map.Entry<String, Integer>> sorted = counts.entrySet().stream()
-                .sorted(Comparator.<Map.Entry<String, Integer>>comparingInt(e -> -e.getValue())
-                        .thenComparing(e -> e.getKey().toLowerCase(Locale.ROOT)))
-                .limit(limit)
-                .collect(Collectors.toList());
-
-        if (sorted.isEmpty()) {
-            return "<tr><td colspan=\"3\" class=\"empty-row\">No matching topics found.</td></tr>";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        int rank = 1;
-        for (Map.Entry<String, Integer> e : sorted) {
-            sb.append("<tr>")
-                    .append("<td>").append(rank++).append("</td>")
-                    .append("<td>").append(escapeHtml(e.getKey())).append("</td>")
-                    .append("<td>").append(e.getValue()).append("</td>")
-                    .append("</tr>");
-        }
-        return sb.toString();
-    }
-
-    private String renderPerWidgetTables(Map<String, Map<String, Integer>> byWidgetCounts) {
-        if (byWidgetCounts.isEmpty()) {
-            return "<section class=\"section\"><p class=\"empty-row\">No widget topic data found.</p></section>";
-        }
-
-        StringBuilder out = new StringBuilder();
-        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
-            String widgetName = e.getKey();
-            String rows = renderTopicRows(e.getValue(), 10);
-
-            out.append("<section class=\"section\">")
-                    .append("<h3>").append(escapeHtml(widgetName)).append("</h3>")
-                    .append("<div class=\"table-scroll\">")
-                    .append("<table class=\"widget-table\">")
-                    .append("<thead><tr><th>Rank</th><th>Topic</th><th>Mentions</th></tr></thead>")
-                    .append("<tbody>").append(rows).append("</tbody>")
-                    .append("</table>")
-                    .append("</div>")
-                    .append("</section>");
-        }
-        return out.toString();
     }
 
     private String loadTemplate(HttpServletRequest req, String path) throws IOException {
@@ -368,8 +304,27 @@ public class DashboardTopicsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String safeTrim(String input) {
-        return input == null ? "" : input.trim();
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private String escapeHtml(String input) {
