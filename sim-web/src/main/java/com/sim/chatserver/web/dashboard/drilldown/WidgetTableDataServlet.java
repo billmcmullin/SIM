@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,7 +66,7 @@ public class WidgetTableDataServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = req.getParameter("widgetId");
+        String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"widgetId required.\"}");
@@ -74,11 +75,11 @@ public class WidgetTableDataServlet extends HttpServlet {
 
         // NEW: optional date filter
         LocalDate selectedDate = null;
-        String dateRaw = req.getParameter("date");
+        String dateRaw = firstParam(req, "date");
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
-            } catch (Exception ex) {
+            } catch (DateTimeParseException ex) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
                 return;
@@ -100,16 +101,16 @@ public class WidgetTableDataServlet extends HttpServlet {
                 return;
             }
 
-            int limit = parseLimit(req.getParameter("limit"));
-            int page = parsePage(req.getParameter("page"));
+                int limit = parseLimit(firstParam(req, "limit"));
+                int page = parsePage(firstParam(req, "page"));
             int offset = (page - 1) * limit;
-            String search = req.getParameter("search");
-            String sortColumn = parseSortColumn(req.getParameter("sortColumn"));
-            String sortDir = parseSortDirection(req.getParameter("sortDir"));
+                String search = firstParam(req, "search");
+                String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
+                String sortDir = parseSortDirection(firstParam(req, "sortDir"));
 
             FilterState filters = new FilterState(
-                    req.getParameter("filterPrompt"),
-                    req.getParameter("filterResponse"),
+                    firstParam(req, "filterPrompt"),
+                    firstParam(req, "filterResponse"),
                     search,
                     selectedDate
             );
@@ -248,10 +249,22 @@ public class WidgetTableDataServlet extends HttpServlet {
                     return widget;
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets", e);
         }
         return null;
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private String formatTimestampNullable(Timestamp ts) {

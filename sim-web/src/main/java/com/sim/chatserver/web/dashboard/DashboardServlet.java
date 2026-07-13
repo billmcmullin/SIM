@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -109,25 +110,26 @@ public class DashboardServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
         String adminLink = "ADMIN".equalsIgnoreCase(role)
                 ? "<div class=\"dashboard-admin-btn-row\">"
                 + "<button type=\"button\" class=\"ghost-btn\" onclick=\"window.location.href='"
-                + req.getContextPath() + "/admin'\">Admin</button>"
+            + contextPath + "/admin'\">Admin</button>"
                 + "</div>"
                 : "";
 
-        String infoMessageHtml = buildInfoMessageHtml(req.getParameter("msg"));
+        String infoMessageHtml = buildInfoMessageHtml(firstParam(req, "msg"));
 
         List<WidgetEntry> widgets = loadWidgets();
 
-        LocalDate rangeEnd = parseLocalDate(req.getParameter("rangeEnd"))
+        LocalDate rangeEnd = parseLocalDate(firstParam(req, "rangeEnd"))
                 .orElse(LocalDate.now(ZoneId.systemDefault()));
-        LocalDate rangeStart = parseLocalDate(req.getParameter("rangeStart"))
+        LocalDate rangeStart = parseLocalDate(firstParam(req, "rangeStart"))
                 .orElse(rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1));
         if (rangeStart.isAfter(rangeEnd)) {
             rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
@@ -277,7 +279,7 @@ public class DashboardServlet extends HttpServlet {
 
         if (sessionOverview != null) {
             Map<String, SessionLabelStore.SessionLabel> labels = loadSessionLabels(sessionOverview.getTopSessions());
-            sessionRows = DashboardRowsRenderer.renderSessionRows(sessionOverview.getTopSessions(), labels, req.getContextPath());
+            sessionRows = DashboardRowsRenderer.renderSessionRows(sessionOverview.getTopSessions(), labels, contextPath);
             sessionChartJson = sessionService.buildSessionChartPayload(sessionOverview, rangeStart, rangeEnd);
 
             totalUsers = sessionOverview.getTotalUsers();
@@ -290,7 +292,7 @@ public class DashboardServlet extends HttpServlet {
                     ? new ProgressStat(newSessionsToday, newSessionsYesterday)
                     : sessionOverview.getNewSessionsProgression();
         } else {
-            sessionRows = "<tr><td colspan=\"4\" class=\"empty-row\">Unable to load session activity.</td></tr>";
+            sessionRows = DashboardRowsRenderer.renderSessionRows(List.of(), Map.of(), contextPath);
         }
 
         String template = DashboardTemplateRenderer.loadTemplateCached(req.getServletContext(), TEMPLATE_PATH);
@@ -298,7 +300,7 @@ public class DashboardServlet extends HttpServlet {
 
         String rendered = DashboardTemplateRenderer.renderTemplate(template, Map.ofEntries(
                 Map.entry("user", DashboardTemplateRenderer.escapeHtml(userName)),
-                Map.entry("contextPath", req.getContextPath()),
+                Map.entry("contextPath", contextPath),
                 Map.entry("role", DashboardTemplateRenderer.escapeHtml(role)),
                 Map.entry("adminLink", adminLink),
                 Map.entry("dashboardInfoMessage", infoMessageHtml),
@@ -335,7 +337,7 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("totalUsers", DashboardTemplateRenderer.escapeHtml(String.valueOf(totalUsers))),
                 Map.entry("activeUsers", DashboardTemplateRenderer.escapeHtml(String.valueOf(activeUsers))),
                 Map.entry("inactiveUsers", DashboardTemplateRenderer.escapeHtml(String.valueOf(inactiveUsers))),
-                Map.entry("activeUsersUrl", req.getContextPath() + "/dashboard/sessions?activity=active&activeDays=" + activeDays),
+                Map.entry("activeUsersUrl", contextPath + "/dashboard/sessions?activity=active&activeDays=" + activeDays),
                 Map.entry("sessionNewToday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsToday))),
                 Map.entry("sessionNewYesterday", DashboardTemplateRenderer.escapeHtml(String.valueOf(newSessionsYesterday))),
                 Map.entry("sessionNewProgression", formatProgressionHtml(newSessionsProgression)),
@@ -363,7 +365,7 @@ public class DashboardServlet extends HttpServlet {
     private List<WidgetEntry> loadWidgets() {
         try {
             return WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to load widget registry for dashboard", e);
             return List.of();
         }
@@ -445,7 +447,7 @@ public class DashboardServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to load 5-day trend data", e);
         }
 
@@ -464,7 +466,7 @@ public class DashboardServlet extends HttpServlet {
                 .toString();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
@@ -503,9 +505,32 @@ public class DashboardServlet extends HttpServlet {
         }
         try {
             return Optional.of(LocalDate.parse(value, DATE_FORMATTER));
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
             return Optional.empty();
         }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private Map<String, SessionLabelStore.SessionLabel> loadSessionLabels(List<SessionStat> stats) {
@@ -616,7 +641,8 @@ public class DashboardServlet extends HttpServlet {
             if (e.getKey() == null || e.getKey().isBlank()) {
                 continue;
             }
-            out.put(e.getKey(), Math.max(0, e.getValue() == null ? 0 : e.getValue()));
+            Integer value = e.getValue();
+            out.put(e.getKey(), Math.max(0, value == null ? 0 : value));
         }
         return out;
     }
@@ -653,10 +679,10 @@ public class DashboardServlet extends HttpServlet {
         try {
             return future.join();
         } catch (CompletionException ex) {
-            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-            log.log(Level.WARNING, "Failed to compute " + label, cause);
+            Throwable cause = ex.getCause();
+            log.log(Level.WARNING, "Failed to compute " + label, cause == null ? ex : cause);
             return fallback;
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             log.log(Level.WARNING, "Failed to compute " + label, ex);
             return fallback;
         }

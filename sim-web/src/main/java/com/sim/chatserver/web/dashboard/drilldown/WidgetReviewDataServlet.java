@@ -57,6 +57,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
     private static final Pattern SAFE_SELECTION_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
     private static final String[] ALLOWED_SORT_COLUMNS = {
@@ -105,7 +106,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if (selectedDate == null && selection.date != null && !selection.date.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(selection.date.trim(), DATE_FMT);
-            } catch (DateTimeParseException ignore) {
+            } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "Selection date is not in ISO format", ex);
                 // no date filter
             }
         }
@@ -468,7 +470,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
         try {
             return Integer.valueOf(value.trim());
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer parameter value", ex);
             return null;
         }
     }
@@ -537,7 +540,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
     }
 
     private String formatTimestamp(Timestamp ts) {
-        return ts == null ? "" : ts.toInstant().toString();
+        return ts == null ? "" : ISO_INSTANT_FMT.format(ts.toInstant());
     }
 
     private String parseSortColumn(String column) {
@@ -563,7 +566,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
         try {
             return Integer.parseInt(value.trim());
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer parameter value", ex);
             return fallback;
         }
     }

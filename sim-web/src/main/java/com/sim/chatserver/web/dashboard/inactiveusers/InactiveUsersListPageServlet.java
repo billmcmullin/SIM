@@ -1,10 +1,7 @@
 package com.sim.chatserver.web.dashboard.inactiveusers;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -13,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -51,6 +49,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/inactive_users_list.html";
     private static final int DEFAULT_DAYS = 7;
     private static final int DEFAULT_LIMIT = 10;
+    private static final int MAX_SEARCH_LENGTH = 128;
+    private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
+    private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
     private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
@@ -109,8 +110,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             scope = "all";
         }
 
-        String widgetIdFilter = nvl(firstParam(req, "widgetId")).trim();
-        String search = nvl(firstParam(req, "search")).trim();
+        String widgetIdFilter = sanitizeWidgetId(firstParam(req, "widgetId"));
+        String search = sanitizeSearch(firstParam(req, "search"));
         String searchLower = search.toLowerCase();
         boolean hasSearch = !searchLower.isBlank();
 
@@ -153,7 +154,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             if ("widget".equalsIgnoreCase(scope)) {
-                if (!widgetIdFilter.isBlank()) {
+                if (!widgetIdFilter.isBlank() && widgetNameById.containsKey(widgetIdFilter)) {
                     String table = sanitizeWidgetTableName(widgetIdFilter);
                     if (tableExists(conn, table)) {
                         List<Row> rows = loadWidgetRows(
@@ -209,7 +210,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                                     r.frustrationDetected = fr.detected;
                                     r.frustrationReason = fr.reason;
                                 }
-                            } catch (RuntimeException ex) {
+                            } catch (IllegalArgumentException ex) {
                                 log.log(Level.FINE, "Frustration detection skipped for " + sid + " in " + table, ex);
                             }
                         }
@@ -294,7 +295,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 r.frustrationDetected = fr.detected;
                 r.frustrationScore = fr.score;
                 r.frustrationReason = fr.reason;
-            } catch (RuntimeException ex) {
+            } catch (IllegalArgumentException ex) {
                 r.frustrationDetected = false;
                 r.frustrationScore = 0.0;
                 r.frustrationReason = "";
@@ -573,17 +574,18 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     .add("widgetId", nvl(r.widgetId))
                     .add("widgetLabel", nvl(r.widgetLabel))
                     .add("chatCount", r.chatCount)
-                    .add("lastEntry", r.lastEntry == null ? "" : r.lastEntry.toInstant().toString())
+                    .add("lastEntry", formatTimestamp(r.lastEntry))
                     .add("frustrationDetected", r.frustrationDetected)
                     .add("frustrationScore", r.frustrationScore)
                     .add("frustrationReason", nvl(r.frustrationReason)));
         }
         JsonObject obj = Json.createObjectBuilder().add("rows", arr).build();
-        StringWriter sw = new StringWriter();
-        try (JsonWriter writer = Json.createWriter(sw)) {
+        try (java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream(); JsonWriter writer = Json.createWriter(bos)) {
             writer.writeObject(obj);
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to serialize inactive users JSON", e);
         }
-        return sw.toString();
     }
 
     private String loadTemplate(ServletContext context, String path) throws IOException {
@@ -591,14 +593,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             if (stream == null) {
                 throw new IOException("Template not found: " + path);
             }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                StringBuilder b = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    b.append(line).append('\n');
-                }
-                return b.toString();
-            }
+            byte[] bytes = stream.readAllBytes();
+            return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 
@@ -639,6 +635,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         try {
             return Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid numeric parameter value", e);
             return fallback;
         }
     }
@@ -657,6 +654,32 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     private String nvl(String s) {
         return s == null ? "" : s;
+    }
+
+    private String sanitizeWidgetId(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        return SAFE_WIDGET_ID.matcher(trimmed).matches() ? trimmed : "";
+    }
+
+    private String sanitizeSearch(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String trimmed = raw.trim();
+        if (trimmed.length() > MAX_SEARCH_LENGTH) {
+            return trimmed.substring(0, MAX_SEARCH_LENGTH);
+        }
+        return trimmed;
+    }
+
+    private String formatTimestamp(Timestamp value) {
+        return value == null ? "" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private String escapeHtml(String in) {

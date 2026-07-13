@@ -2,7 +2,6 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -46,6 +47,8 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     // Optional exclusions from export
     private static final List<String> EXCLUDED_TABLES = List.of(
@@ -76,7 +79,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                 try {
                     exportTableAsCsv(conn, zip, table);
                     exported.add(table);
-                } catch (Exception tableErr) {
+                } catch (SQLException | IOException tableErr) {
                     skipped.add(table);
                     log.log(Level.WARNING, "Failed exporting table: " + table, tableErr);
                 }
@@ -87,7 +90,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             zip.finish();
             log.info(() -> "Data backup export completed. Exported tables=" + exported.size() + ", skipped=" + skipped.size());
 
-        } catch (Exception e) {
+        } catch (SQLException | IOException e) {
             log.log(Level.SEVERE, "Data backup export failed", e);
             if (!resp.isCommitted()) {
                 resp.reset();
@@ -126,6 +129,9 @@ public class DatabaseBackupServlet extends HttpServlet {
                 if (table == null || table.isBlank()) {
                     continue;
                 }
+                if (!SAFE_SQL_IDENTIFIER.matcher(table).matches()) {
+                    continue;
+                }
                 if (EXCLUDED_TABLES.contains(table)) {
                     continue;
                 }
@@ -137,7 +143,12 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private void exportTableAsCsv(Connection conn, ZipOutputStream zip, String tableName) throws SQLException, IOException {
-        String sql = "SELECT * FROM " + quoteIdent(tableName);
+        List<String> columns = listTableColumns(conn, tableName);
+        if (columns.isEmpty()) {
+            return;
+        }
+        String projected = String.join(", ", columns.stream().map(this::quoteIdent).toList());
+        String sql = "SELECT " + projected + " FROM " + quoteIdent(tableName);
 
         try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
             ps.setFetchSize(1000);
@@ -147,26 +158,26 @@ public class DatabaseBackupServlet extends HttpServlet {
                 int cols = md.getColumnCount();
 
                 zip.putNextEntry(new ZipEntry("tables/" + tableName + ".csv"));
-                PrintWriter w = new PrintWriter(new OutputStreamWriter(zip, StandardCharsets.UTF_8), false);
+                OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
 
                 // Header row
                 for (int i = 1; i <= cols; i++) {
                     if (i > 1) {
-                        w.print(",");
+                        w.write(',');
                     }
-                    w.print(csvEscape(md.getColumnLabel(i)));
+                    w.write(csvEscape(md.getColumnLabel(i)));
                 }
-                w.print("\n");
+                w.write("\n");
 
                 // Data rows
                 while (rs.next()) {
                     for (int i = 1; i <= cols; i++) {
                         if (i > 1) {
-                            w.print(",");
+                            w.write(',');
                         }
-                        w.print(csvEscape(readCellAsText(rs, md, i)));
+                        w.write(csvEscape(readCellAsText(rs, md, i)));
                     }
-                    w.print("\n");
+                    w.write("\n");
                 }
 
                 w.flush();
@@ -177,21 +188,38 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private void writeManifest(ZipOutputStream zip, List<String> exported, List<String> skipped, String ts) throws IOException {
         zip.putNextEntry(new ZipEntry("manifest.json"));
-        PrintWriter w = new PrintWriter(new OutputStreamWriter(zip, StandardCharsets.UTF_8), false);
+        OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
 
-        w.println("{");
-        w.println("  \"formatVersion\": 1,");
-        w.println("  \"type\": \"raw-data-export\",");
-        w.println("  \"generatedAt\": \"" + jsonEscape(ts) + "\",");
-        w.println("  \"schema\": \"public\",");
-        w.println("  \"exportedTableCount\": " + exported.size() + ",");
-        w.println("  \"skippedTableCount\": " + skipped.size() + ",");
-        w.println("  \"exportedTables\": " + toJsonArray(exported) + ",");
-        w.println("  \"skippedTables\": " + toJsonArray(skipped));
-        w.println("}");
+        w.write("{\n");
+        w.write("  \"formatVersion\": 1,\n");
+        w.write("  \"type\": \"raw-data-export\",\n");
+        w.write("  \"generatedAt\": \"" + jsonEscape(ts) + "\",\n");
+        w.write("  \"schema\": \"public\",\n");
+        w.write("  \"exportedTableCount\": " + exported.size() + ",\n");
+        w.write("  \"skippedTableCount\": " + skipped.size() + ",\n");
+        w.write("  \"exportedTables\": " + toJsonArray(exported) + ",\n");
+        w.write("  \"skippedTables\": " + toJsonArray(skipped) + "\n");
+        w.write("}\n");
 
         w.flush();
         zip.closeEntry();
+    }
+
+    private List<String> listTableColumns(Connection conn, String tableName) throws SQLException {
+        List<String> out = new ArrayList<>();
+        String sql = "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString(1);
+                    if (name != null && SAFE_SQL_IDENTIFIER.matcher(name).matches()) {
+                        out.add(name);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) throws SQLException {
@@ -211,10 +239,10 @@ public class DatabaseBackupServlet extends HttpServlet {
 
         Object raw = rs.getObject(columnIndex);
         if (raw instanceof Timestamp ts) {
-            return ts.toInstant().toString();
+            return ISO_INSTANT_FMT.format(ts.toInstant());
         }
         if (raw instanceof Date d) {
-            return new Timestamp(d.getTime()).toInstant().toString();
+            return ISO_INSTANT_FMT.format(new Timestamp(d.getTime()).toInstant());
         }
 
         return value;
@@ -230,6 +258,9 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String quoteIdent(String ident) {
+        if (ident == null || !SAFE_SQL_IDENTIFIER.matcher(ident).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return "\"" + ident.replace("\"", "\"\"") + "\"";
     }
 

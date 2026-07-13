@@ -3,12 +3,13 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
@@ -25,6 +26,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getName());
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -35,8 +37,8 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         // support either single widgetId or bulk ids (comma-separated widgetIds)
-        String idsParam = req.getParameter("ids");
-        String widgetId = req.getParameter("widgetId");
+        String idsParam = firstParam(req, "ids");
+        String widgetId = firstParam(req, "widgetId");
 
         if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
@@ -49,7 +51,7 @@ public class WidgetTableServlet extends HttpServlet {
                     .map(String::trim)
                     .filter(s -> !s.isBlank())
                     .collect(Collectors.toList());
-            handleBulkCheck(req, resp, widgetIds);
+            handleBulkCheck(resp, widgetIds);
         } else {
             handleCheck(req, resp);
         }
@@ -70,7 +72,7 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
+        String role = session.getAttribute("role") == null ? "" : String.valueOf(session.getAttribute("role"));
         if (!"ADMIN".equalsIgnoreCase(role)) {
             jsonError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
             return false;
@@ -80,13 +82,17 @@ public class WidgetTableServlet extends HttpServlet {
 
     // Handle single widget check (existing behavior, extended to include count when exists)
     private void handleCheck(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String widgetId = req.getParameter("widgetId");
+        String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
             return;
         }
 
         String tableName = sanitizeWidgetId(widgetId);
+        if (!isSafeIdentifier(tableName)) {
+            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
+            return;
+        }
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
             Long count = null;
@@ -108,7 +114,7 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     // Handle bulk checks: return JSON array of statuses
-    private void handleBulkCheck(HttpServletRequest req, HttpServletResponse resp, List<String> widgetIds) throws IOException {
+    private void handleBulkCheck(HttpServletResponse resp, List<String> widgetIds) throws IOException {
         resp.setContentType("application/json");
         StringBuilder out = new StringBuilder();
         out.append("{\"status\":\"ok\",\"statuses\":[");
@@ -122,6 +128,16 @@ public class WidgetTableServlet extends HttpServlet {
                 first = false;
 
                 String tableName = sanitizeWidgetId(wid);
+                if (!isSafeIdentifier(tableName)) {
+                    out.append("{");
+                    out.append("\"widgetId\":\"").append(escapeJson(wid)).append("\",");
+                    out.append("\"tableName\":\"").append(escapeJson(tableName)).append("\",");
+                    out.append("\"tableExists\":false,");
+                    out.append("\"count\":null,");
+                    out.append("\"message\":\"Invalid widget identifier.\"");
+                    out.append("}");
+                    continue;
+                }
                 boolean exists = false;
                 Long count = null;
                 String message = "";
@@ -166,13 +182,17 @@ public class WidgetTableServlet extends HttpServlet {
      * successfully, returns created=true.
      */
     private void handleCreate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String widgetId = req.getParameter("widgetId");
+        String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
             return;
         }
 
         String tableName = sanitizeWidgetId(widgetId);
+        if (!isSafeIdentifier(tableName)) {
+            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
+            return;
+        }
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
             if (status.exists) {
@@ -231,7 +251,7 @@ public class WidgetTableServlet extends HttpServlet {
     private long countRows(Connection conn, String tableName) throws SQLException {
         // Quote identifier to avoid SQL injection; tableName is sanitized earlier.
         String sql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName);
-        try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+        try (PreparedStatement stmt = conn.prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
             if (rs.next()) {
                 return rs.getLong(1);
             }
@@ -242,8 +262,8 @@ public class WidgetTableServlet extends HttpServlet {
     private void createTable(Connection conn, String tableName) throws SQLException {
         String sql = "CREATE TABLE " + quoteIdentifier(tableName)
                 + " (id BIGSERIAL PRIMARY KEY, payload TEXT, created_at TIMESTAMPTZ DEFAULT now())";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.execute();
         }
     }
 
@@ -263,6 +283,21 @@ public class WidgetTableServlet extends HttpServlet {
 
     private String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private boolean isSafeIdentifier(String identifier) {
+        return identifier != null && SAFE_SQL_IDENTIFIER.matcher(identifier).matches();
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null) {
+            return null;
+        }
+        String[] values = req.getParameterMap().get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {

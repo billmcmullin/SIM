@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
@@ -28,6 +30,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -40,30 +43,34 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
     private static final int DEFAULT_LIMIT = 10;
+    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json");
-            resp.getWriter().print("{\"status\":\"unauthorized\"}");
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    Json.createObjectBuilder().add("status", "unauthorized").build());
             return;
         }
 
-        String query = req.getParameter("q");
+        String query = firstParam(req, "q");
         if (query == null || query.isBlank()) {
-            query = req.getParameter("search");
+            query = firstParam(req, "search");
         }
 
-        boolean labeledOnly = "true".equalsIgnoreCase(req.getParameter("labeledOnly"));
+        boolean labeledOnly = "true".equalsIgnoreCase(firstParam(req, "labeledOnly"));
 
-        int limit = parsePositiveInteger(req.getParameter("limit"), DEFAULT_LIMIT);
-        int page = parsePositiveInteger(req.getParameter("page"), 1);
-        int offset = parseNonNegativeInteger(req.getParameter("offset"), -1);
+        int limit = parsePositiveInteger(firstParam(req, "limit"), DEFAULT_LIMIT);
+        int page = parsePositiveInteger(firstParam(req, "page"), 1);
+        int offset = parseNonNegativeInteger(firstParam(req, "offset"), -1);
 
         if (offset >= 0) {
             page = (offset / limit) + 1;
@@ -72,7 +79,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         List<WidgetEntry> widgets = List.of();
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets for session catalog", e);
         }
 
@@ -123,8 +130,8 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                         .add("sessionId", entry.getKey())
                         .add("displayLabel", displayLabel)
                         .add("count", acc.count)
-                        .add("lastEntry", acc.lastEntry == null ? "—" : acc.lastEntry.toString())
-                        .add("reviewUrl", buildReviewUrl(req, entry.getKey()))
+                    .add("lastEntry", formatTimestamp(acc.lastEntry))
+                    .add("reviewUrl", buildReviewUrl(contextPath, entry.getKey()))
                         .add("displayName", label == null ? "" : nullSafe(label.getDisplayName()))
                         .add("email", label == null ? "" : nullSafe(label.getEmail()));
                 sessions.add(builder);
@@ -141,19 +148,15 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                     .add("sessions", sessions)
                     .build();
 
-            resp.setContentType("application/json");
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.getWriter().print(payload.toString());
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
 
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect session catalog", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             JsonObject error = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Unable to load session catalog")
                     .build();
-            resp.setContentType("application/json");
-            resp.getWriter().print(error.toString());
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
         }
     }
 
@@ -161,9 +164,13 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         return v == null ? "" : v;
     }
 
-    private String buildReviewUrl(HttpServletRequest req, String sessionId) {
-        return req.getContextPath() + "/dashboard/sessions/drilldown/session-review?sessionId="
+    private String buildReviewUrl(String contextPath, String sessionId) {
+        return contextPath + "/dashboard/sessions/drilldown/session-review?sessionId="
                 + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
+    }
+
+    private String formatTimestamp(Timestamp value) {
+        return value == null ? "—" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int parsePositiveInteger(String value, int fallback) {
@@ -188,6 +195,18 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         } catch (NumberFormatException e) {
             return fallback;
         }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter)
@@ -279,7 +298,30 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+        resp.setStatus(status);
+        resp.setContentType(JSON_UTF8);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
+        }
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private static final class SessionAccumulator {
