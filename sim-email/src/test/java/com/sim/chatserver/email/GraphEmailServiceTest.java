@@ -1,16 +1,21 @@
 package com.sim.chatserver.email;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class GraphEmailServiceTest {
@@ -103,7 +108,7 @@ class GraphEmailServiceTest {
     void send_missingTo_throwsIllegalArgument() {
         when(config.isUsable()).thenReturn(true);
 
-        EmailMessage message = msg(null, null, null, "Subject", "Body", null, null);
+        EmailMessage message = msg(List.of(), List.of("cc@example.com"), null, "Subject", "Body", null, null);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(message));
         assertEquals("At least one TO recipient is required", ex.getMessage());
@@ -194,14 +199,20 @@ class GraphEmailServiceTest {
             String htmlBody,
             String markdownBody
     ) {
-        return EmailMessage.builder()
-                .to(to)
-                .cc(cc)
-                .bcc(bcc)
+        EmailMessage.Builder builder = EmailMessage.builder()
                 .subject(subject)
                 .textBody(textBody)
                 .htmlBody(htmlBody)
-                .markdownBody(markdownBody)
-                .build();
+                .markdownBody(markdownBody);
+        if (to != null) {
+            builder.to(to);
+        }
+        if (cc != null) {
+            builder.cc(cc);
+        }
+        if (bcc != null) {
+            builder.bcc(bcc);
+        }
+        return builder.build();
     }
 }

@@ -260,6 +260,9 @@ public final class EncryptedDbConfigStore {
             String ivB64 = Base64.getEncoder().encodeToString(iv);
             String encB64 = Base64.getEncoder().encodeToString(encrypted);
             return ENC_PREFIX + ivB64 + ":" + encB64;
+        } catch (IllegalStateException e) {
+            log.log(Level.SEVERE, "encryptIfPresent: encryption key resolution failed", e);
+            throw new SQLException("Unable to encrypt configuration value", e);
         } catch (GeneralSecurityException e) {
             log.log(Level.SEVERE, "encryptIfPresent: encryption failed", e);
             throw new SQLException("Unable to encrypt configuration value", e);
@@ -289,6 +292,9 @@ public final class EncryptedDbConfigStore {
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plain = cipher.doFinal(enc);
             return new String(plain, StandardCharsets.UTF_8);
+        } catch (IllegalStateException e) {
+            log.log(Level.SEVERE, "decryptIfNeeded: encryption key resolution failed", e);
+            throw new SQLException("Unable to decrypt configuration value", e);
         } catch (GeneralSecurityException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "decryptIfNeeded: decryption failed for encrypted value", e);
             throw new SQLException("Unable to decrypt configuration value", e);
@@ -415,6 +421,9 @@ public final class EncryptedDbConfigStore {
 
         try {
             DataSource ds = holder.getDataSource();
+            if (ds == null) {
+                throw new IllegalStateException("AppDataSourceHolder returned null DataSource");
+            }
             log.fine("getDataSourceOrThrow: datasource acquired");
             return ds;
         } catch (RuntimeException e) {

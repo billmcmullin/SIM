@@ -1,6 +1,5 @@
 package com.sim.ui.tests.topics;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -20,10 +19,9 @@ public class DashboardTopicsIT extends BaseUiIT {
     @Order(1)
     void unauthenticatedUser_redirectedToLogin_fromTopicsPage() {
         page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
 
-        assertTrue(page.url().contains("/chat-server/login"),
-                "Expected redirect to /chat-server/login, got: " + page.url());
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected redirect/forward to login,");
     }
 
     @Test
@@ -107,13 +105,14 @@ public class DashboardTopicsIT extends BaseUiIT {
 
         // Access blocked again after logout
         page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
-        assertFalse(page.url().contains("/chat-server/dashboard/topics"));
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected topics page to be blocked after logout,");
     }
 
     private void login(String username, String password) {
         page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected login page before submitting credentials,");
 
         page.fill("#username", username);
         page.fill("#password", password);

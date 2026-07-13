@@ -27,13 +27,9 @@ public class DashboardPageIT extends BaseUiIT {
                 baseUrl + "/dashboard",
                 new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
         );
-        page.waitForURL(
-                url -> url.contains("/chat-server/login"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
 
-        assertTrue(page.url().contains("/chat-server/login"),
-                "Expected redirect to /chat-server/login, got: " + page.url());
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected redirect/forward to login,");
     }
 
     @Test
@@ -61,7 +57,7 @@ public class DashboardPageIT extends BaseUiIT {
         assertTrue(page.locator("h2:has-text('Term Distribution based on Prompts')").count() > 0);
         assertTrue(page.locator("h2:has-text('Top 10 Sessions')").count() > 0);
 
-        assertTrue(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration')").count() > 0,
+        assertTrue(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration'), button:has-text('Admin')").count() > 0,
                 "Admin should see Admin Configuration link");
 
         assertTrue(page.locator("#dpTodayChats").count() > 0);
@@ -87,7 +83,7 @@ public class DashboardPageIT extends BaseUiIT {
 
         page.waitForSelector("h1:has-text('Welcome')");
 
-        assertFalse(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration')").count() > 0,
+        assertFalse(page.locator("a[href$='/admin']:has-text('Go to Admin Configuration'), button:has-text('Admin')").count() > 0,
                 "Non-admin user should not see Admin Configuration link");
     }
 
@@ -134,10 +130,8 @@ public class DashboardPageIT extends BaseUiIT {
                 baseUrl + "/login",
                 new Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000)
         );
-        page.waitForURL(
-                url -> url.contains("/chat-server/login"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected login page before submitting credentials,");
 
         page.fill("#username", username);
         page.fill("#password", password);

@@ -1,15 +1,19 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.config.MapReduceConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -97,6 +101,7 @@ public class WidgetReviewManualMessageServletTest
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        mockBody(req, "{}");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         PrintWriter getWriterResult = mock(PrintWriter.class);
         when(resp.getWriter()).thenReturn(getWriterResult);
@@ -125,6 +130,7 @@ public class WidgetReviewManualMessageServletTest
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        mockBody(req, "{}");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         PrintWriter getWriterResult = mock(PrintWriter.class);
         when(resp.getWriter()).thenReturn(getWriterResult);
@@ -154,6 +160,7 @@ public class WidgetReviewManualMessageServletTest
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        mockBody(req, "{}");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         PrintWriter getWriterResult = mock(PrintWriter.class);
         when(resp.getWriter()).thenReturn(getWriterResult);
@@ -176,5 +183,36 @@ public class WidgetReviewManualMessageServletTest
         // When
         underTest.init();
 
+    }
+
+    private static void mockBody(HttpServletRequest req, String body) throws IOException
+    {
+        ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8));
+        ServletInputStream inputStream = new ServletInputStream() {
+            @Override
+            public int read() throws IOException
+            {
+                return in.read();
+            }
+
+            @Override
+            public boolean isFinished()
+            {
+                return in.available() == 0;
+            }
+
+            @Override
+            public boolean isReady()
+            {
+                return true;
+            }
+
+            @Override
+            public void setReadListener(ReadListener readListener)
+            {
+                // No-op for unit tests.
+            }
+        };
+        when(req.getInputStream()).thenReturn(inputStream);
     }
 }

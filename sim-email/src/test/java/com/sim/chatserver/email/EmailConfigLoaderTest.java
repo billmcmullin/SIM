@@ -1,10 +1,6 @@
 package com.sim.chatserver.email;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.io.IOException;
-import java.lang.reflect.Field;
-
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,16 +8,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 class EmailConfigLoaderTest {
 
-    private final Map<String, String> originalEnv = new HashMap<>(System.getenv());
-
     @AfterEach
     void cleanupEnv() {
-        // best-effort restore
-        setEnv(new HashMap<>(originalEnv));
+        EmailConfigLoader.resetEnvAccessorForTests();
     }
 
     @Test
@@ -37,7 +35,7 @@ class EmailConfigLoaderTest {
         env.remove("MAIL_PASSWORD");
         env.remove("MAIL_FROM");
         env.remove("MAIL_CONFIG_FILE");
-        setEnv(env);
+        useEnv(env);
 
         EmailConfig cfg = EmailConfigLoader.load();
 
@@ -57,12 +55,12 @@ class EmailConfigLoaderTest {
         Map<String, String> env = new HashMap<>(System.getenv());
         env.remove("MAIL_HOST");
         env.put("MAIL_PORT", "587");
-        setEnv(env);
+        useEnv(env);
         assertNull(EmailConfigLoader.loadEnvOnly());
 
         env.put("MAIL_HOST", "smtp.example.com");
         env.remove("MAIL_PORT");
-        setEnv(env);
+        useEnv(env);
         assertNull(EmailConfigLoader.loadEnvOnly());
     }
 
@@ -77,7 +75,7 @@ class EmailConfigLoaderTest {
         env.put("MAIL_USERNAME", " user ");
         env.put("MAIL_PASSWORD", " pass ");
         env.put("MAIL_FROM", " noreply@example.com ");
-        setEnv(env);
+        useEnv(env);
 
         EmailConfig cfg = EmailConfigLoader.loadEnvOnly();
 
@@ -111,7 +109,7 @@ class EmailConfigLoaderTest {
             env.put("MAIL_CONFIG_FILE", temp.toString());
             env.remove("MAIL_HOST");
             env.remove("MAIL_PORT");
-            setEnv(env);
+            useEnv(env);
 
             EmailConfig cfg = EmailConfigLoader.loadPropertiesOnly();
 
@@ -140,7 +138,7 @@ class EmailConfigLoaderTest {
         try {
             Map<String, String> env = new HashMap<>(System.getenv());
             env.put("MAIL_CONFIG_FILE", temp.toString());
-            setEnv(env);
+            useEnv(env);
 
             EmailConfig cfg = EmailConfigLoader.loadPropertiesOnly();
             assertNull(cfg);
@@ -179,45 +177,7 @@ class EmailConfigLoaderTest {
         assertFalse((boolean) m.invoke(null, "   ", false)); // trimToNull -> default
     }
 
-    /**
-     * Best-effort environment mutator for tests. On Java 16+ this may require:
-     * --add-opens java.base/java.util=ALL-UNNAMED --add-opens
-     * java.base/java.lang=ALL-UNNAMED
-     */
-    @SuppressWarnings("unchecked")
-    private static void setEnv(Map<String, String> newEnv) {
-        try {
-            Class<?> pe = Class.forName("java.lang.ProcessEnvironment");
-
-            Field theEnvironmentField = pe.getDeclaredField("theEnvironment");
-            theEnvironmentField.setAccessible(true);
-            Map<String, String> env = (Map<String, String>) theEnvironmentField.get(null);
-            env.clear();
-            env.putAll(newEnv);
-
-            Field theCaseInsensitiveEnvironmentField = pe.getDeclaredField("theCaseInsensitiveEnvironment");
-            theCaseInsensitiveEnvironmentField.setAccessible(true);
-            Map<String, String> cienv = (Map<String, String>) theCaseInsensitiveEnvironmentField.get(null);
-            cienv.clear();
-            cienv.putAll(newEnv);
-            return;
-        } catch (Exception ignored) {
-            // fallback below
-        }
-
-        try {
-            Map<String, String> env = System.getenv();
-            Class<?> cl = env.getClass();
-            Field m = cl.getDeclaredField("m");
-            m.setAccessible(true);
-            Object obj = m.get(env);
-            Map<String, String> map = (Map<String, String>) obj;
-            map.clear();
-            map.putAll(newEnv);
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to set environment variables for test. "
-                    + "If running on Java 21, add --add-opens for java.base/java.util and java.base/java.lang.", e);
-        }
+    private static void useEnv(Map<String, String> env) {
+        EmailConfigLoader.setEnvAccessorForTests(env::get);
     }
 }

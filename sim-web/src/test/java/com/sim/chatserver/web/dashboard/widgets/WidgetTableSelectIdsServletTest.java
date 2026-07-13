@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -54,7 +55,7 @@ class WidgetTableSelectIdsServletTest {
 
         when(req.getSession(anyBoolean())).thenReturn(session);
         when(session.getAttribute(anyString())).thenReturn(new Object());
-        when(req.getParameter(anyString())).thenReturn(null);
+        when(req.getParameterMap()).thenReturn(Map.of());
 
         StringWriter sw = new StringWriter();
         when(resp.getWriter()).thenReturn(new PrintWriter(sw, true));
@@ -96,13 +97,13 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_noWidgetParam_returnsGracefully() throws Exception {
-        when(req.getParameter(anyString())).thenReturn(null);
+        when(req.getParameterMap()).thenReturn(Map.of());
         assertDoesNotThrow(() -> underTest.doGet(req, resp));
     }
 
     @Test
     void doGet_happyPath_tableExists_noRows() throws Exception {
-        when(req.getParameter(anyString())).thenReturn("widget-1");
+        when(req.getParameterMap()).thenReturn(Map.of("widgetId", new String[] {"widget-1"}));
         when(rsMeta.next()).thenReturn(true);
         when(rsQuery.next()).thenReturn(false);
 
@@ -114,7 +115,7 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_happyPath_tableExists_withRows() throws Exception {
-        when(req.getParameter(anyString())).thenReturn("widget-1");
+        when(req.getParameterMap()).thenReturn(Map.of("widgetId", new String[] {"widget-1"}));
         when(rsMeta.next()).thenReturn(true);
         when(rsQuery.next()).thenReturn(true, false);
         when(rsQuery.getString(anyString())).thenReturn("id-1");
@@ -124,7 +125,7 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_whenTableMissing_returnsGracefully() throws Exception {
-        when(req.getParameter(anyString())).thenReturn("widget-1");
+        when(req.getParameterMap()).thenReturn(Map.of("widgetId", new String[] {"widget-1"}));
         when(rsMeta.next()).thenReturn(false);
 
         assertDoesNotThrow(() -> underTest.doGet(req, resp));
@@ -132,7 +133,7 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_metadataFailure_returnsGracefully() throws Exception {
-        when(req.getParameter(anyString())).thenReturn("widget-1");
+        when(req.getParameterMap()).thenReturn(Map.of("widgetId", new String[] {"widget-1"}));
         when(conn.getMetaData()).thenThrow(new java.sql.SQLException("meta fail"));
 
         assertDoesNotThrow(() -> underTest.doGet(req, resp));
@@ -140,7 +141,7 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_queryFailure_returnsGracefully() throws Exception {
-        when(req.getParameter(anyString())).thenReturn("widget-1");
+        when(req.getParameterMap()).thenReturn(Map.of("widgetId", new String[] {"widget-1"}));
         when(rsMeta.next()).thenReturn(true);
         when(ps.executeQuery()).thenThrow(new java.sql.SQLException("query fail"));
 

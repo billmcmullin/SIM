@@ -18,8 +18,8 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
 
-        <junit.version>5.14.2</junit.version>
-        <playwright.version>1.60.0</playwright.version>
+        <junit.version>6.1.2</junit.version>
+        <playwright.version>1.61.0</playwright.version>
         <failsafe.version>3.5.5</failsafe.version>
 
         <!-- UI test runtime defaults -->

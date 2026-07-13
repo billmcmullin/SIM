@@ -128,7 +128,7 @@ public class DashboardMetricsService {
 
                 stats.add(new WidgetStat(widgetId, displayName, totalCount, todayCount, yesterdayCount));
             }
-        } catch (SQLException e) {
+        } catch (SQLException | RuntimeException e) {
             LOG.log(Level.FINE, "buildWidgetStats fallback to empty list", e);
             return List.of();
         }

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.anyString;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,11 +63,11 @@ class DashboardDailySummaryStoreTest {
     @Test
     void ensureTable_executesCreateSql() throws Exception {
         when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.createStatement()).thenReturn(statement);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
 
         store.ensureTable();
 
-        verify(statement).execute(anyString());
+        verify(preparedStatement, atLeastOnce()).execute();
     }
 
     @Test
@@ -94,9 +95,10 @@ class DashboardDailySummaryStoreTest {
         verify(preparedStatement).setString(7, null);
         verify(preparedStatement).setString(8, null);
         verify(preparedStatement).setString(9, null);
-        verify(preparedStatement).setInt(10, 0);        // max(0, entryCount)
-        verify(preparedStatement).setTimestamp(11, null);
+        verify(preparedStatement).setString(10, null);
+        verify(preparedStatement).setInt(11, 0);        // max(0, entryCount)
         verify(preparedStatement).setTimestamp(12, null);
+        verify(preparedStatement).setTimestamp(13, null);
         verify(preparedStatement).executeUpdate();
     }
 
@@ -117,8 +119,8 @@ class DashboardDailySummaryStoreTest {
         verify(preparedStatement).setString(9, "usage");
 
         // started_at / generated_at should be non-null when flags are true
-        verify(preparedStatement).setTimestamp(org.mockito.ArgumentMatchers.eq(11), org.mockito.ArgumentMatchers.notNull());
         verify(preparedStatement).setTimestamp(org.mockito.ArgumentMatchers.eq(12), org.mockito.ArgumentMatchers.notNull());
+        verify(preparedStatement).setTimestamp(org.mockito.ArgumentMatchers.eq(13), org.mockito.ArgumentMatchers.notNull());
         verify(preparedStatement).executeUpdate();
     }
 
