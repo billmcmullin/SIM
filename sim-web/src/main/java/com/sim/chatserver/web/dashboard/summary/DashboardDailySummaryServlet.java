@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -13,6 +15,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -37,7 +40,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         try {
             summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
             summaryStore.ensureTable();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
             throw new ServletException("Failed to initialize daily summary store", e);
         }
@@ -50,8 +53,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        LocalDate day = parseDay(req.getParameter("day"), zone);
-        int slot = parseSlotOrCurrent(req.getParameter("slot"), zone);
+        LocalDate day = parseDay(firstParam(req, "day"), zone);
+        int slot = parseSlotOrCurrent(firstParam(req, "slot"), zone);
 
         try {
             if (summaryStore == null) {
@@ -60,9 +63,9 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             }
 
             JsonObject payload = summaryStore.fetchExactOrLatest(day, slot);
-            writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload.toString());
+            writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
             writeJson(resp, errorJson("Unable to load summary."));
         }
@@ -84,7 +87,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
         try {
             return LocalDate.parse(raw.trim(), DATE_FMT);
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid day parameter for dashboard summary: {0}", raw);
             return LocalDate.now(zone);
         }
     }
@@ -96,7 +100,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
                 if (s >= 0 && s <= 3) {
                     return s;
                 }
-            } catch (Exception ignored) {
+            } catch (NumberFormatException e) {
+                log.log(Level.FINE, "Invalid slot parameter for dashboard summary: {0}", raw);
             }
         }
 
@@ -113,17 +118,31 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         return 3;
     }
 
-    private String errorJson(String message) {
+    private JsonObject errorJson(String message) {
         return Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "Unable to load summary." : message)
-                .build()
-                .toString();
+                .build();
     }
 
-    private void writeJson(HttpServletResponse resp, String body) throws IOException {
+    private void writeJson(HttpServletResponse resp, JsonObject payload) throws IOException {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body == null ? "{}" : body);
+        JsonObject safePayload = payload == null ? Json.createObjectBuilder().build() : payload;
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(safePayload);
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 }

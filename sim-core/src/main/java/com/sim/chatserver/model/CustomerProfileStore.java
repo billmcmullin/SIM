@@ -9,9 +9,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKeyFactory;
@@ -25,6 +29,8 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import jakarta.enterprise.inject.spi.CDI;
 
 public final class CustomerProfileStore {
+
+    private static final Logger LOG = Logger.getLogger(CustomerProfileStore.class.getName());
 
     private static final String TABLE_NAME = "customer_profile_cache";
 
@@ -71,6 +77,7 @@ public final class CustomerProfileStore {
     private static final String ENC_TRANSFORM_ENV = "CONFIG_ENCRYPTION_TRANSFORMATION";
     private static final String ENC_PREFIX = "ENCv1:";
     private static final String DEFAULT_AES_MODE = buildDefaultCipherTransformation();
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
     private static final int GCM_TAG_BITS = 128;
     private static final int GCM_IV_BYTES = 12;
     private static final int AES_KEY_BYTES = 32;
@@ -238,13 +245,13 @@ public final class CustomerProfileStore {
     }
 
     private static byte[] getAesKeyBytes() {
-        String secret = System.getenv(ENC_KEY_ENV);
-        if (secret == null || secret.isBlank()) {
+        String secret = readEnvCanonical(ENC_KEY_ENV, 4096);
+        if (secret == null) {
             throw new IllegalStateException("Environment variable " + ENC_KEY_ENV + " is required for profile encryption.");
         }
 
         byte[] salt = resolveKdfSalt();
-        String trimmed = secret.trim();
+        String trimmed = secret;
 
         try {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
@@ -253,6 +260,7 @@ public final class CustomerProfileStore {
             }
             return deriveAesKey(decoded, salt);
         } catch (IllegalArgumentException notBase64) {
+            LOG.log(Level.FINE, "CONFIG_ENCRYPTION_KEY is not Base64, deriving key from UTF-8 value", notBase64);
             return deriveAesKey(trimmed.getBytes(StandardCharsets.UTF_8), salt);
         }
     }
@@ -271,9 +279,9 @@ public final class CustomerProfileStore {
     }
 
     private static byte[] resolveKdfSalt() {
-        String configuredSalt = System.getenv(ENC_SALT_ENV);
-        if (configuredSalt != null && !configuredSalt.isBlank()) {
-            return configuredSalt.trim().getBytes(StandardCharsets.UTF_8);
+        String configuredSalt = readEnvCanonical(ENC_SALT_ENV, 1024);
+        if (configuredSalt != null) {
+            return configuredSalt.getBytes(StandardCharsets.UTF_8);
         }
         return "sim-customer-profile-kdf-salt-v1".getBytes(StandardCharsets.UTF_8);
     }
@@ -283,15 +291,33 @@ public final class CustomerProfileStore {
     }
 
     private static String resolveCipherTransformation() {
-        String configured = System.getenv(ENC_TRANSFORM_ENV);
-        if (configured == null || configured.isBlank()) {
+        String configured = readEnvCanonical(ENC_TRANSFORM_ENV, 64);
+        if (configured == null) {
             return DEFAULT_AES_MODE;
         }
-        String candidate = configured.trim();
+        String candidate = configured;
         if (DEFAULT_AES_MODE.equalsIgnoreCase(candidate)) {
             return DEFAULT_AES_MODE;
         }
         return DEFAULT_AES_MODE;
+    }
+
+    private static String readEnvCanonical(String envName, int maxChars) {
+        String raw = System.getenv(envName);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC).trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (normalized.length() > maxChars) {
+            throw new IllegalStateException("Environment variable too long: " + envName);
+        }
+        if (CONTROL_CHARS.matcher(normalized).find()) {
+            throw new IllegalStateException("Environment variable contains invalid control characters: " + envName);
+        }
+        return normalized;
     }
 
     private static String buildDefaultCipherTransformation() {

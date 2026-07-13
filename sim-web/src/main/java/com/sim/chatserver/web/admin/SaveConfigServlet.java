@@ -1,6 +1,10 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -14,22 +18,24 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet(name = "SaveConfigServlet", urlPatterns = {"/admin/save-config"})
 public class SaveConfigServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(SaveConfigServlet.class.getName());
+
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String serverHostParam = req.getParameter("serverHost");
-        String serverPortValue = req.getParameter("serverPort");
-        String connectionInfoParam = req.getParameter("connectionInfo");
-        String apiKeyParam = req.getParameter("apiKey");
+        String serverHostParam = firstParam(req, "serverHost");
+        String serverPortValue = firstParam(req, "serverPort");
+        String connectionInfoParam = firstParam(req, "connectionInfo");
+        String apiKeyParam = firstParam(req, "apiKey");
 
         // Salesforce params
-        String salesforceInstanceUrlParam = req.getParameter("salesforceInstanceUrl");
-        String salesforceApiKeyParam = req.getParameter("salesforceApiKey");
+        String salesforceInstanceUrlParam = firstParam(req, "salesforceInstanceUrl");
+        String salesforceApiKeyParam = firstParam(req, "salesforceApiKey");
 
         // Salesforce OAuth refresh params
-        String salesforceLoginUrlParam = req.getParameter("salesforceLoginUrl");
-        String salesforceClientIdParam = req.getParameter("salesforceClientId");
-        String salesforceClientSecretParam = req.getParameter("salesforceClientSecret");
-        String salesforceRefreshTokenParam = req.getParameter("salesforceRefreshToken");
+        String salesforceLoginUrlParam = firstParam(req, "salesforceLoginUrl");
+        String salesforceClientIdParam = firstParam(req, "salesforceClientId");
+        String salesforceClientSecretParam = firstParam(req, "salesforceClientSecret");
+        String salesforceRefreshTokenParam = firstParam(req, "salesforceRefreshToken");
 
         try {
             ServerConfig existingConfig = EncryptedDbConfigStore.load();
@@ -49,6 +55,7 @@ public class SaveConfigServlet extends HttpServlet {
                 try {
                     serverPort = Integer.parseInt(serverPortValue);
                 } catch (NumberFormatException ignored) {
+                    log.log(Level.FINE, "Invalid serverPort value, preserving existing port: {0}", serverPortValue);
                     // keep existing port
                 }
             }
@@ -117,7 +124,7 @@ public class SaveConfigServlet extends HttpServlet {
 
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\"}");
-        } catch (Exception e) {
+        } catch (SQLException e) {
             throw new ServletException("Unable to save server configuration", e);
         }
     }
@@ -128,5 +135,17 @@ public class SaveConfigServlet extends HttpServlet {
 
     private String defaultString(String value) {
         return value == null ? "" : value;
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 }

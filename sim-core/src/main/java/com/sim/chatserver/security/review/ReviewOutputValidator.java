@@ -1,11 +1,14 @@
 // src/main/java/com/sim/chatserver/security/review/ReviewOutputValidator.java
 package com.sim.chatserver.security.review;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,6 +20,8 @@ import java.util.regex.Pattern;
  * relaxed/hierarchical final validation for aggregate synthesis flows
  */
 public class ReviewOutputValidator {
+
+    private static final Logger LOGGER = Logger.getLogger(ReviewOutputValidator.class.getName());
 
     private static final int DEFAULT_MAX_TEXT_CHARS = 120_000;
 
@@ -65,14 +70,14 @@ public class ReviewOutputValidator {
     );
 
     public ValidationResult validateMapOutput(String output) {
-        return validateMapOutput(output, DEFAULT_MAX_TEXT_CHARS);
+        return validateMapOutput(canonicalizeForValidation(output), DEFAULT_MAX_TEXT_CHARS);
     }
 
     public ValidationResult validateMapOutput(String output, int maxChars) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        String normalized = normalize(output);
+        String normalized = normalize(canonicalizeForValidation(output));
 
         if (normalized.isBlank()) {
             errors.add("Output is empty.");
@@ -127,11 +132,12 @@ public class ReviewOutputValidator {
     }
 
     public ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds) {
-        return validateMapOutputStrict(output, expectedChatIds, DEFAULT_MAX_TEXT_CHARS);
+        return validateMapOutputStrict(canonicalizeForValidation(output), expectedChatIds, DEFAULT_MAX_TEXT_CHARS);
     }
 
     public ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds, int maxChars) {
-        ValidationResult base = validateMapOutput(output, maxChars);
+        String canonicalOutput = canonicalizeForValidation(output);
+        ValidationResult base = validateMapOutput(canonicalOutput, maxChars);
 
         List<String> errors = new ArrayList<>(base.getErrors());
         List<String> warnings = new ArrayList<>(base.getWarnings());
@@ -187,14 +193,14 @@ public class ReviewOutputValidator {
     }
 
     public ValidationResult validateFinalReport(String report) {
-        return validateFinalReport(report, DEFAULT_MAX_TEXT_CHARS);
+        return validateFinalReport(canonicalizeForValidation(report), DEFAULT_MAX_TEXT_CHARS);
     }
 
     public ValidationResult validateFinalReport(String report, int maxChars) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        String normalized = normalize(report);
+        String normalized = normalize(canonicalizeForValidation(report));
 
         if (normalized.isBlank()) {
             errors.add("Final report is empty.");
@@ -259,13 +265,13 @@ public class ReviewOutputValidator {
      * expected IDs - Requires deterministic metadata consistency
      */
     public ValidationResult validateFinalReportStrict(String report, List<String> expectedChatIds, int maxChars) {
-        ValidationResult base = validateFinalReport(report, maxChars);
+        String canonicalReport = canonicalizeForValidation(report);
+        ValidationResult base = validateFinalReport(canonicalReport, maxChars);
 
         List<String> errors = new ArrayList<>(base.getErrors());
         List<String> warnings = new ArrayList<>(base.getWarnings());
 
-        String normalized = normalize(report);
-        String lower = normalized.toLowerCase(Locale.ROOT);
+        String normalized = normalize(canonicalReport);
 
         List<String> expected = normalizeIds(expectedChatIds);
         List<String> found = normalizeIds(base.getFoundChatIds());
@@ -307,12 +313,13 @@ public class ReviewOutputValidator {
      * consistency when present - Requires coverage counts consistency
      */
     public ValidationResult validateFinalReportHierarchical(String report, List<String> expectedChatIds, int maxChars) {
-        ValidationResult base = validateFinalReport(report, maxChars);
+        String canonicalReport = canonicalizeForValidation(report);
+        ValidationResult base = validateFinalReport(canonicalReport, maxChars);
 
         List<String> errors = new ArrayList<>(base.getErrors());
         List<String> warnings = new ArrayList<>(base.getWarnings());
 
-        String normalized = normalize(report);
+        String normalized = normalize(canonicalReport);
         String lower = normalized.toLowerCase(Locale.ROOT);
 
         List<String> expected = normalizeIds(expectedChatIds);
@@ -475,6 +482,13 @@ public class ReviewOutputValidator {
         return value == null ? "" : value.trim();
     }
 
+    private String canonicalizeForValidation(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return Normalizer.normalize(value, Normalizer.Form.NFKC);
+    }
+
     private boolean looksLikePureJson(String value) {
         return JSON_OBJECT_LIKE.matcher(value).matches() || JSON_ARRAY_LIKE.matcher(value).matches();
     }
@@ -625,7 +639,8 @@ public class ReviewOutputValidator {
         }
         try {
             return Integer.valueOf(m.group(1));
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
+            LOGGER.log(Level.FINE, "Invalid integer metadata value for pattern: {0}", pattern.pattern());
             return null;
         }
     }

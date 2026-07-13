@@ -3,7 +3,7 @@ package com.sim.chatserver.web.dashboard.summary;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -54,10 +54,10 @@ public class DashboardDailySummaryStore {
     }
 
     public void ensureTable() {
-        try (Connection conn = dataSource.getConnection(); Statement st = conn.createStatement()) {
-            st.execute(TABLE_SQL);
+        try (Connection conn = dataSource.getConnection(); PreparedStatement ps = conn.prepareStatement(TABLE_SQL)) {
+            ps.execute();
             ensureSuggestedNextActionColumn(conn);
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "Unable to ensure dashboard_daily_summary table", e);
             throw new IllegalStateException("Unable to ensure dashboard_daily_summary table", e);
         }
@@ -68,9 +68,9 @@ public class DashboardDailySummaryStore {
                 ALTER TABLE dashboard_daily_summary
                 ADD COLUMN IF NOT EXISTS suggested_next_action TEXT
                 """;
-        try (Statement st = conn.createStatement()) {
-            st.execute(sql);
-        } catch (Exception e) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.execute();
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to ensure suggested_next_action column", e);
         }
     }
@@ -191,13 +191,13 @@ public class DashboardDailySummaryStore {
             ps.setTimestamp(13, generatedAt);
 
             ps.executeUpdate();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
         }
     }
 
-    public JsonObject fetchExactOrLatest(LocalDate day, int slot) {
+    JsonObject fetchExactOrLatest(LocalDate day, int slot) {
         String exactSql = """
                 SELECT summary_day, slot, status, progress_pct, message,
                        summary_overall, summary_quality, summary_response, summary_usage, suggested_next_action,
@@ -258,7 +258,7 @@ public class DashboardDailySummaryStore {
                             .add("fromFallback", false))
                     .build();
 
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to fetch dashboard daily summary", e);
             return Json.createObjectBuilder()
                     .add("status", "error")
@@ -267,17 +267,17 @@ public class DashboardDailySummaryStore {
         }
     }
 
-    private JsonObject toPayload(ResultSet rs, boolean fromFallback) throws Exception {
-        String status = value(rs.getString("status"), "idle").toLowerCase();
-        int progress = clamp(rs.getInt("progress_pct"));
-        String message = value(rs.getString("message"), "");
+    private JsonObject toPayload(ResultSet rs, boolean fromFallback) throws SQLException {
+        String status = value(getSafeString(rs, "status", 20), "idle").toLowerCase();
+        int progress = clamp(getSafeInt(rs, "progress_pct", 0, 100));
+        String message = value(getSafeString(rs, "message", 2000), "");
 
-        String overall = value(rs.getString("summary_overall"), "");
-        String quality = value(rs.getString("summary_quality"), "");
-        String response = value(rs.getString("summary_response"), "");
-        String usage = value(rs.getString("summary_usage"), "");
-        String suggested = value(rs.getString("suggested_next_action"), "");
-        int entryCount = Math.max(0, rs.getInt("entry_count"));
+        String overall = value(getSafeString(rs, "summary_overall", 8000), "");
+        String quality = value(getSafeString(rs, "summary_quality", 4000), "");
+        String response = value(getSafeString(rs, "summary_response", 4000), "");
+        String usage = value(getSafeString(rs, "summary_usage", 4000), "");
+        String suggested = value(getSafeString(rs, "suggested_next_action", 2000), "");
+        int entryCount = getSafeInt(rs, "entry_count", 0, Integer.MAX_VALUE);
 
         Timestamp startedAt = rs.getTimestamp("started_at");
         Timestamp generatedAt = rs.getTimestamp("generated_at");
@@ -312,7 +312,7 @@ public class DashboardDailySummaryStore {
                         .add("entryCount", entryCount))
                 .add("meta", Json.createObjectBuilder()
                         .add("day", rs.getDate("summary_day") == null ? "" : rs.getDate("summary_day").toLocalDate().toString())
-                        .add("slot", rs.getInt("slot"))
+                        .add("slot", getSafeInt(rs, "slot", 0, 3))
                         .add("generatedAt", fmtTs(generatedAt))
                         .add("startedAt", fmtTs(startedAt))
                         .add("updatedAt", fmtTs(updatedAt))
@@ -322,6 +322,35 @@ public class DashboardDailySummaryStore {
                         .add("message", message)
                         .add("fromFallback", fromFallback))
                 .build();
+    }
+
+    private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
+        String value = rs.getString(column);
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ')
+                .replace("\r", "")
+                .replace("\u2028", " ")
+                .replace("\u2029", " ");
+        if (normalized.length() > maxLen) {
+            return normalized.substring(0, maxLen);
+        }
+        return normalized;
+    }
+
+    private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
+            return min;
+        }
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
     }
 
     private String suggestNextAction(String status, String quality, String response, String usage) {

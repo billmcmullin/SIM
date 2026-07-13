@@ -1,8 +1,30 @@
 const form = document.getElementById("loginForm");
 const result = document.getElementById("result");
 
-const context = window.location.pathname.replace(/\/login$/, "/");
-const loginUrl = `${window.location.origin}${context}api/auth/login`;
+function resolveContextPath() {
+    const script = document.currentScript || document.querySelector('script[src$="/assets/js/login.js"]');
+    if (script && script.src) {
+        const url = new URL(script.src, window.location.href);
+        const fromScript = url.pathname.replace(/\/assets\/js\/login\.js$/, "");
+        if (fromScript) {
+            return fromScript;
+        }
+    }
+
+    const p = window.location.pathname || "";
+    if (p.endsWith("/login")) {
+        return p.slice(0, -"/login".length);
+    }
+
+    if (p.endsWith("/dashboard")) {
+        return p.slice(0, -"/dashboard".length);
+    }
+
+    return "";
+}
+
+const contextPath = resolveContextPath();
+const loginUrl = `${window.location.origin}${contextPath}/api/auth/login`;
 
 form.addEventListener("submit", async (evt) => {
     evt.preventDefault();
@@ -19,7 +41,7 @@ form.addEventListener("submit", async (evt) => {
         });
         const text = await response.text();
         if (response.ok) {
-            window.location.href = `${context}dashboard`;
+            window.location.href = `${window.location.origin}${contextPath}/dashboard`;
         } else {
             result.textContent = `Login failed (${response.status}): ${text}`;
         }

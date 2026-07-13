@@ -8,9 +8,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -42,23 +44,23 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = req.getParameter("widgetId");
+        String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
 
-        String search = normalize(req.getParameter("search"));
-        String filterPrompt = normalize(req.getParameter("filterPrompt"));
-        String filterResponse = normalize(req.getParameter("filterResponse"));
+        String search = normalize(firstParam(req, "search"));
+        String filterPrompt = normalize(firstParam(req, "filterPrompt"));
+        String filterResponse = normalize(firstParam(req, "filterResponse"));
 
         // NEW: optional date filter (YYYY-MM-DD)
         LocalDate selectedDate = null;
-        String dateRaw = req.getParameter("date");
+        String dateRaw = firstParam(req, "date");
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
-            } catch (Exception ex) {
+            } catch (DateTimeParseException ex) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 resp.setContentType("application/json");
                 resp.getWriter().print(Json.createObjectBuilder()
@@ -124,13 +126,14 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
                 int idx = 1;
                 for (String value : values) {
-                    ps.setString(idx++, value);
+                    ps.setString(idx, value);
+                    idx++;
                 }
 
                 // bind date params after string params
                 if (selectedDate != null) {
-                    ps.setTimestamp(idx++, startTs);
-                    ps.setTimestamp(idx++, endTs);
+                    ps.setTimestamp(idx, startTs);
+                    ps.setTimestamp(idx + 1, endTs);
                 }
 
                 try (ResultSet rs = ps.executeQuery()) {
@@ -164,6 +167,18 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase();
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

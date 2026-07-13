@@ -5,12 +5,20 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Locale;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -20,6 +28,8 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "TestConnectionServlet", urlPatterns = {"/admin/test-connection"})
 public class TestConnectionServlet extends HttpServlet {
+
+    private static final Logger log = Logger.getLogger(TestConnectionServlet.class.getName());
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -32,21 +42,22 @@ public class TestConnectionServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Authentication required.")
+                    .build());
             return;
         }
 
-        String host = req.getParameter("serverHost");
-        String port = req.getParameter("serverPort");
-        String apiKey = req.getParameter("apiKey");
-
-        resp.setContentType("application/json");
+        String host = firstParam(req, "serverHost");
+        String port = firstParam(req, "serverPort");
+        String apiKey = firstParam(req, "apiKey");
 
         if (host == null || host.isBlank() || port == null || port.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Host and port are required.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Host and port are required.")
+                    .build());
             return;
         }
 
@@ -54,16 +65,21 @@ public class TestConnectionServlet extends HttpServlet {
             try {
                 ServerConfig config = EncryptedDbConfigStore.load();
                 apiKey = config != null ? config.getApiKey() : "";
-            } catch (Exception e) {
-                resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load stored API key.\"}");
+            } catch (SQLException | RuntimeException e) {
+                log.log(Level.WARNING, "Unable to load stored API key", e);
+                writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
+                        .add("status", "error")
+                        .add("message", "Unable to load stored API key.")
+                        .build());
                 return;
             }
         }
 
         if (apiKey == null || apiKey.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"API key is required.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "API key is required.")
+                    .build());
             return;
         }
 
@@ -71,8 +87,10 @@ public class TestConnectionServlet extends HttpServlet {
         try {
             endpoint = buildEndpoint(host.trim(), port.trim());
         } catch (IllegalArgumentException ex) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid host or port format.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Invalid host or port format.")
+                    .build());
             return;
         }
 
@@ -88,14 +106,22 @@ public class TestConnectionServlet extends HttpServlet {
             HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                resp.getWriter().write("{\"status\":\"ok\"}");
+                writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
             } else {
-                resp.setStatus(response.statusCode());
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Connection test failed with upstream status.\"}");
+                writeJson(resp, response.statusCode(), Json.createObjectBuilder()
+                        .add("status", "error")
+                        .add("message", "Connection test failed with upstream status.")
+                        .build());
             }
-        } catch (Exception e) {
-            resp.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Connection test failed.\"}");
+        } catch (IOException | InterruptedException | IllegalArgumentException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.log(Level.WARNING, "Connection test failed", e);
+            writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Connection test failed.")
+                    .build());
         }
     }
 
@@ -108,25 +134,55 @@ public class TestConnectionServlet extends HttpServlet {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        String normalizedHost = host;
-        if (!normalizedHost.startsWith("http://") && !normalizedHost.startsWith("https://")) {
-            normalizedHost = "https://" + normalizedHost;
-        }
-
-        URI base = URI.create(normalizedHost);
-        String scheme = base.getScheme();
-        String hostPart = base.getHost();
-        if (scheme == null || hostPart == null || !HOST_PATTERN.matcher(hostPart).matches()) {
+        String hostPart = sanitizeHost(host);
+        if (hostPart == null || !HOST_PATTERN.matcher(hostPart).matches()) {
             throw new IllegalArgumentException("Invalid host");
         }
 
-        return scheme + "://" + hostPart + ":" + portNumber + "/api/v1/auth";
+        return "https://" + hostPart + ":" + portNumber + "/api/v1/auth";
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private String sanitizeHost(String rawHost) {
+        if (rawHost == null || rawHost.isBlank()) {
+            return null;
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+        String trimmed = rawHost.trim();
+        if (trimmed.startsWith("http://")) {
+            trimmed = trimmed.substring("http://".length());
+        } else if (trimmed.startsWith("https://")) {
+            trimmed = trimmed.substring("https://".length());
+        }
+
+        int slash = trimmed.indexOf('/');
+        if (slash >= 0) {
+            trimmed = trimmed.substring(0, slash);
+        }
+        int colon = trimmed.indexOf(':');
+        if (colon >= 0) {
+            trimmed = trimmed.substring(0, colon);
+        }
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding("UTF-8");
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 }

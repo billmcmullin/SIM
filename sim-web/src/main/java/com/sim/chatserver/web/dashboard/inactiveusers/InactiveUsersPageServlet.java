@@ -4,12 +4,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -97,11 +97,11 @@ public class InactiveUsersPageServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession httpSession = req.getSession(false);
         if (httpSession == null || httpSession.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        int days = parseInt(req.getParameter("days"), DEFAULT_DAYS);
+        int days = parseInt(firstParam(req, "days"), DEFAULT_DAYS);
         if (days < 1) {
             days = DEFAULT_DAYS;
         }
@@ -110,7 +110,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to load widgets", e);
             widgets = List.of();
         }
@@ -150,7 +150,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                         row.frustrationDetected = fr.detected;
                         row.frustrationScore = fr.score;
                         row.frustrationReason = fr.reason;
-                    } catch (Exception ex) {
+                    } catch (SQLException | RuntimeException ex) {
                         row.frustrationDetected = false;
                         row.frustrationScore = 0.0;
                         row.frustrationReason = "";
@@ -201,7 +201,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "Unable to compute inactive users", e);
         }
 
@@ -236,9 +236,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
-        }
+        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
     private Map<String, SessionLabelStore.SessionLabel> mapLabelsSafe(Set<String> ids) {
@@ -247,7 +245,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         }
         try {
             return SessionLabelStore.mapDisplayNames(ids);
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to load session labels", e);
             return Map.of();
         }
@@ -260,7 +258,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return lastEntry.toInstant().toEpochMilli() < cutoff.toEpochMilli();
     }
 
-    private Map<String, InactiveRow> querySessionAggregateForTable(Connection conn, String table, String widgetId, String widgetLabel) throws Exception {
+    private Map<String, InactiveRow> querySessionAggregateForTable(Connection conn, String table, String widgetId, String widgetLabel) throws SQLException {
         Map<String, InactiveRow> out = new LinkedHashMap<>();
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                 + quoteIdentifier(table)
@@ -268,7 +266,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = rs.getString("session_id");
+                String sid = safeDbText(rs.getString("session_id"), 256);
                 Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                 if (sid == null || sid.isBlank()) {
                     continue;
@@ -290,7 +288,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return out;
     }
 
-    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
+    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) throws SQLException {
         List<String> prompts = new ArrayList<>();
         if (sessionId == null || sessionId.isBlank() || limit < 1) {
             return prompts;
@@ -315,8 +313,8 @@ public class InactiveUsersPageServlet extends HttpServlet {
                         return prompts;
                     }
                 }
-            } catch (Exception ignored) {
-                // try next candidate column
+            } catch (SQLException ex) {
+                log.log(Level.FINE, "Prompt column not available for table " + table + ": " + col, ex);
             }
         }
         return prompts;
@@ -564,7 +562,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 .build();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
@@ -597,9 +595,32 @@ public class InactiveUsersPageServlet extends HttpServlet {
     private int parseInt(String v, int fallback) {
         try {
             return Integer.parseInt(v);
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             return fallback;
         }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeDbText(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        if (normalized.length() > maxLen) {
+            return normalized.substring(0, maxLen);
+        }
+        return normalized;
     }
 
     private String loadTemplate(ServletContext context, String path) throws IOException {

@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -296,10 +297,10 @@ public final class CustomerIdentityStore {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     CustomerIdentitySessionLink link = new CustomerIdentitySessionLink();
-                    link.setSessionId(sanitizeDbText(rs.getString("session_id"), 256));
-                    link.setIdentityId(Math.max(0L, rs.getLong("identity_id")));
-                    link.setDisplayNameSnapshot(sanitizeDbText(rs.getString("display_name_snapshot"), 512));
-                    link.setContactEmailSnapshot(sanitizeDbText(rs.getString("contact_email_snapshot"), 512));
+                    link.setSessionId(readSanitizedDbText(rs, "session_id", 256));
+                    link.setIdentityId(readNonNegativeLong(rs, "identity_id"));
+                    link.setDisplayNameSnapshot(readSanitizedDbText(rs, "display_name_snapshot", 512));
+                    link.setContactEmailSnapshot(readSanitizedDbText(rs, "contact_email_snapshot", 512));
 
                     Timestamp linkedAt = rs.getTimestamp("linked_at");
                     if (linkedAt != null) {
@@ -319,17 +320,17 @@ public final class CustomerIdentityStore {
 
     private static CustomerIdentity mapIdentity(ResultSet rs) throws SQLException {
         CustomerIdentity x = new CustomerIdentity();
-        x.setIdentityId(Math.max(0L, rs.getLong("identity_id")));
-        x.setCanonicalEmail(sanitizeDbText(rs.getString("canonical_email"), 512));
-        x.setCanonicalName(sanitizeDbText(rs.getString("canonical_name"), 512));
-        x.setSalesforceContactId(sanitizeDbText(rs.getString("salesforce_contact_id"), 256));
-        x.setSalesforceAccountId(sanitizeDbText(rs.getString("salesforce_account_id"), 256));
-        x.setEmail(sanitizeDbText(rs.getString("email_enc"), 4096));
-        x.setPhone(sanitizeDbText(rs.getString("phone_enc"), 1024));
-        x.setTitle(sanitizeDbText(rs.getString("title_enc"), 512));
-        x.setDepartment(sanitizeDbText(rs.getString("department_enc"), 512));
-        x.setRawJson(sanitizeDbText(rs.getString("raw_json_enc"), 20000));
-        x.setConfidence(sanitizeDbText(rs.getString("confidence"), 32));
+        x.setIdentityId(readNonNegativeLong(rs, "identity_id"));
+        x.setCanonicalEmail(readSanitizedDbText(rs, "canonical_email", 512));
+        x.setCanonicalName(readSanitizedDbText(rs, "canonical_name", 512));
+        x.setSalesforceContactId(readSanitizedDbText(rs, "salesforce_contact_id", 256));
+        x.setSalesforceAccountId(readSanitizedDbText(rs, "salesforce_account_id", 256));
+        x.setEmail(readSanitizedDbText(rs, "email_enc", 4096));
+        x.setPhone(readSanitizedDbText(rs, "phone_enc", 1024));
+        x.setTitle(readSanitizedDbText(rs, "title_enc", 512));
+        x.setDepartment(readSanitizedDbText(rs, "department_enc", 512));
+        x.setRawJson(readSanitizedDbText(rs, "raw_json_enc", 20000));
+        x.setConfidence(readSanitizedDbText(rs, "confidence", 32));
 
         Timestamp created = rs.getTimestamp("created_at");
         if (created != null) {
@@ -471,11 +472,21 @@ public final class CustomerIdentityStore {
         return isBlank(v) ? null : v.trim();
     }
 
+    private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        String raw = rs.getString(column);
+        return sanitizeDbText(raw, maxChars);
+    }
+
+    private static long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return Math.max(0L, value);
+    }
+
     private static String sanitizeDbText(String value, int maxChars) {
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
             return trimmed;
         }
