@@ -12,6 +12,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -35,17 +36,18 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             } else {
-                resp.sendRedirect(req.getContextPath() + "/login");
+                req.getRequestDispatcher("/login").forward(req, resp);
             }
             return;
         }
 
-        String rawTerm = req.getParameter("term");
+        String rawTerm = firstParam(req, "term");
         if (rawTerm == null || rawTerm.isBlank()) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
@@ -56,7 +58,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         String normalizedTerm = normalize(rawTerm);
-        String mode = normalize(req.getParameter("mode"));
+    String mode = normalize(firstParam(req, "mode"));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
         boolean yesterdayOnly = MODE_YESTERDAY_ONLY.equalsIgnoreCase(mode);
 
@@ -91,12 +93,12 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             }
 
             snapshots = findSnapshotsByTerm(increasedSnapshotsByTerm, normalizedTerm);
-            if (snapshots == null || snapshots.isEmpty()) {
+            if (snapshots.isEmpty()) {
                 log.fine(() -> "No increase snapshots for term='" + rawTerm + "' normalized='" + normalizedTerm + "'");
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
                 } else {
-                    resp.sendRedirect(req.getContextPath() + "/dashboard?msg=noIncreaseForTerm");
+                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
                 }
                 return;
             }
@@ -110,24 +112,24 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
                 } else {
-                    resp.sendRedirect(req.getContextPath() + "/dashboard?msg=noYesterdayForTerm");
+                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
                 }
                 return;
             }
 
             snapshots = findSnapshotsByTerm(yesterdaySnapshotsByTerm, normalizedTerm);
-            if (snapshots == null || snapshots.isEmpty()) {
+            if (snapshots.isEmpty()) {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
                 } else {
-                    resp.sendRedirect(req.getContextPath() + "/dashboard?msg=noYesterdayForTerm");
+                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
                 }
                 return;
             }
             selectionLabel = rawTerm + " (Yesterday)";
         } else {
             snapshots = findSnapshotsByTerm(allSnapshotsByTerm, normalizedTerm);
-            if (snapshots == null || snapshots.isEmpty()) {
+            if (snapshots.isEmpty()) {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                 } else {
@@ -142,7 +144,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 session,
                 selectionLabel,
                 snapshots,
-                req.getContextPath() + "/dashboard"
+            contextPath + "/dashboard"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -154,29 +156,28 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        String reviewUrl = req.getContextPath() + "/dashboard/widgets/drilldown/review?selectionId="
+        String reviewPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
 
         if (wantsJson(req)) {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("selectionId", selectionId)
-                    .add("reviewUrl", reviewUrl)
+                    .add("reviewUrl", contextPath + reviewPath)
                     .build();
-            writeJson(resp, HttpServletResponse.SC_OK, body.toString());
+            writeJson(resp, HttpServletResponse.SC_OK, body);
             return;
         }
 
-        resp.sendRedirect(reviewUrl);
+        req.getRequestDispatcher(reviewPath).forward(req, resp);
     }
 
     private boolean wantsJson(HttpServletRequest req) {
-        String uri = req.getRequestURI();
-        if (uri != null && uri.endsWith("/select")) {
-            return true;
+        if (req == null || req.getHttpServletMapping() == null) {
+            return false;
         }
-        String accept = req.getHeader("Accept");
-        return accept != null && accept.toLowerCase().contains("application/json");
+        String pattern = req.getHttpServletMapping().getPattern();
+        return pattern != null && pattern.endsWith("/select");
     }
 
     private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
@@ -184,19 +185,21 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 .add("status", "error")
                 .add("message", message == null ? "" : message)
                 .build();
-        writeJson(resp, status, body.toString());
+        writeJson(resp, status, body);
     }
 
-    private void writeJson(HttpServletResponse resp, int status, String body) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType(JSON_UTF8);
-        resp.getWriter().write(body);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
+        }
     }
 
     private List<TermChatSnapshot> findSnapshotsByTerm(Map<String, List<TermChatSnapshot>> snapshotsByTerm, String rawTerm) {
         if (snapshotsByTerm == null || snapshotsByTerm.isEmpty()) {
-            return null;
+            return List.of();
         }
 
         List<TermChatSnapshot> direct = snapshotsByTerm.get(rawTerm);
@@ -213,7 +216,30 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 }
             }
         }
-        return null;
+        return List.of();
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private String normalize(String s) {

@@ -12,7 +12,7 @@ pipeline {
         SESSION_TAG            = 'Jenkins Jtest'
         // Parasoft Test Configuration to run this build
         TEST_CONFIG            = 'jtest.dtp://StaticAndUnit'
-        // Parasoft Security Compliance Test Configruation to run 2025 OWASP
+        // Parasoft Security Compliance Test Configuration to run 2025 OWASP
         OWASP_2025_TEST_CONFIG = 'jtest.dtp://OWASP Top 10-2025 [Parasoft 2026.1]'
         // Parasoft Security Compliance Test Configuration for CWE
         CWE_TEST_CONFIG        = 'jtest.dtp://CWE Top 25 + On the Cusp 2025 [Parasoft 2026.1]'
@@ -77,7 +77,7 @@ pipeline {
                     withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
                         sh '''
                             $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app,sim-email \
-                                -Djtest.settings="jtest_${JOB_NAME}.properties" \
+                                -Djtest.settings="${WORKSPACE}/jtest_${JOB_NAME}.properties" \
                                 -Djtest.publish="${PUBLISH}" \
                                 -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
                                 -Dmaven.test.failure.ignore=true \
@@ -222,7 +222,6 @@ pipeline {
                             npm init -y >/dev/null 2>&1
                         fi
 
-                        # Need to install checlstyle format for Parasoft MLP
                         npm install --no-audit --no-fund --save-dev eslint@9.12.0
                         npm install -D eslint-formatter-checkstyle
 
@@ -233,6 +232,7 @@ pipeline {
                         ESLINT_EXIT=$?
 
                         echo "ESLint exit code: ${ESLINT_EXIT}"
+
                         # Checkstyle XML report for Parasoft MLP input
                         npx eslint "sim-app/src/main/webapp/assets/js/**/*.js" \
                             -f checkstyle \
@@ -317,12 +317,6 @@ pipeline {
     }
 
     post {
-        always {
-            // Personal testing mode: force SUCCESS even if publishers mark UNSTABLE
-            script {
-                currentBuild.result = 'SUCCESS'
-            }
-        }
         success {
             echo 'success.'
             chuckNorris()

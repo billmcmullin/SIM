@@ -19,6 +19,7 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
 import jakarta.json.Json;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 import jakarta.servlet.ServletException;
@@ -51,6 +52,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     private static final long OAUTH_STATE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
     private static final Pattern SAFE_CONTEXT_PATH = Pattern.compile("^/[-A-Za-z0-9._~/]*$");
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]+$");
+    private static final Pattern SAFE_OAUTH_PARAM = Pattern.compile("^[A-Za-z0-9._~:-]{1,1024}$");
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -64,16 +66,16 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return;
         }
 
-        String error = trimToNull(firstParam(req, "error"));
+        String error = sanitizeOAuthParam(firstParam(req, "error"));
         if (error != null) {
-            String description = trimToNull(firstParam(req, "error_description"));
+            String description = sanitizeOAuthParam(firstParam(req, "error_description"));
             redirectWithMessage(resp, req, false,
                     "Salesforce authorization failed: " + safe(description != null ? description : error));
             return;
         }
 
-        String code = trimToNull(firstParam(req, "code"));
-        String state = trimToNull(firstParam(req, "state"));
+        String code = sanitizeOAuthParam(firstParam(req, "code"));
+        String state = sanitizeOAuthParam(firstParam(req, "state"));
         if (code == null || state == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing OAuth code/state.");
             return;
@@ -229,7 +231,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             p.refreshToken = o.getString("refresh_token", null);
             p.instanceUrl = o.getString("instance_url", null);
             return p;
-        } catch (RuntimeException e) {
+        } catch (JsonException | ClassCastException e) {
             log.log(Level.WARNING, "Unable to parse Salesforce token payload", e);
             return null;
         }
@@ -275,7 +277,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 host = sanitizeHost(h);
             }
         } else {
-            host = sanitizeHost(req.getServerName());
+            host = "localhost";
         }
 
         if (isBlank(host)) {
@@ -312,7 +314,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
         int comma = headerVal.indexOf(',');
         String token = comma >= 0 ? headerVal.substring(0, comma) : headerVal;
-        return token == null ? null : token.trim();
+        return token.trim();
     }
 
     private String normalizeBaseUrl(String url) {
@@ -395,6 +397,17 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
         String t = v.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    private String sanitizeOAuthParam(String value) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        if (!SAFE_OAUTH_PARAM.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
     }
 
     private String safe(String s) {

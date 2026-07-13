@@ -1,10 +1,7 @@
 package com.sim.chatserver.web.dashboard.topics;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -52,6 +49,7 @@ public class DashboardTopicsServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
     private static final String EXCLUDED_TOPIC = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -61,6 +59,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -122,13 +121,9 @@ public class DashboardTopicsServlet extends HttpServlet {
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            try {
-                                Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                if (ignoredTs == null) {
-                                    // still allow topic matching from prompt text
-                                }
-                            } catch (SQLException ignored) {
-                                // Continue prompt-only matching
+                            Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            if (ignoredTs == null) {
+                                // still allow topic matching from prompt text
                             }
 
                             String prompt = rs.getString("prompt");
@@ -155,16 +150,14 @@ public class DashboardTopicsServlet extends HttpServlet {
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-            .replace("${contextPath}", escapeHtml(safeContextPath(req.getServletContext().getContextPath())))
+                .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(user))
                 .replace("${globalTopicRows}", globalRows)
                 .replace("${perWidgetTopicTables}", perWidgetTables);
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
-        }
+        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
     private DateWindow resolveDateWindow(String dayParam, String startParam, String endParam) {
@@ -244,12 +237,8 @@ public class DashboardTopicsServlet extends HttpServlet {
         String text = prompt == null ? "" : prompt;
         Set<String> matched = new LinkedHashSet<>();
         for (TopicPattern tp : topics) {
-            try {
-                if (tp.pattern.matcher(text).find()) {
-                    matched.add(tp.name);
-                }
-            } catch (RuntimeException ex) {
-                log.log(Level.FINEST, "Topic pattern evaluation failed", ex);
+            if (tp.pattern.matcher(text).find()) {
+                matched.add(tp.name);
             }
         }
         return matched;
@@ -260,14 +249,8 @@ public class DashboardTopicsServlet extends HttpServlet {
             if (stream == null) {
                 throw new IOException("Template not found: " + path);
             }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                StringBuilder b = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    b.append(line).append('\n');
-                }
-                return b.toString();
-            }
+            byte[] bytes = stream.readAllBytes();
+            return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 
@@ -301,6 +284,9 @@ public class DashboardTopicsServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 

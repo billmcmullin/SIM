@@ -1,15 +1,24 @@
 package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 import com.sim.chatserver.widget.WidgetStore.DuplicateWidgetIdException;
 
+import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -20,7 +29,8 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetApiServlet", urlPatterns = {"/dashboard/widgets"})
 public class WidgetApiServlet extends HttpServlet {
 
-    private static final String APPLICATION_JSON = "application/json";
+    private static final String APPLICATION_JSON = "application/json; charset=UTF-8";
+    private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -28,15 +38,24 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String filter = req.getParameter("filter");
-        resp.setContentType(APPLICATION_JSON);
+        String filter = firstParam(req, "filter");
         try {
             List<WidgetEntry> widgets = WidgetStore.list(filter);
-            resp.getWriter().write("{\"status\":\"ok\",\"widgets\":["
-                    + widgets.stream().map(this::widgetToJson).collect(Collectors.joining(",")) + "]}");
+            JsonArrayBuilder arr = Json.createArrayBuilder();
+            for (WidgetEntry widget : widgets) {
+                arr.add(widgetToJson(widget));
+            }
+            JsonObject payload = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("widgets", arr)
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (SQLException e) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load widget entries.\"}");
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Unable to load widget entries.")
+                            .build());
         }
     }
 
@@ -46,15 +65,16 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = req.getParameter("widgetId");
-        String displayName = req.getParameter("displayName");
-        String idValue = req.getParameter("id");
+        String widgetId = sanitizeWidgetId(firstParam(req, "widgetId"));
+        String displayName = sanitizeDisplayName(firstParam(req, "displayName"));
+        String idValue = firstParam(req, "id");
 
-        resp.setContentType(APPLICATION_JSON);
-
-        if (widgetId == null || widgetId.isBlank() || displayName == null || displayName.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Widget ID and name are required.\"}");
+        if (widgetId == null || displayName == null) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Widget ID and name are required.")
+                            .build());
             return;
         }
 
@@ -62,26 +82,42 @@ public class WidgetApiServlet extends HttpServlet {
         if (idValue != null && !idValue.isBlank()) {
             try {
                 id = Integer.valueOf(idValue.trim());
-            } catch (NumberFormatException ignored) {
-                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"ID must be an integer.\"}");
+            } catch (NumberFormatException ex) {
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                        Json.createObjectBuilder()
+                                .add("status", "error")
+                                .add("message", "ID must be an integer.")
+                                .build());
                 return;
             }
         }
 
         try {
             WidgetEntry saved = WidgetStore.save(id, widgetId, displayName);
-            resp.getWriter().write("{\"status\":\"ok\",\"widget\":" + widgetToJson(saved) + "}");
+            JsonObject payload = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("widget", widgetToJson(saved))
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (DuplicateWidgetIdException ex) {
-            resp.setStatus(HttpServletResponse.SC_CONFLICT);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Widget ID already exists.\"}");
+            writeJson(resp, HttpServletResponse.SC_CONFLICT,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Widget ID already exists.")
+                            .build());
         } catch (IllegalArgumentException ex) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid widget input.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Invalid widget input.")
+                            .build());
         } catch (SQLException ex) {
             log("Widget persistence error", ex);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to persist widget entry.\"}");
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Unable to persist widget entry.")
+                            .build());
         }
     }
 
@@ -91,58 +127,117 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String idsParam = req.getParameter("ids");
-        resp.setContentType(APPLICATION_JSON);
+        String idsParam = firstParam(req, "ids");
 
         if (idsParam == null || idsParam.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No widget IDs provided to delete.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "No widget IDs provided to delete.")
+                            .build());
             return;
         }
 
-        List<Integer> ids = Arrays.stream(idsParam.split(","))
-                .map(String::trim)
-                .filter(token -> !token.isBlank())
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
+        List<Integer> ids = new ArrayList<>();
+        for (String token : Arrays.stream(idsParam.split(",")).map(String::trim).filter(t -> !t.isBlank()).toList()) {
+            try {
+                ids.add(Integer.valueOf(token));
+            } catch (NumberFormatException ex) {
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                        Json.createObjectBuilder()
+                                .add("status", "error")
+                                .add("message", "No valid widget IDs provided.")
+                                .build());
+                return;
+            }
+        }
 
         if (ids.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No valid widget IDs provided.\"}");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "No valid widget IDs provided.")
+                            .build());
             return;
         }
 
         try {
             int deleted = WidgetStore.deleteBulk(ids);
-            resp.getWriter().write("{\"status\":\"ok\",\"deleted\":" + deleted + "}");
+            writeJson(resp, HttpServletResponse.SC_OK,
+                    Json.createObjectBuilder()
+                            .add("status", "ok")
+                            .add("deleted", deleted)
+                            .build());
         } catch (SQLException e) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to delete widget entries.\"}");
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Unable to delete widget entries.")
+                            .build());
         }
     }
 
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    Json.createObjectBuilder()
+                            .add("status", "error")
+                            .add("message", "Authentication required.")
+                            .build());
             return false;
         }
         return true;
     }
 
-    private String widgetToJson(WidgetEntry entry) {
-        return "{"
-                + "\"id\":" + entry.getId() + ","
-                + "\"widgetId\":\"" + escapeJson(entry.getWidgetId()) + "\","
-                + "\"displayName\":\"" + escapeJson(entry.getDisplayName()) + "\""
-                + "}";
+    private JsonObject widgetToJson(WidgetEntry entry) {
+        return Json.createObjectBuilder()
+                .add("id", entry.getId())
+                .add("widgetId", entry.getWidgetId() == null ? "" : entry.getWidgetId())
+                .add("displayName", entry.getDisplayName() == null ? "" : entry.getDisplayName())
+                .build();
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(APPLICATION_JSON);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String sanitizeWidgetId(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (!SAFE_WIDGET_ID.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private String sanitizeDisplayName(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 }

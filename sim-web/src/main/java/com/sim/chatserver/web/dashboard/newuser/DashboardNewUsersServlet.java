@@ -38,6 +38,8 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -72,16 +74,15 @@ public class DashboardNewUsersServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String path = resolveRequestPath(req);
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         try {
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
                 if (reqExpectsJson(path)) {
                     writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
                 } else {
-                    resp.sendRedirect(resp.encodeRedirectURL(contextPath + "/login"));
+                    req.getRequestDispatcher("/login").forward(req, resp);
                 }
                 return;
             }
@@ -176,9 +177,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 .add("latest", latest)
                 .build();
 
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(payload.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private void handleDay(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -210,9 +209,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 .add("rows", rows)
                 .build();
 
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(payload.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private Metrics loadMetrics(LocalDate rangeStart, LocalDate rangeEnd, String contextPath) {
@@ -523,14 +520,20 @@ public class DashboardNewUsersServlet extends HttpServlet {
     }
 
     private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "Request failed." : message)
                 .build();
-        resp.getWriter().write(body.toString());
+        writeJson(resp, status, body);
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body);
+        }
     }
 
     private static final class Metrics {

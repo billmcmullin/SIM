@@ -24,6 +24,7 @@ import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -86,10 +87,10 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-        private static final String POST_IMPORT_SYNC_URL =
-            Optional.ofNullable(System.getProperty("sim.postImportSyncUrl"))
-                .orElse("")
-                .trim();
+    private static final String POST_IMPORT_SYNC_URL =
+            Optional.ofNullable(System.getenv("SIM_POST_IMPORT_SYNC_URL"))
+                    .orElse("")
+                    .trim();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -101,7 +102,7 @@ public class DatabaseImportServlet extends HttpServlet {
             return;
         }
 
-        String action = Optional.ofNullable(req.getParameter("action")).orElse("").trim();
+        String action = Optional.ofNullable(firstParam(req, "action")).orElse("").trim();
         if ("precheck".equalsIgnoreCase(action)) {
             handlePrecheck(req, resp);
         } else if ("run".equalsIgnoreCase(action)) {
@@ -149,7 +150,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
             json(resp, HttpServletResponse.SC_OK, result.build());
 
-        } catch (Exception e) {
+        } catch (IOException | SQLException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Import precheck failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
@@ -213,7 +214,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
                 json(resp, HttpServletResponse.SC_OK, out.build());
 
-            } catch (IOException | RuntimeException | SQLException e) {
+            } catch (IOException | SQLException | IllegalArgumentException e) {
                 try {
                     conn.rollback();
                 } catch (SQLException rb) {
@@ -230,7 +231,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("rowNumber", ie.rowNumber)
                     .add("column", ie.column == null ? "" : ie.column)
                     .build());
-        } catch (IOException | RuntimeException | SQLException e) {
+        } catch (IOException | SQLException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Import run failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
@@ -420,7 +421,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
                     try {
                         bindTyped(ps, idx, normalized, ci.sqlType);
-                    } catch (SQLException | RuntimeException bindErr) {
+                    } catch (SQLException bindErr) {
                         throw new ImportException(
                                 "Import failed at table '" + table + "', row " + csvRowNumber + ", column '" + column + "': " + safe(bindErr.getMessage()),
                                 table, csvRowNumber, column, bindErr
@@ -447,7 +448,14 @@ public class DatabaseImportServlet extends HttpServlet {
         DatabaseMetaData meta = conn.getMetaData();
         try (ResultSet rs = meta.getColumns(null, "public", table, null)) {
             while (rs.next()) {
-                String name = rs.getString("COLUMN_NAME").toLowerCase();
+                String rawName = rs.getString("COLUMN_NAME");
+                if (rawName == null) {
+                    continue;
+                }
+                String name = rawName.toLowerCase();
+                if (!SQL_IDENTIFIER.matcher(name).matches()) {
+                    continue;
+                }
                 int type = rs.getInt("DATA_TYPE");
                 boolean nullable = rs.getInt("NULLABLE") != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
@@ -520,52 +528,56 @@ public class DatabaseImportServlet extends HttpServlet {
             return;
         }
 
-        switch (sqlType) {
-            case Types.BIGINT ->
-                ps.setLong(idx, Long.parseLong(v));
-            case Types.INTEGER, Types.SMALLINT, Types.TINYINT ->
-                ps.setInt(idx, Integer.parseInt(v));
-            case Types.BOOLEAN, Types.BIT ->
-                ps.setBoolean(idx, "true".equalsIgnoreCase(v) || "t".equalsIgnoreCase(v) || "1".equals(v));
-            case Types.DOUBLE, Types.FLOAT, Types.REAL ->
-                ps.setDouble(idx, Double.parseDouble(v));
-            case Types.NUMERIC, Types.DECIMAL ->
-                ps.setBigDecimal(idx, new BigDecimal(v));
-            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> {
-                Timestamp ts = parseTimestampStrict(v);
-                if (ts == null) {
-                    throw new SQLException("Invalid timestamp format '" + v + "'");
+        try {
+            switch (sqlType) {
+                case Types.BIGINT ->
+                    ps.setLong(idx, Long.parseLong(v));
+                case Types.INTEGER, Types.SMALLINT, Types.TINYINT ->
+                    ps.setInt(idx, Integer.parseInt(v));
+                case Types.BOOLEAN, Types.BIT ->
+                    ps.setBoolean(idx, "true".equalsIgnoreCase(v) || "t".equalsIgnoreCase(v) || "1".equals(v));
+                case Types.DOUBLE, Types.FLOAT, Types.REAL ->
+                    ps.setDouble(idx, Double.parseDouble(v));
+                case Types.NUMERIC, Types.DECIMAL ->
+                    ps.setBigDecimal(idx, new BigDecimal(v));
+                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> {
+                    Timestamp ts = parseTimestampStrict(v);
+                    if (ts == null) {
+                        throw new SQLException("Invalid timestamp format '" + v + "'");
+                    }
+                    ps.setTimestamp(idx, ts);
                 }
-                ps.setTimestamp(idx, ts);
-            }
-            case Types.DATE -> {
-                java.sql.Date d = parseDateStrict(v);
-                if (d == null) {
-                    throw new SQLException("Invalid date format '" + v + "'");
+                case Types.DATE -> {
+                    java.sql.Date d = parseDateStrict(v);
+                    if (d == null) {
+                        throw new SQLException("Invalid date format '" + v + "'");
+                    }
+                    ps.setDate(idx, d);
                 }
-                ps.setDate(idx, d);
+                case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY ->
+                    ps.setBytes(idx, Base64.getDecoder().decode(v));
+                default ->
+                    ps.setString(idx, v);
             }
-            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY ->
-                ps.setBytes(idx, Base64.getDecoder().decode(v));
-            default ->
-                ps.setString(idx, v);
+        } catch (IllegalArgumentException ex) {
+            throw new SQLException("Invalid value '" + v + "' for SQL type " + sqlType, ex);
         }
     }
 
     private Timestamp parseTimestampStrict(String v) {
         try {
             return Timestamp.from(Instant.parse(v));
-        } catch (Exception ignore) {
+        } catch (DateTimeParseException ignore) {
         }
 
         try {
             return Timestamp.from(OffsetDateTime.parse(v).toInstant());
-        } catch (Exception ignore) {
+        } catch (DateTimeParseException ignore) {
         }
 
         try {
             return Timestamp.valueOf(v.replace('T', ' '));
-        } catch (Exception ignore) {
+        } catch (IllegalArgumentException ignore) {
         }
 
         return null;
@@ -574,7 +586,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private java.sql.Date parseDateStrict(String v) {
         try {
             return java.sql.Date.valueOf(v);
-        } catch (Exception ignore) {
+        } catch (IllegalArgumentException ignore) {
             return null;
         }
     }
@@ -587,41 +599,33 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private void createKnownTable(Connection conn, String table) throws SQLException {
-        String ddl;
-        switch (table) {
-            case "customer_identity" ->
-                ddl = """
-                    CREATE TABLE IF NOT EXISTS customer_identity (
-                      identity_id BIGSERIAL PRIMARY KEY,
-                      canonical_email VARCHAR(320),
-                      canonical_name VARCHAR(256),
-                      salesforce_contact_id VARCHAR(64),
-                      salesforce_account_id VARCHAR(64),
-                      email_enc TEXT,
-                      phone_enc TEXT,
-                      title_enc TEXT,
-                      department_enc TEXT,
-                      raw_json_enc TEXT,
-                      confidence VARCHAR(24) NOT NULL DEFAULT 'high',
-                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                      last_synced_at TIMESTAMPTZ
-                    )
-                    """;
-            case "customer_identity_session" ->
-                ddl = """
-                    CREATE TABLE IF NOT EXISTS customer_identity_session (
-                      session_id TEXT PRIMARY KEY,
-                      identity_id BIGINT NOT NULL REFERENCES customer_identity(identity_id) ON DELETE CASCADE,
-                      display_name_snapshot VARCHAR(256),
-                      contact_email_snapshot VARCHAR(320),
-                      linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    """;
-            default ->
-                ddl = "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)";
-        }
+        String ddl = switch (table) {
+            case "customer_identity" -> "CREATE TABLE IF NOT EXISTS " + q(table) + " ("
+                    + "identity_id BIGSERIAL PRIMARY KEY, "
+                    + "canonical_email VARCHAR(320), "
+                    + "canonical_name VARCHAR(256), "
+                    + "salesforce_contact_id VARCHAR(64), "
+                    + "salesforce_account_id VARCHAR(64), "
+                    + "email_enc TEXT, "
+                    + "phone_enc TEXT, "
+                    + "title_enc TEXT, "
+                    + "department_enc TEXT, "
+                    + "raw_json_enc TEXT, "
+                    + "confidence VARCHAR(24) NOT NULL DEFAULT 'high', "
+                    + "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+                    + "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+                    + "last_synced_at TIMESTAMPTZ"
+                    + ")";
+            case "customer_identity_session" -> "CREATE TABLE IF NOT EXISTS " + q(table) + " ("
+                    + "session_id TEXT PRIMARY KEY, "
+                    + "identity_id BIGINT NOT NULL REFERENCES customer_identity(identity_id) ON DELETE CASCADE, "
+                    + "display_name_snapshot VARCHAR(256), "
+                    + "contact_email_snapshot VARCHAR(320), "
+                    + "linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+                    + "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+                    + ")";
+            default -> "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)";
+        };
 
         try (PreparedStatement ps = conn.prepareStatement(ddl)) {
             ps.execute();
@@ -732,22 +736,24 @@ public class DatabaseImportServlet extends HttpServlet {
         return "\"" + ident + "\"";
     }
 
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
     private boolean isSafeSyncEndpoint(URI uri) {
         if (uri == null) {
             return false;
         }
-        String scheme = uri.getScheme();
         String host = uri.getHost();
-        if (scheme == null || host == null) {
-            return false;
-        }
-        if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
-            return false;
-        }
-        if (uri.getUserInfo() != null) {
-            return false;
-        }
-        return true;
+        return host != null && !host.isBlank();
     }
 
     private boolean isAdmin(HttpServletRequest req) {
@@ -802,7 +808,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final List<String> headers;
         final List<List<String>> rows;
 
-        CsvTableData(List<String> headers, List<List<String>> rows) {
+        private CsvTableData(List<String> headers, List<List<String>> rows) {
             this.headers = headers == null ? List.of() : headers;
             this.rows = rows == null ? List.of() : rows;
         }
@@ -813,7 +819,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int sqlType;
         final boolean nullable;
 
-        ColumnInfo(int sqlType, boolean nullable) {
+        private ColumnInfo(int sqlType, boolean nullable) {
             this.sqlType = sqlType;
             this.nullable = nullable;
         }
@@ -825,7 +831,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int rowNumber;
         final String column;
 
-        ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
+        private ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);
             this.table = table;
             this.rowNumber = rowNumber;
@@ -840,7 +846,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int statusCode;
         final String message;
 
-        PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
+        private PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
             this.triggered = triggered;
             this.ok = ok;
             this.statusCode = statusCode;

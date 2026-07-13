@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -62,6 +63,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
+    private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     private static final String PATH_DATA = "/dashboard/sessions/data";
     private static final String PATH_CHATS = "/dashboard/sessions/chats";
@@ -114,7 +116,7 @@ public class AllSessionsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String path = normalizeServletPath(req.getServletPath());
+        String path = resolveRequestPath(req);
         if (PATH_CHATS.equals(path)) {
             handleChats(req, resp);
         } else {
@@ -124,7 +126,7 @@ public class AllSessionsServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String path = normalizeServletPath(req.getServletPath());
+        String path = resolveRequestPath(req);
         if (PATH_SELECT.equals(path)) {
             handleSelect(req, resp);
             return;
@@ -289,8 +291,8 @@ public class AllSessionsServlet extends HttpServlet {
                     .add("sessionId", summary.sessionId)
                     .add("sessionIdDisplay", displayLabel)
                     .add("totalCount", summary.totalCount)
-                    .add("firstSeen", summary.firstSeen == null ? "" : summary.firstSeen.toString())
-                    .add("lastSeen", summary.lastSeen == null ? "" : summary.lastSeen.toString())
+                    .add("firstSeen", formatInstant(summary.firstSeen))
+                    .add("lastSeen", formatInstant(summary.lastSeen))
                     .add("widgets", Json.createArrayBuilder(summary.widgetIds))
                     .build());
         }
@@ -376,7 +378,7 @@ public class AllSessionsServlet extends HttpServlet {
             array.add(Json.createObjectBuilder()
                     .add("chatId", r.chatId == null ? "" : r.chatId)
                     .add("prompt", r.prompt == null ? "" : r.prompt)
-                    .add("createdAt", r.createdAt == null ? "" : r.createdAt.toInstant().toString())
+                    .add("createdAt", formatTimestamp(r.createdAt))
                     .build());
         }
 
@@ -416,12 +418,10 @@ public class AllSessionsServlet extends HttpServlet {
         var selectedIdsArray = payload.getJsonArray("selectedChatIds");
         if (selectedIdsArray != null) {
             for (JsonValue value : selectedIdsArray) {
-                String val;
-                if (value instanceof JsonString js) {
-                    val = js.getString().trim();
-                } else {
-                    val = value == null ? "" : value.toString().trim();
+                if (!(value instanceof JsonString js)) {
+                    continue;
                 }
+                String val = js.getString().trim();
                 if (!val.isBlank()) {
                     selected.add(val);
                 }
@@ -500,7 +500,7 @@ public class AllSessionsServlet extends HttpServlet {
                 req.getSession(false),
                 "Selected Session Chats",
                 snapshots,
-                req.getContextPath() + "/dashboard/sessions"
+            safeContextPath(req.getServletContext().getContextPath()) + "/dashboard/sessions"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -749,6 +749,32 @@ public class AllSessionsServlet extends HttpServlet {
             return normalized;
         }
         return PATH_DATA;
+    }
+
+    private String resolveRequestPath(HttpServletRequest req) {
+        if (req == null || req.getHttpServletMapping() == null) {
+            return PATH_DATA;
+        }
+        return normalizeServletPath(req.getHttpServletMapping().getPattern());
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private String formatInstant(Instant value) {
+        return value == null ? "" : ISO_INSTANT_FMT.format(value);
+    }
+
+    private String formatTimestamp(Timestamp value) {
+        return value == null ? "" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int clamp(int value, int min, int max) {
