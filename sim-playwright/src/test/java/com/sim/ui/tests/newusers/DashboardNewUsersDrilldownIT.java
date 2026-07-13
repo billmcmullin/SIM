@@ -19,10 +19,9 @@ public class DashboardNewUsersDrilldownIT extends BaseUiIT {
     @Order(1)
     void unauthenticated_redirectsToLogin() {
         page.navigate(baseUrl + "/dashboard/new-users/drilldown");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
 
-        assertTrue(page.url().contains("/chat-server/login"),
-                "Expected redirect to /chat-server/login, got: " + page.url());
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected redirect/forward to login,");
     }
 
     @Test
@@ -102,7 +101,8 @@ public class DashboardNewUsersDrilldownIT extends BaseUiIT {
 
     private void login(String username, String password) {
         page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected login page before submitting credentials,");
 
         page.fill("#username", username);
         page.fill("#password", password);

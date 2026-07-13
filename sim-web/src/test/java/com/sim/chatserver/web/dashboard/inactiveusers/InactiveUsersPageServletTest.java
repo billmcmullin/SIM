@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -48,6 +49,8 @@ public class InactiveUsersPageServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
@@ -73,6 +76,8 @@ public class InactiveUsersPageServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value

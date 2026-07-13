@@ -1,10 +1,20 @@
 package com.sim.chatserver.email;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class EmailConfigResolverTest {
 
@@ -94,7 +104,7 @@ class EmailConfigResolverTest {
             assertEquals(EmailConfigSource.NONE, result.source());
             assertFalse(result.valid());
             assertNull(result.config());
-            assertEquals("No valid SMTP configuration found in ENV, properties, or database.", result.message());
+            assertEquals("No valid email configuration found in ENV, properties, or database.", result.message());
 
             verify(db, times(1)).load();
         }
@@ -112,7 +122,7 @@ class EmailConfigResolverTest {
             assertEquals(EmailConfigSource.NONE, result.source());
             assertFalse(result.valid());
             assertNull(result.config());
-            assertEquals("No valid SMTP configuration found in ENV, properties, or database.", result.message());
+            assertEquals("No valid email configuration found in ENV, properties, or database.", result.message());
         }
     }
 

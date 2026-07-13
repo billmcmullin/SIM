@@ -145,7 +145,13 @@ public class SmtpEmailService implements EmailService {
 
     private MimeMultipart buildContent(EmailMessage message) {
         try {
-            String html = firstNonBlank(message.htmlBody(), markdownRenderer.toHtml(message.markdownBody()));
+            String html = message.htmlBody();
+            if (isBlank(html)) {
+                String markdown = message.markdownBody();
+                if (!isBlank(markdown)) {
+                    html = markdownRenderer.toHtml(markdown);
+                }
+            }
             String text = message.textBody();
 
             MimeBodyPart bodyPart = new MimeBodyPart();

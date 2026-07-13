@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -45,6 +46,8 @@ public class DashboardNewUsersServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = ""; // UTA: configured value
@@ -53,6 +56,8 @@ public class DashboardNewUsersServletTest
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
         underTest.doGet(req, resp);
 
     }
@@ -74,6 +79,8 @@ public class DashboardNewUsersServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = ""; // UTA: configured value
@@ -84,6 +91,8 @@ public class DashboardNewUsersServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter getWriterResult = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(getWriterResult);
         underTest.doGet(req, resp);
 
     }

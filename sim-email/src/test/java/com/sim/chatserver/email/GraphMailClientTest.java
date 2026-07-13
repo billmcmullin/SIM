@@ -1,20 +1,26 @@
 package com.sim.chatserver.email;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.MockedConstruction;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import org.mockito.MockedConstruction;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class GraphMailClientTest {
@@ -118,7 +124,7 @@ class GraphMailClientTest {
                 List.of("to@example.com"),
                 null,
                 null,
-                null,
+            "",
                 "plain text",
                 null,
                 "md"
@@ -204,14 +210,20 @@ class GraphMailClientTest {
             String htmlBody,
             String markdownBody
     ) {
-        return EmailMessage.builder()
-                .to(to)
-                .cc(cc)
-                .bcc(bcc)
+        EmailMessage.Builder builder = EmailMessage.builder()
                 .subject(subject)
                 .textBody(textBody)
                 .htmlBody(htmlBody)
-                .markdownBody(markdownBody)
-                .build();
+                .markdownBody(markdownBody);
+        if (to != null) {
+            builder.to(to);
+        }
+        if (cc != null) {
+            builder.cc(cc);
+        }
+        if (bcc != null) {
+            builder.bcc(bcc);
+        }
+        return builder.build();
     }
 }

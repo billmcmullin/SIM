@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -275,6 +276,10 @@ public class TermsStore {
 
     public TermDefinition findFirstMatchingTermInPrompts(Iterable<String> prompts) throws SQLException {
         if (prompts == null) {
+            return null;
+        }
+
+        if (prompts instanceof Collection<?> collection && collection.isEmpty()) {
             return null;
         }
 

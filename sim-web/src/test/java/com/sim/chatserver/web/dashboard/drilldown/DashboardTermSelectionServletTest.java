@@ -2,6 +2,8 @@ package com.sim.chatserver.web.dashboard.drilldown;
 
 import org.junit.jupiter.api.Test;
 
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -36,6 +38,11 @@ public class DashboardTermSelectionServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn(getContextPathResult);
+        when(req.getServletContext()).thenReturn(servletContext);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
@@ -61,6 +68,11 @@ public class DashboardTermSelectionServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn(getContextPathResult);
+        when(req.getServletContext()).thenReturn(servletContext);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value
@@ -88,6 +100,9 @@ public class DashboardTermSelectionServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getParameterResult = null; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
+        when(req.getServletContext()).thenReturn(servletContext);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
@@ -116,6 +131,9 @@ public class DashboardTermSelectionServletTest
         String getParameterResult = "getParameterResult"; // UTA: configured value
         String getParameterResult2 = "getParameterResult2"; // UTA: default value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
+        when(req.getServletContext()).thenReturn(servletContext);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
@@ -145,6 +163,9 @@ public class DashboardTermSelectionServletTest
         String getParameterResult = "getParameterResult"; // UTA: configured value
         String getParameterResult2 = null; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
+        when(req.getServletContext()).thenReturn(servletContext);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,6 +50,8 @@ public class DashboardNewUsersDrilldownServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
@@ -74,6 +77,8 @@ public class DashboardNewUsersDrilldownServletTest
         HttpServletRequest req = mock(HttpServletRequest.class);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value
@@ -112,7 +117,7 @@ public class DashboardNewUsersDrilldownServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        assertThrows(ServletException.class, () -> {
+        assertThrows(IllegalStateException.class, () -> {
             underTest.doGet(req, resp);
         });
 

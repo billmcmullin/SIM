@@ -42,8 +42,27 @@ public final class EmailConfigLoader {
     private static final String PROP_PASSWORD = "mail.password";
     private static final String PROP_FROM = "mail.from";
 
+    @FunctionalInterface
+    interface EnvAccessor {
+        String get(String key);
+    }
+
+    private static volatile EnvAccessor envAccessor = System::getenv;
+
     private EmailConfigLoader() {
         // utility
+    }
+
+    static void setEnvAccessorForTests(EnvAccessor accessor) {
+        envAccessor = accessor == null ? System::getenv : accessor;
+    }
+
+    static void resetEnvAccessorForTests() {
+        envAccessor = System::getenv;
+    }
+
+    private static String env(String key) {
+        return envAccessor.get(key);
     }
 
     /**
@@ -79,20 +98,20 @@ public final class EmailConfigLoader {
      * MAIL_PORT Returns null if missing/invalid.
      */
     public static EmailConfig loadEnvOnly() {
-        String host = trimToNull(System.getenv(ENV_HOST));
-        Integer port = parsePort(trimToNull(System.getenv(ENV_PORT)), "ENV " + ENV_PORT);
+        String host = trimToNull(env(ENV_HOST));
+        Integer port = parsePort(trimToNull(env(ENV_PORT)), "ENV " + ENV_PORT);
 
         if (host == null || port == null) {
             return null;
         }
 
-        boolean auth = parseBoolean(System.getenv(ENV_AUTH), false);
-        boolean starttls = parseBoolean(System.getenv(ENV_STARTTLS), false);
-        boolean ssl = parseBoolean(System.getenv(ENV_SSL), false);
+        boolean auth = parseBoolean(env(ENV_AUTH), false);
+        boolean starttls = parseBoolean(env(ENV_STARTTLS), false);
+        boolean ssl = parseBoolean(env(ENV_SSL), false);
 
-        String username = defaultString(System.getenv(ENV_USERNAME), "");
-        String password = defaultString(System.getenv(ENV_PASSWORD), "");
-        String from = defaultString(System.getenv(ENV_FROM), "");
+        String username = defaultString(env(ENV_USERNAME), "");
+        String password = defaultString(env(ENV_PASSWORD), "");
+        String from = defaultString(env(ENV_FROM), "");
 
         return new EmailConfig(host, port, auth, starttls, ssl, username, password, from);
     }
@@ -136,7 +155,7 @@ public final class EmailConfigLoader {
 
     private static Properties loadExternalPropsFromEnvPath() {
         Properties p = new Properties();
-        String pathValue = trimToNull(System.getenv(ENV_CONFIG_FILE));
+        String pathValue = trimToNull(env(ENV_CONFIG_FILE));
         if (pathValue == null) {
             return p;
         }

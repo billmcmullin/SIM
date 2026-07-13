@@ -2,6 +2,7 @@ package com.sim.ui.base;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -10,6 +11,7 @@ import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
 
 public abstract class BaseUiIT {
 
@@ -68,5 +70,33 @@ public abstract class BaseUiIT {
         if (context != null) {
             context.close();
         }
+    }
+
+    protected void waitForLoginScreen() {
+        try {
+            if (!page.url().contains("/login")) {
+                page.waitForURL(url -> url.contains("/login"),
+                        new Page.WaitForURLOptions().setTimeout(15000));
+            }
+        } catch (PlaywrightException ignored) {
+            // Some endpoints forward to login without a URL change.
+        }
+
+        if (!page.url().contains("/login")) {
+            page.waitForSelector("input#username",
+                    new Page.WaitForSelectorOptions().setTimeout(15000));
+            page.waitForSelector("input#password",
+                    new Page.WaitForSelectorOptions().setTimeout(15000));
+        }
+    }
+
+    protected void assertOnLoginScreen(String messagePrefix) {
+        boolean loginByUrl = page.url().contains("/login");
+        boolean loginByForm = page.locator("input#username").count() > 0
+                && page.locator("input#password").count() > 0
+                && page.locator("button[type='submit']").count() > 0;
+
+        assertTrue(loginByUrl || loginByForm,
+                messagePrefix + " got: " + page.url());
     }
 }

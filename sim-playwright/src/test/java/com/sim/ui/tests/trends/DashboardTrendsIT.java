@@ -1,6 +1,5 @@
 package com.sim.ui.tests.trends;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -20,10 +19,9 @@ public class DashboardTrendsIT extends BaseUiIT {
     @Order(1)
     void unauthenticatedUser_redirectedToLogin_fromTrends() {
         page.navigate(baseUrl + "/dashboard/trends");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
 
-        assertTrue(page.url().contains("/chat-server/login"),
-                "Expected redirect to /chat-server/login, got: " + page.url());
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected redirect/forward to login,");
     }
 
     @Test
@@ -49,13 +47,13 @@ public class DashboardTrendsIT extends BaseUiIT {
 
     @Test
     @Order(3)
-    void trends_daysQueryParam_accepts7_30_90_andFallsBackTo30() {
+    void trends_daysQueryParam_accepts10_30_90_andFallsBackTo30() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/trends?days=7");
+        page.navigate(baseUrl + "/dashboard/trends?days=10");
         page.waitForURL(url -> url.contains("/chat-server/dashboard/trends"));
-        assertTrue("7".equals(page.inputValue("#trendDaysSelect")),
-                "Expected selected period 7");
+        assertTrue("10".equals(page.inputValue("#trendDaysSelect")),
+                "Expected selected period 10");
 
         page.navigate(baseUrl + "/dashboard/trends?days=90");
         page.waitForURL(url -> url.contains("/chat-server/dashboard/trends"));
@@ -102,13 +100,14 @@ public class DashboardTrendsIT extends BaseUiIT {
 
         // After logout trends should be blocked
         page.navigate(baseUrl + "/dashboard/trends");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
-        assertFalse(page.url().contains("/chat-server/dashboard/trends"));
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected trends page to be blocked after logout,");
     }
 
     private void login(String username, String password) {
         page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected login page before submitting credentials,");
 
         page.fill("#username", username);
         page.fill("#password", password);

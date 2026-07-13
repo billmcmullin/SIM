@@ -4,7 +4,6 @@ import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -242,8 +241,12 @@ public final class DashboardRowsRenderer {
             return "—";
         }
         try {
-            return ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime().format(TS_FMT);
-        } catch (DateTimeException e) {
+            java.time.Instant instant = ts.toInstant();
+            if (instant == null) {
+                return "—";
+            }
+            return instant.atZone(ZoneId.systemDefault()).toLocalDateTime().format(TS_FMT);
+        } catch (RuntimeException e) {
             LOG.log(Level.FINE, "Unable to format timestamp", e);
             return ts.toString();
         }

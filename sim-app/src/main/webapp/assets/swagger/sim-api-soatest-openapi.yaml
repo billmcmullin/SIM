@@ -1,0 +1,749 @@
+openapi: 3.0.3
+info:
+  title: SIM Chat Server API (SOAtest Starter)
+  version: 0.1.0
+  description: |
+    Starter OpenAPI document generated from the SIM codebase.
+    It focuses on API-style endpoints (JAX-RS + servlet JSON/action endpoints)
+    so Parasoft SOAtest can import and begin test generation.
+servers:
+  - url: /chat-server
+    description: Context-relative deployment path
+tags:
+  - name: auth
+  - name: admin
+  - name: dashboard
+  - name: profile
+paths:
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: User login
+      operationId: postApiAuthLogin
+      description: Authenticates a user and creates an HTTP session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              default:
+                value:
+                  username: admin
+                  password: change-me
+      responses:
+        '200':
+          description: Authenticated
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Session cookie (JSESSIONID)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccess'
+        '400':
+          description: Missing credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginUnauthorized'
+      security: []
+
+  /admin/widgets:
+    get:
+      tags: [admin]
+      summary: List widgets (admin)
+      operationId: getAdminWidgets
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Create/update widget (admin)
+      operationId: postAdminWidgets
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    delete:
+      tags: [admin]
+      summary: Delete widget (admin)
+      operationId: deleteAdminWidgets
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/save-config:
+    post:
+      tags: [admin]
+      summary: Save admin configuration
+      operationId: postAdminSaveConfig
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/test-connection:
+    post:
+      tags: [admin]
+      summary: Test external connection
+      operationId: postAdminTestConnection
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/test-salesforce-connection:
+    post:
+      tags: [admin]
+      summary: Test Salesforce connection
+      operationId: postAdminTestSalesforceConnection
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/widget-availability.json:
+    get:
+      tags: [admin]
+      summary: Get widget availability status
+      operationId: getAdminWidgetAvailability
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/widget-health-config:
+    get:
+      tags: [admin]
+      summary: Get widget health configuration
+      operationId: getAdminWidgetHealthConfig
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Update widget health configuration
+      operationId: postAdminWidgetHealthConfig
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/db/backup:
+    get:
+      tags: [admin]
+      summary: Export database backup
+      operationId: getAdminDbBackup
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/db/import:
+    post:
+      tags: [admin]
+      summary: Import database backup
+      operationId: postAdminDbImport
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/salesforce/oauth/start:
+    get:
+      tags: [admin]
+      summary: Start Salesforce OAuth flow
+      operationId: getAdminSalesforceOauthStart
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/salesforce/oauth/callback:
+    get:
+      tags: [admin]
+      summary: Salesforce OAuth callback
+      operationId: getAdminSalesforceOauthCallback
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/widgets/sync:
+    get:
+      tags: [admin]
+      summary: Get widget sync status
+      operationId: getAdminWidgetsSync
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Trigger widget sync
+      operationId: postAdminWidgetsSync
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/widgets/sync/timer:
+    get:
+      tags: [admin]
+      summary: Get widget sync timer status
+      operationId: getAdminWidgetsSyncTimer
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Update widget sync timer
+      operationId: postAdminWidgetsSyncTimer
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/email/config:
+    get:
+      tags: [admin]
+      summary: Get email configuration
+      operationId: getAdminEmailConfig
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Update email configuration
+      operationId: postAdminEmailConfig
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/email/send:
+    post:
+      tags: [admin]
+      summary: Send test/admin email
+      operationId: postAdminEmailSend
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/sync-customer-profile:
+    post:
+      tags: [admin]
+      summary: Sync customer profile from Salesforce
+      operationId: postAdminSyncCustomerProfile
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/terms:
+    get:
+      tags: [admin]
+      summary: List terms
+      operationId: getAdminTerms
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Create term
+      operationId: postAdminTerms
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    put:
+      tags: [admin]
+      summary: Update term
+      operationId: putAdminTerms
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    delete:
+      tags: [admin]
+      summary: Delete term
+      operationId: deleteAdminTerms
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/terms/export:
+    get:
+      tags: [admin]
+      summary: Export terms
+      operationId: getAdminTermsExport
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/terms/import:
+    post:
+      tags: [admin]
+      summary: Import terms
+      operationId: postAdminTermsImport
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: List users
+      operationId: getAdminUsers
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [admin]
+      summary: Create user
+      operationId: postAdminUsers
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    delete:
+      tags: [admin]
+      summary: Delete user
+      operationId: deleteAdminUsers
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /admin/workspace:
+    post:
+      tags: [admin]
+      summary: Update workspace configuration
+      operationId: postAdminWorkspace
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/daily-summary.json:
+    get:
+      tags: [dashboard]
+      summary: Daily summary data
+      operationId: getDashboardDailySummaryJson
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/sessions.json:
+    get:
+      tags: [dashboard]
+      summary: Sessions list data
+      operationId: getDashboardSessionsJson
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/session-names.json:
+    get:
+      tags: [dashboard]
+      summary: Session names data
+      operationId: getDashboardSessionNamesJson
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/sessions/data:
+    get:
+      tags: [dashboard]
+      summary: Session data (query)
+      operationId: getDashboardSessionsData
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [dashboard]
+      summary: Session data (payload)
+      operationId: postDashboardSessionsData
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/sessions/chats:
+    get:
+      tags: [dashboard]
+      summary: Session chat list
+      operationId: getDashboardSessionsChats
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [dashboard]
+      summary: Session chat list (payload)
+      operationId: postDashboardSessionsChats
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/sessions/select:
+    get:
+      tags: [dashboard]
+      summary: Session select values
+      operationId: getDashboardSessionsSelect
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [dashboard]
+      summary: Session select values (payload)
+      operationId: postDashboardSessionsSelect
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/topics/data:
+    get:
+      tags: [dashboard]
+      summary: Topic analytics data
+      operationId: getDashboardTopicsData
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/topics/select:
+    post:
+      tags: [dashboard]
+      summary: Topic selection
+      operationId: postDashboardTopicsSelect
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/trends/select:
+    post:
+      tags: [dashboard]
+      summary: Trend selection
+      operationId: postDashboardTrendsSelect
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/widgets:
+    get:
+      tags: [dashboard]
+      summary: List dashboard widgets
+      operationId: getDashboardWidgets
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [dashboard]
+      summary: Create dashboard widget
+      operationId: postDashboardWidgets
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    delete:
+      tags: [dashboard]
+      summary: Delete dashboard widget
+      operationId: deleteDashboardWidgets
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/widgets/review/start:
+    post:
+      tags: [dashboard]
+      summary: Start widget review job
+      operationId: postDashboardWidgetsReviewStart
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/widgets/drilldown/view/data:
+    get:
+      tags: [dashboard]
+      summary: Widget drilldown view data
+      operationId: getDashboardWidgetsDrilldownViewData
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/widgets/drilldown/view/review-data:
+    get:
+      tags: [dashboard]
+      summary: Widget review data
+      operationId: getDashboardWidgetsDrilldownViewReviewData
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/widgets/drilldown/review/translate:
+    get:
+      tags: [dashboard]
+      summary: Translate review text (query)
+      operationId: getDashboardWidgetsDrilldownReviewTranslate
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [dashboard]
+      summary: Translate review text (payload)
+      operationId: postDashboardWidgetsDrilldownReviewTranslate
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /dashboard/drilldown/widget-review/job-status:
+    get:
+      tags: [dashboard]
+      summary: Get widget review job status
+      operationId: getDashboardDrilldownWidgetReviewJobStatus
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    delete:
+      tags: [dashboard]
+      summary: Delete widget review job status
+      operationId: deleteDashboardDrilldownWidgetReviewJobStatus
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+  /profile:
+    get:
+      tags: [profile]
+      summary: Get profile
+      operationId: getProfile
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+    post:
+      tags: [profile]
+      summary: Update profile
+      operationId: postProfile
+      requestBody:
+        $ref: '#/components/requestBodies/GenericJsonOrForm'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericSuccess'
+      security:
+        - sessionCookie: []
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+
+  requestBodies:
+    GenericJsonOrForm:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericObject'
+        application/x-www-form-urlencoded:
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+
+  responses:
+    GenericSuccess:
+      description: Success (payload format varies by servlet)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericObject'
+        text/plain:
+          schema:
+            type: string
+        text/html:
+          schema:
+            type: string
+
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    LoginSuccess:
+      type: object
+      required: [authenticated, username]
+      properties:
+        authenticated:
+          type: boolean
+          example: true
+        username:
+          type: string
+
+    LoginUnauthorized:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+          example: false

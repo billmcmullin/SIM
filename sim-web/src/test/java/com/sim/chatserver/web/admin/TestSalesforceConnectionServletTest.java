@@ -1,13 +1,15 @@
 package com.sim.chatserver.web.admin;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.net.http.HttpClient;
 
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.config.ServerConfig;
 
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -43,8 +45,7 @@ public class TestSalesforceConnectionServletTest
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -68,8 +69,7 @@ public class TestSalesforceConnectionServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -97,8 +97,7 @@ public class TestSalesforceConnectionServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -126,8 +125,7 @@ public class TestSalesforceConnectionServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -155,8 +153,7 @@ public class TestSalesforceConnectionServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -183,8 +180,7 @@ public class TestSalesforceConnectionServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        PrintWriter getWriterResult = mock(PrintWriter.class);
-        when(resp.getWriter()).thenReturn(getWriterResult);
+        mockJsonOutput(resp);
         underTest.doPost(req, resp);
 
     }
@@ -204,6 +200,31 @@ public class TestSalesforceConnectionServletTest
         // When
         HttpClient result = underTest.getHttpClient();
 
+    }
+
+    private static void mockJsonOutput(HttpServletResponse resp) throws IOException
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ServletOutputStream servletOut = new ServletOutputStream() {
+            @Override
+            public boolean isReady()
+            {
+                return true;
+            }
+
+            @Override
+            public void setWriteListener(WriteListener writeListener)
+            {
+                // No-op for unit test stream.
+            }
+
+            @Override
+            public void write(int b) throws IOException
+            {
+                out.write(b);
+            }
+        };
+        when(resp.getOutputStream()).thenReturn(servletOut);
     }
 
 }

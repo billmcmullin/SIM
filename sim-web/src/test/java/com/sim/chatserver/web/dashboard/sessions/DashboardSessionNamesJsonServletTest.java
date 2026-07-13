@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -43,6 +44,9 @@ public class DashboardSessionNamesJsonServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
+        when(req.getServletContext()).thenReturn(servletContext);
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -67,6 +71,9 @@ public class DashboardSessionNamesJsonServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        ServletContext servletContext = mock(ServletContext.class);
+        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
+        when(req.getServletContext()).thenReturn(servletContext);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
