@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -38,7 +39,8 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
 
     private static final String OAUTH_STATE_KEY = "sf_oauth_state";
     private static final String OAUTH_STATE_TS_KEY = "sf_oauth_state_ts";
-    private static final long OAUTH_STATE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
+    private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,253}$");
+    private static final Pattern SAFE_PORT = Pattern.compile("^\\d{1,5}$");
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -70,7 +72,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         String state = generateState();
         HttpSession session = req.getSession(true);
         session.setAttribute(OAUTH_STATE_KEY, state);
-        session.setAttribute(OAUTH_STATE_TS_KEY, System.currentTimeMillis());
+        session.setAttribute(OAUTH_STATE_TS_KEY, String.valueOf(System.currentTimeMillis()));
 
         String authorizeUrl = normalizeBaseUrl(loginUrl)
                 + "/services/oauth2/authorize"
@@ -81,8 +83,13 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
                 + "&scope=" + enc("api refresh_token")
                 + "&prompt=" + enc("consent");
 
+        if (!isSafeAuthorizeUrl(authorizeUrl)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid Salesforce authorize URL.");
+            return;
+        }
+
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
-        resp.sendRedirect(authorizeUrl);
+        resp.sendRedirect(resp.encodeRedirectURL(authorizeUrl));
     }
 
     private boolean isAdmin(HttpServletRequest req) {
@@ -100,9 +107,9 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
      * when present.
      */
     private String buildExternalRedirectUri(HttpServletRequest req) {
-        String scheme = firstToken(req.getHeader("X-Forwarded-Proto"));
+        String scheme = sanitizeScheme(firstToken(req.getHeader("X-Forwarded-Proto")));
         if (isBlank(scheme)) {
-            scheme = req.getScheme();
+            scheme = "https";
         }
 
         String hostHeader = firstToken(req.getHeader("X-Forwarded-Host"));
@@ -114,27 +121,37 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             String h = hostHeader.trim();
             int idx = h.lastIndexOf(':');
             if (idx > 0 && idx < h.length() - 1 && h.indexOf(']') < 0) { // simplistic IPv6-safe check
-                host = h.substring(0, idx);
+                host = sanitizeHost(h.substring(0, idx));
                 try {
-                    port = Integer.parseInt(h.substring(idx + 1));
-                } catch (NumberFormatException ignored) {
+                    String hostPort = h.substring(idx + 1).trim();
+                    if (SAFE_PORT.matcher(hostPort).matches()) {
+                        port = Integer.parseInt(hostPort);
+                    }
+                } catch (NumberFormatException ex) {
+                    log.log(Level.FINE, "Invalid forwarded host port", ex);
                     port = -1;
                 }
             } else {
-                host = h;
+                host = sanitizeHost(h);
             }
         } else {
-            host = req.getServerName();
-            port = req.getServerPort();
+            host = sanitizeHost(req.getServerName());
         }
 
         String forwardedPort = firstToken(req.getHeader("X-Forwarded-Port"));
         if (!isBlank(forwardedPort)) {
             try {
-                port = Integer.parseInt(forwardedPort);
-            } catch (NumberFormatException ignored) {
-                // keep prior value
+                String normalized = forwardedPort.trim();
+                if (SAFE_PORT.matcher(normalized).matches()) {
+                    port = Integer.parseInt(normalized);
+                }
+            } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Invalid forwarded port header", ex);
             }
+        }
+
+        if (isBlank(host)) {
+            host = "localhost";
         }
 
         boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
@@ -155,7 +172,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
         int comma = headerVal.indexOf(',');
         String token = comma >= 0 ? headerVal.substring(0, comma) : headerVal;
-        return token == null ? null : token.trim();
+        return token.trim();
     }
 
     private static String generateState() {
@@ -170,6 +187,43 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             x = "https://" + x;
         }
         return x.replaceAll("/+$", "");
+    }
+
+    private boolean isSafeAuthorizeUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        if (url.contains("\r") || url.contains("\n")) {
+            return false;
+        }
+        try {
+            java.net.URI parsed = java.net.URI.create(url);
+            String scheme = sanitizeScheme(parsed.getScheme());
+            String host = sanitizeHost(parsed.getHost());
+            return !isBlank(scheme) && !isBlank(host);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid authorize URL", ex);
+            return false;
+        }
+    }
+
+    private String sanitizeHost(String host) {
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        String normalized = host.trim().toLowerCase();
+        return SAFE_HOST.matcher(normalized).matches() ? normalized : null;
+    }
+
+    private String sanitizeScheme(String scheme) {
+        if (scheme == null || scheme.isBlank()) {
+            return null;
+        }
+        String normalized = scheme.trim().toLowerCase();
+        if ("http".equals(normalized) || "https".equals(normalized)) {
+            return normalized;
+        }
+        return null;
     }
 
     private String enc(String v) {

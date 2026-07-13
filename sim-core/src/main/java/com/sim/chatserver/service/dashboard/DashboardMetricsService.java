@@ -12,6 +12,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -31,6 +33,8 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 public class DashboardMetricsService {
+
+    private static final Logger LOG = Logger.getLogger(DashboardMetricsService.class.getName());
 
     public static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
@@ -61,7 +65,7 @@ public class DashboardMetricsService {
 
             this.termsToday = termsToday;
             this.termsYesterday = termsYesterday;
-            this.termsProgression = new ProgressStat(termsToday, termsYesterday);
+            this.termsProgression = new ProgressStat(this.termsToday, this.termsYesterday);
         }
 
         public int getChatsToday() {
@@ -125,6 +129,7 @@ public class DashboardMetricsService {
                 stats.add(new WidgetStat(widgetId, displayName, totalCount, todayCount, yesterdayCount));
             }
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildWidgetStats fallback to empty list", e);
             return List.of();
         }
 
@@ -141,6 +146,7 @@ public class DashboardMetricsService {
             int yesterdayCount = countChatsForDate(conn, widgets, yesterday, tableExistsCache);
             return new ProgressStat(todayCount, yesterdayCount);
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildChatProgression fallback to zeros", e);
             return new ProgressStat(0, 0);
         }
     }
@@ -154,6 +160,7 @@ public class DashboardMetricsService {
             int yesterdayCount = countDistinctSessionsFirstSeenOnDate(conn, widgets, yesterday);
             return new ProgressStat(todayCount, yesterdayCount);
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildNewUserProgression fallback to zeros", e);
             return new ProgressStat(0, 0);
         }
     }
@@ -179,6 +186,7 @@ public class DashboardMetricsService {
                     termCounts.getYesterday()
             );
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildDashboardProgressMetrics fallback to zeros", e);
             return new DashboardProgressMetrics(0, 0, 0, 0);
         }
     }
@@ -194,7 +202,8 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
+            LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday term load failed", e);
             return List.of();
         }
 
@@ -293,7 +302,8 @@ public class DashboardMetricsService {
                                             }
                                         }
                                     }
-                                } catch (Exception ignore) {
+                                } catch (RuntimeException ex) {
+                                    LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
                                 }
                             }
 
@@ -320,6 +330,7 @@ public class DashboardMetricsService {
                 }
             }
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday fallback to empty list", e);
             return List.of();
         }
 
@@ -342,7 +353,8 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
+            LOG.log(Level.FINE, "buildLatestOtherParasoftEntries term load failed", e);
             return List.of();
         }
 
@@ -401,7 +413,8 @@ public class DashboardMetricsService {
                                     matchedKnownTerm = true;
                                     break;
                                 }
-                            } catch (Exception ignore) {
+                            } catch (RuntimeException ex) {
+                                LOG.log(Level.FINE, "Other Parasoft matcher evaluation failed", ex);
                             }
                         }
 
@@ -418,6 +431,7 @@ public class DashboardMetricsService {
                 }
             }
         } catch (SQLException e) {
+            LOG.log(Level.FINE, "buildLatestOtherParasoftEntries fallback to empty list", e);
             return List.of();
         }
 
@@ -486,11 +500,11 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            LOG.log(Level.FINE, "countTermAssignmentsForDays term load failed", e);
             return out;
         }
 
-        List<TermDefinition> activeTerms = new ArrayList<>();
         List<Pattern> patterns = new ArrayList<>();
         for (TermDefinition t : terms) {
             if (t == null || t.isSystemFlag()) {
@@ -502,7 +516,6 @@ public class DashboardMetricsService {
             }
             Pattern p = TermMatcher.buildStrictPattern(t);
             if (p != null) {
-                activeTerms.add(t);
                 patterns.add(p);
             }
         }
@@ -562,7 +575,8 @@ public class DashboardMetricsService {
                                         }
                                     }
                                 }
-                            } catch (Exception ignore) {
+                            } catch (RuntimeException ex) {
+                                LOG.log(Level.FINE, "Term assignment matcher evaluation failed", ex);
                             }
                         }
 

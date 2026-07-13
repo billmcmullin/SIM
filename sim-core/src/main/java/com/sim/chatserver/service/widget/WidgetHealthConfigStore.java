@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -208,18 +209,18 @@ public class WidgetHealthConfigStore {
 
     private WidgetHealthConfig mapRow(ResultSet rs) throws java.sql.SQLException {
         WidgetHealthConfig cfg = new WidgetHealthConfig();
-        cfg.setId(Math.max(0, rs.getInt("id")));
-        cfg.setHealthcheckUrl(trimToNull(sanitizeDbText(rs.getString("healthcheck_url"), 2048)));
-        cfg.setMethod(defaultIfBlank(sanitizeDbText(rs.getString("method"), 16), "GET"));
-        cfg.setTimeoutMs(Math.max(1, rs.getInt("timeout_ms")));
-        cfg.setExpectJsonField(trimToNull(sanitizeDbText(rs.getString("expect_json_field"), 100)));
-        cfg.setExpectJsonValue(trimToNull(sanitizeDbText(rs.getString("expect_json_value"), 255)));
-        cfg.setWidgetId(trimToNull(sanitizeDbText(rs.getString("widget_id"), 255)));
-        cfg.setRequestOrigin(trimToNull(sanitizeDbText(rs.getString("request_origin"), 2048)));
-        cfg.setRequestReferer(trimToNull(sanitizeDbText(rs.getString("request_referer"), 2048)));
-        cfg.setRequestUserAgent(trimToNull(sanitizeDbText(rs.getString("request_user_agent"), 1024)));
-        cfg.setRequestCookie(trimToNull(sanitizeDbText(rs.getString("request_cookie"), 4096)));
-        cfg.setUpdatedBy(trimToNull(sanitizeDbText(rs.getString("updated_by"), 100)));
+        cfg.setId(readNonNegativeInt(rs, "id"));
+        cfg.setHealthcheckUrl(trimToNull(readSanitizedDbText(rs, "healthcheck_url", 2048)));
+        cfg.setMethod(defaultIfBlank(readSanitizedDbText(rs, "method", 16), "GET"));
+        cfg.setTimeoutMs(readPositiveInt(rs, "timeout_ms", 1));
+        cfg.setExpectJsonField(trimToNull(readSanitizedDbText(rs, "expect_json_field", 100)));
+        cfg.setExpectJsonValue(trimToNull(readSanitizedDbText(rs, "expect_json_value", 255)));
+        cfg.setWidgetId(trimToNull(readSanitizedDbText(rs, "widget_id", 255)));
+        cfg.setRequestOrigin(trimToNull(readSanitizedDbText(rs, "request_origin", 2048)));
+        cfg.setRequestReferer(trimToNull(readSanitizedDbText(rs, "request_referer", 2048)));
+        cfg.setRequestUserAgent(trimToNull(readSanitizedDbText(rs, "request_user_agent", 1024)));
+        cfg.setRequestCookie(trimToNull(readSanitizedDbText(rs, "request_cookie", 4096)));
+        cfg.setUpdatedBy(trimToNull(readSanitizedDbText(rs, "updated_by", 100)));
 
         Timestamp ts = rs.getTimestamp("updated_at");
         cfg.setUpdatedAt(ts == null ? null : ts.toInstant());
@@ -278,11 +279,24 @@ public class WidgetHealthConfigStore {
         return s;
     }
 
+    private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
+        return Math.max(0, rs.getInt(column));
+    }
+
+    private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return value > 0 ? value : fallback;
+    }
+
+    private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
+        return sanitizeDbText(rs.getString(column), maxChars);
+    }
+
     private String sanitizeDbText(String s, int maxChars) {
         if (s == null) {
             return null;
         }
-        String trimmed = s.trim();
+        String trimmed = Normalizer.normalize(s, Normalizer.Form.NFKC).trim();
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
             return trimmed;
         }

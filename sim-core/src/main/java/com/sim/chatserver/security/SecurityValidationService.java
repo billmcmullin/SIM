@@ -5,11 +5,13 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -30,6 +32,9 @@ import jakarta.servlet.http.HttpServletRequest;
 public final class SecurityValidationService {
 
     private static final Logger log = Logger.getLogger(SecurityValidationService.class.getName());
+    private static final Pattern IPV4_LITERAL = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
+    private static final Pattern IPV6_LITERAL_CHARS = Pattern.compile("^[0-9A-Fa-f:]+$");
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
 
     private static final Set<String> DEFAULT_ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
@@ -76,15 +81,16 @@ public final class SecurityValidationService {
         if (req == null) {
             return false;
         }
-        String ct = req.getContentType();
-        if (ct == null) {
+        String ct = canonicalizeInput(req.getContentType(), 128);
+        if (ct.isBlank()) {
             return false;
         }
-        String v = ct.trim().toLowerCase(Locale.ROOT);
-        if (v.length() > 128) {
+        int semicolon = ct.indexOf(';');
+        String mediaType = (semicolon >= 0 ? ct.substring(0, semicolon) : ct).trim().toLowerCase(Locale.ROOT);
+        if (mediaType.isBlank() || mediaType.indexOf('/') <= 0 || mediaType.startsWith("/") || mediaType.endsWith("/")) {
             return false;
         }
-        return v.contains("application/json");
+        return "application/json".equals(mediaType);
     }
 
     public boolean isModeAllowed(String mode) {
@@ -105,18 +111,19 @@ public final class SecurityValidationService {
      * Backward-compatible boolean validation.
      */
     public boolean isAllowedUpstreamUrl(String baseUrl) {
-        return validateUpstreamUrl(baseUrl).isAllowed();
+        return validateUpstreamUrl(canonicalizeUrlInput(baseUrl)).isAllowed();
     }
 
     /**
      * Detailed validation result for better blocked-URL logging.
      */
     public UrlValidationResult validateUpstreamUrl(String baseUrl) {
-        if (baseUrl == null || baseUrl.isBlank()) {
+        String canonicalBaseUrl = canonicalizeUrlInput(baseUrl);
+        if (canonicalBaseUrl.isBlank()) {
             return UrlValidationResult.blocked("URL is blank");
         }
 
-        final String trimmed = baseUrl.trim();
+        final String trimmed = canonicalBaseUrl;
 
         try {
             URI uri = URI.create(trimmed);
@@ -190,23 +197,23 @@ public final class SecurityValidationService {
             return "(unknown)";
         }
 
-        String remote = req.getRemoteAddr();
-        if (remote != null && !remote.isBlank()) {
-            return remote.trim();
+        String remote = canonicalizeInput(req.getRemoteAddr(), 64);
+        if (isParseableAddress(remote)) {
+            return remote;
         }
 
         // Only fall back to forwarding headers when remote address is unavailable.
-        String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            String first = xff.split(",")[0].trim();
+        String xff = canonicalizeInput(req.getHeader("X-Forwarded-For"), 512);
+        if (!xff.isBlank()) {
+            String first = canonicalizeInput(xff.split(",")[0], 64);
             if (isParseableAddress(first)) {
                 return first;
             }
         }
 
-        String xri = req.getHeader("X-Real-IP");
-        if (xri != null && !xri.isBlank() && isParseableAddress(xri.trim())) {
-            return xri.trim();
+        String xri = canonicalizeInput(req.getHeader("X-Real-IP"), 64);
+        if (isParseableAddress(xri)) {
+            return xri;
         }
 
         return "(unknown)";
@@ -216,12 +223,52 @@ public final class SecurityValidationService {
         if (value == null || value.isBlank()) {
             return false;
         }
-        try {
-            InetAddress.getByName(value);
+        if (isValidIpv4Literal(value)) {
             return true;
-        } catch (UnknownHostException e) {
+        }
+        return isLikelyIpv6Literal(value);
+    }
+
+    private boolean isValidIpv4Literal(String value) {
+        if (!IPV4_LITERAL.matcher(value).matches()) {
             return false;
         }
+        String[] parts = value.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        for (String part : parts) {
+            if (part.isBlank() || part.length() > 3) {
+                return false;
+            }
+            if (part.length() > 1 && part.startsWith("0")) {
+                return false;
+            }
+            int octet;
+            try {
+                octet = Integer.parseInt(part);
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+            if (octet < 0 || octet > 255) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isLikelyIpv6Literal(String value) {
+        if (value.length() > 45 || !value.contains(":")) {
+            return false;
+        }
+        if (!IPV6_LITERAL_CHARS.matcher(value).matches()) {
+            return false;
+        }
+        if (value.contains(":::")) {
+            return false;
+        }
+        long colonCount = value.chars().filter(ch -> ch == ':').count();
+        return colonCount >= 2;
     }
 
     private boolean isHostAllowed(String host) {
@@ -306,6 +353,24 @@ public final class SecurityValidationService {
 
     private String lower(String v) {
         return v == null ? null : v.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String canonicalizeUrlInput(String value) {
+        return canonicalizeInput(value, 2048);
+    }
+
+    private String canonicalizeInput(String value, int maxLen) {
+        if (value == null) {
+            return "";
+        }
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
+        if (canonical.isBlank() || canonical.length() > maxLen) {
+            return "";
+        }
+        if (CONTROL_CHARS.matcher(canonical).find()) {
+            return "";
+        }
+        return canonical;
     }
 
     public static final class UrlValidationResult {

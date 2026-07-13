@@ -5,11 +5,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -19,6 +26,8 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "TestSalesforceConnectionServlet", urlPatterns = {"/admin/test-salesforce-connection"})
 public class TestSalesforceConnectionServlet extends HttpServlet {
+
+    private static final Logger log = Logger.getLogger(TestSalesforceConnectionServlet.class.getName());
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -30,12 +39,12 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
-                    "{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+                    Json.createObjectBuilder().add("status", "error").add("message", "Authentication required.").build());
             return;
         }
 
-        String instanceUrl = req.getParameter("salesforceInstanceUrl");
-        String apiKey = req.getParameter("salesforceApiKey");
+        String instanceUrl = firstParam(req, "salesforceInstanceUrl");
+        String apiKey = firstParam(req, "salesforceApiKey");
 
         // fallback to stored values
         if (isBlank(instanceUrl) || isBlank(apiKey)) {
@@ -47,22 +56,26 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 if (isBlank(apiKey) && config != null) {
                     apiKey = config.getSalesforceApiKey();
                 }
-            } catch (Exception e) {
+            } catch (SQLException | RuntimeException e) {
+                log.log(Level.WARNING, "Unable to load stored Salesforce configuration", e);
                 writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                        "{\"status\":\"error\",\"message\":\"Unable to load stored Salesforce configuration.\"}");
+                        Json.createObjectBuilder().add("status", "error")
+                                .add("message", "Unable to load stored Salesforce configuration.").build());
                 return;
             }
         }
 
         if (isBlank(instanceUrl)) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                    "{\"status\":\"error\",\"message\":\"Salesforce instance URL is required.\"}");
+                    Json.createObjectBuilder().add("status", "error")
+                            .add("message", "Salesforce instance URL is required.").build());
             return;
         }
 
         if (isBlank(apiKey)) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                    "{\"status\":\"error\",\"message\":\"Salesforce API key is required.\"}");
+                    Json.createObjectBuilder().add("status", "error")
+                            .add("message", "Salesforce API key is required.").build());
             return;
         }
 
@@ -81,27 +94,32 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 writeJson(resp, HttpServletResponse.SC_OK,
-                        "{\"status\":\"ok\",\"message\":\"Salesforce connection successful.\"}");
+                        Json.createObjectBuilder().add("status", "ok")
+                                .add("message", "Salesforce connection successful.").build());
             } else {
                 String body = response.body();
                 if (isBlank(body)) {
                     body = "Salesforce returned status " + response.statusCode();
                 }
                 writeJson(resp, response.statusCode(),
-                        "{\"status\":\"error\",\"message\":\"" + escapeJson(body) + "\"}");
+                        Json.createObjectBuilder().add("status", "error").add("message", body).build());
             }
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException | IllegalArgumentException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.log(Level.WARNING, "Salesforce connection test failed", e);
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
-                    "{\"status\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}");
+                    Json.createObjectBuilder().add("status", "error")
+                            .add("message", "Salesforce connection test failed.").build());
         }
     }
 
-    // ---- test seams (package-private) ----
     HttpClient getHttpClient() {
         return CLIENT;
     }
 
-    ServerConfig loadConfig() throws Exception {
+    private ServerConfig loadConfig() throws SQLException {
         return EncryptedDbConfigStore.load();
     }
 
@@ -114,23 +132,28 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         return normalized + "/services/data/";
     }
 
-    private void writeJson(HttpServletResponse resp, int status, String payload) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
         resp.setStatus(status);
-        resp.setContentType("application/json");
-        resp.getWriter().write(payload);
+        resp.setCharacterEncoding("UTF-8");
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
+        }
     }
 
     private boolean isBlank(String v) {
         return v == null || v.isBlank();
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
         }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 }

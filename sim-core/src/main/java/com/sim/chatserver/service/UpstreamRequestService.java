@@ -12,11 +12,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.channels.UnresolvedAddressException;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -44,6 +46,8 @@ public class UpstreamRequestService {
     private static final String STREAM_CHAT_SUFFIX = "/stream-chat";
     private static final String CHAT_SUFFIX = "/chat";
     private static final String FIXED_PATH_TEMPLATE = "/api/v1/workspace/%s/chat"; // canonical /chat
+    private static final int MAX_URL_CHARS = 2048;
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
@@ -91,10 +95,9 @@ public class UpstreamRequestService {
         if (isRouteMismatch(first.statusCode())) {
             String alt = siblingEndpoint(resolvedUrl);
             if (alt != null && !alt.equals(resolvedUrl)) {
-                LOG.info("[upstream][" + rid + "] fallback endpoint attempt"
-                        + " firstStatus=" + first.statusCode()
-                        + " from=" + resolvedUrl
-                        + " to=" + alt);
+                LOG.log(Level.INFO,
+                        "[upstream][{0}] fallback endpoint attempt firstStatus={1} from={2} to={3}",
+                        new Object[]{rid, first.statusCode(), resolvedUrl, alt});
                 return doPost(alt, apiKey, body, rid);
             }
         }
@@ -156,8 +159,8 @@ public class UpstreamRequestService {
         return full;
     }
 
-    private String sanitizeBaseOrEndpoint(String in) {
-        String s = in == null ? "" : in.trim();
+    private String sanitizeBaseOrEndpoint(String in) throws IOException {
+        String s = canonicalizeUrlInput(in);
         if (s.isBlank()) {
             return s;
         }
@@ -191,7 +194,8 @@ public class UpstreamRequestService {
 
     private String extractOrigin(String raw) {
         try {
-            URI u = new URI(raw);
+            String safeRaw = canonicalizeUrlInput(raw);
+            URI u = new URI(safeRaw);
             String scheme = u.getScheme();
             String host = u.getHost();
             int port = u.getPort();
@@ -209,14 +213,15 @@ public class UpstreamRequestService {
             }
 
             return b.toString();
-        } catch (Exception e) {
+        } catch (IOException | URISyntaxException | IllegalArgumentException | SecurityException e) {
+            LOG.log(Level.FINE, "Failed to extract upstream origin", e);
             return "";
         }
     }
 
     private void validateHttpUrl(String raw) throws IOException {
         try {
-            URI u = new URI(raw);
+            URI u = new URI(canonicalizeUrlInput(raw));
             String scheme = u.getScheme();
             String host = u.getHost();
 
@@ -313,8 +318,9 @@ public class UpstreamRequestService {
 
     private UpstreamResponse doPost(String url, String apiKey, String jsonBody, String requestId) throws IOException {
         try {
+            String safeUrl = canonicalizeUrlInput(url);
             HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+                    .uri(URI.create(safeUrl))
                     .timeout(REQUEST_TIMEOUT)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
@@ -344,7 +350,7 @@ public class UpstreamRequestService {
             throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL invalid", e);
         } catch (UpstreamConnectivityException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             LOG.log(Level.WARNING, "[upstream][" + requestId + "] unexpected client exception", e);
             throw new IOException("Unexpected upstream HTTP client failure", e);
         }
@@ -371,14 +377,19 @@ public class UpstreamRequestService {
         return h.firstValue("Content-Type").orElse("application/json; charset=UTF-8");
     }
 
-    private String truncateForLog(String s, int max) {
-        if (s == null) {
+    private String canonicalizeUrlInput(String value) throws IOException {
+        String raw = value == null ? "" : value;
+        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC).trim();
+        if (normalized.isBlank()) {
             return "";
         }
-        if (s.length() <= max) {
-            return s;
+        if (normalized.length() > MAX_URL_CHARS) {
+            throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL exceeds max length", null);
         }
-        return s.substring(0, max) + "...(truncated)";
+        if (CONTROL_CHARS.matcher(normalized).find()) {
+            throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL contains control characters", null);
+        }
+        return normalized;
     }
 
     public record UpstreamResponse(int statusCode, String contentType, String body) {

@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -49,7 +50,8 @@ public final class WidgetStore {
 
         StringBuilder sql = new StringBuilder(
                 "SELECT id, widget_id, display_name, created_at FROM widget_entries");
-        boolean hasFilter = filter != null && !filter.isBlank();
+        String safeFilterInput = filter == null ? "" : filter.trim();
+        boolean hasFilter = !safeFilterInput.isBlank();
         if (hasFilter) {
             sql.append(" WHERE widget_id ILIKE ? OR display_name ILIKE ?");
         }
@@ -58,8 +60,7 @@ public final class WidgetStore {
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql.toString())) {
 
             if (hasFilter) {
-                String safeFilter = filter == null ? "" : filter.trim();
-                String pattern = "%" + safeFilter + "%";
+                String pattern = "%" + safeFilterInput + "%";
                 statement.setString(1, pattern);
                 statement.setString(2, pattern);
             }
@@ -237,10 +238,22 @@ public final class WidgetStore {
 
     private static WidgetEntry mapRow(ResultSet rs) throws SQLException {
         return new WidgetEntry(
-                Math.max(0, rs.getInt("id")),
-                sanitizeDbText(rs.getString("widget_id"), 128),
-                sanitizeDbText(rs.getString("display_name"), 256),
-                toInstantRequired(rs.getTimestamp("created_at")));
+                readNonNegativeInt(rs, "id"),
+                readSanitizedDbText(rs, "widget_id", 128),
+                readSanitizedDbText(rs, "display_name", 256),
+                readCreatedAt(rs));
+    }
+
+    private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
+        return Math.max(0, rs.getInt(column));
+    }
+
+    private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        return sanitizeDbText(rs.getString(column), maxChars);
+    }
+
+    private static Instant readCreatedAt(ResultSet rs) throws SQLException {
+        return toInstantRequired(rs.getTimestamp("created_at"));
     }
 
     private static Instant toInstantRequired(Timestamp timestamp) {
@@ -258,7 +271,7 @@ public final class WidgetStore {
         if (value == null) {
             return "";
         }
-        String trimmed = value.trim();
+        String trimmed = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
             return trimmed;
         }

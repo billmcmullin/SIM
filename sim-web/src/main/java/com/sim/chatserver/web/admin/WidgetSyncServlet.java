@@ -171,7 +171,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     mrConfig.getFinalReduceSummaryMaxChars(),
                     mrConfig.getFinalReduceMaxAttempts()
             );
-        } catch (Exception e) {
+        } catch (IllegalStateException e) {
             throw new ServletException("Unable to initialize summary orchestrator", e);
         }
 
@@ -222,14 +222,17 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         try {
-            List<WidgetSyncStatus> statuses = runSync(req.getParameter("widgetId"));
+            List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
             updateLastSyncedMaybePersist(true);
 
             // Manual sync now also triggers daily summary generation.
             try {
                 runDailySummaryGeneration();
-            } catch (Exception summaryEx) {
+            } catch (SQLException | IOException | InterruptedException summaryEx) {
                 log.log(Level.WARNING, "Daily summary generation failed after manual sync", summaryEx);
+                if (summaryEx instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
             JsonArrayBuilder arr = Json.createArrayBuilder();
@@ -241,7 +244,10 @@ public class WidgetSyncServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
-        } catch (Exception e) {
+        } catch (SQLException | IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.WARNING, "Widget sync failed", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
         } finally {
@@ -250,8 +256,9 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isTimerRequest(HttpServletRequest req) {
-        String uri = req.getRequestURI();
-        return uri != null && uri.endsWith("/timer");
+        String servletPath = req.getServletPath();
+        return "/admin/widgets/sync/timer".equals(servletPath)
+                || (servletPath != null && servletPath.endsWith("/timer"));
     }
 
     private void handleTimerStatus(HttpServletResponse resp) throws IOException {
@@ -270,7 +277,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         long intervalSeconds;
         try {
-            String raw = req.getParameter("intervalSeconds");
+            String raw = firstParam(req, "intervalSeconds");
             intervalSeconds = Long.parseLong(raw == null ? "" : raw.trim());
             if (intervalSeconds < MIN_INTERVAL_SECONDS) {
                 intervalSeconds = MIN_INTERVAL_SECONDS;
@@ -315,19 +322,25 @@ public class WidgetSyncServlet extends HttpServlet {
 
             try {
                 runDailySummaryGeneration();
-            } catch (Exception summaryEx) {
+            } catch (SQLException | IOException | InterruptedException summaryEx) {
                 log.log(Level.WARNING, "Daily summary generation failed", summaryEx);
+                if (summaryEx instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
-            log.log(Level.INFO, "Automatic widget sync completed. Synced {0} widget entries.", statuses.size());
-        } catch (Exception e) {
+            log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
+        } catch (SQLException | IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.WARNING, "Automatic widget sync failed", e);
         } finally {
             syncRunning.set(false);
         }
     }
 
-    private List<WidgetSyncStatus> runSync(String requestedWidgetId) throws Exception {
+    private List<WidgetSyncStatus> runSync(String requestedWidgetId) throws SQLException, IOException, InterruptedException {
         ServerConfig config = EncryptedDbConfigStore.load();
         if (config == null) {
             throw new IOException("Server configuration is missing.");
@@ -354,6 +367,7 @@ public class WidgetSyncServlet extends HttpServlet {
             try {
                 statuses.add(f.get());
             } catch (ExecutionException ee) {
+                log.log(Level.WARNING, "Widget sync task failed", ee);
                 statuses.add(new WidgetSyncStatus("unknown", "unknown", false, false,
                         "Sync failed. Check server logs."));
             }
@@ -372,17 +386,20 @@ public class WidgetSyncServlet extends HttpServlet {
 
             String message = chats.isEmpty()
                     ? "No chat rows returned from server."
-                    : String.format("Fetched %d chat(s), inserted %d new chat(s).", chats.size(), inserted);
+                    : "Fetched " + chats.size() + " chat(s), inserted " + inserted + " new chat(s).";
 
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
-        } catch (Exception e) {
+        } catch (SQLException | IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.WARNING, "Failed to sync widget " + String.valueOf(widgetId), e);
             return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed. Check server logs.");
         }
     }
 
     // ---------- Daily summary generation + persistence (via DashboardDailySummaryStore) ----------
-    private void runDailySummaryGeneration() throws Exception {
+    private void runDailySummaryGeneration() throws SQLException, IOException, InterruptedException {
         if (summaryStore == null) {
             summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
             summaryStore.ensureTable();
@@ -425,7 +442,14 @@ public class WidgetSyncServlet extends HttpServlet {
                 + URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8)
                 + "/chat";
 
-        TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(targetUrl);
+        String canonicalTargetUrl = canonicalizeHttpUrl(targetUrl);
+        if (canonicalTargetUrl.isBlank()) {
+            summaryStore.upsertSummary(day, slot, "error", 100, "Workspace URL canonicalization failed.",
+                "Unable to generate summary: workspace URL canonicalization failed.", "—", "—", "—", entries.size(), false, true);
+            return;
+        }
+
+        TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(canonicalTargetUrl);
         if (!trust.isValid()) {
             summaryStore.upsertSummary(day, slot, "error", 100, "Workspace URL trust validation failed.",
                     "Unable to generate summary: workspace URL trust validation failed.", "—", "—", "—", entries.size(), false, true);
@@ -449,17 +473,13 @@ public class WidgetSyncServlet extends HttpServlet {
                 - Do not invent data.
                 """;
 
-        WorkspaceResponse finalResp = orchestrator.run(
-                targetUrl,
-                apiKey,
-                summaryPrompt,
-                "chat",
-                "dashboard-daily-summary",
-                true,
-                Json.createArrayBuilder().build(),
-                entries,
-                "daily-summary-" + day + "-slot-" + slot
-        ).finalResponse();
+        WorkspaceResponse finalResp = runSummaryOrchestration(
+            canonicalTargetUrl,
+            apiKey,
+            summaryPrompt,
+            entries,
+            "daily-summary-" + day + "-slot-" + slot
+        );
 
         String raw = finalResp == null ? "" : extractPrimaryText(finalResp.body());
         if (raw == null || raw.isBlank()) {
@@ -543,7 +563,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception ex) {
+        } catch (SQLException ex) {
             log.log(Level.WARNING, "Unable to load day entries for daily summary", ex);
         }
 
@@ -604,7 +624,8 @@ public class WidgetSyncServlet extends HttpServlet {
                 return t;
             }
             return body;
-        } catch (Exception ignored) {
+        } catch (JsonException | ClassCastException ex) {
+            log.log(Level.FINE, "Unable to parse primary text response as JSON", ex);
             return body;
         }
     }
@@ -749,7 +770,17 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                return new SyncSettings(rs.getLong(1), rs.getTimestamp(2));
+                String persistedIntervalRaw = rs.getString(1);
+                long persistedInterval;
+                try {
+                    persistedInterval = Long.parseLong(persistedIntervalRaw == null ? "" : persistedIntervalRaw.trim());
+                } catch (NumberFormatException ex) {
+                    persistedInterval = syncIntervalSeconds;
+                }
+                if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
+                    persistedInterval = syncIntervalSeconds;
+                }
+                return new SyncSettings(persistedInterval, rs.getTimestamp(2));
             }
         }
         upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
@@ -930,7 +961,8 @@ public class WidgetSyncServlet extends HttpServlet {
                     return text;
                 }
             }
-        } catch (JsonException ignored) {
+        } catch (JsonException ex) {
+            log.log(Level.FINE, "Response text is not JSON object payload", ex);
         }
         return raw;
     }
@@ -1142,9 +1174,83 @@ public class WidgetSyncServlet extends HttpServlet {
             return port > 0
                     ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
                     : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Invalid base URL: {0}", s);
             return "";
         }
+    }
+
+    private WorkspaceResponse runSummaryOrchestration(
+            String targetUrl,
+            String apiKey,
+            String summaryPrompt,
+            List<SelectedEntry> entries,
+            String requestId
+    ) throws IOException, InterruptedException {
+        try {
+            return orchestrator.run(
+                    targetUrl,
+                    apiKey,
+                    summaryPrompt,
+                    "chat",
+                    "dashboard-daily-summary",
+                    true,
+                    Json.createArrayBuilder().build(),
+                    entries,
+                    requestId
+            ).finalResponse();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Summary orchestration failed", e);
+        }
+    }
+
+    private String canonicalizeHttpUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return "";
+        }
+        try {
+            URI parsed = URI.create(rawUrl.trim()).normalize();
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            if (scheme == null || host == null || host.isBlank()) {
+                return "";
+            }
+            String schemeLower = scheme.toLowerCase(Locale.ROOT);
+            if (!"http".equals(schemeLower) && !"https".equals(schemeLower)) {
+                return "";
+            }
+            URI canonical = new URI(
+                    schemeLower,
+                    parsed.getUserInfo(),
+                    host.toLowerCase(Locale.ROOT),
+                    parsed.getPort(),
+                    parsed.getPath(),
+                    parsed.getQuery(),
+                    null
+            );
+            return canonical.toString();
+        } catch (IllegalArgumentException | java.net.URISyntaxException e) {
+            log.log(Level.FINE, "Unable to canonicalize URL", e);
+            return "";
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        var params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private String buildSlug(String workspaceName) {

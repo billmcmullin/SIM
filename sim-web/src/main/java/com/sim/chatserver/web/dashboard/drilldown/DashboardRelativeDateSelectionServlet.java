@@ -11,9 +11,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -61,7 +63,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
@@ -70,7 +72,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return; // error already sent
         }
 
-        String rawTerm = req.getParameter("term");
+        String rawTerm = firstParam(req, "term");
         String requestedTerm = (rawTerm == null) ? "" : rawTerm.trim();
 
         List<TermChatSnapshot> snapshots;
@@ -88,13 +90,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         if (!requestedTerm.isBlank()) {
-            try {
-                snapshots = filterSnapshotsByTerm(snapshots, requestedTerm);
-            } catch (Exception e) {
-                log.log(Level.WARNING, "Unable to filter day entries by term", e);
-                resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to filter chats by term.");
-                return;
-            }
+            snapshots = filterSnapshotsByTerm(snapshots, requestedTerm);
 
             if (snapshots.isEmpty()) {
                 resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day and term.");
@@ -118,8 +114,9 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
+        String contextPath = safeContextPath(req.getContextPath());
         StringBuilder redirect = new StringBuilder()
-                .append(req.getContextPath())
+            .append(contextPath)
                 .append("/dashboard/widgets/drilldown/review?selectionId=")
                 .append(URLEncoder.encode(selectionId, StandardCharsets.UTF_8))
                 .append("&date=")
@@ -129,21 +126,27 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             redirect.append("&term=").append(URLEncoder.encode(requestedTerm, StandardCharsets.UTF_8));
         }
 
-        resp.sendRedirect(redirect.toString());
+        String redirectTarget = redirect.toString();
+        if (!isSafeRedirectTarget(redirectTarget, contextPath)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe redirect target");
+            return;
+        }
+        resp.sendRedirect(resp.encodeRedirectURL(redirectTarget));
     }
 
     private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String dateParam = req.getParameter("date");
+        String dateParam = firstParam(req, "date");
         if (dateParam != null && !dateParam.isBlank()) {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
-            } catch (Exception ex) {
+            } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "Invalid date parameter for relative date selection: {0}", dateParam);
                 resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
                 return null;
             }
         }
 
-        String day = req.getParameter("day");
+        String day = firstParam(req, "day");
         if (day == null || day.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
             return null;
@@ -225,7 +228,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         List<TermDefinition> allTerms;
         try {
             allTerms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to load term definitions for date+term filtering", e);
             return List.of();
         }
@@ -241,8 +244,12 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             if (term == null || term.isSystemFlag()) {
                 continue;
             }
+            Pattern compiled = TermMatcher.buildStrictPattern(term);
+            if (compiled == null) {
+                continue;
+            }
             activeTerms.add(term);
-            compiledPatterns.add(TermMatcher.buildStrictPattern(term));
+            compiledPatterns.add(compiled);
         }
 
         if (activeTerms.isEmpty()) {
@@ -260,20 +267,16 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             int bestStart = Integer.MAX_VALUE;
 
             for (int i = 0; i < compiledPatterns.size(); i++) {
-                try {
-                    Matcher m = compiledPatterns.get(i).matcher(sanitized);
-                    if (m.find()) {
-                        int start = m.start();
-                        if (start < bestStart) {
-                            bestStart = start;
-                            bestTerm = activeTerms.get(i);
-                            if (bestStart == 0) {
-                                break;
-                            }
+                Matcher m = compiledPatterns.get(i).matcher(sanitized);
+                if (m.find()) {
+                    int start = m.start();
+                    if (start < bestStart) {
+                        bestStart = start;
+                        bestTerm = activeTerms.get(i);
+                        if (bestStart == 0) {
+                            break;
                         }
                     }
-                } catch (Exception ignore) {
-                    // skip broken regex
                 }
             }
 
@@ -292,10 +295,44 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to list widgets for date review", e);
             return List.of();
         }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private boolean isSafeRedirectTarget(String target, String contextPath) {
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
+            return false;
+        }
+        String expectedPrefix = contextPath + "/dashboard/widgets/drilldown/review";
+        return target.startsWith(expectedPrefix);
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

@@ -1,6 +1,7 @@
 package com.sim.chatserver.startup;
 
 import java.sql.SQLException;
+import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -41,12 +42,12 @@ public class AppDataSourceHolder {
     private volatile HikariDataSource ds;
 
     // Cache env-derived defaults once (startup-time constants for this process).
-    private final String envDbUrl = sanitizeJdbcUrl(trimToNull(System.getenv("DB_URL")));
-    private final String envDbHost = sanitizeHost(trimToNull(System.getenv("DB_HOST")));
-    private final String envDbUser = sanitizeUser(trimToNull(System.getenv("DB_USER")));
-    private final String envDbPassword = System.getenv("DB_PASSWORD"); // allow empty, but not null
-    private final String envDbName = sanitizeDbName(defaultIfBlank(System.getenv("DB_NAME"), "chat"));
-    private final String envDbPort = sanitizePort(defaultIfBlank(System.getenv("DB_PORT"), "5432"));
+    private final String envDbUrl = sanitizeJdbcUrl(trimToNull(readEnv("DB_URL")));
+    private final String envDbHost = sanitizeHost(trimToNull(readEnv("DB_HOST")));
+    private final String envDbUser = sanitizeUser(trimToNull(readEnv("DB_USER")));
+    private final String envDbPassword = readEnv("DB_PASSWORD"); // allow empty, but not null
+    private final String envDbName = sanitizeDbName(defaultIfBlank(readEnv("DB_NAME"), "chat"));
+    private final String envDbPort = sanitizePort(defaultIfBlank(readEnv("DB_PORT"), "5432"));
 
     @PostConstruct
     public synchronized void init() {
@@ -136,8 +137,8 @@ public class AppDataSourceHolder {
         if (localDs != null) {
             try {
                 return localDs.getJdbcUrl();
-            } catch (RuntimeException ignored) {
-                // fall back below
+            } catch (RuntimeException ex) {
+                log.log(Level.FINE, "Unable to read active JDBC URL from datasource", ex);
             }
         }
         return envDbUrl;
@@ -263,7 +264,8 @@ public class AppDataSourceHolder {
         if (factory != null) {
             try {
                 factory.close();
-            } catch (Exception ignored) {
+            } catch (RuntimeException ex) {
+                log.log(Level.FINE, "Failed closing EntityManagerFactory", ex);
             }
         }
     }
@@ -272,9 +274,22 @@ public class AppDataSourceHolder {
         if (dataSource != null) {
             try {
                 dataSource.close();
-            } catch (Exception ignored) {
+            } catch (RuntimeException ex) {
+                log.log(Level.FINE, "Failed closing HikariDataSource", ex);
             }
         }
+    }
+
+    private static String readEnv(String key) {
+        String raw = System.getenv(key);
+        if (raw == null) {
+            return null;
+        }
+        String canonical = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+        if (canonical.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalStateException("Environment variable contains invalid control characters: " + key);
+        }
+        return canonical.trim();
     }
 
     private static String trimToNull(String v) {

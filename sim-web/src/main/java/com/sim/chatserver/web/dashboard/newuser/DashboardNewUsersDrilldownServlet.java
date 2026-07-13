@@ -10,9 +10,11 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,8 +22,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
@@ -40,6 +43,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardNewUsersDrilldownServlet", urlPatterns = {"/dashboard/new-users/drilldown"})
 public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(DashboardNewUsersDrilldownServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users_drilldown.html";
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -51,17 +55,19 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        int page = parsePositiveInt(req.getParameter("page")).orElse(1);
-        int pageSize = parsePositiveInt(req.getParameter("pageSize")).orElse(10);
+        String contextPath = safeContextPath(req.getContextPath());
+
+        int page = parsePositiveIntOrDefault(firstParam(req, "page"), 1);
+        int pageSize = parsePositiveIntOrDefault(firstParam(req, "pageSize"), 10);
         if (pageSize != 10 && pageSize != 25 && pageSize != 50) {
             pageSize = 10;
         }
 
-        Optional<LocalDate> dayFilter = parseDate(req.getParameter("day"));
+        LocalDate dayFilter = parseDateOrNull(firstParam(req, "day"));
 
         List<Row> allRows = new ArrayList<>();
 
@@ -69,7 +75,11 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             List<WidgetEntry> widgets;
             try {
                 widgets = WidgetStore.list(null);
-            } catch (Exception e) {
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
+                widgets = List.of();
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
                 widgets = List.of();
             }
 
@@ -87,29 +97,30 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             Map<String, SessionLabelStore.SessionLabel> labels;
             try {
                 labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
+                log.log(Level.WARNING, "Unable to resolve session display labels", ex);
                 labels = Map.of();
             }
 
-            String contextPath = req.getContextPath();
             for (Map.Entry<String, Timestamp> e : sorted) {
                 String sid = e.getKey();
                 Timestamp ts = e.getValue();
 
                 LocalDate firstSeenDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                if (dayFilter.isPresent() && !firstSeenDate.equals(dayFilter.get())) {
+                if (dayFilter != null && !firstSeenDate.equals(dayFilter)) {
                     continue;
                 }
 
                 String display = SessionLabelStore.resolveDisplayLabel(sid, labels.get(sid));
                 String firstSeen = TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()));
-                int totalChats = totalChatsBySession.getOrDefault(sid, 0);
+                Integer totalChatsValue = totalChatsBySession.get(sid);
+                Integer totalChats = totalChatsValue == null ? 0 : totalChatsValue;
                 String chatUrl = contextPath + "/dashboard/sessions/drilldown/session-review?sessionId="
                         + java.net.URLEncoder.encode(sid, StandardCharsets.UTF_8);
 
                 allRows.add(new Row(display, firstSeen, totalChats, chatUrl));
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             throw new ServletException("Failed to load newest users drilldown", e);
         }
 
@@ -125,20 +136,21 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         String rowsHtml = renderRows(pageRows, from);
 
-        String dayParam = dayFilter.map(d -> "&day=" + urlEncode(d.format(DATE_FMT))).orElse("");
+        String dayParam = dayFilter != null ? "&day=" + urlEncode(dayFilter.format(DATE_FMT)) : "";
         String prevHref = page > 1
-                ? req.getContextPath() + "/dashboard/new-users/drilldown?page=" + (page - 1) + "&pageSize=" + pageSize + dayParam
+            ? contextPath + "/dashboard/new-users/drilldown?page=" + (page - 1) + "&pageSize=" + pageSize + dayParam
                 : "";
         String nextHref = page < totalPages
-                ? req.getContextPath() + "/dashboard/new-users/drilldown?page=" + (page + 1) + "&pageSize=" + pageSize + dayParam
+            ? contextPath + "/dashboard/new-users/drilldown?page=" + (page + 1) + "&pageSize=" + pageSize + dayParam
                 : "";
 
-        String filterTitle = dayFilter.map(d -> "Users first seen on " + d.format(DATE_FMT))
-                .orElse("All Session IDs / Users (Newest First)");
+        String filterTitle = dayFilter == null
+            ? "All Session IDs / Users (Newest First)"
+            : "Users first seen on " + dayFilter.format(DATE_FMT);
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-                .replace("${contextPath}", escapeHtml(req.getContextPath()))
+            .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
                 .replace("${rows}", rowsHtml)
                 .replace("${totalUsers}", String.valueOf(total))
@@ -153,7 +165,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                 .replace("${selected25}", pageSize == 25 ? "selected" : "")
                 .replace("${selected50}", pageSize == 50 ? "selected" : "")
                 .replace("${filterTitle}", escapeHtml(filterTitle))
-                .replace("${dayQuery}", dayFilter.map(d -> "&day=" + escapeHtml(d.format(DATE_FMT))).orElse(""));
+                .replace("${dayQuery}", dayFilter == null ? "" : "&day=" + escapeHtml(dayFilter.format(DATE_FMT)));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
@@ -164,23 +176,30 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
     private String renderRows(List<Row> rows, int offset) {
         if (rows.isEmpty()) {
-            return "<tr><td colspan=\"4\" class=\"empty-row\">No users found for this selection.</td></tr>";
+            StringBuilder empty = new StringBuilder();
+            empty.append('<').append("tr").append('>');
+            empty.append("<td colspan=\"4\" class=\"empty-row\">No users found for this selection.</td>");
+            empty.append("</tr>");
+            return empty.toString();
         }
         StringBuilder sb = new StringBuilder();
         int rank = offset + 1;
         for (Row r : rows) {
-            sb.append("<tr>")
-                    .append("<td>").append(rank++).append("</td>")
-                    .append("<td>").append(escapeHtml(r.display)).append("</td>")
-                    .append("<td>").append(escapeHtml(r.firstSeen)).append("</td>")
-                    .append("<td><a class=\"session-count-link\" href=\"").append(escapeHtml(r.chatEntriesUrl)).append("\">")
-                    .append(r.totalChats).append(" chats</a></td>")
-                    .append("</tr>");
+            sb.append('<').append("tr").append('>');
+            sb.append("<td>").append(rank).append("</td>");
+            rank++;
+            sb.append("<td>").append(escapeHtml(r.display)).append("</td>");
+            sb.append("<td>").append(escapeHtml(r.firstSeen)).append("</td>");
+            sb.append("<td>");
+            sb.append("<a class=\"session-count-link\" href=\"").append(escapeHtml(r.chatEntriesUrl)).append("\">");
+            sb.append(r.totalChats).append(" chats</a>");
+            sb.append("</td>");
+            sb.append("</tr>");
         }
         return sb.toString();
     }
 
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws Exception {
+    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
         Map<String, Timestamp> earliest = new LinkedHashMap<>();
         for (WidgetEntry w : widgets) {
             if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -212,7 +231,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return earliest;
     }
 
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws Exception {
+    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
         Map<String, Integer> totals = new LinkedHashMap<>();
         for (WidgetEntry w : widgets) {
             if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -232,37 +251,41 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                         continue;
                     }
                     sid = sid.trim();
-                    totals.merge(sid, rs.getInt("c"), Integer::sum);
+                    int count = rs.getInt("c");
+                    Integer existing = totals.get(sid);
+                    totals.put(sid, existing == null ? count : existing + count);
                 }
             }
         }
         return totals;
     }
 
-    private Optional<Integer> parsePositiveInt(String value) {
+    private int parsePositiveIntOrDefault(String value, int fallback) {
         if (value == null || value.isBlank()) {
-            return Optional.empty();
+            return fallback;
         }
         try {
             int n = Integer.parseInt(value.trim());
-            return n > 0 ? Optional.of(n) : Optional.empty();
-        } catch (Exception e) {
-            return Optional.empty();
+            return n > 0 ? n : fallback;
+        } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid positive integer parameter value: {0}", value);
+            return fallback;
         }
     }
 
-    private Optional<LocalDate> parseDate(String value) {
+    private LocalDate parseDateOrNull(String value) {
         if (value == null || value.isBlank()) {
-            return Optional.empty();
+            return null;
         }
         try {
-            return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
-        } catch (Exception e) {
-            return Optional.empty();
+            return LocalDate.parse(value.trim(), DATE_FMT);
+        } catch (DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid day parameter for new users drilldown: {0}", value);
+            return null;
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
@@ -326,14 +349,37 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return java.net.URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
     private static final class Row {
 
         final String display;
         final String firstSeen;
-        final int totalChats;
+        final Integer totalChats;
         final String chatEntriesUrl;
 
-        Row(String display, String firstSeen, int totalChats, String chatEntriesUrl) {
+        private Row(String display, String firstSeen, Integer totalChats, String chatEntriesUrl) {
             this.display = display;
             this.firstSeen = firstSeen;
             this.totalChats = totalChats;

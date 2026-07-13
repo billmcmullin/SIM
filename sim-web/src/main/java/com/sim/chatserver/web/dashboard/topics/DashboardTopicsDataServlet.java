@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,6 +20,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -35,6 +38,7 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -45,6 +49,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTopicsDataServlet", urlPatterns = {"/dashboard/topics/data"})
 public class DashboardTopicsDataServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getName());
     private static final String OTHER_LABEL = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
@@ -59,25 +64,32 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json");
-            resp.getWriter().print("{\"status\":\"unauthorized\"}");
+            writeJson(resp, Json.createObjectBuilder().add("status", "unauthorized").build());
             return;
         }
 
-        boolean includeOther = parseBooleanFlag(req.getParameter("includeOther"));
+        boolean includeOther = parseBooleanFlag(firstParam(req, "includeOther"));
         DateWindow window = resolveDateWindow(req);
 
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to list widgets for dashboard topics", e);
+            widgets = List.of();
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unexpected runtime error while listing widgets", e);
             widgets = List.of();
         }
 
         List<TermDefinition> allTerms;
         try {
             allTerms = termsStore.listAll();
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to list terms for dashboard topics", e);
+            allTerms = List.of();
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unexpected runtime error while listing terms", e);
             allTerms = List.of();
         }
 
@@ -154,7 +166,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                             try {
                                 SqlTimeUtil.safeTimestamp(rs, "created_at");
                             } catch (SQLException ignored) {
-                                // Prompt processing still valid.
+                                log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
                             }
 
                             Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
@@ -185,13 +197,13 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.SEVERE, "Unable to build topics data", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             JsonObject err = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Unable to build topics data")
                     .build();
-            resp.setContentType("application/json");
-            resp.getWriter().print(err.toString());
+            writeJson(resp, err);
             return;
         }
 
@@ -273,18 +285,18 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         resp.setCharacterEncoding("UTF-8");
         resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().print(payload.toString());
+        writeJson(resp, payload);
     }
 
     private DateWindow resolveDateWindow(HttpServletRequest req) {
-        Optional<LocalDate> dayOpt = parseLocalDate(req.getParameter("day"));
+        Optional<LocalDate> dayOpt = parseLocalDate(firstParam(req, "day"));
         if (dayOpt.isPresent()) {
             LocalDate d = dayOpt.get();
             return new DateWindow(d, d.plusDays(1), d.format(DATE_FMT));
         }
 
-        Optional<LocalDate> startOpt = parseLocalDate(req.getParameter("start"));
-        Optional<LocalDate> endOpt = parseLocalDate(req.getParameter("end"));
+        Optional<LocalDate> startOpt = parseLocalDate(firstParam(req, "start"));
+        Optional<LocalDate> endOpt = parseLocalDate(firstParam(req, "end"));
 
         if (startOpt.isPresent() || endOpt.isPresent()) {
             LocalDate s = startOpt.orElseGet(endOpt::get);
@@ -313,7 +325,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
         try {
             return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
-        } catch (Exception ex) {
+        } catch (DateTimeParseException ex) {
+            log.log(Level.FINE, "Invalid date parameter for dashboard topics: {0}", value);
             return Optional.empty();
         }
     }
@@ -330,14 +343,31 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
         Set<String> matched = new LinkedHashSet<>();
         for (TopicPattern tp : topics) {
-            try {
-                if (tp.pattern.matcher(sanitized).find()) {
-                    matched.add(tp.name);
-                }
-            } catch (Exception ignored) {
+            if (tp.pattern.matcher(sanitized).find()) {
+                matched.add(tp.name);
             }
         }
         return matched;
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private void writeJson(HttpServletResponse resp, JsonObject payload) throws IOException {
+        resp.setCharacterEncoding("UTF-8");
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(payload);
+        }
     }
 
     private List<Map.Entry<String, Integer>> sortTopicMap(Map<String, Integer> map) {
@@ -385,7 +415,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         final String name;
         final Pattern pattern;
 
-        TopicPattern(String name, Pattern pattern) {
+        private TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
         }
@@ -397,7 +427,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         final LocalDate endExclusive;
         final String dayToken;
 
-        DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
+        private DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
             this.startInclusive = startInclusive;
             this.endExclusive = endExclusive;
             this.dayToken = dayToken;

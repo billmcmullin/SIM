@@ -6,6 +6,7 @@ import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.sql.SQLException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
@@ -142,7 +144,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
-        } catch (Exception ex) {
+        } catch (JsonException | ClassCastException ex) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -176,7 +178,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         ServerConfig config;
         try {
             config = EncryptedDbConfigStore.load();
-        } catch (Exception ex) {
+        } catch (SQLException | RuntimeException ex) {
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] Unable to load server configuration", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration not available.");
             return;

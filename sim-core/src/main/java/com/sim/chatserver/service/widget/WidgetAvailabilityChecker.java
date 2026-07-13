@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -45,6 +46,7 @@ public class WidgetAvailabilityChecker {
     private static final int DEFAULT_TIMEOUT_MS = 8000;
 
     private static final Pattern EMBED_STREAM_PATTERN = Pattern.compile("/api/embed/([^/]+)/stream-chat");
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -280,8 +282,8 @@ public class WidgetAvailabilityChecker {
                     if ("textResponseChunk".equals(type) && !error && text != null && !text.trim().isEmpty()) {
                         sawGoodChunk = true;
                     }
-                } catch (RuntimeException ignore) {
-                    // Ignore malformed chunk; continue scanning
+                } catch (RuntimeException ex) {
+                    log.log(Level.FINE, "Ignoring malformed SSE data chunk", ex);
                 }
             }
         }
@@ -372,7 +374,8 @@ public class WidgetAvailabilityChecker {
     }
 
     private boolean matchesExpectedJson(String body, String expectedField, String expectedValue) {
-        try (JsonReader reader = Json.createReader(new StringReader(body == null ? "" : body))) {
+        String canonicalBody = canonicalizeInput(body == null ? "" : body, 100_000);
+        try (JsonReader reader = Json.createReader(new StringReader(canonicalBody))) {
             JsonObject obj = reader.readObject();
             if (!obj.containsKey(expectedField) || obj.isNull(expectedField)) {
                 return false;
@@ -383,6 +386,7 @@ public class WidgetAvailabilityChecker {
             }
             return expectedValue.equalsIgnoreCase(actual.trim());
         } catch (RuntimeException e) {
+            log.log(Level.FINE, "Failed to parse expected JSON health payload", e);
             return false;
         }
     }
@@ -394,6 +398,7 @@ public class WidgetAvailabilityChecker {
         try {
             return obj.getString(key, null);
         } catch (RuntimeException e) {
+            log.log(Level.FINE, "stringVal fallback for key=" + key, e);
             String v = obj.get(key).toString();
             if (v != null && v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
                 v = v.substring(1, v.length() - 1);
@@ -409,32 +414,51 @@ public class WidgetAvailabilityChecker {
         try {
             return obj.getBoolean(key);
         } catch (RuntimeException e) {
+            log.log(Level.FINE, "boolVal parse fallback for key=" + key, e);
             try {
                 return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
             } catch (RuntimeException ex) {
+                log.log(Level.FINE, "boolVal parse failed for key=" + key, ex);
                 return fallback;
             }
         }
     }
 
     private String env(String key, String defaultValue) {
-        String v = System.getenv(key);
-        if (v == null || v.isBlank()) {
+        String v = readEnvCanonical(key, 4096);
+        if (v == null) {
             return defaultValue;
         }
-        String trimmed = v.trim();
-        if (trimmed.chars().anyMatch(Character::isISOControl)) {
-            return defaultValue;
-        }
-        return trimmed;
+        return v;
     }
 
     private int parseIntEnv(String key, int defaultValue) {
         try {
             return Integer.parseInt(env(key, String.valueOf(defaultValue)).trim());
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid integer environment value for " + key, e);
             return defaultValue;
         }
+    }
+
+    private String canonicalizeInput(String value, int maxChars) {
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).trim();
+        if (normalized.isBlank()) {
+            return "";
+        }
+        if (normalized.length() > maxChars || CONTROL_CHARS.matcher(normalized).find()) {
+            return "";
+        }
+        return normalized;
+    }
+
+    private String readEnvCanonical(String key, int maxChars) {
+        String raw = System.getenv(key);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = canonicalizeInput(raw, maxChars);
+        return normalized.isBlank() ? null : normalized;
     }
 
     private String trimToNull(String s) {
@@ -518,11 +542,11 @@ public class WidgetAvailabilityChecker {
             this.reason = reason;
         }
 
-        static SseValidationResult ok() {
+        private static SseValidationResult ok() {
             return new SseValidationResult(true, null);
         }
 
-        static SseValidationResult fail(String reason) {
+        private static SseValidationResult fail(String reason) {
             return new SseValidationResult(false, reason);
         }
     }
