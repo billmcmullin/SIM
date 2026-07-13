@@ -9,7 +9,16 @@ export default [
                 window: "readonly",
                 document: "readonly",
                 console: "readonly",
-                fetch: "readonly"
+                fetch: "readonly",
+                URL: "readonly",
+                URLSearchParams: "readonly",
+                FormData: "readonly",
+                history: "readonly",
+                localStorage: "readonly",
+                alert: "readonly",
+                confirm: "readonly",
+                Chart: "readonly",
+                setTimeout: "readonly"
             }
         },
         rules: {

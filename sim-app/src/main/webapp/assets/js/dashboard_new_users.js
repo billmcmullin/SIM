@@ -18,7 +18,7 @@
     let trendChart = null;
 
     function esc(v) {
-        if (v == null) return '';
+        if (v === null || v === undefined) return '';
         return String(v)
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')

@@ -29,7 +29,7 @@
     const widgetPieCharts = new Map();
 
     function esc(v) {
-        if (v == null) return '';
+        if (v === null || v === undefined) return '';
         return String(v)
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')

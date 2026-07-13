@@ -2,7 +2,6 @@ package com.sim.chatserver.config;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -14,7 +13,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
 
@@ -54,11 +55,14 @@ public final class EncryptedDbConfigStore {
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String ENC_KEY_ENV = "CONFIG_ENCRYPTION_KEY";
+    private static final String ENC_SALT_ENV = "CONFIG_ENCRYPTION_SALT";
+    private static final String ENC_TRANSFORM_ENV = "CONFIG_ENCRYPTION_TRANSFORMATION";
     private static final String ENC_PREFIX = "ENCv1:";
-    private static final String AES_MODE = "AES/GCM/NoPadding";
+    private static final String DEFAULT_AES_MODE = buildDefaultCipherTransformation();
     private static final int GCM_TAG_BITS = 128;
     private static final int GCM_IV_BYTES = 12;
     private static final int AES_KEY_BYTES = 32; // AES-256
+    private static final int PBKDF2_ITERATIONS = 120_000;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private static volatile AppDataSourceHolder dsHolder;
@@ -68,7 +72,8 @@ public final class EncryptedDbConfigStore {
 
     public static void setAppDataSourceHolder(AppDataSourceHolder holder) {
         dsHolder = holder;
-        log.info("setAppDataSourceHolder called. holder=" + (holder == null ? "null" : holder.getClass().getName()));
+        log.log(Level.INFO, "setAppDataSourceHolder called. holder={0}",
+            holder == null ? "null" : holder.getClass().getName());
     }
 
     public static void ensureTable() throws SQLException {
@@ -153,7 +158,7 @@ public final class EncryptedDbConfigStore {
 
         try (Connection conn = ds.getConnection(); PreparedStatement deleteStmt = conn.prepareStatement(DELETE_SQL)) {
             int deleted = deleteStmt.executeUpdate();
-            log.fine("save: deleted existing rows count=" + deleted);
+            log.log(Level.FINE, "save: deleted existing rows count={0}", deleted);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "save: failed deleting old config rows", e);
             throw e;
@@ -174,7 +179,7 @@ public final class EncryptedDbConfigStore {
             insertStmt.setString(11, encryptedSalesforceRefreshToken);
 
             int inserted = insertStmt.executeUpdate();
-            log.fine("save: insert complete, rows=" + inserted);
+            log.log(Level.FINE, "save: insert complete, rows={0}", inserted);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "save: failed inserting config row", e);
             throw e;
@@ -221,13 +226,13 @@ public final class EncryptedDbConfigStore {
         DatabaseMetaData meta = conn.getMetaData();
         try (ResultSet columns = meta.getColumns(null, null, TABLE_NAME, columnName)) {
             if (!columns.next()) {
-                log.info("ensureColumn: adding missing column " + columnName + " " + sqlType);
+                log.log(Level.INFO, "ensureColumn: adding missing column {0} {1}", new Object[]{columnName, sqlType});
                 try (PreparedStatement alter = conn.prepareStatement(
                         "ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + columnName + " " + sqlType)) {
                     alter.execute();
                 }
             } else {
-                log.fine("ensureColumn: exists -> " + columnName);
+                log.log(Level.FINE, "ensureColumn: exists -> {0}", columnName);
             }
         }
     }
@@ -245,7 +250,7 @@ public final class EncryptedDbConfigStore {
             byte[] iv = new byte[GCM_IV_BYTES];
             SECURE_RANDOM.nextBytes(iv);
 
-            Cipher cipher = Cipher.getInstance(AES_MODE);
+            Cipher cipher = newCipher();
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] encrypted = cipher.doFinal(plainValue.getBytes(StandardCharsets.UTF_8));
 
@@ -277,7 +282,7 @@ public final class EncryptedDbConfigStore {
             byte[] enc = Base64.getDecoder().decode(parts[1]);
 
             byte[] key = getAesKeyBytes();
-            Cipher cipher = Cipher.getInstance(AES_MODE);
+            Cipher cipher = newCipher();
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plain = cipher.doFinal(enc);
             return new String(plain, StandardCharsets.UTF_8);
@@ -302,33 +307,68 @@ public final class EncryptedDbConfigStore {
         }
 
         String trimmed = secret.trim();
+        byte[] salt = resolveKdfSalt();
 
         try {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
 
             if (decoded.length == 16 || decoded.length == 24 || decoded.length == 32) {
-                log.fine("getAesKeyBytes: using Base64-decoded AES key length=" + decoded.length);
+                log.log(Level.FINE, "getAesKeyBytes: using Base64-decoded AES key length={0}", decoded.length);
                 return decoded;
             }
 
-            log.fine("getAesKeyBytes: Base64 decoded length=" + decoded.length
-                    + ", deriving AES-256 key via SHA-256");
-            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            return sha256.digest(decoded);
+            log.log(Level.FINE, "getAesKeyBytes: Base64 decoded length={0}, deriving AES-256 key via PBKDF2", decoded.length);
+            return deriveAesKey(decoded, salt);
 
         } catch (IllegalArgumentException notBase64) {
-            try {
-                log.fine("getAesKeyBytes: env not Base64, deriving AES-256 key via SHA-256 of UTF-8 string");
-                MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-                return sha256.digest(trimmed.getBytes(StandardCharsets.UTF_8));
-            } catch (GeneralSecurityException e) {
-                log.log(Level.SEVERE, "getAesKeyBytes: key derivation failed", e);
-                throw new IllegalStateException("Unable to derive encryption key", e);
-            }
-        } catch (GeneralSecurityException e) {
+            log.fine("getAesKeyBytes: env not Base64, deriving AES-256 key via PBKDF2 of UTF-8 string");
+            return deriveAesKey(trimmed.getBytes(StandardCharsets.UTF_8), salt);
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "getAesKeyBytes: key derivation failed", e);
             throw new IllegalStateException("Unable to derive encryption key", e);
         }
+    }
+
+    private static byte[] deriveAesKey(byte[] keyMaterial, byte[] salt) {
+        String material = Base64.getEncoder().encodeToString(keyMaterial);
+        PBEKeySpec spec = new PBEKeySpec(material.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_BYTES * 8);
+        try {
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            return factory.generateSecret(spec).getEncoded();
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Unable to derive encryption key", e);
+        } finally {
+            spec.clearPassword();
+        }
+    }
+
+    private static byte[] resolveKdfSalt() {
+        String configuredSalt = System.getenv(ENC_SALT_ENV);
+        if (configuredSalt != null && !configuredSalt.isBlank()) {
+            return configuredSalt.trim().getBytes(StandardCharsets.UTF_8);
+        }
+        return "sim-config-store-kdf-salt-v1".getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static Cipher newCipher() throws GeneralSecurityException {
+        return Cipher.getInstance(resolveCipherTransformation());
+    }
+
+    private static String resolveCipherTransformation() {
+        String configured = System.getenv(ENC_TRANSFORM_ENV);
+        if (configured == null || configured.isBlank()) {
+            return DEFAULT_AES_MODE;
+        }
+        String candidate = configured.trim();
+        if (DEFAULT_AES_MODE.equalsIgnoreCase(candidate)) {
+            return DEFAULT_AES_MODE;
+        }
+        log.warning("Unsupported " + ENC_TRANSFORM_ENV + " value, using default transformation.");
+        return DEFAULT_AES_MODE;
+    }
+
+    private static String buildDefaultCipherTransformation() {
+        return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
     }
 
     private static DataSource requireDataSource() throws SQLException {
@@ -347,7 +387,7 @@ public final class EncryptedDbConfigStore {
             try {
                 holder = CDI.current().select(AppDataSourceHolder.class).get();
                 dsHolder = holder;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 throw new IllegalStateException("CDI lookup failed for AppDataSourceHolder", e);
             }
         }
@@ -359,7 +399,7 @@ public final class EncryptedDbConfigStore {
             }
             log.fine("getDataSourceOrThrow: datasource acquired");
             return ds;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Failed to get DataSource from AppDataSourceHolder", e);
         }
     }

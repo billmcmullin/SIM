@@ -296,10 +296,10 @@ public final class CustomerIdentityStore {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     CustomerIdentitySessionLink link = new CustomerIdentitySessionLink();
-                    link.setSessionId(rs.getString("session_id"));
-                    link.setIdentityId(rs.getLong("identity_id"));
-                    link.setDisplayNameSnapshot(rs.getString("display_name_snapshot"));
-                    link.setContactEmailSnapshot(rs.getString("contact_email_snapshot"));
+                    link.setSessionId(sanitizeDbText(rs.getString("session_id"), 256));
+                    link.setIdentityId(Math.max(0L, rs.getLong("identity_id")));
+                    link.setDisplayNameSnapshot(sanitizeDbText(rs.getString("display_name_snapshot"), 512));
+                    link.setContactEmailSnapshot(sanitizeDbText(rs.getString("contact_email_snapshot"), 512));
 
                     Timestamp linkedAt = rs.getTimestamp("linked_at");
                     if (linkedAt != null) {
@@ -319,17 +319,17 @@ public final class CustomerIdentityStore {
 
     private static CustomerIdentity mapIdentity(ResultSet rs) throws SQLException {
         CustomerIdentity x = new CustomerIdentity();
-        x.setIdentityId(rs.getLong("identity_id"));
-        x.setCanonicalEmail(rs.getString("canonical_email"));
-        x.setCanonicalName(rs.getString("canonical_name"));
-        x.setSalesforceContactId(rs.getString("salesforce_contact_id"));
-        x.setSalesforceAccountId(rs.getString("salesforce_account_id"));
-        x.setEmail(rs.getString("email_enc"));
-        x.setPhone(rs.getString("phone_enc"));
-        x.setTitle(rs.getString("title_enc"));
-        x.setDepartment(rs.getString("department_enc"));
-        x.setRawJson(rs.getString("raw_json_enc"));
-        x.setConfidence(rs.getString("confidence"));
+        x.setIdentityId(Math.max(0L, rs.getLong("identity_id")));
+        x.setCanonicalEmail(sanitizeDbText(rs.getString("canonical_email"), 512));
+        x.setCanonicalName(sanitizeDbText(rs.getString("canonical_name"), 512));
+        x.setSalesforceContactId(sanitizeDbText(rs.getString("salesforce_contact_id"), 256));
+        x.setSalesforceAccountId(sanitizeDbText(rs.getString("salesforce_account_id"), 256));
+        x.setEmail(sanitizeDbText(rs.getString("email_enc"), 4096));
+        x.setPhone(sanitizeDbText(rs.getString("phone_enc"), 1024));
+        x.setTitle(sanitizeDbText(rs.getString("title_enc"), 512));
+        x.setDepartment(sanitizeDbText(rs.getString("department_enc"), 512));
+        x.setRawJson(sanitizeDbText(rs.getString("raw_json_enc"), 20000));
+        x.setConfidence(sanitizeDbText(rs.getString("confidence"), 32));
 
         Timestamp created = rs.getTimestamp("created_at");
         if (created != null) {
@@ -469,5 +469,16 @@ public final class CustomerIdentityStore {
 
     private static String nullIfBlank(String v) {
         return isBlank(v) ? null : v.trim();
+    }
+
+    private static String sanitizeDbText(String value, int maxChars) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (maxChars <= 0 || trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+        return trimmed.substring(0, maxChars);
     }
 }

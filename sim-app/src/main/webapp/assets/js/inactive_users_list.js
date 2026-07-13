@@ -7,12 +7,11 @@
     const days = Number(cfg.days || 7);
     let page = Number(cfg.page || 1);
     let limit = Number(cfg.limit || 10);
-    const total = Number(cfg.total || 0);
     const totalPages = Number(cfg.totalPages || 1);
 
     let data = cfg.data || { rows: [] };
     if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch (_) { data = { rows: [] }; }
+        try { data = JSON.parse(data); } catch { data = { rows: [] }; }
     }
 
     const body = document.getElementById('inactiveListBody');
@@ -22,14 +21,22 @@
     const clearSearchBtn = document.getElementById('clearSearchBtn');
 
     function esc(v) {
-        if (v == null) return '';
+        if (v === null || v === undefined) return '';
         return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 
     function fmt(ts) {
         if (!ts) return '—';
-        try { return new Date(ts).toLocaleString(); } catch (_) { return ts; }
+        try { return new Date(ts).toLocaleString(); } catch { return ts; }
+    }
+
+    function customerProfileUrl(sessionId, friendlyName) {
+        const p = new URLSearchParams();
+        if (sessionId) p.set('sessionId', String(sessionId));
+        else if (friendlyName) p.set('friendlyName', String(friendlyName));
+        else return '';
+        return `${contextPath}/customer-profile?${p.toString()}`;
     }
 
     function reviewUrl(sessionId) {

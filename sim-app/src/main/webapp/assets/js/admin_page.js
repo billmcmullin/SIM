@@ -171,7 +171,7 @@
 
             try {
                 localStorage.setItem('admin.activeTab', panelId);
-            } catch (_) { /* ignore */ }
+            } catch { /* ignore */ }
 
             if (updateHash) {
                 history.replaceState(null, '', `#${panelId}`);
@@ -186,7 +186,7 @@
         let stored = '';
         try {
             stored = localStorage.getItem('admin.activeTab') || '';
-        } catch (_) { /* ignore */ }
+        } catch { /* ignore */ }
 
         const initial = tabs.find((t) => t.panelId === hashId)?.panelId
             || tabs.find((t) => t.panelId === stored)?.panelId

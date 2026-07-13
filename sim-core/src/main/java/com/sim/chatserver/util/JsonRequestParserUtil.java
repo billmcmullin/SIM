@@ -11,6 +11,7 @@ import java.util.logging.Logger;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
@@ -76,7 +77,7 @@ public final class JsonRequestParserUtil {
         } catch (BodyTooLargeException ex) {
             log.warning(() -> "JSON request body exceeds limit: " + ex.getMessage());
             return emptyObject();
-        } catch (Exception ex) {
+        } catch (IOException | JsonException ex) {
             log.log(Level.WARNING, "Failed to parse JSON request body", ex);
             return emptyObject();
         }
@@ -123,7 +124,7 @@ public final class JsonRequestParserUtil {
                 default ->
                     defaultValue;
             };
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             return defaultValue;
         }
     }
@@ -134,23 +135,19 @@ public final class JsonRequestParserUtil {
         }
 
         int parsed = defaultValue;
-        try {
-            JsonValue v = obj.get(key);
-            if (v == null) {
-                return clamp(defaultValue, min, max);
-            }
+        JsonValue v = obj.get(key);
+        if (v == null) {
+            return clamp(defaultValue, min, max);
+        }
 
-            switch (v.getValueType()) {
-                case NUMBER ->
-                    parsed = obj.getInt(key, defaultValue);
-                case STRING -> {
-                    String s = ((JsonString) v).getString();
-                    parsed = Integer.parseInt(s.trim());
-                }
-                default ->
-                    parsed = defaultValue;
+        try {
+            if (v.getValueType() == JsonValue.ValueType.NUMBER) {
+                parsed = obj.getInt(key, defaultValue);
+            } else if (v.getValueType() == JsonValue.ValueType.STRING) {
+                String s = ((JsonString) v).getString();
+                parsed = Integer.parseInt(s.trim());
             }
-        } catch (Exception ex) {
+        } catch (NumberFormatException | ClassCastException ex) {
             parsed = defaultValue;
         }
 
@@ -229,7 +226,7 @@ public final class JsonRequestParserUtil {
     }
 
     @SuppressWarnings("serial")
-    private static final class BodyTooLargeException extends Exception {
+    private static final class BodyTooLargeException extends IOException {
 
         BodyTooLargeException(String message) {
             super(message);

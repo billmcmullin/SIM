@@ -10,9 +10,11 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -61,38 +63,43 @@ public class DashboardNewUsersServlet extends HttpServlet {
     private static final int DEFAULT_DAYS = 7;
     private static final Set<Integer> ALLOWED_DAYS = Set.of(7, 14, 30, 90);
 
+    private static final String PATH_PAGE = "/dashboard/new-users";
+    private static final String PATH_DATA = "/dashboard/new-users/data";
+    private static final String PATH_DAY = "/dashboard/new-users/day";
+    private static final String PATH_DAY_DATA = "/dashboard/new-users/day-data";
+
     @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        String path = resolveRequestPath(req);
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         try {
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
-                if (reqExpectsJson(req)) {
+                if (reqExpectsJson(path)) {
                     writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
                 } else {
-                    resp.sendRedirect(req.getContextPath() + "/login");
+                    resp.sendRedirect(resp.encodeRedirectURL(contextPath + "/login"));
                 }
                 return;
             }
 
-            String path = req.getServletPath();
-
-            if (path.endsWith("/data")) {
+            if (PATH_DATA.equals(path)) {
                 handleData(req, resp);
                 return;
             }
-            if (path.endsWith("/day") || path.endsWith("/day-data")) {
+            if (PATH_DAY.equals(path) || PATH_DAY_DATA.equals(path)) {
                 handleDay(req, resp);
                 return;
             }
 
             handlePage(req, resp, session);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Failed in /dashboard/new-users flow", e);
             if (!resp.isCommitted()) {
-                if (reqExpectsJson(req)) {
+                if (reqExpectsJson(path)) {
                     writeJsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load new user metrics.");
                 } else {
                     resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
@@ -103,25 +110,25 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private boolean reqExpectsJson(HttpServletRequest req) {
-        String path = req.getServletPath();
-        return path.endsWith("/data") || path.endsWith("/day") || path.endsWith("/day-data");
+    private boolean reqExpectsJson(String path) {
+        return PATH_DATA.equals(path) || PATH_DAY.equals(path) || PATH_DAY_DATA.equals(path);
     }
 
-    private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) throws Exception {
-        int days = parseDays(req.getParameter("days")).orElse(DEFAULT_DAYS);
+    private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) throws IOException {
+        int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-        Metrics metrics = loadMetrics(start, end, req.getContextPath());
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        Metrics metrics = loadMetrics(start, end, contextPath);
 
         String user = String.valueOf(session.getAttribute("user"));
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-                .replace("${contextPath}", escapeHtml(req.getContextPath()))
+                .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(user))
                 .replace("${trendJson}", escapeForJs(metrics.toTrendJson()))
-                .replace("${latestRows}", metrics.renderLatestRows())
+                .replace("${latestRows}", "")
                 .replace("${rangeStart}", escapeHtml(start.format(DATE_FMT)))
                 .replace("${rangeEnd}", escapeHtml(end.format(DATE_FMT)))
                 .replace("${selectedDays}", String.valueOf(days));
@@ -133,12 +140,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private void handleData(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+    private void handleData(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         LocalDate rangeEnd = LocalDate.now(ZoneId.systemDefault());
-        int days = parseDays(req.getParameter("days")).orElse(DEFAULT_DAYS);
+        int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
         LocalDate rangeStart = rangeEnd.minusDays(days - 1);
 
-        Metrics metrics = loadMetrics(rangeStart, rangeEnd, req.getContextPath());
+        Metrics metrics = loadMetrics(rangeStart, rangeEnd, safeContextPath(req.getServletContext().getContextPath()));
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
         JsonArrayBuilder values = Json.createArrayBuilder();
@@ -174,15 +181,15 @@ public class DashboardNewUsersServlet extends HttpServlet {
         resp.getWriter().write(payload.toString());
     }
 
-    private void handleDay(HttpServletRequest req, HttpServletResponse resp) throws Exception {
-        Optional<LocalDate> dayOpt = parseLocalDate(req.getParameter("day"));
+    private void handleDay(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        Optional<LocalDate> dayOpt = parseLocalDate(firstParam(req, "day"));
         if (dayOpt.isEmpty()) {
             writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing or invalid day.");
             return;
         }
         LocalDate day = dayOpt.get();
 
-        DayResult result = loadDayFirstSeen(day, req.getContextPath());
+        DayResult result = loadDayFirstSeen(day, safeContextPath(req.getServletContext().getContextPath()));
 
         JsonArrayBuilder rows = Json.createArrayBuilder();
         int rank = 1;
@@ -214,22 +221,23 @@ public class DashboardNewUsersServlet extends HttpServlet {
             List<WidgetEntry> widgets;
             try {
                 widgets = WidgetStore.list(null);
-            } catch (Exception e) {
+            } catch (SQLException e) {
                 log.log(Level.WARNING, "Unable to list widgets", e);
                 widgets = List.of();
             }
             computeNewSessionMetrics(conn, widgets, metrics, contextPath);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to compute new-user metrics", e);
         }
         return metrics;
     }
 
-    private DayResult loadDayFirstSeen(LocalDate day, String contextPath) throws Exception {
+    private DayResult loadDayFirstSeen(LocalDate day, String contextPath) {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to list widgets", e);
             widgets = List.of();
         }
 
@@ -253,7 +261,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
             Map<String, SessionLabelStore.SessionLabel> labels;
             try {
                 labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
-            } catch (Exception ex) {
+            } catch (SQLException ex) {
+                log.log(Level.WARNING, "Unable to resolve session labels", ex);
                 labels = Map.of();
             }
 
@@ -269,10 +278,13 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             return new DayResult(rows);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to load day first-seen data", e);
+            return new DayResult(List.of());
         }
     }
 
-    private void computeNewSessionMetrics(Connection conn, List<WidgetEntry> widgets, Metrics metrics, String contextPath) throws Exception {
+    private void computeNewSessionMetrics(Connection conn, List<WidgetEntry> widgets, Metrics metrics, String contextPath) throws SQLException {
         Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
         Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
 
@@ -292,7 +304,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         Map<String, SessionLabelStore.SessionLabel> labels;
         try {
             labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to resolve session labels", e);
             labels = Map.of();
         }
@@ -310,7 +322,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws Exception {
+    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
         Map<String, Timestamp> earliestBySession = new LinkedHashMap<>();
         for (WidgetEntry widget : widgets) {
             if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
@@ -343,7 +355,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return earliestBySession;
     }
 
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws Exception {
+    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
         Map<String, Integer> totals = new LinkedHashMap<>();
         for (WidgetEntry widget : widgets) {
             if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
@@ -379,7 +391,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         try {
             int d = Integer.parseInt(value.trim());
             return ALLOWED_DAYS.contains(d) ? Optional.of(d) : Optional.empty();
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             return Optional.empty();
         }
     }
@@ -390,12 +402,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
         try {
             return Optional.of(LocalDate.parse(value, DATE_FMT));
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
             return Optional.empty();
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
@@ -473,6 +485,43 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return java.net.URLEncoder.encode(v, StandardCharsets.UTF_8);
     }
 
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private String normalizeServletPath(String servletPath) {
+        if (PATH_DATA.equals(servletPath) || PATH_DAY.equals(servletPath) || PATH_DAY_DATA.equals(servletPath) || PATH_PAGE.equals(servletPath)) {
+            return servletPath;
+        }
+        return PATH_PAGE;
+    }
+
+    private String resolveRequestPath(HttpServletRequest req) {
+        if (req == null || req.getHttpServletMapping() == null) {
+            return PATH_PAGE;
+        }
+        return normalizeServletPath(req.getHttpServletMapping().getPattern());
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
     private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -491,7 +540,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final Map<LocalDate, Integer> byDay = new LinkedHashMap<>();
         final List<LatestRow> latest = new ArrayList<>();
 
-        Metrics(LocalDate start, LocalDate end) {
+        private Metrics(LocalDate start, LocalDate end) {
             this.start = start;
             this.end = end;
             long days = ChronoUnit.DAYS.between(start, end);
@@ -500,14 +549,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
         }
 
-        void incrementDay(LocalDate day) {
+        private void incrementDay(LocalDate day) {
             if (day == null || day.isBefore(start) || day.isAfter(end)) {
                 return;
             }
             byDay.put(day, byDay.getOrDefault(day, 0) + 1);
         }
 
-        String toTrendJson() {
+        private String toTrendJson() {
             JsonArrayBuilder labels = Json.createArrayBuilder();
             JsonArrayBuilder values = Json.createArrayBuilder();
             byDay.forEach((d, c) -> {
@@ -520,45 +569,13 @@ public class DashboardNewUsersServlet extends HttpServlet {
                     .build();
             return o.toString();
         }
-
-        String renderLatestRows() {
-            if (latest.isEmpty()) {
-                return "<tr><td colspan=\"4\" class=\"empty-row\">No new session IDs found.</td></tr>";
-            }
-            StringBuilder b = new StringBuilder();
-            int rank = 1;
-            for (LatestRow r : latest) {
-                b.append("<tr>")
-                        .append("<td>").append(rank++).append("</td>")
-                        .append("<td>").append(escapeHtmlStatic(r.display)).append("</td>")
-                        .append("<td>").append(escapeHtmlStatic(r.firstSeen)).append("</td>")
-                        .append("<td><a class=\"session-count-link\" href=\"")
-                        .append(escapeHtmlStatic(r.chatEntriesUrl))
-                        .append("\">")
-                        .append(r.totalChats)
-                        .append(" chats</a></td>")
-                        .append("</tr>");
-            }
-            return b.toString();
-        }
-
-        private static String escapeHtmlStatic(String s) {
-            if (s == null) {
-                return "";
-            }
-            return s.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace("\"", "&quot;")
-                    .replace("'", "&#39;");
-        }
     }
 
     private static final class DayResult {
 
         final List<LatestRow> rows;
 
-        DayResult(List<LatestRow> rows) {
+        private DayResult(List<LatestRow> rows) {
             this.rows = rows;
         }
     }
@@ -571,7 +588,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final int totalChats;
         final String chatEntriesUrl;
 
-        LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
+        private LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
             this.display = display;
             this.rawSessionId = rawSessionId;
             this.firstSeen = firstSeen;

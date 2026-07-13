@@ -34,10 +34,12 @@ import com.sim.chatserver.widget.WidgetStore;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonException;
 import jakarta.json.JsonString;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonValue;
 import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -59,6 +61,11 @@ public class AllSessionsServlet extends HttpServlet {
     private static final int MAX_SESSION_ID_LENGTH = 128;
     private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
+
+    private static final String PATH_DATA = "/dashboard/sessions/data";
+    private static final String PATH_CHATS = "/dashboard/sessions/chats";
+    private static final String PATH_SELECT = "/dashboard/sessions/select";
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -75,7 +82,7 @@ public class AllSessionsServlet extends HttpServlet {
             this.sessionId = sessionId;
         }
 
-        void accept(Timestamp ts, int count, String widgetId) {
+        private void accept(Timestamp ts, int count, String widgetId) {
             if (ts != null) {
                 Instant instant = ts.toInstant();
                 if (firstSeen == null || instant.isBefore(firstSeen)) {
@@ -98,7 +105,7 @@ public class AllSessionsServlet extends HttpServlet {
         final String prompt;
         final Timestamp createdAt;
 
-        ChatRow(String chatId, String prompt, Timestamp createdAt) {
+        private ChatRow(String chatId, String prompt, Timestamp createdAt) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.createdAt = createdAt;
@@ -107,8 +114,8 @@ public class AllSessionsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String path = req.getServletPath();
-        if (path != null && path.endsWith("/chats")) {
+        String path = normalizeServletPath(req.getServletPath());
+        if (PATH_CHATS.equals(path)) {
             handleChats(req, resp);
         } else {
             handleSummary(req, resp);
@@ -117,8 +124,8 @@ public class AllSessionsServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String path = req.getServletPath();
-        if (path != null && path.endsWith("/select")) {
+        String path = normalizeServletPath(req.getServletPath());
+        if (PATH_SELECT.equals(path)) {
             handleSelect(req, resp);
             return;
         }
@@ -134,18 +141,25 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        boolean returnAll = "true".equalsIgnoreCase(req.getParameter("all"));
-        boolean labeledOnly = "true".equalsIgnoreCase(req.getParameter("labeledOnly"));
+        String allParam = firstParam(req, "all");
+        String labeledOnlyParam = firstParam(req, "labeledOnly");
+        String searchParam = firstParam(req, "search");
+        String activityParam = firstParam(req, "activity");
+        String limitParam = firstParam(req, "limit");
+        String pageParam = firstParam(req, "page");
 
-        String search = sanitizeTextParam(req.getParameter("search"), MAX_SEARCH_LENGTH);
+        boolean returnAll = parseBooleanParam(allParam);
+        boolean labeledOnly = parseBooleanParam(labeledOnlyParam);
+
+        String search = sanitizeTextParam(searchParam, MAX_SEARCH_LENGTH);
         String searchTerm = search == null ? "" : search.trim();
         boolean hasSearch = !searchTerm.isBlank();
         String normalizedSearch = hasSearch ? "%" + searchTerm + "%" : null;
 
-        String activity = sanitizeActivity(req.getParameter("activity"));
+        String activity = sanitizeActivity(activityParam);
 
-        int limit = clamp(parseInteger(req.getParameter("limit"), 10), 1, 200);
-        int page = clamp(parseInteger(req.getParameter("page"), 1), 1, Integer.MAX_VALUE);
+        int limit = clamp(parseInteger(limitParam, 10), 1, 200);
+        int page = clamp(parseInteger(pageParam, 1), 1, Integer.MAX_VALUE);
         if (page < 1) {
             page = 1;
         }
@@ -308,7 +322,7 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = sanitizeSessionId(req.getParameter("sessionId"));
+        String sessionId = sanitizeSessionId(firstParam(req, "sessionId"));
         if (sessionId == null || sessionId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -379,9 +393,10 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+        try (JsonReader reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
-        } catch (Exception e) {
+        } catch (JsonException | ClassCastException e) {
+            log.log(Level.FINE, "Invalid JSON payload for session selection", e);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
             resp.setContentType("application/json; charset=UTF-8");
@@ -398,19 +413,19 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         Set<String> selected = new LinkedHashSet<>();
-        try {
-            payload.getJsonArray("selectedChatIds").forEach(v -> {
+        var selectedIdsArray = payload.getJsonArray("selectedChatIds");
+        if (selectedIdsArray != null) {
+            for (JsonValue value : selectedIdsArray) {
                 String val;
-                if (v instanceof JsonString js) {
+                if (value instanceof JsonString js) {
                     val = js.getString().trim();
                 } else {
-                    val = v == null ? "" : v.toString().trim();
+                    val = value == null ? "" : value.toString().trim();
                 }
                 if (!val.isBlank()) {
                     selected.add(val);
                 }
-            });
-        } catch (Exception ignored) {
+            }
         }
 
         if (selected.isEmpty()) {
@@ -592,8 +607,8 @@ public class AllSessionsServlet extends HttpServlet {
             ps.setString(2, pattern);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    if (sid != null && !sid.isBlank()) {
+                    String sid = sanitizeSessionId(rs.getString("session_id"));
+                    if (sid != null) {
                         ids.add(sid);
                     }
                 }
@@ -607,8 +622,8 @@ public class AllSessionsServlet extends HttpServlet {
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = rs.getString("session_id");
-                if (sid == null || sid.isBlank()) {
+                String sid = sanitizeSessionId(rs.getString("session_id"));
+                if (sid == null) {
                     continue;
                 }
                 if (filter != null && !filter.contains(sid)) {
@@ -694,11 +709,46 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private int parseInteger(String value, int fallback) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException ignored) {
+        if (value == null) {
             return fallback;
         }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty() || !SAFE_INT_PARAM.matcher(trimmed).matches()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(trimmed);
+        } catch (NumberFormatException ignored) {
+            log.log(Level.FINE, "Invalid integer parameter value", ignored);
+            return fallback;
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
+    }
+
+    private boolean parseBooleanParam(String value) {
+        return "true".equalsIgnoreCase(value);
+    }
+
+    private String normalizeServletPath(String servletPath) {
+        if (servletPath == null) {
+            return PATH_DATA;
+        }
+        String normalized = servletPath.trim();
+        if (PATH_CHATS.equals(normalized) || PATH_SELECT.equals(normalized) || PATH_DATA.equals(normalized)) {
+            return normalized;
+        }
+        return PATH_DATA;
     }
 
     private int clamp(int value, int min, int max) {

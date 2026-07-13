@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -19,6 +18,14 @@ public final class WidgetStore {
 
     private static final String SQL_STATE_UNDEFINED_TABLE = "42P01";
     private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
+    private static final String CREATE_TABLE_SQL = """
+            CREATE TABLE IF NOT EXISTS widget_entries (
+                id SERIAL PRIMARY KEY,
+                widget_id VARCHAR(128) NOT NULL UNIQUE,
+                display_name VARCHAR(256) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+            """;
 
     private WidgetStore() {
         // utility class
@@ -29,15 +36,9 @@ public final class WidgetStore {
      * application startup.
      */
     public static void ensureTableExists() {
-        try (Connection connection = Database.getConnection(); Statement statement = connection.createStatement()) {
-            statement.executeUpdate("""
-                CREATE TABLE IF NOT EXISTS widget_entries (
-                    id SERIAL PRIMARY KEY,
-                    widget_id VARCHAR(128) NOT NULL UNIQUE,
-                    display_name VARCHAR(256) NOT NULL,
-                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-                )
-                """);
+        try (Connection connection = Database.getConnection();
+             PreparedStatement statement = connection.prepareStatement(CREATE_TABLE_SQL)) {
+            statement.executeUpdate();
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to ensure widget_entries table exists", e);
         }
@@ -57,7 +58,8 @@ public final class WidgetStore {
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql.toString())) {
 
             if (hasFilter) {
-                String pattern = "%" + filter.trim() + "%";
+                String safeFilter = filter == null ? "" : filter.trim();
+                String pattern = "%" + safeFilter + "%";
                 statement.setString(1, pattern);
                 statement.setString(2, pattern);
             }
@@ -235,9 +237,9 @@ public final class WidgetStore {
 
     private static WidgetEntry mapRow(ResultSet rs) throws SQLException {
         return new WidgetEntry(
-                rs.getInt("id"),
-                rs.getString("widget_id"),
-                rs.getString("display_name"),
+                Math.max(0, rs.getInt("id")),
+                sanitizeDbText(rs.getString("widget_id"), 128),
+                sanitizeDbText(rs.getString("display_name"), 256),
                 toInstantRequired(rs.getTimestamp("created_at")));
     }
 
@@ -250,6 +252,17 @@ public final class WidgetStore {
             throw new IllegalArgumentException(fieldName + " must be provided");
         }
         return value.trim();
+    }
+
+    private static String sanitizeDbText(String value, int maxChars) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (maxChars <= 0 || trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+        return trimmed.substring(0, maxChars);
     }
 
     public static final class DuplicateWidgetIdException extends SQLException {

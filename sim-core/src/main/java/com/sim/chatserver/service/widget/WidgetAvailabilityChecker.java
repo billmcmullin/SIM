@@ -1,5 +1,6 @@
 package com.sim.chatserver.service.widget;
 
+import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -69,13 +70,13 @@ public class WidgetAvailabilityChecker {
                     .uri(URI.create(cfg.url))
                     .timeout(Duration.ofMillis(cfg.timeoutMs));
 
-            if ("HEAD".equals(cfg.method)) {
-                builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
-            } else if ("POST".equals(cfg.method)) {
-                builder.POST(HttpRequest.BodyPublishers.noBody());
-                builder.header("Content-Type", "application/json");
-            } else {
-                builder.GET();
+            switch (cfg.method) {
+                case "HEAD" -> builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
+                case "POST" -> {
+                    builder.POST(HttpRequest.BodyPublishers.noBody());
+                    builder.header("Content-Type", "application/json");
+                }
+                default -> builder.GET();
             }
 
             HttpRequest request = builder.build();
@@ -99,7 +100,12 @@ public class WidgetAvailabilityChecker {
             }
 
             return up(checkedAt, latencyMs, "Healthcheck succeeded" + sourceSuffix(cfg));
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            long latencyMs = Duration.between(start, Instant.now()).toMillis();
+            log.log(Level.FINE, "Widget availability check interrupted", e);
+            return down(checkedAt, latencyMs, "Interrupted during healthcheck" + sourceSuffix(cfg));
+        } catch (IOException | IllegalArgumentException e) {
             long latencyMs = Duration.between(start, Instant.now()).toMillis();
             log.log(Level.FINE, "Widget availability check error", e);
             return down(checkedAt, latencyMs, "Exception: " + e.getClass().getSimpleName()
@@ -107,7 +113,7 @@ public class WidgetAvailabilityChecker {
         }
     }
 
-    private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt) throws Exception {
+    private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt) throws IOException, InterruptedException {
         String probeUrl = buildEmbedStreamUrl(cfg.url, cfg.widgetId);
         String payload = buildSyntheticPayload();
 
@@ -274,7 +280,7 @@ public class WidgetAvailabilityChecker {
                     if ("textResponseChunk".equals(type) && !error && text != null && !text.trim().isEmpty()) {
                         sawGoodChunk = true;
                     }
-                } catch (Exception ignore) {
+                } catch (RuntimeException ignore) {
                     // Ignore malformed chunk; continue scanning
                 }
             }
@@ -328,7 +334,7 @@ public class WidgetAvailabilityChecker {
                     return cfg;
                 }
             }
-        } catch (Exception e) {
+        } catch (java.sql.SQLException | RuntimeException e) {
             log.log(Level.FINE, "DB config unavailable, falling back to env/defaults", e);
         }
 
@@ -376,7 +382,7 @@ public class WidgetAvailabilityChecker {
                 actual = actual.substring(1, actual.length() - 1);
             }
             return expectedValue.equalsIgnoreCase(actual.trim());
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return false;
         }
     }
@@ -387,7 +393,7 @@ public class WidgetAvailabilityChecker {
         }
         try {
             return obj.getString(key, null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             String v = obj.get(key).toString();
             if (v != null && v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
                 v = v.substring(1, v.length() - 1);
@@ -402,10 +408,10 @@ public class WidgetAvailabilityChecker {
         }
         try {
             return obj.getBoolean(key);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             try {
                 return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 return fallback;
             }
         }
@@ -413,13 +419,20 @@ public class WidgetAvailabilityChecker {
 
     private String env(String key, String defaultValue) {
         String v = System.getenv(key);
-        return (v == null || v.isBlank()) ? defaultValue : v;
+        if (v == null || v.isBlank()) {
+            return defaultValue;
+        }
+        String trimmed = v.trim();
+        if (trimmed.chars().anyMatch(Character::isISOControl)) {
+            return defaultValue;
+        }
+        return trimmed;
     }
 
     private int parseIntEnv(String key, int defaultValue) {
         try {
             return Integer.parseInt(env(key, String.valueOf(defaultValue)).trim());
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             return defaultValue;
         }
     }

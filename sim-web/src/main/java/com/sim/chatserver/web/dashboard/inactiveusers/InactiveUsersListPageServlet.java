@@ -4,12 +4,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,6 +35,7 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -95,33 +97,34 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String contextPath = safeContextPath(req.getServletContext().getContextPath());
         HttpSession s = req.getSession(false);
         if (s == null || s.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        String scope = nvl(req.getParameter("scope")).trim();
+        String scope = nvl(firstParam(req, "scope")).trim();
         if (!"widget".equalsIgnoreCase(scope)) {
             scope = "all";
         }
 
-        String widgetIdFilter = nvl(req.getParameter("widgetId")).trim();
-        String search = nvl(req.getParameter("search")).trim();
+        String widgetIdFilter = nvl(firstParam(req, "widgetId")).trim();
+        String search = nvl(firstParam(req, "search")).trim();
         String searchLower = search.toLowerCase();
         boolean hasSearch = !searchLower.isBlank();
 
-        int days = parseInt(req.getParameter("days"), DEFAULT_DAYS);
+        int days = parseInt(firstParam(req, "days"), DEFAULT_DAYS);
         if (days < 1) {
             days = DEFAULT_DAYS;
         }
 
-        int page = parseInt(req.getParameter("page"), 1);
+        int page = parseInt(firstParam(req, "page"), 1);
         if (page < 1) {
             page = 1;
         }
 
-        int limit = parseInt(req.getParameter("limit"), DEFAULT_LIMIT);
+        int limit = parseInt(firstParam(req, "limit"), DEFAULT_LIMIT);
         if (limit < 1) {
             limit = DEFAULT_LIMIT;
         }
@@ -131,7 +134,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to load widgets", e);
             widgets = List.of();
         }
@@ -206,7 +209,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                                     r.frustrationDetected = fr.detected;
                                     r.frustrationReason = fr.reason;
                                 }
-                            } catch (Exception ex) {
+                            } catch (RuntimeException ex) {
                                 log.log(Level.FINE, "Frustration detection skipped for " + sid + " in " + table, ex);
                             }
                         }
@@ -219,7 +222,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to compute inactive users list", e);
         }
 
@@ -229,7 +232,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             if (!ids.isEmpty()) {
                 labels = SessionLabelStore.mapDisplayNames(ids);
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to load session labels", e);
         }
 
@@ -265,7 +268,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 : "Inactive Users: " + widgetNameById.getOrDefault(widgetIdFilter, widgetIdFilter);
 
         String rendered = template
-                .replace("${contextPath}", req.getContextPath())
+            .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(String.valueOf(s.getAttribute("user"))))
                 .replace("${title}", escapeHtml(title))
                 .replace("${scope}", escapeHtml(scope))
@@ -276,13 +279,11 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 .replace("${total}", String.valueOf(total))
                 .replace("${totalPages}", String.valueOf(totalPages))
                 .replace("${search}", escapeHtml(search))
-                .replace("${rowsJson}", jsonData);
+                .replace("${rowsJson}", escapeForJs(jsonData));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
-        }
+        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
     private void hydrateFrustrationForRows(Connection conn, String table, List<Row> rows) {
@@ -293,7 +294,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 r.frustrationDetected = fr.detected;
                 r.frustrationScore = fr.score;
                 r.frustrationReason = fr.reason;
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 r.frustrationDetected = false;
                 r.frustrationScore = 0.0;
                 r.frustrationReason = "";
@@ -302,7 +303,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
-    private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) throws Exception {
+    private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) throws SQLException {
         List<Row> rows = new ArrayList<>();
         String table = sanitizeWidgetTableName(widgetId);
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
@@ -360,7 +361,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                         return prompts;
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (SQLException ex) {
+                log.log(Level.FINEST, "Prompt column unavailable for frustration scan: " + col, ex);
                 // try next candidate column
             }
         }
@@ -577,7 +579,11 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     .add("frustrationReason", nvl(r.frustrationReason)));
         }
         JsonObject obj = Json.createObjectBuilder().add("rows", arr).build();
-        return obj.toString();
+        StringWriter sw = new StringWriter();
+        try (JsonWriter writer = Json.createWriter(sw)) {
+            writer.writeObject(obj);
+        }
+        return sw.toString();
     }
 
     private String loadTemplate(ServletContext context, String path) throws IOException {
@@ -596,7 +602,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
@@ -627,11 +633,26 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     }
 
     private int parseInt(String v, int fallback) {
-        try {
-            return Integer.parseInt(v);
-        } catch (Exception e) {
+        if (v == null) {
             return fallback;
         }
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return values[0];
     }
 
     private String nvl(String s) {
@@ -644,5 +665,26 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
         return in.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 .replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
+    private String escapeForJs(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 }

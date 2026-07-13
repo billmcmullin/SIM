@@ -7,7 +7,7 @@
     if (typeof trendData === 'string') {
         try {
             trendData = JSON.parse(trendData);
-        } catch (e) {
+        } catch {
             trendData = { labels: [], values: [], widgetSeries: [], averagePostsPerDay: 0, totalPosts: 0 };
         }
     }

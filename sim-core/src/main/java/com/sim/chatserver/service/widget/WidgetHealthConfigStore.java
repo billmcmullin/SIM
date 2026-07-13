@@ -29,7 +29,7 @@ public class WidgetHealthConfigStore {
         this.dataSource = dataSource;
     }
 
-    public void ensureTable() throws Exception {
+    public void ensureTable() throws java.sql.SQLException {
         final String sql = """
             CREATE TABLE IF NOT EXISTS widget_health_config (
                 id INT PRIMARY KEY,
@@ -59,7 +59,7 @@ public class WidgetHealthConfigStore {
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_cookie TEXT");
     }
 
-    private void addColumnIfMissing(String sql) throws Exception {
+    private void addColumnIfMissing(String sql) throws java.sql.SQLException {
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.execute();
         }
@@ -68,7 +68,7 @@ public class WidgetHealthConfigStore {
     /**
      * Ensure singleton row exists with defaults.
      */
-    public void ensureDefaultRow() throws Exception {
+    public void ensureDefaultRow() throws java.sql.SQLException {
         final String sql = """
             INSERT INTO widget_health_config (
                 id, healthcheck_url, method, timeout_ms, expect_json_field, expect_json_value, widget_id,
@@ -86,7 +86,7 @@ public class WidgetHealthConfigStore {
         }
     }
 
-    public WidgetHealthConfig load() throws Exception {
+    public WidgetHealthConfig load() throws java.sql.SQLException {
         final String sql = """
             SELECT id, healthcheck_url, method, timeout_ms,
                    expect_json_field, expect_json_value, widget_id,
@@ -108,7 +108,7 @@ public class WidgetHealthConfigStore {
         }
     }
 
-    public WidgetHealthConfig save(WidgetHealthConfig in) throws Exception {
+    public WidgetHealthConfig save(WidgetHealthConfig in) throws java.sql.SQLException {
         if (in == null) {
             throw new IllegalArgumentException("WidgetHealthConfig cannot be null");
         }
@@ -198,7 +198,7 @@ public class WidgetHealthConfigStore {
             ));
 
             ps.executeUpdate();
-        } catch (Exception e) {
+        } catch (java.sql.SQLException e) {
             log.log(Level.SEVERE, "Failed to save widget health config", e);
             throw e;
         }
@@ -206,20 +206,20 @@ public class WidgetHealthConfigStore {
         return load();
     }
 
-    private WidgetHealthConfig mapRow(ResultSet rs) throws Exception {
+    private WidgetHealthConfig mapRow(ResultSet rs) throws java.sql.SQLException {
         WidgetHealthConfig cfg = new WidgetHealthConfig();
-        cfg.setId(rs.getInt("id"));
-        cfg.setHealthcheckUrl(trimToNull(rs.getString("healthcheck_url")));
-        cfg.setMethod(defaultIfBlank(rs.getString("method"), "GET"));
-        cfg.setTimeoutMs(rs.getInt("timeout_ms"));
-        cfg.setExpectJsonField(trimToNull(rs.getString("expect_json_field")));
-        cfg.setExpectJsonValue(trimToNull(rs.getString("expect_json_value")));
-        cfg.setWidgetId(trimToNull(rs.getString("widget_id")));
-        cfg.setRequestOrigin(trimToNull(rs.getString("request_origin")));
-        cfg.setRequestReferer(trimToNull(rs.getString("request_referer")));
-        cfg.setRequestUserAgent(trimToNull(rs.getString("request_user_agent")));
-        cfg.setRequestCookie(trimToNull(rs.getString("request_cookie")));
-        cfg.setUpdatedBy(trimToNull(rs.getString("updated_by")));
+        cfg.setId(Math.max(0, rs.getInt("id")));
+        cfg.setHealthcheckUrl(trimToNull(sanitizeDbText(rs.getString("healthcheck_url"), 2048)));
+        cfg.setMethod(defaultIfBlank(sanitizeDbText(rs.getString("method"), 16), "GET"));
+        cfg.setTimeoutMs(Math.max(1, rs.getInt("timeout_ms")));
+        cfg.setExpectJsonField(trimToNull(sanitizeDbText(rs.getString("expect_json_field"), 100)));
+        cfg.setExpectJsonValue(trimToNull(sanitizeDbText(rs.getString("expect_json_value"), 255)));
+        cfg.setWidgetId(trimToNull(sanitizeDbText(rs.getString("widget_id"), 255)));
+        cfg.setRequestOrigin(trimToNull(sanitizeDbText(rs.getString("request_origin"), 2048)));
+        cfg.setRequestReferer(trimToNull(sanitizeDbText(rs.getString("request_referer"), 2048)));
+        cfg.setRequestUserAgent(trimToNull(sanitizeDbText(rs.getString("request_user_agent"), 1024)));
+        cfg.setRequestCookie(trimToNull(sanitizeDbText(rs.getString("request_cookie"), 4096)));
+        cfg.setUpdatedBy(trimToNull(sanitizeDbText(rs.getString("updated_by"), 100)));
 
         Timestamp ts = rs.getTimestamp("updated_at");
         cfg.setUpdatedAt(ts == null ? null : ts.toInstant());
@@ -276,6 +276,17 @@ public class WidgetHealthConfigStore {
             return d;
         }
         return s;
+    }
+
+    private String sanitizeDbText(String s, int maxChars) {
+        if (s == null) {
+            return null;
+        }
+        String trimmed = s.trim();
+        if (maxChars <= 0 || trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+        return trimmed.substring(0, maxChars);
     }
 
     /**

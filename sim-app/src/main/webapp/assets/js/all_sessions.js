@@ -36,7 +36,6 @@
     }
 
     let sessionsTableBody = null;
-    let sessionsTableEl = null;
     let sessionsContainerDiv = null;
     let summaryEl = null;
     let paginationEl = null;
@@ -55,12 +54,12 @@
     let showActiveUsersBtn = null;
     let toggleLabeledOnlyBtn = null;
 
-    const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
 
     const fmt = ts => {
         if (!ts) return '';
-        try { return new Date(ts).toLocaleString(); } catch (e) { return ts; }
+        try { return new Date(ts).toLocaleString(); } catch { return ts; }
     };
 
     function customerProfileUrl(sessionId, friendlyName) {
@@ -72,7 +71,7 @@
     }
 
     function appendProfileLink(container, text, sessionId, friendlyName) {
-        const label = text == null ? '' : String(text).trim();
+        const label = (text === null || text === undefined) ? '' : String(text).trim();
         if (!label) return;
         const href = customerProfileUrl(sessionId, friendlyName);
         if (!href) {
@@ -113,7 +112,7 @@
 
         try {
             return JSON.parse(text);
-        } catch (e) {
+        } catch {
             throw new Error(`Non-JSON response received (content-type: ${ct || 'unknown'})`);
         }
     }
@@ -710,7 +709,6 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         sessionsTableBody = document.getElementById('sessionsBody');
-        sessionsTableEl = document.getElementById('sessionsTable');
         sessionsContainerDiv = document.getElementById('sessions') || document.getElementById('sessionsContainer') || null;
         summaryEl = document.getElementById('summary');
         searchInput = document.getElementById('searchInput');

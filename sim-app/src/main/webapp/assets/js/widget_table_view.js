@@ -8,7 +8,6 @@
     const API_DATA = contextPath + '/dashboard/widgets/drilldown/view/data';
     const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
     const API_REVIEW_START = contextPath + '/dashboard/widgets/review/start';
-    const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
     let state = {
         limit: 10,
@@ -24,10 +23,10 @@
     const selectedChats = new Map();
 
     let tableBody, globalSearchInput, filterPrompt, filterResponse;
-    let prevBtn, nextBtn, pageInfo, pageSizeSelect;
+    let prevBtn, nextBtn, pageInfo;
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;
 
-    const esc = s => (s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+    const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
     const fmtDate = v => { if (!v) return ''; try { return new Date(v).toLocaleString(); } catch { return v; } };
     const truncateResponse = (text) => { if (!text) return ''; return text.length <= 220 ? text : text.slice(0, 217) + '…'; };
 
@@ -40,8 +39,8 @@
 
     function buildCustomerProfileUrl(sessionId, friendlyName) {
         const p = new URLSearchParams();
-        const sid = sessionId == null ? '' : String(sessionId).trim();
-        const fname = friendlyName == null ? '' : String(friendlyName).trim();
+        const sid = (sessionId === null || sessionId === undefined) ? '' : String(sessionId).trim();
+        const fname = (friendlyName === null || friendlyName === undefined) ? '' : String(friendlyName).trim();
 
         if (sid) p.set('sessionId', sid);
         else if (fname) p.set('friendlyName', fname);
@@ -51,7 +50,7 @@
     }
 
     function appendProfileLink(container, text, sessionId, friendlyName) {
-        const label = text == null ? '' : String(text).trim();
+        const label = (text === null || text === undefined) ? '' : String(text).trim();
         if (!label) return;
 
         const href = buildCustomerProfileUrl(sessionId, friendlyName);
@@ -76,7 +75,7 @@
         if (!ct.includes('application/json')) {
             try {
                 return JSON.parse(text);
-            } catch (e) {
+            } catch {
                 throw new Error('Server returned non-JSON response');
             }
         }
