@@ -17,6 +17,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,6 +34,8 @@ import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
+import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -134,7 +137,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         int to = Math.min(total, from + pageSize);
         List<Row> pageRows = allRows.subList(from, to);
 
-        String rowsHtml = renderRows(pageRows, from);
+        String rowsJsonB64 = buildRowsJsonBase64(pageRows, from);
 
         String dayParam = dayFilter != null ? "&day=" + urlEncode(dayFilter.format(DATE_FMT)) : "";
         String prevHref = page > 1
@@ -152,7 +155,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         String rendered = template
             .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
-                .replace("${rows}", rowsHtml)
+                .replace("${rowsJsonB64}", rowsJsonB64)
                 .replace("${totalUsers}", String.valueOf(total))
                 .replace("${page}", String.valueOf(page))
                 .replace("${totalPages}", String.valueOf(totalPages))
@@ -174,29 +177,24 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
     }
 
-    private String renderRows(List<Row> rows, int offset) {
-        if (rows.isEmpty()) {
-            StringBuilder empty = new StringBuilder();
-            empty.append('<').append("tr").append('>');
-            empty.append("<td colspan=\"4\" class=\"empty-row\">No users found for this selection.</td>");
-            empty.append("</tr>");
-            return empty.toString();
-        }
-        StringBuilder sb = new StringBuilder();
+    private String buildRowsJsonBase64(List<Row> rows, int offset) {
+        JsonArrayBuilder builder = Json.createArrayBuilder();
         int rank = offset + 1;
         for (Row r : rows) {
-            sb.append('<').append("tr").append('>');
-            sb.append("<td>").append(rank).append("</td>");
-            rank++;
-            sb.append("<td>").append(escapeHtml(r.display)).append("</td>");
-            sb.append("<td>").append(escapeHtml(r.firstSeen)).append("</td>");
-            sb.append("<td>");
-            sb.append("<a class=\"session-count-link\" href=\"").append(escapeHtml(r.chatEntriesUrl)).append("\">");
-            sb.append(r.totalChats).append(" chats</a>");
-            sb.append("</td>");
-            sb.append("</tr>");
+            Integer totalChats = r.totalChats;
+            int chats = 0;
+            if (totalChats != null) {
+                chats = totalChats;
+            }
+            builder.add(Json.createObjectBuilder()
+                    .add("rank", rank++)
+                    .add("display", safeJsonText(r.display))
+                    .add("firstSeen", safeJsonText(r.firstSeen))
+                    .add("totalChats", chats)
+                    .add("chatEntriesUrl", safeJsonText(r.chatEntriesUrl)));
         }
-        return sb.toString();
+        byte[] utf8 = builder.build().toString().getBytes(StandardCharsets.UTF_8);
+        return Base64.getEncoder().encodeToString(utf8);
     }
 
     private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
@@ -268,7 +266,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             int n = Integer.parseInt(value.trim());
             return n > 0 ? n : fallback;
         } catch (NumberFormatException e) {
-            log.log(Level.FINE, "Invalid positive integer parameter value: {0}", value);
+            log.log(Level.FINE, "Invalid positive integer parameter value: {0}", sanitizeForLog(value));
             return fallback;
         }
     }
@@ -280,7 +278,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         try {
             return LocalDate.parse(value.trim(), DATE_FMT);
         } catch (DateTimeParseException e) {
-            log.log(Level.FINE, "Invalid day parameter for new users drilldown: {0}", value);
+            log.log(Level.FINE, "Invalid day parameter for new users drilldown: {0}", sanitizeForLog(value));
             return null;
         }
     }
@@ -350,15 +348,31 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private String safeJsonText(String value) {
+        return value == null ? "" : value;
     }
 
     private String safeContextPath(String contextPath) {

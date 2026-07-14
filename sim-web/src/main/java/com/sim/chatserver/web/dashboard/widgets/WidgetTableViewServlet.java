@@ -4,21 +4,21 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -32,31 +32,36 @@ public class WidgetTableViewServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableViewServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/widget_table_view.html";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-
-    @Inject
-    AppDataSourceHolder dsHolder;
+    private static final Pattern WIDGET_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
+    private static final int MAX_PARAM_LEN = 128;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        String widgetId = req.getParameter("widgetId");
+        RequestContext context = RequestContext.from(req);
+        String widgetId = context.first("widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
+        if (!WIDGET_ID_PATTERN.matcher(widgetId).matches()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId format.");
+            return;
+        }
 
         // Optional date filter from dashboard links
-        String dateRaw = req.getParameter("date");
+        String dateRaw = context.first("date");
         LocalDate selectedDate = null;
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "Invalid date parameter for widget table view: {0}", sanitizeForLog(dateRaw));
                 resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date format. Expected YYYY-MM-DD.");
                 return;
             }
@@ -71,7 +76,7 @@ public class WidgetTableViewServlet extends HttpServlet {
                     break;
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to list widgets", e);
         }
 
@@ -106,7 +111,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         String rendered = template
                 .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role))
-                .replace("${contextPath}", req.getContextPath())
+                .replace("${contextPath}", escapeHtml(safeContextPath(req.getContextPath())))
                 .replace("${widgetId}", escapeHtml(widgetId))
                 .replace("${widgetName}", escapeHtml(widgetName))
                 .replace("${selectedDate}", escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
@@ -114,9 +119,7 @@ public class WidgetTableViewServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
-        }
+        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
     private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {
@@ -144,5 +147,49 @@ public class WidgetTableViewServlet extends HttpServlet {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private static final class RequestContext {
+
+        private final Map<String, String[]> params;
+
+        private RequestContext(Map<String, String[]> params) {
+            this.params = params;
+        }
+
+        private static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req.getParameterMap());
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank() || params == null) {
+                return null;
+            }
+            String[] values = params.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].trim();
+            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+        }
     }
 }

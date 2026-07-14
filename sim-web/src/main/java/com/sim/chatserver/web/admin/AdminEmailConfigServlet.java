@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -29,6 +30,7 @@ import java.util.regex.Pattern;
 public class AdminEmailConfigServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getName());
+    private static final int MAX_JSON_PAYLOAD_BYTES = 32 * 1024;
 
     @Inject
     DbEmailConfigProvider dbProvider;
@@ -59,7 +61,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .add("starttls", effective.startTls())
                     .add("ssl", effective.ssl())
                     .add("username", safe(effective.username()))
-                    .add("passwordConfigured", hasText(effective.password()))
+                    .add("passwordConfigured", effective.password() != null && !effective.password().isBlank())
                     .add("defaultFrom", safe(effective.defaultFrom()));
         }
 
@@ -87,9 +89,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
-            payload = reader.readObject();
-        } catch (JsonException | IOException e) {
+        try {
+            payload = readValidatedJsonPayload(req);
+        } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Rejected SMTP config payload: {0}", safe(e.getMessage()));
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            return;
+        } catch (JsonException e) {
+            log.log(Level.FINE, "Failed to parse SMTP config JSON payload", e);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -134,7 +141,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             try {
                 existing = dbProvider.load();
             } catch (Exception e) {
-                log.log(Level.WARNING, "Unable to load existing SMTP config for password retention", e);
+                log.log(Level.WARNING, "Unable to load existing SMTP config.", e);
             }
             finalPassword = existing == null ? "" : safe(existing.password());
         }
@@ -146,15 +153,9 @@ public class AdminEmailConfigServlet extends HttpServlet {
         String updatedBy = getUser(req);
 
         try {
-            log.info("Saving SMTP config: host=" + host
-                    + ", port=" + port
-                    + ", auth=" + auth
-                    + ", starttls=" + starttls
-                    + ", ssl=" + ssl
-                    + ", username=" + username
-                    + ", password=" + redact(finalPassword)
-                    + ", defaultFrom=" + defaultFrom
-                    + ", updatedBy=" + updatedBy);
+            log.log(Level.INFO,
+                "Saving SMTP config: host={0}, port={1}, auth={2}, starttls={3}, ssl={4}, username={5}, defaultFrom={6}, updatedBy={7}",
+                new Object[]{host, port, auth, starttls, ssl, username, defaultFrom, updatedBy});
 
             dbProvider.save(config, updatedBy);
 
@@ -297,8 +298,20 @@ public class AdminEmailConfigServlet extends HttpServlet {
         return s == null ? "" : s;
     }
 
-    private String redact(String v) {
-        return (v == null || v.isBlank()) ? "" : "****";
+    private JsonObject readValidatedJsonPayload(HttpServletRequest req) throws IOException {
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+            throw new IllegalArgumentException("Unsupported content type");
+        }
+
+        long len = req.getContentLengthLong();
+        if (len < 0 || len > MAX_JSON_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Invalid content length");
+        }
+
+        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+            return reader.readObject();
+        }
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {

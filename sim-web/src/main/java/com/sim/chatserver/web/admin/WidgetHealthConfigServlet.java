@@ -9,6 +9,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +19,7 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -28,6 +30,7 @@ import java.util.logging.Logger;
 public class WidgetHealthConfigServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetHealthConfigServlet.class.getName());
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -41,7 +44,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             store = new WidgetHealthConfigStore(dsHolder.getDataSource());
             store.ensureTable();
             store.ensureDefaultRow();
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
             throw new ServletException("Failed to initialize widget health config store", e);
         }
@@ -62,7 +65,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
                 cfg = store.load();
             }
 
-            writeJson(resp, HttpServletResponse.SC_OK, toJson(cfg).toString());
+            writeJson(resp, HttpServletResponse.SC_OK, toJson(cfg));
         } catch (Exception e) {
             log.log(Level.WARNING, "Unable to load widget health config", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorJson("Unable to load widget health config."));
@@ -77,6 +80,11 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
         try {
             ensureStore();
+
+            if (!isValidJsonRequest(req)) {
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
+                return;
+            }
 
             String body = req.getReader().lines().reduce("", (a, b) -> a + b);
             JsonObject in = parseJson(body);
@@ -103,7 +111,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             cfg.setUpdatedAt(Instant.now());
 
             WidgetHealthConfig saved = store.save(cfg);
-            writeJson(resp, HttpServletResponse.SC_OK, toJson(saved).toString());
+            writeJson(resp, HttpServletResponse.SC_OK, toJson(saved));
 
         } catch (Exception e) {
             log.log(Level.WARNING, "Unable to save widget health config", e);
@@ -169,7 +177,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         String val;
         try {
             val = obj.getString(key, null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "Unable to read JSON string key {0} directly; falling back to raw value", key);
             val = obj.get(key).toString();
             if (val != null && val.startsWith("\"") && val.endsWith("\"") && val.length() >= 2) {
                 val = val.substring(1, val.length() - 1);
@@ -188,31 +197,43 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
         try {
             return obj.getInt(key);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "Unable to read JSON int key {0} directly; trying parse fallback", key);
             try {
                 return Integer.parseInt(obj.get(key).toString().replace("\"", "").trim());
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
+                log.log(Level.FINE, "Unable to parse JSON int key {0}; using fallback", key);
                 return fallback;
             }
         }
     }
 
-    private String errorJson(String message) {
+    private JsonObject errorJson(String message) {
         return Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "Request failed." : message)
-                .build()
-                .toString();
+                .build();
     }
 
     private String safe(String value) {
         return value == null ? "" : value;
     }
 
-    private void writeJson(HttpServletResponse resp, int status, String body) throws IOException {
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body == null ? "{}" : body);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(body == null ? Json.createObjectBuilder().build() : body);
+        }
     }
 }

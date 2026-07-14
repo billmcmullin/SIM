@@ -17,6 +17,9 @@ import com.sim.chatserver.term.TermChatSnapshot;
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonString;
+import jakarta.json.JsonValue;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -31,6 +34,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
     private static final String SESSION_KEY = "widgetReviewSelections";
     private static final int MAX_SELECTIONS_PER_SESSION = 200;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
     public static final class Selection {
 
@@ -70,7 +74,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
             );
         }
 
-        // backward-compatible helper
         static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
             return fromWidget(widgetId, chatIds, searchTerms, null);
         }
@@ -113,7 +116,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final String prompt;
         public final String response;
 
-        SearchTerms(String global, String prompt, String response) {
+        private SearchTerms(String global, String prompt, String response) {
             this.global = safe(global);
             this.prompt = safe(prompt);
             this.response = safe(response);
@@ -129,9 +132,14 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
 
         JsonObject payload;
+        if (!isValidJsonRequest(req)) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
+            return;
+        }
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
+            log.log(java.util.logging.Level.FINE, "Unable to parse widget review start payload", e);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
@@ -145,7 +153,9 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         LinkedHashSet<String> chatSet = new LinkedHashSet<>();
         chatArray.forEach(value -> {
-            String chatId = value.toString().replace("\"", "").trim();
+            String chatId = value.getValueType() == JsonValue.ValueType.STRING
+                    ? ((JsonString) value).getString().trim()
+                    : "";
             if (!chatId.isEmpty()) {
                 chatSet.add(chatId);
             }
@@ -171,13 +181,12 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         String selectionId = storeSelection(session, selection);
 
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        resp.getWriter().write(Json.createObjectBuilder()
+        JsonObject ok = Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("selectionId", selectionId)
                 .build()
-                .toString());
+            ;
+        writeJson(resp, HttpServletResponse.SC_OK, ok);
     }
 
     public static String createSnapshotSelection(HttpSession session,
@@ -281,17 +290,31 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return v == null ? "" : v.trim();
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message, String selectionId) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
 
+    private void writeError(HttpServletResponse resp, int status, String message, String selectionId) throws IOException {
         var b = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", safe(message));
         if (selectionId != null && !selectionId.isBlank()) {
             b.add("selectionId", selectionId.trim());
         }
-        resp.getWriter().write(b.build().toString());
+        writeJson(resp, status, b.build());
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(payload);
+        }
     }
 }

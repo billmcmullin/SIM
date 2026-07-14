@@ -1,18 +1,9 @@
 services:
   wildfly:
     #Wildfly server instance
-    image: quay.io/wildfly/wildfly:latest
+    image: quay.io/wildfly/wildfly:latest-jdk25
     hostname: chatserver
     container_name: chatserver
-    user: root
-    # Used to get correct Timezone. Set for Los Angeles. Update to your Time Zone if not set right. 
-    command: >
-      bash -lc '
-        microdnf install -y tzdata &&
-        ln -snf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime &&
-        echo America/Los_Angeles > /etc/timezone || true;
-        su -s /bin/bash jboss -c "/opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0"
-      '
     ports:
       - 8080:8080
     volumes:

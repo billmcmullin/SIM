@@ -100,6 +100,7 @@ public class DashboardServlet extends HttpServlet {
                 DASHBOARD_EXECUTOR.shutdownNow();
             }
         } catch (InterruptedException e) {
+            log.log(Level.FINE, "Dashboard executor shutdown interrupted", e);
             DASHBOARD_EXECUTOR.shutdownNow();
             Thread.currentThread().interrupt();
         }
@@ -116,12 +117,9 @@ public class DashboardServlet extends HttpServlet {
 
         String contextPath = safeContextPath(req.getServletContext().getContextPath());
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
-        String adminLink = "ADMIN".equalsIgnoreCase(role)
-                ? "<div class=\"dashboard-admin-btn-row\">"
-                + "<button type=\"button\" class=\"ghost-btn\" onclick=\"window.location.href='"
-            + contextPath + "/admin'\">Admin</button>"
-                + "</div>"
-                : "";
+        boolean isAdmin = "ADMIN".equalsIgnoreCase(role);
+        String adminButtonStyle = isAdmin ? "" : "display:none;";
+        String adminHref = contextPath + "/admin";
 
         String infoMessageHtml = buildInfoMessageHtml(firstParam(req, "msg"));
 
@@ -302,7 +300,8 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("user", DashboardTemplateRenderer.escapeHtml(userName)),
                 Map.entry("contextPath", contextPath),
                 Map.entry("role", DashboardTemplateRenderer.escapeHtml(role)),
-                Map.entry("adminLink", adminLink),
+            Map.entry("adminButtonStyle", DashboardTemplateRenderer.escapeHtml(adminButtonStyle)),
+            Map.entry("adminHref", DashboardTemplateRenderer.escapeHtml(adminHref)),
                 Map.entry("dashboardInfoMessage", infoMessageHtml),
                 Map.entry("totalChats", DashboardTemplateRenderer.escapeHtml(String.valueOf(totalChats))),
                 Map.entry("todayChats", DashboardTemplateRenderer.escapeHtml(String.valueOf(todayChats))),
@@ -504,22 +503,35 @@ public class DashboardServlet extends HttpServlet {
             return Optional.empty();
         }
         try {
-            return Optional.of(LocalDate.parse(value, DATE_FORMATTER));
+            return Optional.of(LocalDate.parse(value.trim(), DATE_FORMATTER));
         } catch (DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid local-date parameter for dashboard: {0}", sanitizeForLog(value));
             return Optional.empty();
         }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 
     private String safeContextPath(String contextPath) {
@@ -616,20 +628,11 @@ public class DashboardServlet extends HttpServlet {
 
     private String formatProgressionHtml(ProgressStat p) {
         if (p == null) {
-            return "<span class=\"progression progression-flat\">0 (0.0%) vs yesterday</span>";
+            return "0 (0.0%) vs yesterday";
         }
 
-        String cls = switch (p.getDirection()) {
-            case "up" ->
-                "progression-up";
-            case "down" ->
-                "progression-down";
-            default ->
-                "progression-flat";
-        };
-
         String text = String.format("%+d (%.1f%%) vs yesterday", p.getDelta(), p.getPctDelta());
-        return "<span class=\"progression " + cls + "\">" + DashboardTemplateRenderer.escapeHtml(text) + "</span>";
+        return DashboardTemplateRenderer.escapeHtml(text);
     }
 
     private Map<String, Integer> buildTermTotalMap(TermSummary summary) {

@@ -26,7 +26,18 @@ export default [
             "no-undef": "error",
             "no-redeclare": "error",
             "no-unreachable": "error",
-            "eqeqeq": ["warn", "always"]
+            "eqeqeq": ["warn", "always"],
+            "no-implicit-globals": "error",
+            "no-fallthrough": "error",
+            "no-constant-condition": ["error", { "checkLoops": false }],
+            "no-empty": ["error", { "allowEmptyCatch": true }],
+            "valid-typeof": "error",
+            "no-dupe-keys": "error",
+            "no-self-compare": "error",
+            "curly": ["warn", "all"],
+            "consistent-return": "warn",
+            "prefer-const": "warn",
+            "no-debugger": "error"
         }
     }
 ];

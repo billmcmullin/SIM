@@ -6,11 +6,17 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 
 import jakarta.inject.Inject;
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -21,8 +27,10 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "ProfileServlet", urlPatterns = {"/profile"})
 public class ProfileServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
+    private static final int MAX_PARAM_LEN = 128;
 
     @Inject
     UserService userService;
@@ -50,27 +58,23 @@ public class ProfileServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
-        resp.setContentType("application/json");
-        PrintWriter writer = resp.getWriter();
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            writer.write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return;
         }
 
         Object sessionUser = session.getAttribute("user");
         if (!(sessionUser instanceof String currentUsername) || currentUsername.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            writer.write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return;
         }
 
-        String newUsername = sanitizeInput(req.getParameter("username"));
-        String newPassword = sanitizeInput(req.getParameter("password"));
+        RequestContext context = RequestContext.from(req);
+        String newUsername = sanitizeInput(context.first("username"));
+        String newPassword = sanitizeInput(context.first("password"));
 
         if (newUsername == null || newUsername.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            writer.write("{\"status\":\"error\",\"message\":\"Username cannot be empty.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Username cannot be empty.");
             return;
         }
 
@@ -78,19 +82,22 @@ public class ProfileServlet extends HttpServlet {
             UserAccount updated = userService.updateCredentials(currentUsername, newUsername, newPassword);
             String updatedUsername = updated == null ? null : sanitizeInput(updated.getUsername());
             if (updatedUsername == null || updatedUsername.isBlank()) {
-                resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                writer.write("{\"status\":\"error\",\"message\":\"Profile update failed.\"}");
+                writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Profile update failed.");
                 return;
             }
 
             session.setAttribute("user", updatedUsername);
-            writer.write("{\"status\":\"ok\",\"username\":\"" + escapeJson(updatedUsername) + "\"}");
+            JsonObject ok = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("username", updatedUsername)
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_OK, ok);
         } catch (jakarta.persistence.PersistenceException pe) {
-            resp.setStatus(HttpServletResponse.SC_CONFLICT);
-            writer.write("{\"status\":\"error\",\"message\":\"Could not update profile.\"}");
-        } catch (Exception e) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            writer.write("{\"status\":\"error\",\"message\":\"Failed to update profile.\"}");
+            log.log(Level.FINE, "Profile update conflict", pe);
+            writeError(resp, HttpServletResponse.SC_CONFLICT, "Could not update profile.");
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Profile update failed", e);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to update profile.");
         }
     }
 
@@ -128,10 +135,45 @@ public class ProfileServlet extends HttpServlet {
                 .replace("'", "&#39;");
     }
 
-    private static String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+        JsonObject error = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", message == null ? "" : message)
+                .build();
+        writeJson(resp, status, error);
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setContentType("application/json");
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        try (JsonWriter jsonWriter = Json.createWriter(resp.getWriter())) {
+            jsonWriter.writeObject(payload);
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static final class RequestContext {
+
+        private final Map<String, String[]> params;
+
+        private RequestContext(Map<String, String[]> params) {
+            this.params = params;
+        }
+
+        private static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req.getParameterMap());
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank() || params == null) {
+                return null;
+            }
+            String[] values = params.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].trim();
+            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+        }
     }
 }
