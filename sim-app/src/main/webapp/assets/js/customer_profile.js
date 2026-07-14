@@ -80,7 +80,7 @@
     function setText(id, value) {
         const el = document.getElementById(id);
         if (!el) return;
-        el.textContent = value == null || value === '' ? '—' : String(value);
+        el.textContent = (value === null || value === undefined || value === '') ? '—' : String(value);
     }
 
     function setStatus(message, success) {
@@ -112,7 +112,7 @@
         let data = null;
         try {
             data = await res.json();
-        } catch (_) {
+        } catch {
             data = { status: 'error', message: `Unexpected response (${res.status})` };
         }
 

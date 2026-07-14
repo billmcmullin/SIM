@@ -9,7 +9,7 @@
     const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
     const API_REVIEW_START = contextPath + '/dashboard/widgets/review/start';
 
-    let state = {
+    const state = {
         limit: 10,
         page: 1,
         totalPages: 1,

@@ -148,7 +148,7 @@
             }
 
             const payload = { name, description, matchPattern, matchType };
-            let url = `${this.contextPath}/admin/terms`;
+            const url = `${this.contextPath}/admin/terms`;
             let method = 'POST';
             if (this.isEditingTerm) {
                 payload.id = Number(this.termIdInput.value);

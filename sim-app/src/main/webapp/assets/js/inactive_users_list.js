@@ -5,8 +5,8 @@
     const scope = cfg.scope || 'all';
     const widgetId = cfg.widgetId || '';
     const days = Number(cfg.days || 7);
-    let page = Number(cfg.page || 1);
-    let limit = Number(cfg.limit || 10);
+    const page = Number(cfg.page || 1);
+    const limit = Number(cfg.limit || 10);
     const totalPages = Number(cfg.totalPages || 1);
 
     let data = cfg.data || { rows: [] };

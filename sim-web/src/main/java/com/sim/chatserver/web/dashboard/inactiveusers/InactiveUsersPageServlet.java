@@ -49,11 +49,13 @@ public class InactiveUsersPageServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(InactiveUsersPageServlet.class.getName());
     private static final int DEFAULT_DAYS = 7;
     private static final int TOP_N = 5;
+    private static final int MAX_SESSION_ID_LENGTH = 128;
     private static final String TEMPLATE_PATH = "/WEB-INF/views/inactive_users.html";
 
     private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
     private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
     private static final Pattern LOGGER_TOKEN = Pattern.compile("\\b(INFO|DEBUG|TRACE|WARN|WARNING|ERROR|FATAL)\\b");
+    private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern PROFANITY_PATTERN = Pattern.compile(
             "\\b(fuck|fucking|shit|bullshit|damn|wtf|crap|asshole)\\b",
             Pattern.CASE_INSENSITIVE
@@ -227,7 +229,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         String jsonData = buildInactiveUsersJson(payload, widgetNameById);
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
-        String user = String.valueOf(httpSession.getAttribute("user"));
+        String user = safeSessionUser(httpSession);
         String contextPath = safeContextPath(req.getContextPath());
         String jsonDataB64 = Base64.getEncoder().encodeToString(jsonData.getBytes(StandardCharsets.UTF_8));
 
@@ -269,7 +271,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = safeDbText(rs.getString("session_id"), 256);
+                String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
                 Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                 if (sid == null || sid.isBlank()) {
                     continue;
@@ -601,17 +603,21 @@ public class InactiveUsersPageServlet extends HttpServlet {
         }
         try {
             return Integer.parseInt(v.trim());
-        } catch (RuntimeException e) {
-            log.log(Level.FINE, "Invalid integer request parameter value: {0}", sanitizeForLog(v));
+        } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid integer request parameter value", e);
             return fallback;
         }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (name == null || name.isBlank()) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -679,5 +685,31 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
     private String nvl(String s) {
         return s == null ? "" : s;
+    }
+
+    private String safeSessionUser(HttpSession session) {
+        if (session == null) {
+            return "";
+        }
+        Object userAttr = session.getAttribute("user");
+        if (!(userAttr instanceof String user)) {
+            return "";
+        }
+        String trimmed = user.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeSessionId(String sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+        String trimmed = sessionId.trim();
+        if (trimmed.isEmpty() || trimmed.length() > MAX_SESSION_ID_LENGTH) {
+            return null;
+        }
+        if (!SAFE_SESSION_ID.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
     }
 }

@@ -61,6 +61,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final int MAX_SEARCH_LENGTH = 128;
     private static final int MAX_SESSION_ID_LENGTH = 128;
     private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
+    private static final Pattern SAFE_CHAT_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
@@ -405,7 +406,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getReader())) {
+        try (JsonReader reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid JSON payload for session selection", e);
@@ -431,8 +432,8 @@ public class AllSessionsServlet extends HttpServlet {
                 if (!(value instanceof JsonString js)) {
                     continue;
                 }
-                String val = js.getString().trim();
-                if (!val.isBlank()) {
+                String val = sanitizeChatId(js.getString());
+                if (val != null) {
                     selected.add(val);
                 }
             }
@@ -469,11 +470,11 @@ public class AllSessionsServlet extends HttpServlet {
                         ps.setString(1, chatId);
                         try (ResultSet rs = ps.executeQuery()) {
                             while (rs.next()) {
-                                String foundChatId = rs.getString("widget_chat_id");
+                                String foundChatId = sanitizeChatId(safeDbText(rs.getString("widget_chat_id"), MAX_SESSION_ID_LENGTH));
                                 String prompt = rs.getString("prompt");
                                 String responseText = rs.getString("response_text");
                                 Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                String sessionId = rs.getString("session_id");
+                                String sessionId = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
 
                                 snapshots.add(new TermChatSnapshot(
                                         "Selected Session Chats",
@@ -632,7 +633,7 @@ public class AllSessionsServlet extends HttpServlet {
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = sanitizeSessionId(rs.getString("session_id"));
+                String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
                 if (sid == null) {
                     continue;
                 }
@@ -746,7 +747,11 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -762,12 +767,24 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+        String contentType = safeContentType(req);
+        if (contentType.isEmpty() || !contentType.contains("application/json")) {
             return false;
         }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String safeContentType(HttpServletRequest req) {
+        if (req == null) {
+            return "";
+        }
+        String header = req.getHeader("Content-Type");
+        if (header == null) {
+            return "";
+        }
+        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase();
+        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 
     private String safeDbText(String value, int maxLen) {
@@ -860,6 +877,20 @@ public class AllSessionsServlet extends HttpServlet {
             return null;
         }
         if (!SAFE_SESSION_ID.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private String sanitizeChatId(String chatId) {
+        if (chatId == null) {
+            return null;
+        }
+        String trimmed = chatId.trim();
+        if (trimmed.isEmpty() || trimmed.length() > MAX_SESSION_ID_LENGTH) {
+            return null;
+        }
+        if (!SAFE_CHAT_ID.matcher(trimmed).matches()) {
             return null;
         }
         return trimmed;

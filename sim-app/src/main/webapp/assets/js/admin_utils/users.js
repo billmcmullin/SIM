@@ -31,7 +31,7 @@
             }
 
             try {
-                const { status, ok, payload } = await Api.postJson(`${this.contextPath}/admin/users`, { username, password, role });
+                const { ok, payload } = await Api.postJson(`${this.contextPath}/admin/users`, { username, password, role });
                 if (ok) {
                     const createdRole = (payload.role || 'user').toLowerCase();
                     const createdUsername = payload.username || username;

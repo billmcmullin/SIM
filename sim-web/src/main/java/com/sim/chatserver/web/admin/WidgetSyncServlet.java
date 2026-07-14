@@ -774,22 +774,33 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                String persistedIntervalRaw = sanitizeDbText(rs.getString(1), 32);
-                long persistedInterval;
-                try {
-                    persistedInterval = Long.parseLong(persistedIntervalRaw == null ? "" : persistedIntervalRaw.trim());
-                } catch (NumberFormatException ex) {
-                    log.log(Level.FINE, "Invalid persisted widget sync interval, using in-memory default", ex);
+                long persistedInterval = rs.getLong("interval_seconds");
+                if (rs.wasNull()) {
                     persistedInterval = syncIntervalSeconds;
                 }
                 if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
                     persistedInterval = syncIntervalSeconds;
                 }
-                return new SyncSettings(persistedInterval, SqlTimeUtil.safeTimestamp(rs, "last_synced"));
+
+                Timestamp persistedLastSynced = sanitizePersistedTimestamp(SqlTimeUtil.safeTimestamp(rs, "last_synced"));
+                return new SyncSettings(persistedInterval, persistedLastSynced);
             }
         }
         upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
         return new SyncSettings(syncIntervalSeconds, lastSynced);
+    }
+
+    private Timestamp sanitizePersistedTimestamp(Timestamp value) {
+        if (value == null) {
+            return null;
+        }
+        Instant instant = value.toInstant();
+        Instant min = Instant.parse("2000-01-01T00:00:00Z");
+        Instant max = Instant.now().plus(Duration.ofDays(1));
+        if (instant.isBefore(min) || instant.isAfter(max)) {
+            return null;
+        }
+        return value;
     }
 
     private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) throws SQLException {
@@ -803,6 +814,10 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (req == null) {
+            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            return false;
+        }
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -1253,7 +1268,11 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }

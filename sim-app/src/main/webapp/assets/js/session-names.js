@@ -1,3 +1,4 @@
+(() => {
 const sessionConfig = window.sessionNamesConfig || {};
 const contextPath = sessionConfig.contextPath || '';
 
@@ -344,3 +345,4 @@ try {
 refreshLabeledOnlyUi();
 syncLabeledOnlyToUrl();
 loadSessions('');
+})();

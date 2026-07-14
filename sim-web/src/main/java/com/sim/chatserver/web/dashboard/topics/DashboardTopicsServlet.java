@@ -59,7 +59,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        String contextPath = safeContextPath(req.getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -192,6 +192,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         try {
             return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
         } catch (DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid dashboard topics date parameter", e);
             return Optional.empty();
         }
     }
@@ -291,15 +292,19 @@ public class DashboardTopicsServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String safeContextPath(String contextPath) {

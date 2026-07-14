@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -30,6 +31,8 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableSelectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getName());
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -39,7 +42,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         if (!isLoggedIn(req, resp)) {
             return;
         }
-        String widgetId = req.getParameter("widgetId");
+        String widgetId = sanitizeWidgetId(firstParam(req, "widgetId"));
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required.");
             return;
@@ -59,9 +62,9 @@ public class WidgetTableSelectionServlet extends HttpServlet {
             }
 
             FilterState filters = new FilterState(
-                    req.getParameter("filterPrompt"),
-                    req.getParameter("filterResponse"),
-                    req.getParameter("search")
+                    firstParam(req, "filterPrompt"),
+                    firstParam(req, "filterResponse"),
+                    firstParam(req, "search")
             );
 
             String sql = "SELECT widget_chat_id FROM " + quoteIdentifier(tableName) + filters.buildWhereClause()
@@ -118,7 +121,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
                     return widget;
                 }
             }
-        } catch (Exception e) {
+        } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets", e);
         }
         return null;
@@ -154,7 +157,44 @@ public class WidgetTableSelectionServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeWidgetId(String widgetId) {
+        if (widgetId == null) {
+            return null;
+        }
+        String trimmed = widgetId.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > 80) {
+            trimmed = trimmed.substring(0, 80);
+        }
+        return SAFE_WIDGET_ID.matcher(trimmed).matches() ? trimmed : null;
     }
 
     private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {

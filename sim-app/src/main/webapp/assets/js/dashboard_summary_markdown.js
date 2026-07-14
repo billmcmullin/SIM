@@ -9,7 +9,7 @@
     async function copyToClipboard(text) {
         const value = text || '';
         try {
-            await navigator.clipboard.writeText(value);
+            await window.navigator.clipboard.writeText(value);
             return true;
         } catch {
             return false;

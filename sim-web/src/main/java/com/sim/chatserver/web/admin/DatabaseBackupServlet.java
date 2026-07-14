@@ -13,6 +13,7 @@ import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
@@ -49,6 +50,8 @@ public class DatabaseBackupServlet extends HttpServlet {
     private static final String SESSION_ROLE = "role";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
+    private static final int MAX_CELL_TEXT_LENGTH = 65535;
+    private static final int MAX_BINARY_BYTES = 2 * 1024 * 1024;
 
     // Optional exclusions from export
     private static final List<String> EXCLUDED_TABLES = List.of(
@@ -125,11 +128,8 @@ public class DatabaseBackupServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String table = rs.getString(1);
+                String table = sanitizeIdentifier(rs.getString(1));
                 if (table == null || table.isBlank()) {
-                    continue;
-                }
-                if (!SAFE_SQL_IDENTIFIER.matcher(table).matches()) {
                     continue;
                 }
                 if (EXCLUDED_TABLES.contains(table)) {
@@ -225,27 +225,31 @@ public class DatabaseBackupServlet extends HttpServlet {
     private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) throws SQLException {
         int sqlType = md.getColumnType(columnIndex);
         if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
-            byte[] bytes = rs.getBytes(columnIndex);
+            byte[] bytes = sanitizeBinary(rs.getBytes(columnIndex));
             if (bytes == null) {
                 return "";
             }
             return Base64.getEncoder().encodeToString(bytes);
         }
 
-        String value = rs.getString(columnIndex);
-        if (value == null) {
-            return "";
-        }
-
-        Object raw = rs.getObject(columnIndex);
-        if (raw instanceof Timestamp ts) {
+        if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
+            Timestamp ts = rs.getTimestamp(columnIndex);
+            if (ts == null) {
+                return "";
+            }
             return ISO_INSTANT_FMT.format(ts.toInstant());
         }
-        if (raw instanceof Date d) {
+
+        if (sqlType == Types.DATE) {
+            Date d = rs.getDate(columnIndex);
+            if (d == null) {
+                return "";
+            }
             return ISO_INSTANT_FMT.format(new Timestamp(d.getTime()).toInstant());
         }
 
-        return value;
+        String value = sanitizeCellText(rs.getString(columnIndex));
+        return value == null ? "" : value;
     }
 
     private String csvEscape(String s) {
@@ -281,5 +285,39 @@ public class DatabaseBackupServlet extends HttpServlet {
             return "";
         }
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private String sanitizeIdentifier(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (!SAFE_SQL_IDENTIFIER.matcher(trimmed).matches()) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private String sanitizeCellText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "");
+        return normalized.length() > MAX_CELL_TEXT_LENGTH
+                ? normalized.substring(0, MAX_CELL_TEXT_LENGTH)
+                : normalized;
+    }
+
+    private byte[] sanitizeBinary(byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        if (bytes.length <= MAX_BINARY_BYTES) {
+            return bytes;
+        }
+        return Arrays.copyOf(bytes, MAX_BINARY_BYTES);
     }
 }

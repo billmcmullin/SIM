@@ -258,12 +258,12 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
      * when present.
      */
     private String buildExternalRedirectUri(HttpServletRequest req) {
-        String scheme = normalizeScheme(firstToken(req.getHeader("X-Forwarded-Proto")));
+        String scheme = normalizeScheme(readForwardedHeader(req, "X-Forwarded-Proto"));
         if (isBlank(scheme)) {
             scheme = req.isSecure() ? "https" : "http";
         }
 
-        String hostHeader = firstToken(req.getHeader("X-Forwarded-Host"));
+        String hostHeader = readForwardedHeader(req, "X-Forwarded-Host");
         String host;
         int port = -1;
 
@@ -284,7 +284,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             host = "localhost";
         }
 
-        String forwardedPort = firstToken(req.getHeader("X-Forwarded-Port"));
+        String forwardedPort = readForwardedHeader(req, "X-Forwarded-Port");
         if (!isBlank(forwardedPort)) {
             int parsedPort = parsePort(forwardedPort);
             if (parsedPort > 0) {
@@ -317,6 +317,22 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         return token.trim();
     }
 
+    private String readForwardedHeader(HttpServletRequest req, String headerName) {
+        if (req == null || headerName == null || headerName.isBlank()) {
+            return null;
+        }
+        String raw = req.getHeader(headerName);
+        if (raw == null) {
+            return null;
+        }
+        String token = firstToken(raw);
+        if (token == null) {
+            return null;
+        }
+        String normalized = token.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
     private String normalizeBaseUrl(String url) {
         String x = url.trim();
         if (!x.startsWith("http://") && !x.startsWith("https://")) {
@@ -326,15 +342,19 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
     }
 
     private String normalizeScheme(String scheme) {

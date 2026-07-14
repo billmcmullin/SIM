@@ -61,6 +61,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = Integer.MAX_VALUE;
     private static final int MAX_SESSION_ID_CHARS = 200;
+    private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
 
     @Inject
@@ -141,10 +142,16 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
+        if (!isValidJsonRequest(req)) {
+            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            return;
+        }
+
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException | ClassCastException ex) {
+            log.log(Level.FINE, "Invalid manual-message payload", ex);
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -561,6 +568,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         finalReport, body, contentType
                 );
             } catch (Exception e) {
+                log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
                 return new ReviewJobService.JobResult(
                         500, false, "Failed",
                         e.getMessage() == null ? "Async execution failed." : e.getMessage(),
@@ -782,6 +790,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
             return body;
         } catch (Exception ignored) {
+            log.log(Level.FINE, "Unable to parse upstream response payload", ignored);
             return body;
         }
     }
@@ -1024,6 +1033,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 .replace("https://http://", "http://");
 
         try {
+            if (trustedUrlValidator != null) {
+                TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(s);
+                if (!trust.isValid()) {
+                    return "";
+                }
+            }
+
             URI u = new URI(s);
             String scheme = u.getScheme();
             String host = u.getHost();
@@ -1037,8 +1053,33 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
                     : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
         } catch (Exception e) {
+            log.log(Level.FINE, "Invalid base URL", e);
             return "";
         }
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = safeContentType(req);
+        if (contentType.isEmpty() || !contentType.contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String safeContentType(HttpServletRequest req) {
+        if (req == null) {
+            return "";
+        }
+        String header = req.getHeader("Content-Type");
+        if (header == null) {
+            return "";
+        }
+        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
+        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 
     private String buildSlug(String workspaceName) {
