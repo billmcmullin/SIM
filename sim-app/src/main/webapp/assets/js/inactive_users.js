@@ -4,9 +4,21 @@
     const contextPath = cfg.contextPath || '';
     const defaultDays = Number(cfg.defaultDays || 7);
 
-    let data = cfg.data || { all: [], widgets: {}, widgetNames: {} };
+    let data = { all: [], widgets: {}, widgetNames: {} };
+    const encodedData = typeof cfg.dataB64 === 'string' ? cfg.dataB64 : '';
+
+    if (encodedData) {
+        try {
+            data = JSON.parse(atob(encodedData));
+        } catch (_ignored) {
+            data = { all: [], widgets: {}, widgetNames: {} };
+        }
+    } else {
+        data = cfg.data || data;
+    }
+
     if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch (e) { data = { all: [], widgets: {}, widgetNames: {} }; }
+        try { data = JSON.parse(data); } catch (_ignored) { data = { all: [], widgets: {}, widgetNames: {} }; }
     }
     if (!data || typeof data !== 'object') data = { all: [], widgets: {}, widgetNames: {} };
     if (!Array.isArray(data.all)) data.all = [];

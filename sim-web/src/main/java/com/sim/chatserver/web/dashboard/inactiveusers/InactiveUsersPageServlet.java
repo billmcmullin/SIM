@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -227,12 +228,14 @@ public class InactiveUsersPageServlet extends HttpServlet {
         String jsonData = buildInactiveUsersJson(payload, widgetNameById);
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String user = String.valueOf(httpSession.getAttribute("user"));
+        String contextPath = safeContextPath(req.getContextPath());
+        String jsonDataB64 = Base64.getEncoder().encodeToString(jsonData.getBytes(StandardCharsets.UTF_8));
 
         String rendered = template
-                .replace("${contextPath}", req.getContextPath())
+            .replace("${contextPath}", escapeHtml(contextPath))
                 .replace("${user}", escapeHtml(user))
                 .replace("${defaultDays}", String.valueOf(days))
-                .replace("${inactiveUsersData}", jsonData);
+            .replace("${inactiveUsersDataB64}", jsonDataB64);
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
@@ -304,7 +307,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 ps.setMaxRows(limit);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String p = rs.getString("p");
+                        String p = safeDbText(rs.getString("p"), 2000);
                         if (p != null && !p.isBlank()) {
                             prompts.add(p);
                         }
@@ -593,23 +596,50 @@ public class InactiveUsersPageServlet extends HttpServlet {
     }
 
     private int parseInt(String v, int fallback) {
+        if (v == null || v.isBlank()) {
+            return fallback;
+        }
         try {
-            return Integer.parseInt(v);
-        } catch (NumberFormatException e) {
+            return Integer.parseInt(v.trim());
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "Invalid integer request parameter value: {0}", sanitizeForLog(v));
             return fallback;
         }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 
     private String safeDbText(String value, int maxLen) {

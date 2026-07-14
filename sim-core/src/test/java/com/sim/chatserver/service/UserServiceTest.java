@@ -153,7 +153,7 @@ public class UserServiceTest
         EntityManagerFactory getEmfResult = mock(EntityManagerFactory.class);
         EntityManager createEntityManagerResult = mock(EntityManager.class);
         Query createNativeQueryResult = mock(Query.class);
-        when(createEntityManagerResult.createNativeQuery(nullable(String.class))).thenReturn(createNativeQueryResult);
+        doReturn(createNativeQueryResult).when(createEntityManagerResult).createNativeQuery(nullable(String.class));
 
         EntityTransaction getTransactionResult = mock(EntityTransaction.class);
         when(createEntityManagerResult.getTransaction()).thenReturn(getTransactionResult);
@@ -360,7 +360,7 @@ public class UserServiceTest
         EntityManagerFactory getEmfResult = mock(EntityManagerFactory.class);
         EntityManager createEntityManagerResult = mock(EntityManager.class);
         Query createNativeQueryResult = mock(Query.class);
-        when(createEntityManagerResult.createNativeQuery(nullable(String.class))).thenReturn(createNativeQueryResult);
+        doReturn(createNativeQueryResult).when(createEntityManagerResult).createNativeQuery(nullable(String.class));
 
         TypedQuery createQueryResult = mock(TypedQuery.class);
         TypedQuery setParameterResult = mock(TypedQuery.class);
@@ -416,7 +416,7 @@ public class UserServiceTest
         EntityManagerFactory getEmfResult2 = mock(EntityManagerFactory.class);
         EntityManager createEntityManagerResult = mock(EntityManager.class);
         Query createNativeQueryResult = mock(Query.class);
-        when(createEntityManagerResult.createNativeQuery(nullable(String.class))).thenReturn(createNativeQueryResult);
+        doReturn(createNativeQueryResult).when(createEntityManagerResult).createNativeQuery(nullable(String.class));
 
         EntityTransaction getTransactionResult = mock(EntityTransaction.class);
         EntityTransaction getTransactionResult2 = mock(EntityTransaction.class);

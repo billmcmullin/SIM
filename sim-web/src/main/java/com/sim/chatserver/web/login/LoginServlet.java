@@ -1,7 +1,9 @@
 package com.sim.chatserver.web.login;
 
 import java.io.IOException;
+import java.util.regex.Pattern;
 
+import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
@@ -21,6 +23,7 @@ public class LoginServlet extends HttpServlet {
     UserService userService;
 
     private static final String VIEW = "/WEB-INF/views/login.html";
+    private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
 
     @Override
     public void init() throws ServletException {
@@ -49,30 +52,99 @@ public class LoginServlet extends HttpServlet {
 
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
-            resp.sendRedirect(req.getContextPath() + "/dashboard");
+            forwardSafe(req, resp, "/dashboard");
             return;
         }
 
-        req.getRequestDispatcher(VIEW).forward(req, resp);
+        forwardSafe(req, resp, VIEW);
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String username = req.getParameter("username");
-        String password = req.getParameter("password");
+        String username = sanitizeUsername(firstParam(req, "username"));
+        String password = sanitizePassword(firstParam(req, "password"));
         if (username == null || password == null) {
-            resp.sendRedirect(req.getContextPath() + "/login?error=missing");
+            req.setAttribute("loginError", "missing");
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            forwardSafe(req, resp, VIEW);
             return;
         }
 
-        if (!userService.authenticate(username, password)) {
-            resp.sendRedirect(req.getContextPath() + "/login?error=invalid");
+        UserAccount authenticatedUser = userService.authenticateAndGetUser(username, password);
+        if (authenticatedUser == null || authenticatedUser.getUsername() == null || authenticatedUser.getUsername().isBlank()) {
+            req.setAttribute("loginError", "invalid");
+            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            forwardSafe(req, resp, VIEW);
             return;
+        }
+
+        String sessionUser = sanitizeUsername(authenticatedUser.getUsername());
+        if (sessionUser == null) {
+            req.setAttribute("loginError", "invalid");
+            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            forwardSafe(req, resp, VIEW);
+            return;
+        }
+
+        HttpSession existing = req.getSession(false);
+        if (existing != null) {
+            existing.invalidate();
         }
 
         HttpSession session = req.getSession(true);
-        session.setAttribute("user", username);
+        session.setAttribute("user", sessionUser);
         session.setMaxInactiveInterval(30 * 60);
-        resp.sendRedirect(req.getContextPath() + "/dashboard");
+        forwardSafe(req, resp, "/dashboard");
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private void forwardSafe(HttpServletRequest req, HttpServletResponse resp, String target)
+            throws ServletException, IOException {
+        if (target == null || target.isBlank()) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        if (!VIEW.equals(target) && !"/dashboard".equals(target)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        req.getRequestDispatcher(target).forward(req, resp);
+    }
+
+    private String sanitizeUsername(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.isEmpty() || value.length() > 128 || !SAFE_USERNAME.matcher(value).matches()) {
+            return null;
+        }
+        return value;
+    }
+
+    private String sanitizePassword(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.isEmpty() || value.length() > 256) {
+            return null;
+        }
+        return value;
     }
 }

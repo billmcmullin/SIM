@@ -1,14 +1,19 @@
 package com.sim.chatserver.web.dashboard.trends;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -19,8 +24,10 @@ import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -31,6 +38,10 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTrendsSelectServlet", urlPatterns = {"/dashboard/trends/select"})
 public class DashboardTrendsSelectServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getName());
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+
     @Inject
     AppDataSourceHolder dsHolder;
 
@@ -38,38 +49,36 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return;
         }
 
         JsonObject body;
+        if (!isValidJsonRequest(req)) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            return;
+        }
         try (JsonReader jr = Json.createReader(req.getInputStream())) {
             body = jr.readObject();
-        } catch (Exception e) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+        } catch (JsonException e) {
+            log.log(Level.FINE, "Invalid trends selection payload", e);
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
         String day = body.getString("day", "").trim();
         String widgetIdFilter = body.getString("widgetId", "").trim();
         if (day.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"day is required (yyyy-MM-dd).\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "day is required (yyyy-MM-dd).");
             return;
         }
 
         LocalDate targetDate;
         try {
             targetDate = LocalDate.parse(day);
-        } catch (Exception ex) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid day format. Use yyyy-MM-dd.\"}");
+        } catch (java.time.format.DateTimeParseException ex) {
+            log.log(Level.FINE, "Invalid day format in trends selection: {0}", sanitizeForLog(day));
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid day format. Use yyyy-MM-dd.");
             return;
         }
 
@@ -119,17 +128,14 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception ex) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to collect chats for day.\"}");
+        } catch (SQLException | RuntimeException ex) {
+            log.log(Level.WARNING, "Unable to collect chats for day", ex);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to collect chats for day.");
             return;
         }
 
         if (snapshots.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No chats found for selected day.\"}");
+            writeError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for selected day.");
             return;
         }
 
@@ -145,9 +151,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         );
 
         if (selectionId == null || selectionId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create selection.\"}");
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
             return;
         }
 
@@ -157,13 +161,12 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                 .add("count", snapshots.size())
                 .build();
 
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(ok.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, ok);
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+        for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
             try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
                 if (rs.next()) {
                     return true;
@@ -192,5 +195,39 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
 
     private String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+        JsonObject payload = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", message == null ? "" : message)
+                .build();
+        writeJson(resp, status, payload);
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType(JSON_UTF8);
+        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+            writer.writeObject(payload);
+        }
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 }

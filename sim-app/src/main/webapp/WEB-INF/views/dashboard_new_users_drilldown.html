@@ -79,12 +79,64 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${rows}
+                        <tr id="rowsEmpty" style="display:none;">
+                            <td colspan="4" class="empty-row">No users found for this selection.</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
         </section>
     </div>
+
+    <script>
+        (function () {
+            const tbody = document.querySelector(".session-table tbody");
+            const emptyRow = document.getElementById("rowsEmpty");
+            const encoded = "${rowsJsonB64}";
+            let rows = [];
+
+            try {
+                if (encoded) {
+                    rows = JSON.parse(atob(encoded));
+                }
+            } catch (_ignored) {
+                rows = [];
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                emptyRow.style.display = "table-row";
+                return;
+            }
+
+            emptyRow.remove();
+
+            for (const row of rows) {
+                const tr = document.createElement("tr");
+
+                const rankTd = document.createElement("td");
+                rankTd.textContent = String(row.rank ?? "");
+                tr.appendChild(rankTd);
+
+                const displayTd = document.createElement("td");
+                displayTd.textContent = String(row.display ?? "");
+                tr.appendChild(displayTd);
+
+                const firstSeenTd = document.createElement("td");
+                firstSeenTd.textContent = String(row.firstSeen ?? "");
+                tr.appendChild(firstSeenTd);
+
+                const chatsTd = document.createElement("td");
+                const link = document.createElement("a");
+                link.className = "session-count-link";
+                link.href = String(row.chatEntriesUrl ?? "");
+                link.textContent = `${Number(row.totalChats ?? 0)} chats`;
+                chatsTd.appendChild(link);
+                tr.appendChild(chatsTd);
+
+                tbody.appendChild(tr);
+            }
+        })();
+    </script>
 </body>
 
 </html>

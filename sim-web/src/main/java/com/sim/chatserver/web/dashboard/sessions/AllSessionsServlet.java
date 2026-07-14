@@ -63,6 +63,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     private static final String PATH_DATA = "/dashboard/sessions/data";
@@ -394,6 +395,15 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
+        if (!isValidJsonRequest(req)) {
+            JsonObject body = Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Invalid JSON payload.")
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, body);
+            return;
+        }
+
         JsonObject payload;
         try (JsonReader reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
@@ -607,7 +617,7 @@ public class AllSessionsServlet extends HttpServlet {
             ps.setString(2, pattern);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String sid = sanitizeSessionId(rs.getString("session_id"));
+                    String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), 256));
                     if (sid != null) {
                         ids.add(sid);
                     }
@@ -642,6 +652,14 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (req == null) {
+            JsonObject body = Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "Authentication required.")
+                    .build();
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, body);
+            return false;
+        }
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             JsonObject body = Json.createObjectBuilder()
@@ -725,15 +743,39 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String safeDbText(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
     }
 
     private boolean parseBooleanParam(String value) {

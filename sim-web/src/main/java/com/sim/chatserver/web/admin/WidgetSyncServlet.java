@@ -256,9 +256,11 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isTimerRequest(HttpServletRequest req) {
-        String servletPath = req.getServletPath();
-        return "/admin/widgets/sync/timer".equals(servletPath)
-                || (servletPath != null && servletPath.endsWith("/timer"));
+        if (req == null || req.getHttpServletMapping() == null) {
+            return false;
+        }
+        String pattern = req.getHttpServletMapping().getPattern();
+        return "/admin/widgets/sync/timer".equals(pattern);
     }
 
     private void handleTimerStatus(HttpServletResponse resp) throws IOException {
@@ -283,6 +285,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 intervalSeconds = MIN_INTERVAL_SECONDS;
             }
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid timer intervalSeconds parameter", e);
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid interval specified.");
             return;
         }
@@ -646,6 +649,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
                 return result;
             } catch (InterruptedException ie) {
+                log.log(Level.FINE, "Widget sync fetch interrupted", ie);
                 lastInterrupted = ie;
                 Thread.currentThread().interrupt();
                 break;
@@ -770,17 +774,18 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                String persistedIntervalRaw = rs.getString(1);
+                String persistedIntervalRaw = sanitizeDbText(rs.getString(1), 32);
                 long persistedInterval;
                 try {
                     persistedInterval = Long.parseLong(persistedIntervalRaw == null ? "" : persistedIntervalRaw.trim());
                 } catch (NumberFormatException ex) {
+                    log.log(Level.FINE, "Invalid persisted widget sync interval, using in-memory default", ex);
                     persistedInterval = syncIntervalSeconds;
                 }
                 if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
                     persistedInterval = syncIntervalSeconds;
                 }
-                return new SyncSettings(persistedInterval, rs.getTimestamp(2));
+                return new SyncSettings(persistedInterval, SqlTimeUtil.safeTimestamp(rs, "last_synced"));
             }
         }
         upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
@@ -834,6 +839,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 + " ON " + quotedTable + " (widget_chat_id)")) {
             ps.execute();
         } catch (SQLException uniqueErr) {
+            log.log(Level.FINE, "Unique index creation failed, attempting dedupe before retry", uniqueErr);
             dedupeByWidgetChatId(conn, tableName);
             try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
                     + " ON " + quotedTable + " (widget_chat_id)")) {
@@ -1222,17 +1228,22 @@ public class WidgetSyncServlet extends HttpServlet {
             if (!"http".equals(schemeLower) && !"https".equals(schemeLower)) {
                 return "";
             }
-            URI canonical = new URI(
-                    schemeLower,
-                    parsed.getUserInfo(),
-                    host.toLowerCase(Locale.ROOT),
-                    parsed.getPort(),
-                    parsed.getPath(),
-                    parsed.getQuery(),
-                    null
-            );
-            return canonical.toString();
-        } catch (IllegalArgumentException | java.net.URISyntaxException e) {
+            String hostLower = host.toLowerCase(Locale.ROOT);
+            int port = parsed.getPort();
+            String path = parsed.getPath() == null ? "" : parsed.getPath();
+            String query = parsed.getQuery();
+
+            StringBuilder canonical = new StringBuilder();
+            canonical.append(schemeLower).append("://").append(hostLower);
+            if (port >= 0) {
+                canonical.append(":").append(port);
+            }
+            canonical.append(path);
+            if (query != null && !query.isBlank()) {
+                canonical.append('?').append(query);
+            }
+            return URI.create(canonical.toString()).normalize().toString();
+        } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Unable to canonicalize URL", e);
             return "";
         }
@@ -1242,15 +1253,24 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null) {
-            return null;
-        }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String sanitizeDbText(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
     }
 
     private String buildSlug(String workspaceName) {

@@ -53,13 +53,14 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        LocalDate day = parseDay(req.getParameter("day"), zone);
-        int slot = parseSlotOrCurrent(req.getParameter("slot"), zone);
+        RequestContext context = RequestContext.from(req);
+        LocalDate day = parseDay(context.first("day"), zone);
+        int slot = parseSlotOrCurrent(context.first("slot"), zone);
 
         try {
             if (summaryStore == null) {
@@ -117,7 +118,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
                 out.print(rendered);
             }
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to render summary markdown page", e);
             resp.setContentType("text/plain;charset=UTF-8");
             resp.getWriter().write("Unable to load summary markdown page.");
@@ -130,7 +131,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         }
         try {
             return LocalDate.parse(raw.trim(), DATE_FMT);
-        } catch (Exception e) {
+        } catch (java.time.format.DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid dashboard summary day parameter: " + sanitizeForLog(raw), e);
             return LocalDate.now(zone);
         }
     }
@@ -142,7 +144,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
                 if (s >= 0 && s <= 3) {
                     return s;
                 }
-            } catch (Exception ignored) {
+            } catch (NumberFormatException e) {
+                log.log(Level.FINE, "Invalid dashboard summary slot parameter: " + sanitizeForLog(raw), e);
             }
         }
         int hour = java.time.LocalTime.now(zone).getHour();
@@ -307,7 +310,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             }
             String s = obj.getString(key, fallback);
             return (s == null || s.isBlank()) ? fallback : s;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "Unable to read JSON string for key " + key, e);
             return fallback;
         }
     }
@@ -318,8 +322,42 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         }
         try {
             return obj.getInt(key, fallback);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "Unable to read JSON integer for key " + key, e);
             return fallback;
+        }
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private static final class RequestContext {
+
+        private final Map<String, String[]> params;
+
+        private RequestContext(Map<String, String[]> params) {
+            this.params = params;
+        }
+
+        private static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req.getParameterMap());
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank() || params == null) {
+                return null;
+            }
+            String[] values = params.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].trim();
+            return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
         }
     }
 
