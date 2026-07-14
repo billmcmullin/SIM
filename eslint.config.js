@@ -39,5 +39,11 @@ export default [
             "prefer-const": "warn",
             "no-debugger": "error"
         }
+    },
+    {
+        files: ["sim-app/src/main/webapp/assets/js/**/payload_builder.js"],
+        languageOptions: {
+            sourceType: "module"
+        }
     }
 ];

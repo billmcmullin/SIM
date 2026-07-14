@@ -124,7 +124,7 @@
 
             let ok = false;
             try {
-                await navigator.clipboard.writeText(text);
+                await window.navigator.clipboard.writeText(text);
                 ok = true;
             } catch {
                 const ta = document.createElement('textarea');

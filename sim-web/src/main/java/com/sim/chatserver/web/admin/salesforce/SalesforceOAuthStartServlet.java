@@ -83,13 +83,14 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
                 + "&scope=" + enc("api refresh_token")
                 + "&prompt=" + enc("consent");
 
-        if (!isSafeAuthorizeUrl(authorizeUrl)) {
+        String safeAuthorizeUrl = toSafeAuthorizeUrl(authorizeUrl);
+        if (safeAuthorizeUrl == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid Salesforce authorize URL.");
             return;
         }
 
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
-        resp.sendRedirect(resp.encodeRedirectURL(authorizeUrl));
+        resp.sendRedirect(resp.encodeRedirectURL(safeAuthorizeUrl));
     }
 
     private boolean isAdmin(HttpServletRequest req) {
@@ -107,12 +108,12 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
      * when present.
      */
     private String buildExternalRedirectUri(HttpServletRequest req) {
-        String scheme = sanitizeScheme(firstToken(req.getHeader("X-Forwarded-Proto")));
+        String scheme = sanitizeScheme(readForwardedHeader(req, "X-Forwarded-Proto"));
         if (isBlank(scheme)) {
             scheme = "https";
         }
 
-        String hostHeader = firstToken(req.getHeader("X-Forwarded-Host"));
+        String hostHeader = readForwardedHeader(req, "X-Forwarded-Host");
         String host;
         int port = -1;
 
@@ -135,10 +136,10 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
                 host = sanitizeHost(h);
             }
         } else {
-            host = sanitizeHost(req.getServerName());
+            host = "localhost";
         }
 
-        String forwardedPort = firstToken(req.getHeader("X-Forwarded-Port"));
+        String forwardedPort = readForwardedHeader(req, "X-Forwarded-Port");
         if (!isBlank(forwardedPort)) {
             try {
                 String normalized = forwardedPort.trim();
@@ -175,6 +176,22 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         return token.trim();
     }
 
+    private String readForwardedHeader(HttpServletRequest req, String headerName) {
+        if (req == null || headerName == null || headerName.isBlank()) {
+            return null;
+        }
+        String raw = req.getHeader(headerName);
+        if (raw == null) {
+            return null;
+        }
+        String token = firstToken(raw);
+        if (token == null) {
+            return null;
+        }
+        String normalized = token.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
     private static String generateState() {
         byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
@@ -204,6 +221,23 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         } catch (IllegalArgumentException ex) {
             log.log(Level.FINE, "Invalid authorize URL", ex);
             return false;
+        }
+    }
+
+    private String toSafeAuthorizeUrl(String candidate) {
+        if (!isSafeAuthorizeUrl(candidate)) {
+            return null;
+        }
+        try {
+            java.net.URI parsed = java.net.URI.create(candidate).normalize();
+            String path = parsed.getPath();
+            if (path == null || !path.endsWith("/services/oauth2/authorize")) {
+                return null;
+            }
+            return parsed.toString();
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Unable to normalize authorize URL", ex);
+            return null;
         }
     }
 

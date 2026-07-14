@@ -1,3 +1,4 @@
+(() => {
 const form = document.getElementById("loginForm");
 const result = document.getElementById("result");
 
@@ -26,26 +27,29 @@ function resolveContextPath() {
 const contextPath = resolveContextPath();
 const loginUrl = `${window.location.origin}${contextPath}/api/auth/login`;
 
-form.addEventListener("submit", async (evt) => {
-    evt.preventDefault();
-    result.textContent = "Authenticating…";
-    const payload = {
-        username: form.username.value,
-        password: form.password.value
-    };
-    try {
-        const response = await fetch(loginUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        const text = await response.text();
-        if (response.ok) {
-            window.location.href = `${window.location.origin}${contextPath}/dashboard`;
-        } else {
-            result.textContent = `Login failed (${response.status}): ${text}`;
+if (form && result) {
+    form.addEventListener("submit", async (evt) => {
+        evt.preventDefault();
+        result.textContent = "Authenticating…";
+        const payload = {
+            username: form.username.value,
+            password: form.password.value
+        };
+        try {
+            const response = await fetch(loginUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const text = await response.text();
+            if (response.ok) {
+                window.location.href = `${window.location.origin}${contextPath}/dashboard`;
+            } else {
+                result.textContent = `Login failed (${response.status}): ${text}`;
+            }
+        } catch (err) {
+            result.textContent = "Network error: " + err.message;
         }
-    } catch (err) {
-        result.textContent = "Network error: " + err.message;
-    }
-});
+    });
+}
+})();

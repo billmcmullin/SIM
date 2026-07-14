@@ -2,7 +2,6 @@
 (function () {
     'use strict';
     window.AdminPage = window.AdminPage || {};
-    const Utils = window.AdminPage.Utils;
     const Api = window.AdminPage.Api;
 
     const Workspace = {

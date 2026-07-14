@@ -6,10 +6,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.CustomerIdentity;
@@ -29,6 +32,8 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "CustomerProfileServlet", urlPatterns = {"/customer-profile"})
 public class CustomerProfileServlet extends HttpServlet {
 
+    private static final Logger LOGGER = Logger.getLogger(CustomerProfileServlet.class.getName());
+
     private static final String TEMPLATE_PATH = "/WEB-INF/views/customer_profile.html";
     private static final String LOGIN_PATH = "/login";
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
@@ -43,8 +48,8 @@ public class CustomerProfileServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = trimToNull(req.getParameter("sessionId"));
-        String friendlyNameParam = trimToNull(req.getParameter("friendlyName"));
+        String sessionId = trimToNull(firstParam(req, "sessionId"));
+        String friendlyNameParam = trimToNull(firstParam(req, "friendlyName"));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid sessionId format.");
@@ -89,12 +94,13 @@ public class CustomerProfileServlet extends HttpServlet {
                     friendlyNameParam
             );
 
-            String linkedSessionsHtml = buildLinkedSessionsRows(linkedSessions, req.getContextPath());
+            String contextPath = safeContextPath(req.getContextPath());
+            String linkedSessionsHtml = buildLinkedSessionsRows(linkedSessions, contextPath);
 
             String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
 
             String rendered = template
-                    .replace("${contextPath}", req.getContextPath())
+                    .replace("${contextPath}", contextPath)
                     .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
                     .replace("${sessionId}", escapeHtml(nullToDash(resolvedSessionId)))
                     .replace("${friendlyName}", escapeHtml(nullToDash(friendlyName)))
@@ -114,8 +120,8 @@ public class CustomerProfileServlet extends HttpServlet {
             try (PrintWriter out = resp.getWriter()) {
                 out.print(rendered);
             }
-        } catch (Exception e) {
-            log("CustomerProfileServlet error", e);
+        } catch (SQLException e) {
+            LOGGER.log(Level.WARNING, "Customer profile data lookup failed", e);
             throw new ServletException("Unable to load customer profile.", e);
         }
     }
@@ -238,11 +244,7 @@ public class CustomerProfileServlet extends HttpServlet {
     }
 
     private String urlEncode(String input) {
-        try {
-            return java.net.URLEncoder.encode(input == null ? "" : input, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return "";
-        }
+        return java.net.URLEncoder.encode(input == null ? "" : input, StandardCharsets.UTF_8);
     }
 
     private String formatOffsetDateTime(OffsetDateTime value) {
@@ -250,5 +252,36 @@ public class CustomerProfileServlet extends HttpServlet {
             return "—";
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
     }
 }

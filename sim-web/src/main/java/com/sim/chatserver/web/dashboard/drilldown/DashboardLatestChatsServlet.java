@@ -7,10 +7,14 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -30,23 +34,27 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardLatestChatsServlet", urlPatterns = {"/dashboard/latest-chats"})
 public class DashboardLatestChatsServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(DashboardLatestChatsServlet.class.getName());
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+
     @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
+        String contextPath = safeContextPath(req.getContextPath());
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            resp.sendRedirect(safeRedirectPath(contextPath + "/login", "/login"));
             return;
         }
 
-        int limit = parseLimit(req.getParameter("limit"), 200);
+        int limit = parseLimit(firstParam(req, "limit"), 200);
 
         List<TermChatSnapshot> snapshots = collectLatestChats(limit);
         if (snapshots.isEmpty()) {
             // Keep UX smooth: redirect back to dashboard instead of 404 page.
-            resp.sendRedirect(req.getContextPath() + "/dashboard?latestChats=empty");
+            resp.sendRedirect(safeRedirectPath(contextPath + "/dashboard?latestChats=empty", "/dashboard?latestChats=empty"));
             return;
         }
 
@@ -54,7 +62,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                 session,
                 "Latest Chats",
                 snapshots,
-                req.getContextPath() + "/dashboard"
+                contextPath + "/dashboard"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -62,10 +70,10 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             return;
         }
 
-        String redirectUrl = req.getContextPath()
+        String redirectUrl = contextPath
                 + "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
-        resp.sendRedirect(redirectUrl);
+        resp.sendRedirect(safeRedirectPath(redirectUrl, "/dashboard"));
     }
 
     private List<TermChatSnapshot> collectLatestChats(int limit) {
@@ -73,7 +81,8 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to load widgets for latest chats", e);
             widgets = List.of();
         }
 
@@ -116,7 +125,8 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to collect latest chats", e);
         }
 
         all.sort(Comparator.comparing(
@@ -139,12 +149,13 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                 return fallback;
             }
             return Math.min(v, 2000);
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid latest chats limit", e);
             return fallback;
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
@@ -174,6 +185,51 @@ public class DashboardLatestChatsServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private String safeRedirectPath(String target, String fallback) {
+        if (target == null) {
+            return fallback;
+        }
+        String trimmed = target.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return fallback;
+        }
+        return trimmed;
     }
 }

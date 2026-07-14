@@ -56,7 +56,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        String jobId = safe(req.getParameter("jobId"));
+        String jobId = safe(firstParam(req, "jobId"));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -175,7 +175,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        String jobId = safe(req.getParameter("jobId"));
+        String jobId = safe(firstParam(req, "jobId"));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -202,6 +202,22 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
 
     public static ReviewJobService jobService() {
         return JOB_SERVICE;
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {

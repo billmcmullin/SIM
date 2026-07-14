@@ -6,9 +6,9 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -17,7 +17,6 @@ import com.sim.chatserver.widget.WidgetStore.DuplicateWidgetIdException;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -29,6 +28,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetApiServlet", urlPatterns = {"/dashboard/widgets"})
 public class WidgetApiServlet extends HttpServlet {
 
+    private static final Logger LOG = Logger.getLogger(WidgetApiServlet.class.getName());
     private static final String APPLICATION_JSON = "application/json; charset=UTF-8";
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
@@ -51,6 +51,7 @@ public class WidgetApiServlet extends HttpServlet {
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (SQLException e) {
+            LOG.log(Level.WARNING, "Unable to load widget entries", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     Json.createObjectBuilder()
                             .add("status", "error")
@@ -100,12 +101,14 @@ public class WidgetApiServlet extends HttpServlet {
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (DuplicateWidgetIdException ex) {
+            LOG.log(Level.FINE, "Duplicate widget ID", ex);
             writeJson(resp, HttpServletResponse.SC_CONFLICT,
                     Json.createObjectBuilder()
                             .add("status", "error")
                             .add("message", "Widget ID already exists.")
                             .build());
         } catch (IllegalArgumentException ex) {
+            LOG.log(Level.FINE, "Invalid widget input", ex);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     Json.createObjectBuilder()
                             .add("status", "error")
@@ -169,6 +172,7 @@ public class WidgetApiServlet extends HttpServlet {
                             .add("deleted", deleted)
                             .build());
         } catch (SQLException e) {
+            LOG.log(Level.WARNING, "Unable to delete widget entries", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     Json.createObjectBuilder()
                             .add("status", "error")
@@ -208,15 +212,19 @@ public class WidgetApiServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String sanitizeWidgetId(String value) {

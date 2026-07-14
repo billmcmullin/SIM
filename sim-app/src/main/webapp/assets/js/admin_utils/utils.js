@@ -4,7 +4,7 @@
     window.AdminPage = window.AdminPage || {};
     const Utils = {
         escapeHtml(value) {
-            if (value == null) return '';
+            if (value === null || value === undefined) return '';
             return String(value)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -29,7 +29,7 @@
                 const m = /filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/.exec(cd);
                 if (!m) return null;
                 return decodeURIComponent(m[1] || m[2]);
-            } catch (e) {
+            } catch {
                 return null;
             }
         }

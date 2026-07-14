@@ -20,7 +20,7 @@
                     if (el) el.value = minutes;
                     this.showSyncIntervalMessage(`Auto sync runs every ${minutes} minute(s). Last synced: ${Utils.formatHumanReadableTimestamp(payload.lastSynced)}`);
                 }
-            } catch (e) {
+            } catch {
                 this.showSyncIntervalMessage('Unable to load auto sync interval.', true);
             }
         },

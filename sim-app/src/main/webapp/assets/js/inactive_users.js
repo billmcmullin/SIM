@@ -9,8 +9,8 @@
 
     if (encodedData) {
         try {
-            data = JSON.parse(atob(encodedData));
-        } catch (_ignored) {
+            data = JSON.parse(window.atob(encodedData));
+        } catch {
             data = { all: [], widgets: {}, widgetNames: {} };
         }
     } else {
@@ -18,7 +18,7 @@
     }
 
     if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch (_ignored) { data = { all: [], widgets: {}, widgetNames: {} }; }
+        try { data = JSON.parse(data); } catch { data = { all: [], widgets: {}, widgetNames: {} }; }
     }
     if (!data || typeof data !== 'object') data = { all: [], widgets: {}, widgetNames: {} };
     if (!Array.isArray(data.all)) data.all = [];
@@ -31,14 +31,14 @@
     const applyDaysBtn = document.getElementById('applyDaysBtn');
 
     function esc(v) {
-        if (v == null) return '';
+        if (v === null || v === undefined) return '';
         return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 
     function fmt(ts) {
         if (!ts) return '—';
-        try { return new Date(ts).toLocaleString(); } catch (_) { return ts; }
+        try { return new Date(ts).toLocaleString(); } catch { return ts; }
     }
 
     function reviewUrl(sessionId) {

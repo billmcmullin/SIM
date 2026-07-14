@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
@@ -25,6 +26,8 @@ import jakarta.servlet.http.HttpSession;
 public class AdminTermServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AdminTermServlet.class.getName());
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
 
     @Inject
     TermsStore termsStore;
@@ -71,10 +74,19 @@ public class AdminTermServlet extends HttpServlet {
 
         req.setCharacterEncoding("UTF-8");
 
+        if (!isValidJsonRequest(req)) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            return;
+        }
+
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
+            log.log(Level.FINE, "Invalid term create payload", e);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding("UTF-8");
             resp.setContentType("application/json;charset=UTF-8");
@@ -131,10 +143,19 @@ public class AdminTermServlet extends HttpServlet {
 
         req.setCharacterEncoding("UTF-8");
 
+        if (!isValidJsonRequest(req)) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.setCharacterEncoding("UTF-8");
+            resp.setContentType("application/json;charset=UTF-8");
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            return;
+        }
+
         JsonObject payload;
         try (var reader = Json.createReader(req.getInputStream())) {
             payload = reader.readObject();
         } catch (JsonException e) {
+            log.log(Level.FINE, "Invalid term update payload", e);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding("UTF-8");
             resp.setContentType("application/json;charset=UTF-8");
@@ -193,8 +214,8 @@ public class AdminTermServlet extends HttpServlet {
         if (!isAdmin(req, resp)) {
             return;
         }
-        String idParam = req.getParameter("id");
-        if (idParam == null) {
+        String idParam = firstParam(req, "id");
+        if (idParam == null || !SAFE_LONG_PARAM.matcher(idParam).matches()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setCharacterEncoding("UTF-8");
             resp.setContentType("application/json;charset=UTF-8");
@@ -242,5 +263,49 @@ public class AdminTermServlet extends HttpServlet {
             return false;
         }
         return true;
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        var params = req.getParameterMap();
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        String[] values = params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = safeContentType(req);
+        if (contentType.isEmpty() || !contentType.contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String safeContentType(HttpServletRequest req) {
+        if (req == null) {
+            return "";
+        }
+        String header = req.getHeader("Content-Type");
+        if (header == null) {
+            return "";
+        }
+        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase();
+        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 }

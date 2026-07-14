@@ -63,6 +63,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
+    private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -87,10 +88,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private static final String POST_IMPORT_SYNC_URL =
-            Optional.ofNullable(System.getenv("SIM_POST_IMPORT_SYNC_URL"))
-                    .orElse("")
-                    .trim();
+        private static final String POST_IMPORT_SYNC_URL = sanitizeSyncUrlValue(System.getenv("SIM_POST_IMPORT_SYNC_URL"));
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -457,6 +455,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     continue;
                 }
                 int type = rs.getInt("DATA_TYPE");
+                type = sanitizeSqlType(type);
                 boolean nullable = rs.getInt("NULLABLE") != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
@@ -680,7 +679,7 @@ public class DatabaseImportServlet extends HttpServlet {
         String sql = "SELECT widget_id FROM widget_entries";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String widgetId = rs.getString("widget_id");
+                String widgetId = sanitizeWidgetId(rs.getString("widget_id"));
                 if (widgetId == null || widgetId.isBlank()) {
                     continue;
                 }
@@ -737,15 +736,88 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
         Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (params == null || params.isEmpty()) {
             return null;
         }
         String[] values = params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
+        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
+    }
+
+    private static String sanitizeSyncUrlValue(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return "";
+        }
+        String trimmed = candidate.trim();
+        try {
+            URI parsed = URI.create(trimmed).normalize();
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            if (scheme == null || host == null || host.isBlank()) {
+                return "";
+            }
+            String lowered = scheme.toLowerCase();
+            if (!"http".equals(lowered) && !"https".equals(lowered)) {
+                return "";
+            }
+            return parsed.toString();
+        } catch (IllegalArgumentException e) {
+            return "";
+        }
+    }
+
+    private int sanitizeSqlType(int sqlType) {
+        return switch (sqlType) {
+            case Types.BIGINT,
+                 Types.INTEGER,
+                 Types.SMALLINT,
+                 Types.TINYINT,
+                 Types.BOOLEAN,
+                 Types.BIT,
+                 Types.DOUBLE,
+                 Types.FLOAT,
+                 Types.REAL,
+                 Types.NUMERIC,
+                 Types.DECIMAL,
+                 Types.TIMESTAMP,
+                 Types.TIMESTAMP_WITH_TIMEZONE,
+                 Types.DATE,
+                 Types.BINARY,
+                 Types.VARBINARY,
+                 Types.LONGVARBINARY,
+                 Types.VARCHAR,
+                 Types.CHAR,
+                 Types.LONGVARCHAR,
+                 Types.NVARCHAR,
+                 Types.NCHAR,
+                 Types.LONGNVARCHAR -> sqlType;
+            default -> Types.VARCHAR;
+        };
+    }
+
+    private String sanitizeWidgetId(String widgetId) {
+        if (widgetId == null) {
+            return null;
+        }
+        String trimmed = widgetId.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > 80) {
+            trimmed = trimmed.substring(0, 80);
+        }
+        return SAFE_WIDGET_ID.matcher(trimmed).matches() ? trimmed : null;
     }
 
     private boolean isSafeSyncEndpoint(URI uri) {

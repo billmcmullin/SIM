@@ -392,7 +392,7 @@
             if (this.widgetState.editingId) data.append('id', this.widgetState.editingId);
 
             try {
-                const { status, payload, ok } = await Api.fetchJson(`${this.contextPath}/admin/widgets`, {
+                const { status, payload } = await Api.fetchJson(`${this.contextPath}/admin/widgets`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
                     body: data.toString()

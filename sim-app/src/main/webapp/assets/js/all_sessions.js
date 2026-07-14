@@ -771,7 +771,10 @@
         if (reviewSelectedBtn) {
             reviewSelectedBtn.addEventListener('click', async () => {
                 const selected = Array.from(selectedChatIds);
-                if (!selected.length) return alert('No chats selected.');
+                if (!selected.length) {
+                    alert('No chats selected.');
+                    return;
+                }
                 try {
                     const res = await fetch(SELECT_URL, {
                         method: 'POST',
