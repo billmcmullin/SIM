@@ -3,7 +3,6 @@ package com.sim.chatserver.service;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
@@ -131,7 +130,7 @@ public class UpstreamRequestService {
             throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL/base is missing", null);
         }
 
-        String raw = sanitizeBaseOrEndpoint(upstreamBaseOrEndpoint);
+        String raw = canonicalizeUrlInput(sanitizeBaseOrEndpoint(upstreamBaseOrEndpoint));
 
         // If caller already passed full endpoint, keep it (normalize to /chat if possible).
         if (endsWithEndpointPath(raw)) {
@@ -154,7 +153,7 @@ public class UpstreamRequestService {
             throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream base URL invalid", null);
         }
 
-        String full = stripTrailingSlash(origin) + String.format(FIXED_PATH_TEMPLATE, ws);
+        String full = canonicalizeUrlInput(stripTrailingSlash(origin) + String.format(FIXED_PATH_TEMPLATE, ws));
         validateHttpUrl(full);
         return full;
     }
@@ -194,8 +193,7 @@ public class UpstreamRequestService {
 
     private String extractOrigin(String raw) {
         try {
-            String safeRaw = canonicalizeUrlInput(raw);
-            URI u = new URI(safeRaw);
+            URI u = parseHttpUri(raw);
             String scheme = u.getScheme();
             String host = u.getHost();
             int port = u.getPort();
@@ -213,27 +211,35 @@ public class UpstreamRequestService {
             }
 
             return b.toString();
-        } catch (IOException | URISyntaxException | IllegalArgumentException | SecurityException e) {
+        } catch (IOException | IllegalArgumentException | SecurityException e) {
             LOG.log(Level.FINE, "Failed to extract upstream origin", e);
             return "";
         }
     }
 
     private void validateHttpUrl(String raw) throws IOException {
+        URI u = parseHttpUri(raw);
+        String scheme = u.getScheme();
+        String host = u.getHost();
+
+        if (scheme == null || host == null || host.isBlank()) {
+            throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL missing scheme/host", null);
+        }
+
+        String s = scheme.toLowerCase(Locale.ROOT);
+        if (!"http".equals(s) && !"https".equals(s)) {
+            throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL scheme must be http/https", null);
+        }
+    }
+
+    private URI parseHttpUri(String raw) throws IOException {
+        String normalized = canonicalizeUrlInput(raw);
+        if (normalized.isBlank()) {
+            throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL is blank", null);
+        }
         try {
-            URI u = new URI(canonicalizeUrlInput(raw));
-            String scheme = u.getScheme();
-            String host = u.getHost();
-
-            if (scheme == null || host == null || host.isBlank()) {
-                throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL missing scheme/host", null);
-            }
-
-            String s = scheme.toLowerCase(Locale.ROOT);
-            if (!"http".equals(s) && !"https".equals(s)) {
-                throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL scheme must be http/https", null);
-            }
-        } catch (URISyntaxException e) {
+            return URI.create(normalized);
+        } catch (IllegalArgumentException e) {
             throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL syntax invalid", e);
         }
     }

@@ -257,7 +257,7 @@ public class DashboardDailySummaryStore {
                 return false;
             }
 
-            String sequenceName = rs.getString(1);
+            String sequenceName = getSafeString(rs, 1, 256);
             if (sequenceName == null || sequenceName.isBlank()) {
                 return false;
             }
@@ -274,7 +274,7 @@ public class DashboardDailySummaryStore {
         }
     }
 
-    JsonObject fetchExactOrLatest(LocalDate day, int slot) {
+    final JsonObject fetchExactOrLatest(LocalDate day, int slot) {
         String exactSql = """
                 SELECT summary_day, slot, status, progress_pct, message,
                        summary_overall, summary_quality, summary_response, summary_usage, suggested_next_action,
@@ -402,7 +402,16 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        String value = rs.getObject(column, String.class);
+        return sanitizeText(value, maxLen);
+    }
+
+    private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
+        String value = rs.getObject(column, String.class);
+        return sanitizeText(value, maxLen);
+    }
+
+    private String sanitizeText(String value, int maxLen) {
         if (value == null) {
             return "";
         }
@@ -417,8 +426,8 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Integer value = rs.getObject(column, Integer.class);
+        if (value == null) {
             return min;
         }
         if (value < min) {

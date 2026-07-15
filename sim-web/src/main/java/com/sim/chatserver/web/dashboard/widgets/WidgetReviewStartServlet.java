@@ -136,7 +136,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
-        try (var reader = Json.createReader(req.getInputStream())) {
+        try (var reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
         } catch (JsonException e) {
             log.log(java.util.logging.Level.FINE, "Unable to parse widget review start payload", e);
@@ -291,7 +291,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
-        String contentType = req.getContentType();
+        String contentType = req.getHeader("Content-Type");
         if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
             return false;
         }

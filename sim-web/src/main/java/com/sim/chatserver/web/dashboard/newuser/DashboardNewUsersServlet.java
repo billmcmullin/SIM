@@ -75,6 +75,10 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (req == null) {
+            writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid request.");
+            return;
+        }
         String path = resolveRequestPath(req);
         try {
             HttpSession session = req.getSession(false);
@@ -389,6 +393,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             int d = Integer.parseInt(value.trim());
             return ALLOWED_DAYS.contains(d) ? Optional.of(d) : Optional.empty();
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid days parameter", e);
             return Optional.empty();
         }
     }
@@ -400,6 +405,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         try {
             return Optional.of(LocalDate.parse(value, DATE_FMT));
         } catch (DateTimeParseException e) {
+            log.log(Level.FINE, "Invalid date parameter", e);
             return Optional.empty();
         }
     }
@@ -483,15 +489,15 @@ public class DashboardNewUsersServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        return values[0];
+        String normalized = value.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private String normalizeServletPath(String servletPath) {

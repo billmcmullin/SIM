@@ -11,6 +11,7 @@ import com.sim.chatserver.email.ResolvedEmailConfig;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 import jakarta.servlet.annotation.WebServlet;
@@ -33,6 +34,7 @@ public class AdminEmailServlet extends HttpServlet {
 
     // Simple email format check (good enough for admin validation)
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -40,10 +42,16 @@ public class AdminEmailServlet extends HttpServlet {
             return;
         }
 
+        if (!isValidJsonRequest(req)) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid JSON payload.");
+            return;
+        }
+
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+        try (JsonReader reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
-        } catch (Exception e) {
+        } catch (JsonException | ClassCastException e) {
+            log.log(Level.FINE, "Invalid admin email payload", e);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid JSON payload.");
             return;
         }
@@ -113,11 +121,24 @@ public class AdminEmailServlet extends HttpServlet {
                     .toString());
 
         } catch (IllegalArgumentException e) {
-            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", safe(e.getMessage()));
-        } catch (Exception e) {
+            log.log(Level.FINE, "Invalid admin email request", e);
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid email request.");
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Failed to send admin email", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "error", "Failed to send email.");
         }
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
     private List<String> toList(JsonArray arr) {

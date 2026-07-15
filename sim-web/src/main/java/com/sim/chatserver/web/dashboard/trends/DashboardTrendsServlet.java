@@ -5,11 +5,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -45,11 +47,11 @@ public class DashboardTrendsServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        int days = parseDays(req.getParameter("days"));
+        int days = parseDays(firstQueryParam(req, "days"));
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
@@ -113,7 +115,7 @@ public class DashboardTrendsServlet extends HttpServlet {
                 widgetDaily.put(widgetName, series);
                 widgetNameToId.put(widgetName, widgetId);
             }
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             throw new ServletException("Unable to load trend data", e);
         }
 
@@ -180,8 +182,45 @@ public class DashboardTrendsServlet extends HttpServlet {
         try {
             int d = Integer.parseInt(raw.trim());
             return (d == 10 || d == 30 || d == 90 || d == 120 || d == 180) ? d : 30;
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             return 30;
+        }
+    }
+
+    private String firstQueryParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int eq = pair.indexOf('=');
+            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
+            String key = urlDecode(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String val = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
+            return val.length() > 32 ? val.substring(0, 32) : val;
+        }
+        return null;
+    }
+
+    private String urlDecode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            return value;
         }
     }
 
@@ -201,7 +240,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws Exception {
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {

@@ -44,6 +44,7 @@ import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
@@ -77,9 +78,10 @@ public class WidgetExportServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader jr = Json.createReader(req.getInputStream())) {
+        try (JsonReader jr = Json.createReader(req.getReader())) {
             payload = jr.readObject();
-        } catch (Exception e) {
+        } catch (JsonException | ClassCastException e) {
+            log.log(Level.FINE, "Invalid export payload", e);
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
             return;
         }
@@ -159,8 +161,8 @@ public class WidgetExportServlet extends HttpServlet {
                     ids.add(id);
                 }
             }
-        } catch (Exception ignored) {
-            // tolerant parse
+        } catch (RuntimeException ex) {
+            log.log(Level.FINE, "Unable to parse selectedChatIds payload", ex);
         }
 
         return ids;
@@ -514,6 +516,9 @@ public class WidgetExportServlet extends HttpServlet {
         int limit = Math.min(rows == null ? 0 : rows.size(), FALLBACK_ROW_LIMIT);
         for (int i = 0; i < limit; i++) {
             TermChatSnapshot r = rows.get(i);
+            if (r == null) {
+                continue;
+            }
             String createdAt = r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant().toString();
             table.addCell(new PdfPCell(new Phrase(safe(r.getChatId()), normal)));
             table.addCell(new PdfPCell(new Phrase(createdAt, normal)));
@@ -537,9 +542,14 @@ public class WidgetExportServlet extends HttpServlet {
         sb.append("Chat Export Report\n");
         sb.append("Selection: ").append(safe(selectionId)).append("\n\n");
 
-        int limit = Math.min(rows == null ? 0 : rows.size(), FALLBACK_ROW_LIMIT);
+        List<TermChatSnapshot> safeRows = rows == null ? List.of() : rows;
+
+        int limit = Math.min(safeRows.size(), FALLBACK_ROW_LIMIT);
         for (int i = 0; i < limit; i++) {
-            TermChatSnapshot r = rows.get(i);
+            TermChatSnapshot r = safeRows.get(i);
+            if (r == null) {
+                continue;
+            }
             sb.append("Chat ID: ").append(safe(r.getChatId())).append("\n");
             sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append("\n");
             sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append("\n");

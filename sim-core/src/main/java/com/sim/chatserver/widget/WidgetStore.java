@@ -245,15 +245,16 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        return Math.max(0, rs.getInt(column));
+        Integer value = rs.getObject(column, Integer.class);
+        return value == null ? 0 : Math.max(0, value);
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        return sanitizeDbText(rs.getString(column), maxChars);
+        return sanitizeDbText(rs.getObject(column, String.class), maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        return toInstantRequired(rs.getTimestamp("created_at"));
+        return toInstantRequired(rs.getObject("created_at", Timestamp.class));
     }
 
     private static Instant toInstantRequired(Timestamp timestamp) {

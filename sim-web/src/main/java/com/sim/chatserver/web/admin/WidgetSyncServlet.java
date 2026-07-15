@@ -774,15 +774,16 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                long persistedInterval = rs.getLong("interval_seconds");
-                if (rs.wasNull()) {
+                Long persistedIntervalObj = rs.getObject("interval_seconds", Long.class);
+                long persistedInterval = persistedIntervalObj == null ? syncIntervalSeconds : persistedIntervalObj;
+                if (persistedIntervalObj == null) {
                     persistedInterval = syncIntervalSeconds;
                 }
                 if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
                     persistedInterval = syncIntervalSeconds;
                 }
 
-                Timestamp persistedLastSynced = sanitizePersistedTimestamp(SqlTimeUtil.safeTimestamp(rs, "last_synced"));
+                Timestamp persistedLastSynced = sanitizePersistedTimestamp(readDbTimestamp(rs, "last_synced"));
                 return new SyncSettings(persistedInterval, persistedLastSynced);
             }
         }
@@ -1268,15 +1269,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }
@@ -1284,12 +1277,8 @@ public class WidgetSyncServlet extends HttpServlet {
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
-    private String sanitizeDbText(String value, int maxLen) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
-        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+    private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
+        return rs.getObject(columnName, Timestamp.class);
     }
 
     private String buildSlug(String workspaceName) {

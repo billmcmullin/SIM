@@ -32,6 +32,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,8 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
+    private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,253}$");
+    private static final Pattern SAFE_SYNC_URL = Pattern.compile("^https?://[A-Za-z0-9.-]+(?::\\d{1,5})?(?:/[-A-Za-z0-9._~%!$&'()*+,;=:@/]*)?(?:\\?[-A-Za-z0-9._~%!$&'()*+,;=:@/?]*)?$");
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -90,7 +93,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-        private static final String POST_IMPORT_SYNC_URL = sanitizeSyncUrlValue(System.getenv("SIM_POST_IMPORT_SYNC_URL"));
+    private static final String POST_IMPORT_SYNC_URL = sanitizeSyncUrlValue(readEnv("SIM_POST_IMPORT_SYNC_URL"));
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -459,8 +462,8 @@ public class DatabaseImportServlet extends HttpServlet {
             ps.setString(1, table);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String column = rs.getString("column_name");
-                    String sequenceName = rs.getString("seq_name");
+                    String column = readMetadataIdentifier(rs, "column_name");
+                    String sequenceName = readSafeDbText(rs, "seq_name", 256);
                     if (column == null || sequenceName == null || sequenceName.isBlank()) {
                         continue;
                     }
@@ -484,17 +487,19 @@ public class DatabaseImportServlet extends HttpServlet {
         DatabaseMetaData meta = conn.getMetaData();
         try (ResultSet rs = meta.getColumns(null, "public", table, null)) {
             while (rs.next()) {
-                String rawName = rs.getString("COLUMN_NAME");
+                String rawName = readMetadataIdentifier(rs, "COLUMN_NAME");
                 if (rawName == null) {
                     continue;
                 }
-                String name = rawName.toLowerCase();
-                if (!SQL_IDENTIFIER.matcher(name).matches()) {
+                String name = rawName.toLowerCase(Locale.ROOT);
+                Integer dataType = readNullableInt(rs, "DATA_TYPE");
+                if (dataType == null) {
                     continue;
                 }
-                int type = rs.getInt("DATA_TYPE");
+                int type = dataType;
                 type = sanitizeSqlType(type);
-                boolean nullable = rs.getInt("NULLABLE") != ResultSetMetaData.columnNoNulls;
+                Integer nullableFlag = readNullableInt(rs, "NULLABLE");
+                boolean nullable = nullableFlag == null || nullableFlag != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
         }
@@ -740,7 +745,7 @@ public class DatabaseImportServlet extends HttpServlet {
         String sql = "SELECT widget_id FROM widget_entries";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String widgetId = sanitizeWidgetId(rs.getString("widget_id"));
+                String widgetId = sanitizeWidgetId(readSafeDbText(rs, "widget_id", 80));
                 if (widgetId == null || widgetId.isBlank()) {
                     continue;
                 }
@@ -800,42 +805,80 @@ public class DatabaseImportServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        String value = values[0];
+        return sanitizeRequestValue(values[0]);
+    }
+
+    private String sanitizeRequestValue(String value) {
         if (value == null) {
             return null;
         }
-        String trimmed = value.replace("\r", "").replace("\n", "").trim();
+        String trimmed = stripControlChars(value).trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
         return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
+    }
+
+    private static String readEnv(String name) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
     }
 
     private static String sanitizeSyncUrlValue(String candidate) {
         if (candidate == null || candidate.isBlank()) {
             return "";
         }
-        String trimmed = candidate.trim();
-        try {
-            URI parsed = URI.create(trimmed).normalize();
-            String scheme = parsed.getScheme();
-            String host = parsed.getHost();
-            if (scheme == null || host == null || host.isBlank()) {
-                return "";
-            }
-            String lowered = scheme.toLowerCase();
-            if (!"http".equals(lowered) && !"https".equals(lowered)) {
-                return "";
-            }
-            return parsed.toString();
-        } catch (IllegalArgumentException e) {
+        String trimmed = stripControlChars(candidate).trim();
+        if (trimmed.length() > 512) {
             return "";
         }
+        return SAFE_SYNC_URL.matcher(trimmed).matches() ? trimmed : "";
+    }
+
+    private static String stripControlChars(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\u0000", "")
+                .replace("\r", "")
+                .replace("\n", "");
+    }
+
+    private String readMetadataIdentifier(ResultSet rs, String columnName) throws SQLException {
+        String raw = readSafeDbText(rs, columnName, 63);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = raw.toLowerCase(Locale.ROOT);
+        return SQL_IDENTIFIER.matcher(normalized).matches() ? normalized : null;
+    }
+
+    private String readSafeDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
+        String raw = rs.getString(columnName);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = stripControlChars(raw).trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+    }
+
+    private Integer readNullableInt(ResultSet rs, String columnName) throws SQLException {
+        Integer value = rs.getObject(columnName, Integer.class);
+        return value;
     }
 
     private int sanitizeSqlType(int sqlType) {
@@ -885,8 +928,19 @@ public class DatabaseImportServlet extends HttpServlet {
         if (uri == null) {
             return false;
         }
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            return false;
+        }
+        String lowered = scheme.toLowerCase(Locale.ROOT);
+        if (!"http".equals(lowered) && !"https".equals(lowered)) {
+            return false;
+        }
         String host = uri.getHost();
-        return host != null && !host.isBlank();
+        if (host == null || host.isBlank()) {
+            return false;
+        }
+        return SAFE_HOST.matcher(host).matches();
     }
 
     private boolean isAdmin(HttpServletRequest req) {

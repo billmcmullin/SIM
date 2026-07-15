@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
@@ -50,7 +51,7 @@ public class AdminConfigServlet extends HttpServlet {
             termsStore.ensureTable();
             log.info("AdminConfigServlet.init: termsStore.ensureTable OK");
             log.info("AdminConfigServlet.init: initialization completed");
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "AdminConfigServlet init failed", e);
             throw new ServletException("Unable to initialize configuration storage", e);
         }
@@ -65,7 +66,7 @@ public class AdminConfigServlet extends HttpServlet {
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
                 log.info(() -> "[RID " + rid + "] Redirecting to login because no valid session/user is present.");
-                resp.sendRedirect(req.getContextPath() + "/login");
+                req.getRequestDispatcher("/login").forward(req, resp);
                 return;
             }
 
@@ -76,7 +77,7 @@ public class AdminConfigServlet extends HttpServlet {
 
             if (!"ADMIN".equalsIgnoreCase(role)) {
                 log.warning(() -> String.format("[RID %s] User '%s' with role '%s' denied access to /admin; redirecting to dashboard.", rid, username, role));
-                resp.sendRedirect(req.getContextPath() + "/dashboard");
+                req.getRequestDispatcher("/dashboard").forward(req, resp);
                 return;
             }
 
@@ -88,7 +89,7 @@ public class AdminConfigServlet extends HttpServlet {
             try {
                 config = EncryptedDbConfigStore.load();
                 log.info(() -> "[RID " + rid + "] EncryptedDbConfigStore.load OK");
-            } catch (Exception e) {
+            } catch (SQLException | RuntimeException e) {
                 log.log(Level.SEVERE, "[RID " + rid + "] Unable to load server configuration", e);
                 throw new ServletException("Unable to load server configuration", e);
             }
@@ -110,18 +111,18 @@ public class AdminConfigServlet extends HttpServlet {
                 List<TermDefinition> terms = termsStore.listAll();
                 termsListJson = serializeTerms(terms);
                 log.info(() -> "[RID " + rid + "] Loaded terms count=" + (terms == null ? 0 : terms.size()));
-            } catch (Exception e) {
+            } catch (SQLException | RuntimeException e) {
                 log.log(Level.WARNING, "[RID " + rid + "] Unable to load term definitions", e);
             }
 
             boolean apiKeyStored = config != null && config.getApiKey() != null && !config.getApiKey().isBlank();
-            String apiKeyForJs = escapeJs(apiKeyStored ? config.getApiKey() : "");
+            String apiKeyForJs = escapeJs(apiKeyStored && config != null ? config.getApiKey() : "");
             String workspaceName = config != null ? config.getWorkspaceName() : "";
 
             boolean salesforceApiKeyStored = config != null
                     && config.getSalesforceApiKey() != null
                     && !config.getSalesforceApiKey().isBlank();
-            String salesforceApiKeyForJs = escapeJs(salesforceApiKeyStored ? config.getSalesforceApiKey() : "");
+                String salesforceApiKeyForJs = escapeJs(salesforceApiKeyStored && config != null ? config.getSalesforceApiKey() : "");
             String salesforceInstanceUrl = config != null ? config.getSalesforceInstanceUrl() : "";
 
             boolean salesforceClientSecretStored = config != null
@@ -135,8 +136,8 @@ public class AdminConfigServlet extends HttpServlet {
             String salesforceLoginUrl = config != null ? config.getSalesforceLoginUrl() : "";
             String salesforceClientId = config != null ? config.getSalesforceClientId() : "";
 
-            String salesforceOAuthStatus = req.getParameter("salesforceOAuthStatus");
-            String salesforceOAuthMessage = req.getParameter("salesforceOAuthMessage");
+            String salesforceOAuthStatus = firstQueryParam(req, "salesforceOAuthStatus");
+            String salesforceOAuthMessage = firstQueryParam(req, "salesforceOAuthMessage");
             if (salesforceOAuthStatus == null) {
                 salesforceOAuthStatus = "";
             }
@@ -177,9 +178,47 @@ public class AdminConfigServlet extends HttpServlet {
             }
 
             log.info(() -> "[RID " + rid + "] GET /admin completed successfully");
-        } catch (Exception e) {
+        } catch (ServletException | IOException | RuntimeException e) {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
             throw e;
+        }
+    }
+
+    private String firstQueryParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int eq = pair.indexOf('=');
+            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
+            String key = urlDecode(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String value = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
+            return value.length() > 512 ? value.substring(0, 512) : value;
+        }
+        return null;
+    }
+
+    private String urlDecode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid admin query parameter encoding", ex);
+            return value;
         }
     }
 

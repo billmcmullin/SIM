@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
@@ -30,11 +31,11 @@ public class WidgetReviewServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        String selectionId = trimToNull(req.getParameter("selectionId"));
+        String selectionId = trimToNull(firstQueryParam(req, "selectionId"));
         if (selectionId == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
             return;
@@ -42,7 +43,7 @@ public class WidgetReviewServlet extends HttpServlet {
 
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
-            log.log(Level.INFO, "Selection not found for selectionId={0}", selectionId);
+            log.log(Level.INFO, "Selection not found for selectionId={0}", sanitizeForLog(selectionId));
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
             return;
         }
@@ -164,10 +165,58 @@ public class WidgetReviewServlet extends HttpServlet {
         return t.isEmpty() ? null : t;
     }
 
+    private String firstQueryParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int eq = pair.indexOf('=');
+            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
+            String key = urlDecode(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String val = urlDecode(rawVal);
+            String normalized = val.replace("\r", "").replace("\n", "").trim();
+            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        }
+        return null;
+    }
+
+    private String urlDecode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid URL encoding in query parameter", ex);
+            return value;
+        }
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
     private String urlEncode(String value) {
         try {
             return URLEncoder.encode(value, StandardCharsets.UTF_8);
         } catch (Exception e) {
+            log.log(Level.FINE, "Failed to URL-encode value", e);
             return value;
         }
     }
