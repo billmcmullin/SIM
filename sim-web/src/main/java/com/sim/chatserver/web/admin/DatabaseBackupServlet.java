@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -241,11 +242,12 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
 
         if (sqlType == Types.DATE) {
-            Date d = rs.getDate(columnIndex);
+            java.sql.Date d = rs.getDate(columnIndex);
             if (d == null) {
                 return "";
             }
-            return ISO_INSTANT_FMT.format(new Timestamp(d.getTime()).toInstant());
+            LocalDate localDate = d.toLocalDate();
+            return localDate == null ? "" : localDate.toString();
         }
 
         String value = sanitizeCellText(rs.getString(columnIndex));

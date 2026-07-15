@@ -12,7 +12,9 @@
         const activeCountLink = document.getElementById('activeSessionsLink');
         const inactiveCountLink = document.getElementById('inactiveSessionsLink');
 
-        if (!listEl || !totalEl) return;
+        if (!listEl || !totalEl) {
+            return;
+        }
 
         try {
             const url = `${contextPath}/dashboard/sessions.json?page=1&pageSize=10&sortBy=count&sortDir=desc`;
@@ -23,8 +25,12 @@
 
             if (!resp.ok) {
                 totalEl.textContent = 'N/A';
-                if (activeCountLink) activeCountLink.textContent = 'N/A';
-                if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+                if (activeCountLink) {
+                    activeCountLink.textContent = 'N/A';
+                }
+                if (inactiveCountLink) {
+                    inactiveCountLink.textContent = 'N/A';
+                }
                 metrics.renderActiveUsersDelta({});
                 return;
             }
@@ -32,8 +38,12 @@
             const data = await resp.json();
             if (!data || data.status !== 'ok') {
                 totalEl.textContent = 'N/A';
-                if (activeCountLink) activeCountLink.textContent = 'N/A';
-                if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+                if (activeCountLink) {
+                    activeCountLink.textContent = 'N/A';
+                }
+                if (inactiveCountLink) {
+                    inactiveCountLink.textContent = 'N/A';
+                }
                 metrics.renderActiveUsersDelta({});
                 return;
             }
@@ -43,7 +53,9 @@
             const inactiveUsers = typeof data.inactiveUsers === 'number' ? data.inactiveUsers : null;
 
             totalEl.textContent = typeof data.total === 'number' ? String(data.total) : '—';
-            if (activeDaysEl) activeDaysEl.textContent = String(activeDays);
+            if (activeDaysEl) {
+                activeDaysEl.textContent = String(activeDays);
+            }
 
             if (activeCountLink) {
                 activeCountLink.textContent = activeUsers === null ? '—' : String(activeUsers);
@@ -94,8 +106,12 @@
         } catch (e) {
             console.warn('Unable to load top sessions:', e);
             totalEl.textContent = 'N/A';
-            if (activeCountLink) activeCountLink.textContent = 'N/A';
-            if (inactiveCountLink) inactiveCountLink.textContent = 'N/A';
+            if (activeCountLink) {
+                activeCountLink.textContent = 'N/A';
+            }
+            if (inactiveCountLink) {
+                inactiveCountLink.textContent = 'N/A';
+            }
             metrics.renderActiveUsersDelta({});
         }
     }

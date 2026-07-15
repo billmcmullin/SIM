@@ -1,10 +1,7 @@
 package com.sim.chatserver.email;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -13,6 +10,11 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.net.ssl.HttpsURLConnection;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Acquires and caches Microsoft Graph access token using client credentials
@@ -50,7 +52,7 @@ public class GraphTokenClient {
             this.cachedAccessToken = tr.accessToken;
             this.cachedExpiresAt = Instant.now().plusSeconds(Math.max(60, tr.expiresIn));
             return this.cachedAccessToken;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             if (e instanceof EmailException ee) {
                 throw ee;
             }
@@ -59,14 +61,14 @@ public class GraphTokenClient {
     }
 
     private TokenResponse fetchToken() {
-        HttpURLConnection conn = null;
+        HttpsURLConnection conn = null;
         try {
             String tokenUrl = "https://" + config.effectiveAuthorityHost().trim()
                     + "/" + enc(config.tenantId().trim())
                     + "/oauth2/v2.0/token";
 
             URL url = URI.create(tokenUrl).toURL();
-            conn = (HttpURLConnection) url.openConnection();
+            conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setConnectTimeout(10000);
@@ -108,7 +110,7 @@ public class GraphTokenClient {
             }
 
             return new TokenResponse(accessToken, expiresIn);
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             LOG.log(Level.SEVERE, "Graph token acquisition failed", e);
             if (e instanceof EmailException ee) {
                 throw ee;
@@ -130,7 +132,7 @@ public class GraphTokenClient {
         final String accessToken;
         final long expiresIn;
 
-        TokenResponse(String accessToken, long expiresIn) {
+        private TokenResponse(String accessToken, long expiresIn) {
             this.accessToken = accessToken;
             this.expiresIn = expiresIn;
         }

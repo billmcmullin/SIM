@@ -2,8 +2,12 @@
     'use strict';
 
     function parseSlices(input) {
-        if (Array.isArray(input)) return input;
-        if (typeof input !== 'string') return [];
+        if (Array.isArray(input)) {
+            return input;
+        }
+        if (typeof input !== 'string') {
+            return [];
+        }
         try {
             const parsed = JSON.parse(input);
             return Array.isArray(parsed) ? parsed : [];
@@ -13,8 +17,12 @@
     }
 
     function parseObject(input) {
-        if (input && typeof input === 'object' && !Array.isArray(input)) return input;
-        if (typeof input !== 'string') return {};
+        if (input && typeof input === 'object' && !Array.isArray(input)) {
+            return input;
+        }
+        if (typeof input !== 'string') {
+            return {};
+        }
         try {
             const parsed = JSON.parse(input);
             return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
@@ -24,8 +32,12 @@
     }
 
     function parseTrendData(input) {
-        if (input && typeof input === 'object' && !Array.isArray(input)) return input;
-        if (typeof input !== 'string') return { labels: [], values: [], days: 5 };
+        if (input && typeof input === 'object' && !Array.isArray(input)) {
+            return input;
+        }
+        if (typeof input !== 'string') {
+            return { labels: [], values: [], days: 5 };
+        }
         try {
             const parsed = JSON.parse(input);
             return (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
@@ -50,9 +62,13 @@
     }
 
     function esc(v) {
-        if (v === null || typeof v === 'undefined') return '';
+        if (v === null || typeof v === 'undefined') {
+            return '';
+        }
         const str = String(v);
-        if (!/[&<>"']/.test(str)) return str;
+        if (!/[&<>"']/.test(str)) {
+            return str;
+        }
         return str
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -62,7 +78,9 @@
     }
 
     function toYmd(d) {
-        if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+        if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
+            return '';
+        }
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');

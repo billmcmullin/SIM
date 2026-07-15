@@ -15,7 +15,9 @@
     }
 
     function linkifyWithin(root, contextPath) {
-        if (!root) return;
+        if (!root) {
+            return;
+        }
 
         // 1) Generic hook: any element marked with data attributes
         root.querySelectorAll('.js-customer-profile-link').forEach((el) => {
@@ -32,7 +34,9 @@
             }
             if (!el.getAttribute('data-session-id')) {
                 const sid = text(el);
-                if (sid) el.setAttribute('data-session-id', sid);
+                if (sid) {
+                    el.setAttribute('data-session-id', sid);
+                }
             }
             linkElement(el, contextPath);
         });
@@ -46,7 +50,9 @@
             }
             if (!el.getAttribute('data-friendly-name')) {
                 const fn = text(el);
-                if (fn) el.setAttribute('data-friendly-name', fn);
+                if (fn) {
+                    el.setAttribute('data-friendly-name', fn);
+                }
             }
 
             // try finding session id in same row so route is canonical by sessionId
@@ -62,7 +68,9 @@
     }
 
     function linkElement(el, contextPath) {
-        if (!el || el.dataset.cpLinked === 'true') return;
+        if (!el || el.dataset.cpLinked === 'true') {
+            return;
+        }
 
         // Already an anchor?
         if (el.tagName === 'A') {
@@ -73,11 +81,16 @@
 
         const sid = (el.getAttribute('data-session-id') || '').trim();
         const friendlyName = (el.getAttribute('data-friendly-name') || '').trim();
-        if (!sid && !friendlyName) return;
+        if (!sid && !friendlyName) {
+            return;
+        }
 
         const qs = new URLSearchParams();
-        if (sid) qs.set('sessionId', sid);
-        else qs.set('friendlyName', friendlyName);
+        if (sid) {
+            qs.set('sessionId', sid);
+        } else {
+            qs.set('friendlyName', friendlyName);
+        }
 
         const href = `${contextPath}/customer-profile?${qs.toString()}`;
 

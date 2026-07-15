@@ -20,12 +20,16 @@
             this.runBtn?.addEventListener('click', () => this.runImport());
             this.fileInput?.addEventListener('change', () => this.onFileChanged());
 
-            if (this.runBtn) this.runBtn.disabled = true;
+            if (this.runBtn) {
+                this.runBtn.disabled = true;
+            }
         },
 
         onFileChanged() {
             this.precheckPassed = false;
-            if (this.runBtn) this.runBtn.disabled = true;
+            if (this.runBtn) {
+                this.runBtn.disabled = true;
+            }
             this.setMessage('File selected. Run precheck before importing.', '#374151');
         },
 
@@ -34,7 +38,9 @@
         },
 
         setMessage(text, color = '#374151') {
-            if (!this.msg) return;
+            if (!this.msg) {
+                return;
+            }
             this.msg.textContent = text || '';
             this.msg.style.color = color;
         },
@@ -42,7 +48,9 @@
         async precheckImport() {
             const file = this.getSelectedFile();
             this.precheckPassed = false;
-            if (this.runBtn) this.runBtn.disabled = true;
+            if (this.runBtn) {
+                this.runBtn.disabled = true;
+            }
 
             if (!file) {
                 this.setMessage('Please choose a backup ZIP file first.', '#b91c1c');
@@ -71,7 +79,9 @@
                 }
 
                 this.precheckPassed = true;
-                if (this.runBtn) this.runBtn.disabled = false;
+                if (this.runBtn) {
+                    this.runBtn.disabled = false;
+                }
 
                 this.setMessage(payload?.message || 'Precheck successful. Ready to import.', '#047857');
                 this.renderSummary(payload);
@@ -128,7 +138,9 @@
         },
 
         renderSummary(payload) {
-            if (!this.summaryWrap || !this.summaryBody) return;
+            if (!this.summaryWrap || !this.summaryBody) {
+                return;
+            }
 
             if (!payload) {
                 this.summaryWrap.style.display = 'none';
@@ -149,7 +161,9 @@
         },
 
         renderWidgetPreview(widgetTables) {
-            if (!this.widgetPreviewBody) return;
+            if (!this.widgetPreviewBody) {
+                return;
+            }
 
             if (!widgetTables.length) {
                 this.widgetPreviewBody.innerHTML = '<tr><td colspan="2" class="empty-row">No widget tables detected in backup ZIP.</td></tr>';
@@ -166,7 +180,9 @@
     };
 
     function escapeHtml(v) {
-        if (window.AdminPage?.Utils?.escapeHtml) return window.AdminPage.Utils.escapeHtml(v);
+        if (window.AdminPage?.Utils?.escapeHtml) {
+            return window.AdminPage.Utils.escapeHtml(v);
+        }
         return String(v ?? '')
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')

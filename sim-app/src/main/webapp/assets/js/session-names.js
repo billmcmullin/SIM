@@ -87,8 +87,12 @@ function renderFriendlyNameCell(cell, displayName, sessionId, fallbackFriendlyNa
 }
 
 function updatePaginationControls(count) {
-    if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
-    if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+    if (prevPageBtn) {
+        prevPageBtn.disabled = currentPage <= 1;
+    }
+    if (nextPageBtn) {
+        nextPageBtn.disabled = currentPage >= totalPages;
+    }
     if (sessionInfo) {
         const labelState = labeledOnly ? 'Only labeled users' : 'All users';
         sessionInfo.textContent = `Showing ${count} of ${totalSessions} sessions · Page ${currentPage} of ${totalPages} · ${labelState}`;
@@ -96,7 +100,9 @@ function updatePaginationControls(count) {
 }
 
 function refreshLabeledOnlyUi() {
-    if (!toggleLabeledOnlyBtn) return;
+    if (!toggleLabeledOnlyBtn) {
+        return;
+    }
     toggleLabeledOnlyBtn.textContent = `Only labeled users: ${labeledOnly ? 'On' : 'Off'}`;
     toggleLabeledOnlyBtn.setAttribute('aria-pressed', labeledOnly ? 'true' : 'false');
     toggleLabeledOnlyBtn.style.border = labeledOnly ? '2px solid #1d4ed8' : '1px solid transparent';
@@ -117,9 +123,13 @@ function syncLabeledOnlyToUrl() {
 }
 
 async function loadSessions(query = '') {
-    if (!sessionListBody) return;
+    if (!sessionListBody) {
+        return;
+    }
 
-    if (sessionInfo) sessionInfo.textContent = 'Loading sessions…';
+    if (sessionInfo) {
+        sessionInfo.textContent = 'Loading sessions…';
+    }
     sessionListBody.innerHTML = '<tr><td colspan="6" class="empty-row">Loading sessions…</td></tr>';
 
     try {
@@ -198,10 +208,16 @@ async function loadSessions(query = '') {
         updatePaginationControls(payload.sessions.length);
     } catch (error) {
         console.error(error);
-        if (sessionInfo) sessionInfo.textContent = 'Unable to load sessions.';
+        if (sessionInfo) {
+            sessionInfo.textContent = 'Unable to load sessions.';
+        }
         sessionListBody.innerHTML = '<tr><td colspan="6" class="empty-row">Unable to load sessions.</td></tr>';
-        if (prevPageBtn) prevPageBtn.disabled = true;
-        if (nextPageBtn) nextPageBtn.disabled = true;
+        if (prevPageBtn) {
+            prevPageBtn.disabled = true;
+        }
+        if (nextPageBtn) {
+            nextPageBtn.disabled = true;
+        }
     }
 }
 
@@ -315,13 +331,17 @@ pageSizeSelect?.addEventListener('change', () => {
 });
 
 prevPageBtn?.addEventListener('click', () => {
-    if (currentPage <= 1) return;
+    if (currentPage <= 1) {
+        return;
+    }
     currentPage -= 1;
     loadSessions(currentQuery);
 });
 
 nextPageBtn?.addEventListener('click', () => {
-    if (currentPage >= totalPages) return;
+    if (currentPage >= totalPages) {
+        return;
+    }
     currentPage += 1;
     loadSessions(currentQuery);
 });

@@ -4,7 +4,9 @@
     async function buildTermReviewSelectionLink(contextPath, term, increaseOnly) {
         const qp = new URLSearchParams();
         qp.set('term', term || '');
-        if (increaseOnly) qp.set('mode', 'increaseOnly');
+        if (increaseOnly) {
+            qp.set('mode', 'increaseOnly');
+        }
 
         const url = `${contextPath}/dashboard/term-review/select?${qp.toString()}`;
         const resp = await fetch(url, {

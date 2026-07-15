@@ -29,7 +29,9 @@
     const widgetPieCharts = new Map();
 
     function esc(v) {
-        if (v === null || v === undefined) return '';
+        if (v === null || v === undefined) {
+            return '';
+        }
         return String(v)
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -51,13 +53,21 @@
 
     function ensureDefaultDateInputs() {
         const today = toYmd(new Date());
-        if (dayInput && !dayInput.value) dayInput.value = today;
-        if (startInput && !startInput.value) startInput.value = today;
-        if (endInput && !endInput.value) endInput.value = today;
+        if (dayInput && !dayInput.value) {
+            dayInput.value = today;
+        }
+        if (startInput && !startInput.value) {
+            startInput.value = today;
+        }
+        if (endInput && !endInput.value) {
+            endInput.value = today;
+        }
     }
 
     function applyIncludeOtherBtnState() {
-        if (!includeOtherBtn) return;
+        if (!includeOtherBtn) {
+            return;
+        }
         includeOtherBtn.textContent = includeOtherEnabled
             ? 'Including "Other Parasoft Match"'
             : 'Include "Other Parasoft Match"';
@@ -72,9 +82,15 @@
         const end = (qp.get('end') || '').trim();
         const includeOther = (qp.get('includeOther') || '').trim().toLowerCase();
 
-        if (dayInput && day) dayInput.value = day;
-        if (startInput && start) startInput.value = start;
-        if (endInput && end) endInput.value = end;
+        if (dayInput && day) {
+            dayInput.value = day;
+        }
+        if (startInput && start) {
+            startInput.value = start;
+        }
+        if (endInput && end) {
+            endInput.value = end;
+        }
 
         if (useRangeCheckbox) {
             useRangeCheckbox.checked = !!(start && end);
@@ -94,17 +110,31 @@
         // default always all topics
         params.set('limit', 'all');
 
-        if (includeOtherEnabled) params.set('includeOther', 'true');
+        if (includeOtherEnabled) {
+            params.set('includeOther', 'true');
+        }
 
         if (useRange) {
-            if (start) params.set('start', start);
-            if (end) params.set('end', end);
-            if (!start && !end && day) params.set('day', day);
+            if (start) {
+                params.set('start', start);
+            }
+            if (end) {
+                params.set('end', end);
+            }
+            if (!start && !end && day) {
+                params.set('day', day);
+            }
         } else {
-            if (day) params.set('day', day);
+            if (day) {
+                params.set('day', day);
+            }
             else {
-                if (start) params.set('start', start);
-                if (end) params.set('end', end);
+                if (start) {
+                    params.set('start', start);
+                }
+                if (end) {
+                    params.set('end', end);
+                }
             }
         }
 
@@ -122,14 +152,26 @@
         const end = (endInput?.value || '').trim();
 
         if (useRange) {
-            if (start) params.set('start', start);
-            if (end) params.set('end', end);
-            if (!start && !end && day) params.set('day', day);
+            if (start) {
+                params.set('start', start);
+            }
+            if (end) {
+                params.set('end', end);
+            }
+            if (!start && !end && day) {
+                params.set('day', day);
+            }
         } else {
-            if (day) params.set('day', day);
+            if (day) {
+                params.set('day', day);
+            }
             else if (start || end) {
-                if (start) params.set('start', start);
-                if (end) params.set('end', end);
+                if (start) {
+                    params.set('start', start);
+                }
+                if (end) {
+                    params.set('end', end);
+                }
             }
         }
 
@@ -137,7 +179,9 @@
     }
 
     async function openReviewForChatIds(chatIds) {
-        if (!Array.isArray(chatIds) || !chatIds.length) return;
+        if (!Array.isArray(chatIds) || !chatIds.length) {
+            return;
+        }
         try {
             const res = await fetch(REVIEW_START_URL, {
                 method: 'POST',
@@ -150,8 +194,12 @@
             let data = {};
             try { data = JSON.parse(text); } catch { data = { message: text }; }
 
-            if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-            if (!data.selectionId) throw new Error(data.message || 'No selectionId returned');
+            if (!res.ok) {
+                throw new Error(data.message || `HTTP ${res.status}`);
+            }
+            if (!data.selectionId) {
+                throw new Error(data.message || 'No selectionId returned');
+            }
 
             window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
         } catch (err) {
@@ -161,8 +209,12 @@
     }
 
     function setLoading() {
-        if (globalBody) globalBody.innerHTML = '<tr><td colspan="3" class="empty-row">Loading topics…</td></tr>';
-        if (widgetContainer) widgetContainer.innerHTML = '<p class="helper-note">Loading per-widget topics…</p>';
+        if (globalBody) {
+            globalBody.innerHTML = '<tr><td colspan="3" class="empty-row">Loading topics…</td></tr>';
+        }
+        if (widgetContainer) {
+            widgetContainer.innerHTML = '<p class="helper-note">Loading per-widget topics…</p>';
+        }
     }
 
     function mentionButton(mentions, chatIds) {
@@ -171,7 +223,9 @@
     }
 
     function renderGlobal(rows) {
-        if (!globalBody) return;
+        if (!globalBody) {
+            return;
+        }
         if (!Array.isArray(rows) || !rows.length) {
             globalBody.innerHTML = '<tr><td colspan="3" class="empty-row">No topics found.</td></tr>';
             return;
@@ -186,7 +240,9 @@
     }
 
     function renderWidgets(widgets) {
-        if (!widgetContainer) return;
+        if (!widgetContainer) {
+            return;
+        }
         if (!Array.isArray(widgets) || !widgets.length) {
             widgetContainer.innerHTML = '<p class="helper-note">No widget topic data found.</p>';
             return;
@@ -229,20 +285,30 @@
     }
 
     function destroyCharts() {
-        if (globalPieChart) { globalPieChart.destroy(); globalPieChart = null; }
+        if (globalPieChart) {
+            globalPieChart.destroy();
+            globalPieChart = null;
+        }
         widgetPieCharts.forEach(chart => chart.destroy());
         widgetPieCharts.clear();
     }
 
     function renderGlobalPie(globalRows) {
-        if (!globalPieCanvas || typeof Chart === 'undefined') return;
+        if (!globalPieCanvas || typeof Chart === 'undefined') {
+            return;
+        }
 
         const rows = Array.isArray(globalRows) ? globalRows : [];
         const labels = rows.map(r => r.topic || 'Topic');
         const values = rows.map(r => Number(r.mentions || 0));
 
-        if (globalPieChart) { globalPieChart.destroy(); globalPieChart = null; }
-        if (!labels.length) return;
+        if (globalPieChart) {
+            globalPieChart.destroy();
+            globalPieChart = null;
+        }
+        if (!labels.length) {
+            return;
+        }
 
         globalPieChart = new Chart(globalPieCanvas.getContext('2d'), {
             type: 'pie',
@@ -252,28 +318,38 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { position: 'bottom' } },
                 onClick: (_evt, elements) => {
-                    if (!elements?.length) return;
+                    if (!elements?.length) {
+                        return;
+                    }
                     const row = rows[elements[0].index];
-                    if (row) openReviewForChatIds(row.selectedChatIds || []);
+                    if (row) {
+                        openReviewForChatIds(row.selectedChatIds || []);
+                    }
                 }
             }
         });
     }
 
     function renderWidgetPies(widgets) {
-        if (typeof Chart === 'undefined') return;
+        if (typeof Chart === 'undefined') {
+            return;
+        }
         const list = Array.isArray(widgets) ? widgets : [];
 
         list.forEach(w => {
             const widgetName = w.widgetName || 'Widget';
             const key = makeWidgetKey(widgetName);
             const canvas = document.getElementById(`widgetTopicsPieChart_${key}`);
-            if (!canvas) return;
+            if (!canvas) {
+                return;
+            }
 
             const topics = Array.isArray(w.topics) ? w.topics : [];
             const labels = topics.map(t => t.topic || 'Topic');
             const values = topics.map(t => Number(t.mentions || 0));
-            if (!labels.length) return;
+            if (!labels.length) {
+                return;
+            }
 
             const chart = new Chart(canvas.getContext('2d'), {
                 type: 'pie',
@@ -283,9 +359,13 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom' } },
                     onClick: (_evt, elements) => {
-                        if (!elements?.length) return;
+                        if (!elements?.length) {
+                            return;
+                        }
                         const topic = topics[elements[0].index];
-                        if (topic) openReviewForChatIds(topic.selectedChatIds || []);
+                        if (topic) {
+                            openReviewForChatIds(topic.selectedChatIds || []);
+                        }
                     }
                 }
             });
@@ -305,11 +385,21 @@
     }
 
     function updateSummary(data) {
-        if (!data || typeof data !== 'object') return;
-        if (summaryDayEl) summaryDayEl.textContent = data.day || '—';
-        if (summaryRangeEl) summaryRangeEl.textContent = `${data.rangeStart || '—'} to ${data.rangeEnd || '—'}`;
-        if (summaryMentionsEl) summaryMentionsEl.textContent = String(Number.isFinite(Number(data.termsTotal)) ? Number(data.termsTotal) : 0);
-        if (summaryChatsEl) summaryChatsEl.textContent = String(Number.isFinite(Number(data.uniqueChatsTotal)) ? Number(data.uniqueChatsTotal) : 0);
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+        if (summaryDayEl) {
+            summaryDayEl.textContent = data.day || '—';
+        }
+        if (summaryRangeEl) {
+            summaryRangeEl.textContent = `${data.rangeStart || '—'} to ${data.rangeEnd || '—'}`;
+        }
+        if (summaryMentionsEl) {
+            summaryMentionsEl.textContent = String(Number.isFinite(Number(data.termsTotal)) ? Number(data.termsTotal) : 0);
+        }
+        if (summaryChatsEl) {
+            summaryChatsEl.textContent = String(Number.isFinite(Number(data.uniqueChatsTotal)) ? Number(data.uniqueChatsTotal) : 0);
+        }
     }
 
     async function loadTopics() {
@@ -319,16 +409,22 @@
 
         const params = getDateParams();
         params.set('limit', 'all'); // default always all topics
-        if (includeOtherEnabled) params.set('includeOther', 'true');
+        if (includeOtherEnabled) {
+            params.set('includeOther', 'true');
+        }
 
         try {
             const res = await fetch(`${API_URL}?${params.toString()}`, {
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' }
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
             const data = await res.json();
-            if (!data || data.status !== 'ok') throw new Error(data?.message || 'Unexpected response');
+            if (!data || data.status !== 'ok') {
+                throw new Error(data?.message || 'Unexpected response');
+            }
 
             const globalTopics = Array.isArray(data.globalTopics) ? data.globalTopics : [];
             const widgets = Array.isArray(data.widgets) ? data.widgets : [];
@@ -342,8 +438,12 @@
             renderWidgetPies(widgets);
         } catch (err) {
             console.error(err);
-            if (globalBody) globalBody.innerHTML = `<tr><td colspan="3" class="empty-row">Unable to load topics: ${esc(err.message)}</td></tr>`;
-            if (widgetContainer) widgetContainer.innerHTML = `<p class="helper-note">Unable to load per-widget topics: ${esc(err.message)}</p>`;
+            if (globalBody) {
+                globalBody.innerHTML = `<tr><td colspan="3" class="empty-row">Unable to load topics: ${esc(err.message)}</td></tr>`;
+            }
+            if (widgetContainer) {
+                widgetContainer.innerHTML = `<p class="helper-note">Unable to load per-widget topics: ${esc(err.message)}</p>`;
+            }
         }
     }
 
@@ -358,17 +458,23 @@
         });
 
         dayInput?.addEventListener('change', () => {
-            if (useRangeCheckbox) useRangeCheckbox.checked = false;
+            if (useRangeCheckbox) {
+                useRangeCheckbox.checked = false;
+            }
             loadTopics();
         });
 
         startInput?.addEventListener('change', () => {
-            if (useRangeCheckbox) useRangeCheckbox.checked = true;
+            if (useRangeCheckbox) {
+                useRangeCheckbox.checked = true;
+            }
             loadTopics();
         });
 
         endInput?.addEventListener('change', () => {
-            if (useRangeCheckbox) useRangeCheckbox.checked = true;
+            if (useRangeCheckbox) {
+                useRangeCheckbox.checked = true;
+            }
             loadTopics();
         });
 
@@ -376,10 +482,18 @@
 
         refreshBtn?.addEventListener('click', () => {
             const today = toYmd(new Date());
-            if (dayInput) dayInput.value = today;
-            if (startInput) startInput.value = today;
-            if (endInput) endInput.value = today;
-            if (useRangeCheckbox) useRangeCheckbox.checked = false;
+            if (dayInput) {
+                dayInput.value = today;
+            }
+            if (startInput) {
+                startInput.value = today;
+            }
+            if (endInput) {
+                endInput.value = today;
+            }
+            if (useRangeCheckbox) {
+                useRangeCheckbox.checked = false;
+            }
 
             includeOtherEnabled = false;
             applyIncludeOtherBtnState();

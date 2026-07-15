@@ -18,7 +18,9 @@
 
     function setMessage(text, isError) {
         const el = $('widgetHealthConfigResult');
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.textContent = text || '';
         el.style.color = isError ? '#991b1b' : '#047857';
         el.style.fontWeight = '600';
@@ -33,8 +35,12 @@
     function readForm() {
         const timeoutRaw = $('whcTimeoutMs')?.value;
         let timeoutMs = Number.parseInt(timeoutRaw, 10);
-        if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 8000;
-        if (timeoutMs > 120000) timeoutMs = 120000;
+        if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+            timeoutMs = 8000;
+        }
+        if (timeoutMs > 120000) {
+            timeoutMs = 120000;
+        }
 
         const payload = {
             healthcheckUrl: ($('whcHealthcheckUrl')?.value || '').trim(),
@@ -59,20 +65,42 @@
     }
 
     function fillForm(cfg) {
-        if (!cfg || typeof cfg !== 'object') return;
+        if (!cfg || typeof cfg !== 'object') {
+            return;
+        }
 
-        if ($('whcHealthcheckUrl')) $('whcHealthcheckUrl').value = cfg.healthcheckUrl || '';
-        if ($('whcMethod')) $('whcMethod').value = (cfg.method || 'GET').toUpperCase();
-        if ($('whcTimeoutMs')) $('whcTimeoutMs').value = String(cfg.timeoutMs || 8000);
-        if ($('whcExpectJsonField')) $('whcExpectJsonField').value = cfg.expectJsonField || '';
-        if ($('whcExpectJsonValue')) $('whcExpectJsonValue').value = cfg.expectJsonValue || '';
-        if ($('whcWidgetId')) $('whcWidgetId').value = cfg.widgetId || '';
+        if ($('whcHealthcheckUrl')) {
+            $('whcHealthcheckUrl').value = cfg.healthcheckUrl || '';
+        }
+        if ($('whcMethod')) {
+            $('whcMethod').value = (cfg.method || 'GET').toUpperCase();
+        }
+        if ($('whcTimeoutMs')) {
+            $('whcTimeoutMs').value = String(cfg.timeoutMs || 8000);
+        }
+        if ($('whcExpectJsonField')) {
+            $('whcExpectJsonField').value = cfg.expectJsonField || '';
+        }
+        if ($('whcExpectJsonValue')) {
+            $('whcExpectJsonValue').value = cfg.expectJsonValue || '';
+        }
+        if ($('whcWidgetId')) {
+            $('whcWidgetId').value = cfg.widgetId || '';
+        }
 
         // New optional request-shaping fields
-        if ($('whcRequestOrigin')) $('whcRequestOrigin').value = cfg.requestOrigin || '';
-        if ($('whcRequestReferer')) $('whcRequestReferer').value = cfg.requestReferer || '';
-        if ($('whcRequestUserAgent')) $('whcRequestUserAgent').value = cfg.requestUserAgent || '';
-        if ($('whcRequestCookie')) $('whcRequestCookie').value = cfg.requestCookie || '';
+        if ($('whcRequestOrigin')) {
+            $('whcRequestOrigin').value = cfg.requestOrigin || '';
+        }
+        if ($('whcRequestReferer')) {
+            $('whcRequestReferer').value = cfg.requestReferer || '';
+        }
+        if ($('whcRequestUserAgent')) {
+            $('whcRequestUserAgent').value = cfg.requestUserAgent || '';
+        }
+        if ($('whcRequestCookie')) {
+            $('whcRequestCookie').value = cfg.requestCookie || '';
+        }
     }
 
     async function loadWidgetHealthConfig() {
@@ -143,8 +171,12 @@
             fillForm(saved);
 
             const meta = [];
-            if (saved.updatedBy) meta.push('updatedBy=' + saved.updatedBy);
-            if (saved.updatedAt) meta.push('updatedAt=' + saved.updatedAt);
+            if (saved.updatedBy) {
+                meta.push('updatedBy=' + saved.updatedBy);
+            }
+            if (saved.updatedAt) {
+                meta.push('updatedAt=' + saved.updatedAt);
+            }
 
             setMessage('Widget health config saved.' + (meta.length ? ' (' + meta.join(', ') + ')' : ''), false);
         } catch (err) {
@@ -215,7 +247,9 @@
     }
 
     function init() {
-        if (!$('widgetHealthConfigForm')) return;
+        if (!$('widgetHealthConfigForm')) {
+            return;
+        }
         wireEvents();
         loadWidgetHealthConfig();
     }

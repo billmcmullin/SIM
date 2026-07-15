@@ -18,7 +18,9 @@
     let trendChart = null;
 
     function esc(v) {
-        if (v === null || v === undefined) return '';
+        if (v === null || v === undefined) {
+            return '';
+        }
         return String(v)
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -28,7 +30,9 @@
     }
 
     function setStatus(msg, isError = false) {
-        if (!statusEl) return;
+        if (!statusEl) {
+            return;
+        }
         statusEl.textContent = msg || '';
         statusEl.style.color = isError ? '#b91c1c' : '#047857';
     }
@@ -53,7 +57,9 @@
     }
 
     function renderLatest(rows) {
-        if (!tableBody) return;
+        if (!tableBody) {
+            return;
+        }
 
         if (!Array.isArray(rows) || !rows.length) {
             tableBody.innerHTML = '<tr><td colspan="4" class="empty-row">No new session IDs found.</td></tr>';
@@ -81,7 +87,9 @@
     }
 
     function renderDayRows(day, rows) {
-        if (!dayResultsBody || !dayResultsTitle) return;
+        if (!dayResultsBody || !dayResultsTitle) {
+            return;
+        }
 
         dayResultsTitle.textContent = `New users first seen on ${day}`;
 
@@ -111,7 +119,9 @@
     }
 
     async function loadDay(dayLabel) {
-        if (!dayLabel) return;
+        if (!dayLabel) {
+            return;
+        }
 
         try {
             const p = new URLSearchParams();
@@ -142,7 +152,9 @@
     }
 
     function renderTrend(labels, values) {
-        if (!chartCanvas || typeof Chart === 'undefined') return;
+        if (!chartCanvas || typeof Chart === 'undefined') {
+            return;
+        }
 
         const safeLabels = Array.isArray(labels) ? labels : [];
         const safeValues = Array.isArray(values) ? values : [];
@@ -182,10 +194,14 @@
                     }
                 },
                 onClick: (event, elements) => {
-                    if (!elements || !elements.length) return;
+                    if (!elements || !elements.length) {
+                        return;
+                    }
                     const idx = elements[0].index;
                     const dayLabel = safeLabels[idx];
-                    if (!dayLabel) return;
+                    if (!dayLabel) {
+                        return;
+                    }
 
                     // Navigate to drilldown page filtered by selected day
                     window.location.href =

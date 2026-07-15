@@ -1,5 +1,11 @@
 package com.sim.chatserver.web.admin;
 
+import java.lang.reflect.Method;
+import java.sql.Date;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Types;
+
 import org.junit.jupiter.api.Test;
 
 import jakarta.servlet.ServletOutputStream;
@@ -7,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
@@ -247,5 +254,23 @@ public class DatabaseBackupServletTest
         when(resp.isCommitted()).thenReturn(isCommittedResult);
         underTest.doGet(req, resp);
 
+    }
+
+    @Test
+    public void testReadCellAsTextFormatsDateAsIsoLocalDate() throws Throwable
+    {
+        DatabaseBackupServlet underTest = new DatabaseBackupServlet();
+        Method readCellAsText = DatabaseBackupServlet.class.getDeclaredMethod("readCellAsText", ResultSet.class, ResultSetMetaData.class, int.class);
+        readCellAsText.setAccessible(true);
+
+        ResultSet rs = mock(ResultSet.class);
+        ResultSetMetaData md = mock(ResultSetMetaData.class);
+
+        when(md.getColumnType(1)).thenReturn(Types.DATE);
+        when(rs.getDate(1)).thenReturn(Date.valueOf("2026-05-20"));
+
+        String value = (String) readCellAsText.invoke(underTest, rs, md, 1);
+
+        assertEquals("2026-05-20", value);
     }
 }

@@ -20,10 +20,18 @@
     if (typeof data === 'string') {
         try { data = JSON.parse(data); } catch { data = { all: [], widgets: {}, widgetNames: {} }; }
     }
-    if (!data || typeof data !== 'object') data = { all: [], widgets: {}, widgetNames: {} };
-    if (!Array.isArray(data.all)) data.all = [];
-    if (!data.widgets || typeof data.widgets !== 'object') data.widgets = {};
-    if (!data.widgetNames || typeof data.widgetNames !== 'object') data.widgetNames = {};
+    if (!data || typeof data !== 'object') {
+        data = { all: [], widgets: {}, widgetNames: {} };
+    }
+    if (!Array.isArray(data.all)) {
+        data.all = [];
+    }
+    if (!data.widgets || typeof data.widgets !== 'object') {
+        data.widgets = {};
+    }
+    if (!data.widgetNames || typeof data.widgetNames !== 'object') {
+        data.widgetNames = {};
+    }
 
     const allWidgetsBody = document.getElementById('allWidgetsBody');
     const widgetTablesContainer = document.getElementById('widgetTablesContainer');
@@ -31,13 +39,17 @@
     const applyDaysBtn = document.getElementById('applyDaysBtn');
 
     function esc(v) {
-        if (v === null || v === undefined) return '';
+        if (v === null || v === undefined) {
+            return '';
+        }
         return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 
     function fmt(ts) {
-        if (!ts) return '—';
+        if (!ts) {
+            return '—';
+        }
         try { return new Date(ts).toLocaleString(); } catch { return ts; }
     }
 
@@ -51,30 +63,48 @@
         params.set('days', String(defaultDays));
         params.set('page', '1');
         params.set('limit', '10');
-        if (widgetId) params.set('widgetId', widgetId);
+        if (widgetId) {
+            params.set('widgetId', widgetId);
+        }
         return `${contextPath}/dashboard/inactive-users/list?${params.toString()}`;
     }
 
     function frLabel(r) {
         const score = Number(r?.frustrationScore || 0);
-        if (score >= 0.7) return 'High';
-        if (score >= 0.4) return 'Medium';
-        if (score > 0) return 'Low';
+        if (score >= 0.7) {
+            return 'High';
+        }
+        if (score >= 0.4) {
+            return 'Medium';
+        }
+        if (score > 0) {
+            return 'Low';
+        }
         return 'None';
     }
 
     function frClass(label) {
-        if (label === 'Low') return 'fr-badge fr-badge-low';
-        if (label === 'Medium') return 'fr-badge fr-badge-medium';
-        if (label === 'High') return 'fr-badge fr-badge-high';
+        if (label === 'Low') {
+            return 'fr-badge fr-badge-low';
+        }
+        if (label === 'Medium') {
+            return 'fr-badge fr-badge-medium';
+        }
+        if (label === 'High') {
+            return 'fr-badge fr-badge-high';
+        }
         return '';
     }
 
     function frTooltip(r, label) {
         const reasonRaw = String(r?.frustrationReason || '').trim().toLowerCase();
-        if (label === 'None') return '';
+        if (label === 'None') {
+            return '';
+        }
 
-        if (!reasonRaw) return `Frustration: ${label}`;
+        if (!reasonRaw) {
+            return `Frustration: ${label}`;
+        }
 
         if (reasonRaw.startsWith('keyword:')) {
             const kw = reasonRaw.split(':')[1] || '';
@@ -156,7 +186,9 @@
     }
 
     function render() {
-        if (allWidgetsBody) allWidgetsBody.innerHTML = rowsHtml(data.all || []);
+        if (allWidgetsBody) {
+            allWidgetsBody.innerHTML = rowsHtml(data.all || []);
+        }
 
         const allSection = allWidgetsBody?.closest('.section');
         if (allSection && !allSection.querySelector('.all-view-all-btn')) {
@@ -166,20 +198,28 @@
             wrap.style.marginBottom = '10px';
             wrap.innerHTML = `<button type="button" class="ghost-btn all-view-all-btn">View all inactive users</button>`;
             const tableScroll = allSection.querySelector('.table-scroll');
-            if (tableScroll) allSection.insertBefore(wrap, tableScroll);
+            if (tableScroll) {
+                allSection.insertBefore(wrap, tableScroll);
+            }
         }
 
-        if (widgetTablesContainer) widgetTablesContainer.innerHTML = '';
+        if (widgetTablesContainer) {
+            widgetTablesContainer.innerHTML = '';
+        }
         const widgetIds = Object.keys(data.widgets || {});
         if (!widgetIds.length) {
-            if (widgetTablesContainer) widgetTablesContainer.innerHTML = `<div class="empty-row">No widget data found.</div>`;
+            if (widgetTablesContainer) {
+                widgetTablesContainer.innerHTML = `<div class="empty-row">No widget data found.</div>`;
+            }
             return;
         }
         widgetIds.forEach(widgetId => renderWidgetSection(widgetId, Array.isArray(data.widgets[widgetId]) ? data.widgets[widgetId] : []));
     }
 
     function bindEvents() {
-        if (daysSelect) daysSelect.value = String(defaultDays);
+        if (daysSelect) {
+            daysSelect.value = String(defaultDays);
+        }
 
         applyDaysBtn?.addEventListener('click', () => {
             const days = parseInt(daysSelect?.value || String(defaultDays), 10);
@@ -191,7 +231,9 @@
             const countBtn = e.target.closest('.inactive-count-btn');
             if (countBtn) {
                 const sid = countBtn.dataset.sessionId;
-                if (sid) window.location.href = reviewUrl(sid);
+                if (sid) {
+                    window.location.href = reviewUrl(sid);
+                }
                 return;
             }
 

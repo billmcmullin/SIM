@@ -20,13 +20,19 @@
         const sessionEl = document.getElementById('cpSessionId');
         const friendlyEl = document.getElementById('cpFriendlyName');
 
-        if (sessionEl && sessionId) sessionEl.textContent = sessionId;
-        if (friendlyEl && friendlyName) friendlyEl.textContent = friendlyName;
+        if (sessionEl && sessionId) {
+            sessionEl.textContent = sessionId;
+        }
+        if (friendlyEl && friendlyName) {
+            friendlyEl.textContent = friendlyName;
+        }
     }
 
     function bindSyncButton() {
         const btn = document.getElementById('syncCustomerProfileBtn');
-        if (!btn) return;
+        if (!btn) {
+            return;
+        }
 
         btn.addEventListener('click', async () => {
             const sid = getSessionIdFromPage();
@@ -79,21 +85,29 @@
 
     function setText(id, value) {
         const el = document.getElementById(id);
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.textContent = (value === null || value === undefined || value === '') ? '—' : String(value);
     }
 
     function setStatus(message, success) {
         const el = document.getElementById('customerProfileSyncStatus');
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.textContent = message;
         el.style.color = success ? '#047857' : '#b91c1c';
     }
 
     function getSessionIdFromPage() {
-        if (sessionId) return sessionId;
+        if (sessionId) {
+            return sessionId;
+        }
         const hidden = document.getElementById('cpSessionIdInput');
-        if (hidden && hidden.value) return hidden.value.trim();
+        if (hidden && hidden.value) {
+            return hidden.value.trim();
+        }
         const text = document.getElementById('cpSessionId')?.textContent || '';
         return text.trim() || '';
     }
@@ -136,20 +150,28 @@
      */
     function bindProfileLinks() {
         const nodes = document.querySelectorAll('.js-customer-profile-link');
-        if (!nodes.length) return;
+        if (!nodes.length) {
+            return;
+        }
 
         nodes.forEach((node) => {
             // skip if already anchor
-            if (node.tagName === 'A') return;
+            if (node.tagName === 'A') {
+                return;
+            }
 
             const sid = (node.getAttribute('data-session-id') || '').trim();
             const fname = (node.getAttribute('data-friendly-name') || '').trim();
             const localContextPath = node.getAttribute('data-context-path') || contextPath || '';
-            if (!sid && !fname) return;
+            if (!sid && !fname) {
+                return;
+            }
 
             const a = document.createElement('a');
             const qs = new URLSearchParams();
-            if (sid) qs.set('sessionId', sid);
+            if (sid) {
+                qs.set('sessionId', sid);
+            }
             if (!sid && fname) qs.set('friendlyName', fname); // fallback route support
 
             a.href = `${localContextPath}/customer-profile?${qs.toString()}`;
@@ -157,7 +179,9 @@
             a.className = 'customer-profile-link';
 
             // preserve title/tooltip if present
-            if (node.title) a.title = node.title;
+            if (node.title) {
+                a.title = node.title;
+            }
 
             node.replaceWith(a);
         });

@@ -25,6 +25,7 @@ public class DashboardDailySummaryStore {
 
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String PG_UNIQUE_VIOLATION = "23505";
 
     private static final String TABLE_SQL = """
             CREATE TABLE IF NOT EXISTS dashboard_daily_summary (
@@ -168,8 +169,48 @@ public class DashboardDailySummaryStore {
                     updated_at = NOW()
                 """;
 
-        try (Connection conn = dataSource.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try {
+            try (Connection conn = dataSource.getConnection()) {
+                executeUpsert(conn, sql, day, slot, status, progressPct, message, overall, quality, response, usage, suggestedNextAction, entryCount, markStarted, markGenerated);
+            }
+        } catch (SQLException firstSqlError) {
+            if (isDashboardSummaryIdDuplicate(firstSqlError) && realignDashboardSummaryIdSequence()) {
+                log.log(Level.INFO, "Detected stale dashboard_daily_summary id sequence after import. Realigned sequence and retrying upsert.");
+                try (Connection retryConn = dataSource.getConnection()) {
+                    executeUpsert(retryConn, sql, day, slot, status, progressPct, message, overall, quality, response, usage, suggestedNextAction, entryCount, markStarted, markGenerated);
+                    return;
+                } catch (SQLException retrySqlError) {
+                    log.log(Level.WARNING, "Retry after sequence realignment failed for dashboard_daily_summary upsert", retrySqlError);
+                    throw new IllegalStateException("Unable to upsert dashboard daily summary row", retrySqlError);
+                }
+            }
 
+            log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", firstSqlError);
+            throw new IllegalStateException("Unable to upsert dashboard daily summary row", firstSqlError);
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
+            throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
+        }
+    }
+
+    private void executeUpsert(
+            Connection conn,
+            String sql,
+            LocalDate day,
+            int slot,
+            String status,
+            int progressPct,
+            String message,
+            String overall,
+            String quality,
+            String response,
+            String usage,
+            String suggestedNextAction,
+            int entryCount,
+            boolean markStarted,
+            boolean markGenerated
+    ) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             Timestamp now = Timestamp.from(Instant.now());
             Timestamp startedAt = markStarted ? now : null;
             Timestamp generatedAt = markGenerated ? now : null;
@@ -191,9 +232,45 @@ public class DashboardDailySummaryStore {
             ps.setTimestamp(13, generatedAt);
 
             ps.executeUpdate();
-        } catch (SQLException | RuntimeException e) {
-            log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
-            throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
+        }
+    }
+
+    private boolean isDashboardSummaryIdDuplicate(SQLException e) {
+        for (SQLException cur = e; cur != null; cur = cur.getNextException()) {
+            String sqlState = cur.getSQLState();
+            String msg = cur.getMessage();
+            if (PG_UNIQUE_VIOLATION.equals(sqlState)
+                    && msg != null
+                    && msg.contains("dashboard_daily_summary_pkey")
+                    && msg.contains("(id)=")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean realignDashboardSummaryIdSequence() {
+        final String seqLookupSql = "SELECT pg_get_serial_sequence('dashboard_daily_summary', 'id')";
+
+        try (Connection conn = dataSource.getConnection(); PreparedStatement lookupPs = conn.prepareStatement(seqLookupSql); ResultSet rs = lookupPs.executeQuery()) {
+            if (!rs.next()) {
+                return false;
+            }
+
+            String sequenceName = rs.getString(1);
+            if (sequenceName == null || sequenceName.isBlank()) {
+                return false;
+            }
+
+            String setSeqSql = "SELECT setval(?::regclass, COALESCE((SELECT MAX(id) FROM dashboard_daily_summary), 0) + 1, false)";
+            try (PreparedStatement setPs = conn.prepareStatement(setSeqSql)) {
+                setPs.setString(1, sequenceName);
+                setPs.execute();
+            }
+            return true;
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to realign dashboard_daily_summary id sequence", e);
+            return false;
         }
     }
 

@@ -3,6 +3,7 @@ package com.sim.chatserver.email;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.logging.Level;
@@ -41,6 +42,10 @@ public final class EmailConfigLoader {
     private static final String PROP_USERNAME = "mail.username";
     private static final String PROP_PASSWORD = "mail.password";
     private static final String PROP_FROM = "mail.from";
+
+    private static final int MAX_ENV_TEXT_LEN = 512;
+    private static final int MAX_ENV_SECRET_LEN = 4096;
+    private static final int MAX_PATH_LEN = 2048;
 
     @FunctionalInterface
     interface EnvAccessor {
@@ -98,8 +103,8 @@ public final class EmailConfigLoader {
      * MAIL_PORT Returns null if missing/invalid.
      */
     public static EmailConfig loadEnvOnly() {
-        String host = trimToNull(env(ENV_HOST));
-        Integer port = parsePort(trimToNull(env(ENV_PORT)), "ENV " + ENV_PORT);
+        String host = trimToNull(envSanitized(ENV_HOST, MAX_ENV_TEXT_LEN));
+        Integer port = parsePort(trimToNull(envSanitized(ENV_PORT, 6)), "ENV " + ENV_PORT);
 
         if (host == null || port == null) {
             return null;
@@ -109,9 +114,9 @@ public final class EmailConfigLoader {
         boolean starttls = parseBoolean(env(ENV_STARTTLS), false);
         boolean ssl = parseBoolean(env(ENV_SSL), false);
 
-        String username = defaultString(env(ENV_USERNAME), "");
-        String password = defaultString(env(ENV_PASSWORD), "");
-        String from = defaultString(env(ENV_FROM), "");
+        String username = defaultString(envSanitized(ENV_USERNAME, MAX_ENV_TEXT_LEN), "");
+        String password = defaultString(envSanitized(ENV_PASSWORD, MAX_ENV_SECRET_LEN), "");
+        String from = defaultString(envSanitized(ENV_FROM, MAX_ENV_TEXT_LEN), "");
 
         return new EmailConfig(host, port, auth, starttls, ssl, username, password, from);
     }
@@ -155,12 +160,19 @@ public final class EmailConfigLoader {
 
     private static Properties loadExternalPropsFromEnvPath() {
         Properties p = new Properties();
-        String pathValue = trimToNull(env(ENV_CONFIG_FILE));
+        String pathValue = trimToNull(envSanitized(ENV_CONFIG_FILE, MAX_PATH_LEN));
         if (pathValue == null) {
             return p;
         }
 
-        Path path = Path.of(pathValue);
+        Path path;
+        try {
+            path = Path.of(pathValue).normalize();
+        } catch (InvalidPathException ex) {
+            log.warning("MAIL_CONFIG_FILE is set to an invalid path.");
+            return p;
+        }
+
         if (!Files.exists(path) || !Files.isRegularFile(path)) {
             log.warning("MAIL_CONFIG_FILE is set but file does not exist or is not a regular file.");
             return p;
@@ -178,9 +190,7 @@ public final class EmailConfigLoader {
 
     private static Properties loadClasspathProps() {
         Properties p = new Properties();
-        try (InputStream in = EmailConfigLoader.class
-            .getClassLoader()
-            .getResourceAsStream("email.properties")) {
+        try (InputStream in = EmailConfigLoader.class.getResourceAsStream("/email.properties")) {
 
             if (in == null) {
                 return p;
@@ -232,5 +242,31 @@ public final class EmailConfigLoader {
 
     private static String defaultString(String s, String def) {
         return s == null ? def : s.trim();
+    }
+
+    private static String envSanitized(String key, int maxLength) {
+        return sanitizeUntrustedText(env(key), maxLength);
+    }
+
+    private static String sanitizeUntrustedText(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+
+        int effectiveMaxLength = Math.max(1, maxLength);
+        StringBuilder cleaned = new StringBuilder(Math.min(value.length(), effectiveMaxLength));
+
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isISOControl(c)) {
+                cleaned.append(c);
+            }
+        }
+
+        String trimmed = cleaned.toString().trim();
+        if (trimmed.length() <= effectiveMaxLength) {
+            return trimmed;
+        }
+        return trimmed.substring(0, effectiveMaxLength);
     }
 }

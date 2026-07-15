@@ -9,6 +9,27 @@ public record ResolvedEmailConfig(
         Object providerConfig
         ) {
 
+    public ResolvedEmailConfig(
+            EmailConfig config,
+            EmailConfigSource source,
+            boolean valid,
+            String message,
+            EmailProviderType providerType,
+            Object providerConfig
+    ) {
+        this.config = config;
+        this.source = (source == null) ? EmailConfigSource.NONE : source;
+        this.valid = valid;
+        this.message = (message == null) ? "" : message;
+        this.providerType = (providerType == null) ? EmailProviderType.SMTP : providerType;
+
+        Object resolvedProviderConfig = providerConfig;
+        if (resolvedProviderConfig == null) {
+            resolvedProviderConfig = (this.providerType == EmailProviderType.SMTP) ? config : null;
+        }
+        this.providerConfig = resolvedProviderConfig;
+    }
+
     // Backward-compatible ctor (existing SMTP call sites)
     public ResolvedEmailConfig(
             EmailConfig config,
@@ -24,17 +45,6 @@ public record ResolvedEmailConfig(
                 EmailProviderType.SMTP,
                 config
         );
-    }
-
-    public ResolvedEmailConfig {
-        source = (source == null) ? EmailConfigSource.NONE : source;
-        message = (message == null) ? "" : message;
-        providerType = (providerType == null) ? EmailProviderType.SMTP : providerType;
-
-        // Keep providerConfig aligned with providerType when omitted
-        if (providerConfig == null) {
-            providerConfig = (providerType == EmailProviderType.SMTP) ? config : null;
-        }
     }
 
     public static ResolvedEmailConfig smtp(

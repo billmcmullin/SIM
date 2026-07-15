@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
@@ -43,7 +44,7 @@ public class WorkspaceConfigServlet extends HttpServlet {
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\",\"workspaceName\":\"" + escapeJson(workspaceName) + "\"}");
         } catch (Exception e) {
-            log.severe("Unable to save workspace name: " + e.getMessage());
+            log.log(Level.WARNING, "Unable to save workspace name", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to save workspace name.\"}");
         }

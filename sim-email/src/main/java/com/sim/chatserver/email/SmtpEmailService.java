@@ -61,7 +61,7 @@ public class SmtpEmailService implements EmailService {
             mimeMessage.setContent(root);
 
             Transport.send(mimeMessage);
-            LOG.info("Email sent successfully. subject=" + safe(message.subject()) + ", toCount=" + size(message.to()));
+            LOG.info(() -> "Email sent successfully. subject=" + safe(message.subject()) + ", toCount=" + size(message.to()));
         } catch (MessagingException e) {
             LOG.log(Level.SEVERE, "SMTP send failed: " + e.getMessage(), e);
             throw new EmailException("Failed to send email", e);
@@ -194,15 +194,12 @@ public class SmtpEmailService implements EmailService {
             }
 
             return mixed;
-        } catch (Exception e) {
+        } catch (MessagingException | RuntimeException e) {
             throw new EmailException("Failed to build email content", e);
         }
     }
 
     private void logSmtpConfig(Properties props, String from) {
-        String pwd = config.password();
-        int pwdLen = (pwd == null) ? -1 : pwd.length();
-
         LOG.info(()
                 -> "SMTP config: host=" + props.getProperty("mail.smtp.host")
                 + ", port=" + props.getProperty("mail.smtp.port")
@@ -210,18 +207,7 @@ public class SmtpEmailService implements EmailService {
                 + ", starttls=" + props.getProperty("mail.smtp.starttls.enable")
                 + ", ssl=" + props.getProperty("mail.smtp.ssl.enable")
                 + ", username=" + safe(config.username())
-                + ", passwordLength=" + pwdLen
                 + ", from=" + safe(from));
-    }
-
-    private String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) {
-            return a;
-        }
-        if (b != null && !b.isBlank()) {
-            return b;
-        }
-        return null;
     }
 
     private boolean isBlank(String s) {

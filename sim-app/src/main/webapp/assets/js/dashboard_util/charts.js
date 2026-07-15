@@ -6,7 +6,9 @@
 
     function renderLastFiveDaysTrendChart(contextPath) {
         const el = document.getElementById('lastFiveDaysTrendChart');
-        if (!el || typeof Chart === 'undefined') return;
+        if (!el || typeof Chart === 'undefined') {
+            return;
+        }
 
         const trend = core.parseTrendData(window.lastFiveDaysTrendData || {});
         const labelsRaw = Array.isArray(trend.labels) ? trend.labels : [];
@@ -15,7 +17,9 @@
         const labels = labelsRaw.map(v => {
             const s = String(v || '');
             const d = new Date(`${s}T00:00:00`);
-            if (Number.isNaN(d.getTime())) return s;
+            if (Number.isNaN(d.getTime())) {
+                return s;
+            }
             return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         });
 
@@ -24,7 +28,9 @@
             return Number.isFinite(n) ? n : 0;
         });
 
-        if (!labels.length || !values.length || labels.length !== values.length) return;
+        if (!labels.length || !values.length || labels.length !== values.length) {
+            return;
+        }
 
         const ctx = el.getContext('2d');
         new Chart(ctx, {
@@ -61,12 +67,18 @@
                     y: { beginAtZero: true, ticks: { precision: 0 } }
                 },
                 onClick: (_event, elements) => {
-                    if (!elements?.length) return;
+                    if (!elements?.length) {
+                        return;
+                    }
                     const i = elements[0].index;
                     const rawDate = String(labelsRaw[i] || '').trim();
                     const value = Number(values[i]);
-                    if (!rawDate) return;
-                    if (!Number.isFinite(value) || value <= 0) return;
+                    if (!rawDate) {
+                        return;
+                    }
+                    if (!Number.isFinite(value) || value <= 0) {
+                        return;
+                    }
                     window.location.href = `${contextPath}/dashboard/sessions/drilldown/date-review-relative?date=${encodeURIComponent(rawDate)}`;
                 }
             }
@@ -90,15 +102,21 @@
         let termChartInstance = null;
 
         async function openTermReview(term) {
-            if (!term) return;
+            if (!term) {
+                return;
+            }
             const increaseOnly = legendMode === 'increase';
             if (increaseOnly) {
                 const inc = Number(termIncreaseMap[term] || 0);
-                if (!(Number.isFinite(inc) && inc > 0)) return;
+                if (!(Number.isFinite(inc) && inc > 0)) {
+                    return;
+                }
             }
             try {
                 const href = await termReview.buildTermReviewSelectionLink(contextPath, term, increaseOnly);
-                if (href) window.location.href = href;
+                if (href) {
+                    window.location.href = href;
+                }
             } catch (e) {
                 console.warn('Unable to open term review:', e);
                 alert(e?.message || 'Unable to open chat review for this term right now.');
@@ -111,7 +129,9 @@
                 return Number.isFinite(v) ? Math.max(0, v) : 0;
             }
             const t = Number(termTotalMap[term]);
-            if (Number.isFinite(t)) return Math.max(0, t);
+            if (Number.isFinite(t)) {
+                return Math.max(0, t);
+            }
             return Number.isFinite(fallbackCount) ? Math.max(0, fallbackCount) : 0;
         }
 
@@ -126,7 +146,9 @@
 
         function updateTermModeSummary(mode) {
             const summaryEl = document.getElementById('termLegendModeSummary');
-            if (!summaryEl) return;
+            if (!summaryEl) {
+                return;
+            }
             let total = 0;
             for (let i = 0; i < termSlices.length; i++) {
                 const s = termSlices[i] || {};
@@ -138,7 +160,9 @@
         }
 
         function renderOrUpdateTermChart(mode) {
-            if (!ctx || !termSlices.length) return;
+            if (!ctx || !termSlices.length) {
+                return;
+            }
 
             const labels = termSlices.map(s => (s?.label ?? ''));
             const colors = termSlices.map((_, i) => palette[i % palette.length]);
@@ -170,9 +194,13 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         onClick: async (_event, elements) => {
-                            if (!elements?.length) return;
+                            if (!elements?.length) {
+                                return;
+                            }
                             const slice = termSlices[elements[0].index];
-                            if (!slice) return;
+                            if (!slice) {
+                                return;
+                            }
                             await openTermReview(slice.term);
                         }
                     }
@@ -206,11 +234,17 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     onClick: (_event, elements) => {
-                        if (!elements?.length) return;
+                        if (!elements?.length) {
+                            return;
+                        }
                         const slice = widgetSlices[elements[0].index];
-                        if (!slice) return;
+                        if (!slice) {
+                            return;
+                        }
                         const widgetId = slice.widgetId || slice.label;
-                        if (!widgetId) return;
+                        if (!widgetId) {
+                            return;
+                        }
                         window.location.href = `${contextPath}/dashboard/widgets/view?widgetId=${encodeURIComponent(widgetId)}`;
                     }
                 }
@@ -226,7 +260,9 @@
             a.href = '#';
             a.dataset.term = term || '';
             a.textContent = text || '';
-            if (title) a.title = title;
+            if (title) {
+                a.title = title;
+            }
             a.__buildHref = async () => termReview.buildTermReviewSelectionLink(contextPath, term, increaseOnly);
             return a;
         }
@@ -297,9 +333,13 @@
         }
 
         function renderLegend() {
-            if (!legendEl) return;
+            if (!legendEl) {
+                return;
+            }
             legendEl.innerHTML = '';
-            if (!termSlices.length) return;
+            if (!termSlices.length) {
+                return;
+            }
 
             const frag = document.createDocumentFragment();
             for (let i = 0; i < termSlices.length; i++) {
@@ -323,23 +363,33 @@
 
             legendEl.addEventListener('click', async event => {
                 const a = event.target.closest('a');
-                if (a && legendEl.contains(a) && a.__buildHref) return;
+                if (a && legendEl.contains(a) && a.__buildHref) {
+                    return;
+                }
 
                 const chip = event.target.closest('.legend-chip');
-                if (!chip || !legendEl.contains(chip)) return;
+                if (!chip || !legendEl.contains(chip)) {
+                    return;
+                }
 
                 const term = chip.dataset.term || '';
-                if (!term) return;
+                if (!term) {
+                    return;
+                }
 
                 const mode = chip.dataset.mode || legendMode;
                 if (mode === 'increase') {
                     const inc = Number(termIncreaseMap[term] || 0);
-                    if (!(Number.isFinite(inc) && inc > 0)) return;
+                    if (!(Number.isFinite(inc) && inc > 0)) {
+                        return;
+                    }
                 }
 
                 try {
                     const href = await termReview.buildTermReviewSelectionLink(contextPath, term, mode === 'increase');
-                    if (href) window.location.href = href;
+                    if (href) {
+                        window.location.href = href;
+                    }
                 } catch (e) {
                     console.warn('Unable to open term review:', e);
                     alert(e?.message || 'Unable to open chat review for this term right now.');

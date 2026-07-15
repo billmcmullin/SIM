@@ -8,7 +8,9 @@
 
     function setMsg(id, text, ok) {
         const el = document.getElementById(id);
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.textContent = text || '';
         el.style.color = ok ? '#047857' : '#b91c1c';
     }
@@ -22,20 +24,40 @@
     }
 
     function fillSmtpForm(eff) {
-        if (!eff) return;
-        if (document.getElementById('smtpHost')) document.getElementById('smtpHost').value = eff.host || '';
-        if (document.getElementById('smtpPort')) document.getElementById('smtpPort').value = eff.port || '';
-        if (document.getElementById('smtpAuth')) document.getElementById('smtpAuth').checked = !!eff.auth;
-        if (document.getElementById('smtpStartTls')) document.getElementById('smtpStartTls').checked = !!eff.starttls;
-        if (document.getElementById('smtpSsl')) document.getElementById('smtpSsl').checked = !!eff.ssl;
-        if (document.getElementById('smtpUsername')) document.getElementById('smtpUsername').value = eff.username || '';
-        if (document.getElementById('smtpFrom')) document.getElementById('smtpFrom').value = eff.defaultFrom || '';
+        if (!eff) {
+            return;
+        }
+        if (document.getElementById('smtpHost')) {
+            document.getElementById('smtpHost').value = eff.host || '';
+        }
+        if (document.getElementById('smtpPort')) {
+            document.getElementById('smtpPort').value = eff.port || '';
+        }
+        if (document.getElementById('smtpAuth')) {
+            document.getElementById('smtpAuth').checked = !!eff.auth;
+        }
+        if (document.getElementById('smtpStartTls')) {
+            document.getElementById('smtpStartTls').checked = !!eff.starttls;
+        }
+        if (document.getElementById('smtpSsl')) {
+            document.getElementById('smtpSsl').checked = !!eff.ssl;
+        }
+        if (document.getElementById('smtpUsername')) {
+            document.getElementById('smtpUsername').value = eff.username || '';
+        }
+        if (document.getElementById('smtpFrom')) {
+            document.getElementById('smtpFrom').value = eff.defaultFrom || '';
+        }
 
         const pwNote = document.getElementById('smtpPasswordStoredNote');
-        if (pwNote) pwNote.style.display = eff.passwordConfigured ? 'inline' : 'none';
+        if (pwNote) {
+            pwNote.style.display = eff.passwordConfigured ? 'inline' : 'none';
+        }
 
         const src = document.getElementById('smtpEffectiveSource');
-        if (src) src.textContent = eff.source || 'UNKNOWN';
+        if (src) {
+            src.textContent = eff.source || 'UNKNOWN';
+        }
     }
 
     async function loadSmtpConfig(contextPath) {
@@ -84,7 +106,9 @@
             if (r.ok && body?.status === 'ok') {
                 setMsg('smtpConfigResult', body.message || 'SMTP config saved.', true);
                 const pw = document.getElementById('smtpPassword');
-                if (pw) pw.value = '';
+                if (pw) {
+                    pw.value = '';
+                }
                 await loadSmtpConfig(contextPath);
             } else {
                 setMsg('smtpConfigResult', body?.message || 'Failed to save SMTP config.', false);
