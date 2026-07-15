@@ -40,7 +40,9 @@
                 this.importTermsBtn.addEventListener('click', () => this.termsCsvFileInput.click());
                 this.termsCsvFileInput.tabIndex = -1;
                 this.termsCsvFileInput.addEventListener('change', () => {
-                    if (!this.termsCsvFileInput.files || this.termsCsvFileInput.files.length === 0) return;
+                    if (!this.termsCsvFileInput.files || this.termsCsvFileInput.files.length === 0) {
+                        return;
+                    }
                     if (typeof this.termsImportForm.requestSubmit === 'function') {
                         this.termsImportForm.requestSubmit();
                     } else {
@@ -83,7 +85,9 @@
         },
 
         normalizeTermIncoming(term) {
-            if (!term || typeof term !== 'object') return { id: null, name: '', description: '', matchPattern: '', matchType: 'WILDCARD', isSystem: false };
+            if (!term || typeof term !== 'object') {
+                return { id: null, name: '', description: '', matchPattern: '', matchType: 'WILDCARD', isSystem: false };
+            }
             const id = term.id ?? term.ID ?? null;
             const name = term.name ?? term.termName ?? term.label ?? '';
             const description = term.description ?? term.desc ?? '';
@@ -94,11 +98,15 @@
         },
 
         async loadTermList(fallbackTerms = []) {
-            if (!this.termTableBody) return;
+            if (!this.termTableBody) {
+                return;
+            }
             this.renderTermList(fallbackTerms);
             try {
                 const { payload, ok } = await Api.fetchJson(`${this.contextPath}/admin/terms`, { method: 'GET' });
-                if (!ok || payload?.status !== 'ok') throw new Error(payload?.message || 'Unable to load terms.');
+                if (!ok || payload?.status !== 'ok') {
+                    throw new Error(payload?.message || 'Unable to load terms.');
+                }
                 this.renderTermList(payload.terms || []);
             } catch (err) {
                 this.showTermMessage(`Unable to load terms: ${err.message}`, true);
@@ -106,7 +114,9 @@
         },
 
         renderTermList(terms) {
-            if (!this.termTableBody) return;
+            if (!this.termTableBody) {
+                return;
+            }
             if (!terms.length) {
                 this.termTableBody.innerHTML = '<tr><td colspan="5" class="empty-row">No terms defined yet.</td></tr>';
                 return;
@@ -157,7 +167,9 @@
 
             try {
                 const result = (method === 'POST') ? await Api.postJson(url, payload) : await Api.putJson(url, payload);
-                if (!result.ok) throw new Error(result.payload?.message || 'Unable to save term.');
+                if (!result.ok) {
+                    throw new Error(result.payload?.message || 'Unable to save term.');
+                }
                 this.showTermMessage(`Term "${result.payload?.term?.name || payload.name}" saved.`);
                 this.resetTermForm();
                 this.loadTermList();
@@ -173,14 +185,22 @@
             this.termDescriptionInput.value = description;
             this.termPatternInput.value = pattern || '';
             this.termTypeSelect.value = type || 'WILDCARD';
-            if (this.saveTermBtn) this.saveTermBtn.textContent = 'Update Term';
-            if (this.cancelTermEditBtn) this.cancelTermEditBtn.style.display = 'inline-block';
+            if (this.saveTermBtn) {
+                this.saveTermBtn.textContent = 'Update Term';
+            }
+            if (this.cancelTermEditBtn) {
+                this.cancelTermEditBtn.style.display = 'inline-block';
+            }
         },
 
         startTermEditFromRow(button) {
-            if (!button) return;
+            if (!button) {
+                return;
+            }
             const row = button.closest('tr');
-            if (!row) return;
+            if (!row) {
+                return;
+            }
             const payload = row.dataset.term;
             if (!payload) {
                 this.showTermMessage('Unable to load term data.', true);
@@ -198,15 +218,23 @@
             this.isEditingTerm = false;
             this.termIdInput.value = '';
             this.termForm?.reset();
-            if (this.saveTermBtn) this.saveTermBtn.textContent = 'Save Term';
-            if (this.cancelTermEditBtn) this.cancelTermEditBtn.style.display = 'none';
+            if (this.saveTermBtn) {
+                this.saveTermBtn.textContent = 'Save Term';
+            }
+            if (this.cancelTermEditBtn) {
+                this.cancelTermEditBtn.style.display = 'none';
+            }
         },
 
         async deleteTerm(id) {
-            if (!confirm('Delete this term?')) return;
+            if (!confirm('Delete this term?')) {
+                return;
+            }
             try {
                 const { ok, payload } = await Api.delete(`${this.contextPath}/admin/terms?id=${encodeURIComponent(id)}`);
-                if (!ok) throw new Error(payload?.message || 'Unable to delete term.');
+                if (!ok) {
+                    throw new Error(payload?.message || 'Unable to delete term.');
+                }
                 this.showTermMessage('Term deleted.');
                 this.loadTermList();
             } catch (err) {
@@ -215,7 +243,9 @@
         },
 
         showTermMessage(message, isError = false) {
-            if (!this.termMessageEl) return;
+            if (!this.termMessageEl) {
+                return;
+            }
             this.termMessageEl.textContent = message;
             this.termMessageEl.style.color = isError ? '#b91c1c' : '#047857';
         },
@@ -238,7 +268,9 @@
                 let suggestedName = 'terms.csv';
                 const cd = resp.headers.get('content-disposition') || '';
                 const parsed = Utils.parseContentDispositionFilename(cd);
-                if (parsed) suggestedName = parsed;
+                if (parsed) {
+                    suggestedName = parsed;
+                }
 
                 if (typeof window.showSaveFilePicker === 'function') {
                     try {
@@ -285,9 +317,15 @@
 
                 if (imported || updated || errors) {
                     const parts = [];
-                    if (imported) parts.push(`Imported ${imported}`);
-                    if (updated) parts.push(`Updated ${updated}`);
-                    if (errors) parts.push(`Errors: ${decodeURIComponent(errors)}`);
+                    if (imported) {
+                        parts.push(`Imported ${imported}`);
+                    }
+                    if (updated) {
+                        parts.push(`Updated ${updated}`);
+                    }
+                    if (errors) {
+                        parts.push(`Errors: ${decodeURIComponent(errors)}`);
+                    }
                     this.showTermMessage(parts.join(' — '), errors !== null && errors !== undefined);
                 } else {
                     this.showTermMessage('Import completed.');
@@ -309,9 +347,15 @@
 
                 if (imported || updated || errors) {
                     const parts = [];
-                    if (imported) parts.push(`Imported ${imported}`);
-                    if (updated) parts.push(`Updated ${updated}`);
-                    if (errors) parts.push(`Errors: ${decodeURIComponent(errors)}`);
+                    if (imported) {
+                        parts.push(`Imported ${imported}`);
+                    }
+                    if (updated) {
+                        parts.push(`Updated ${updated}`);
+                    }
+                    if (errors) {
+                        parts.push(`Errors: ${decodeURIComponent(errors)}`);
+                    }
                     this.showTermMessage(parts.join(' — '), errors !== null && errors !== undefined);
                     const cleanUrl = window.location.pathname + window.location.hash;
                     history.replaceState(null, '', cleanUrl);

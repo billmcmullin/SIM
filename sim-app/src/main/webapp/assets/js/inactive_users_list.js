@@ -21,21 +21,29 @@
     const clearSearchBtn = document.getElementById('clearSearchBtn');
 
     function esc(v) {
-        if (v === null || v === undefined) return '';
+        if (v === null || v === undefined) {
+            return '';
+        }
         return String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 
     function fmt(ts) {
-        if (!ts) return '—';
+        if (!ts) {
+            return '—';
+        }
         try { return new Date(ts).toLocaleString(); } catch { return ts; }
     }
 
     function customerProfileUrl(sessionId, friendlyName) {
         const p = new URLSearchParams();
-        if (sessionId) p.set('sessionId', String(sessionId));
-        else if (friendlyName) p.set('friendlyName', String(friendlyName));
-        else return '';
+        if (sessionId) {
+            p.set('sessionId', String(sessionId));
+        } else if (friendlyName) {
+            p.set('friendlyName', String(friendlyName));
+        } else {
+            return '';
+        }
         return `${contextPath}/customer-profile?${p.toString()}`;
     }
 
@@ -45,24 +53,40 @@
 
     function frLabel(r) {
         const score = Number(r?.frustrationScore || 0);
-        if (score >= 0.7) return 'High';
-        if (score >= 0.4) return 'Medium';
-        if (score > 0) return 'Low';
+        if (score >= 0.7) {
+            return 'High';
+        }
+        if (score >= 0.4) {
+            return 'Medium';
+        }
+        if (score > 0) {
+            return 'Low';
+        }
         return 'None';
     }
 
     function frClass(label) {
-        if (label === 'Low') return 'fr-badge fr-badge-low';
-        if (label === 'Medium') return 'fr-badge fr-badge-medium';
-        if (label === 'High') return 'fr-badge fr-badge-high';
+        if (label === 'Low') {
+            return 'fr-badge fr-badge-low';
+        }
+        if (label === 'Medium') {
+            return 'fr-badge fr-badge-medium';
+        }
+        if (label === 'High') {
+            return 'fr-badge fr-badge-high';
+        }
         return '';
     }
 
     function frTooltip(r, label) {
         const reasonRaw = String(r?.frustrationReason || '').trim().toLowerCase();
-        if (label === 'None') return '';
+        if (label === 'None') {
+            return '';
+        }
 
-        if (!reasonRaw) return `Frustration: ${label}`;
+        if (!reasonRaw) {
+            return `Frustration: ${label}`;
+        }
 
         if (reasonRaw.startsWith('keyword:')) {
             const kw = reasonRaw.split(':')[1] || '';
@@ -87,16 +111,22 @@
         params.set('days', String(days));
         params.set('page', String(newPage));
         params.set('limit', String(newLimit));
-        if (scope === 'widget' && widgetId) params.set('widgetId', widgetId);
+        if (scope === 'widget' && widgetId) {
+            params.set('widgetId', widgetId);
+        }
 
         const q = (searchValue ?? '').trim();
-        if (q) params.set('search', q);
+        if (q) {
+            params.set('search', q);
+        }
 
         return `${contextPath}/dashboard/inactive-users/list?${params.toString()}`;
     }
 
     function renderPager() {
-        if (!pager) return;
+        if (!pager) {
+            return;
+        }
 
         pager.innerHTML = `
             <button type="button" class="ghost-btn" id="backBtn" ${page <= 1 ? 'disabled' : ''}>Back</button>
@@ -112,10 +142,14 @@
         `;
 
         pager.querySelector('#backBtn')?.addEventListener('click', () => {
-            if (page > 1) window.location.href = buildUrl(page - 1, limit, searchInput?.value || cfg.search || '');
+            if (page > 1) {
+                window.location.href = buildUrl(page - 1, limit, searchInput?.value || cfg.search || '');
+            }
         });
         pager.querySelector('#nextBtn')?.addEventListener('click', () => {
-            if (page < totalPages) window.location.href = buildUrl(page + 1, limit, searchInput?.value || cfg.search || '');
+            if (page < totalPages) {
+                window.location.href = buildUrl(page + 1, limit, searchInput?.value || cfg.search || '');
+            }
         });
         pager.querySelector('#limitSel')?.addEventListener('change', (e) => {
             const newLimit = parseInt(e.target.value, 10) || 10;
@@ -124,7 +158,9 @@
     }
 
     function renderRows() {
-        if (!body) return;
+        if (!body) {
+            return;
+        }
         const rows = Array.isArray(data.rows) ? data.rows : [];
         if (!rows.length) {
             body.innerHTML = `<tr><td colspan="5" class="empty-row">No inactive users found.</td></tr>`;
@@ -166,7 +202,9 @@
 
     function bindEvents() {
         const initialSearch = (cfg.search || '').trim();
-        if (searchInput) searchInput.value = initialSearch;
+        if (searchInput) {
+            searchInput.value = initialSearch;
+        }
 
         searchBtn?.addEventListener('click', () => {
             const q = searchInput?.value || '';
@@ -174,7 +212,9 @@
         });
 
         clearSearchBtn?.addEventListener('click', () => {
-            if (searchInput) searchInput.value = '';
+            if (searchInput) {
+                searchInput.value = '';
+            }
             window.location.href = buildUrl(1, limit, '');
         });
 
@@ -188,9 +228,13 @@
 
         body?.addEventListener('click', (e) => {
             const btn = e.target.closest('.count-btn');
-            if (!btn) return;
+            if (!btn) {
+                return;
+            }
             const sid = btn.dataset.sid;
-            if (sid) window.location.href = reviewUrl(sid);
+            if (sid) {
+                window.location.href = reviewUrl(sid);
+            }
         });
     }
 

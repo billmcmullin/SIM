@@ -50,7 +50,9 @@
 
     function safeInit(name, fn) {
         try {
-            if (typeof fn === 'function') fn();
+            if (typeof fn === 'function') {
+                fn();
+            }
         } catch (e) {
             console.error(`[AdminPage] ${name} init failed:`, e);
         }
@@ -59,10 +61,14 @@
     function initAdminTabs() {
         const container = document.querySelector('.container');
         const tabsHost = document.getElementById('adminTabs');
-        if (!container || !tabsHost) return;
+        if (!container || !tabsHost) {
+            return;
+        }
 
         const sections = Array.from(container.querySelectorAll(':scope > section.section'));
-        if (!sections.length) return;
+        if (!sections.length) {
+            return;
+        }
 
         tabsHost.innerHTML = '';
         tabsHost.setAttribute('role', 'tablist');
@@ -71,7 +77,9 @@
         const byTitle = new Map();
         sections.forEach((section) => {
             const h2 = section.querySelector('h2');
-            if (!h2) return;
+            if (!h2) {
+                return;
+            }
             byTitle.set(h2.textContent.trim(), section);
         });
 
@@ -131,7 +139,9 @@
                 .map((title) => byTitle.get(title))
                 .filter(Boolean);
 
-            if (!groupedSections.length) return;
+            if (!groupedSections.length) {
+                return;
+            }
 
             groupedSections.forEach((section, idx) => {
                 section.classList.add('tab-panel');
@@ -140,7 +150,9 @@
                 section.setAttribute('data-tab-group', group.panelId);
 
                 // make first section of group hash-targetable
-                if (idx === 0) section.id = group.panelId;
+                if (idx === 0) {
+                    section.id = group.panelId;
+                }
             });
 
             const btn = document.createElement('button');
@@ -156,7 +168,9 @@
             tabs.push({ panelId: group.panelId, button: btn, sections: groupedSections });
         });
 
-        if (!tabs.length) return;
+        if (!tabs.length) {
+            return;
+        }
 
         function activate(panelId, updateHash) {
             tabs.forEach((t) => {
@@ -198,22 +212,30 @@
     document.addEventListener('DOMContentLoaded', () => {
         if (apiKeyStored) {
             const note = document.getElementById('apiKeyStoredNote');
-            if (note) note.style.display = 'block';
+            if (note) {
+                note.style.display = 'block';
+            }
         }
 
         if (salesforceApiKeyStored) {
             const sfNote = document.getElementById('salesforceApiKeyStoredNote');
-            if (sfNote) sfNote.style.display = 'block';
+            if (sfNote) {
+                sfNote.style.display = 'block';
+            }
         }
 
         if (salesforceClientSecretStored) {
             const sfSecretNote = document.getElementById('salesforceClientSecretStoredNote');
-            if (sfSecretNote) sfSecretNote.style.display = 'block';
+            if (sfSecretNote) {
+                sfSecretNote.style.display = 'block';
+            }
         }
 
         if (salesforceRefreshTokenStored) {
             const sfRefreshNote = document.getElementById('salesforceRefreshTokenStoredNote');
-            if (sfRefreshNote) sfRefreshNote.style.display = 'block';
+            if (sfRefreshNote) {
+                sfRefreshNote.style.display = 'block';
+            }
         }
 
         safeInit('AdminTabs', initAdminTabs);
@@ -244,7 +266,9 @@
 
     function updateSaveButton() {
         const saveBtn = document.getElementById('saveConfigBtn');
-        if (saveBtn) saveBtn.disabled = !lastTestSuccess;
+        if (saveBtn) {
+            saveBtn.disabled = !lastTestSuccess;
+        }
     }
 
     async function testConnection() {
@@ -266,7 +290,9 @@
         const data = new URLSearchParams();
         data.append('serverHost', host);
         data.append('serverPort', port);
-        if (apiKey) data.append('apiKey', apiKey);
+        if (apiKey) {
+            data.append('apiKey', apiKey);
+        }
 
         try {
             const { status, payload } = await window.AdminPage.Api.fetchJson(`${contextPath}/admin/test-connection`, {
@@ -327,10 +353,14 @@
                 }
 
                 const apiKeyNote = document.getElementById('apiKeyStoredNote');
-                if (apiKeyNote) apiKeyNote.style.display = 'block';
+                if (apiKeyNote) {
+                    apiKeyNote.style.display = 'block';
+                }
 
                 const apiKeyInput = document.getElementById('apiKey');
-                if (apiKeyInput) apiKeyInput.value = '';
+                if (apiKeyInput) {
+                    apiKeyInput.value = '';
+                }
             } else {
                 if (resultEl) {
                     resultEl.textContent = payload?.message || 'Unable to save configuration.';

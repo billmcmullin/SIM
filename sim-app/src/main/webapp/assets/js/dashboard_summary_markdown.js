@@ -3,12 +3,17 @@
 
     function setStatus(msg) {
         const status = document.getElementById('copyStatus');
-        if (status) status.textContent = msg || '';
+        if (status) {
+            status.textContent = msg || '';
+        }
     }
 
     async function copyToClipboard(text) {
         const value = text || '';
         try {
+            if (!window.navigator?.clipboard?.writeText) {
+                return false;
+            }
             await window.navigator.clipboard.writeText(value);
             return true;
         } catch {
@@ -17,7 +22,9 @@
     }
 
     function fallbackCopyFromHiddenInput(inputEl) {
-        if (!inputEl) return false;
+        if (!inputEl) {
+            return false;
+        }
 
         // create a temporary textarea so legacy copy works even when source is hidden
         const ta = document.createElement('textarea');
@@ -43,7 +50,9 @@
         const source = document.getElementById('markdownSource'); // hidden input now
         const copyBtn = document.getElementById('copyMarkdownBtn');
 
-        if (!copyBtn) return;
+        if (!copyBtn) {
+            return;
+        }
 
         copyBtn.addEventListener('click', async () => {
             if (!source) {

@@ -17,7 +17,9 @@
                 if (ok && payload?.status === 'ok' && typeof payload.intervalSeconds === 'number') {
                     const minutes = Math.max(1, Math.round(payload.intervalSeconds / 60));
                     const el = document.getElementById('syncInterval');
-                    if (el) el.value = minutes;
+                    if (el) {
+                        el.value = minutes;
+                    }
                     this.showSyncIntervalMessage(`Auto sync runs every ${minutes} minute(s). Last synced: ${Utils.formatHumanReadableTimestamp(payload.lastSynced)}`);
                 }
             } catch {

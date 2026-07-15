@@ -2,6 +2,8 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
+import java.sql.Date;
 
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
@@ -246,6 +248,30 @@ public class DatabaseImportServletTest
         when(resp.getWriter()).thenReturn(getWriterResult);
         underTest.doPost(req, resp);
 
+    }
+
+    @Test
+    public void testParseDateStrictAcceptsIsoTimestampForLegacyBackups() throws Throwable
+    {
+        DatabaseImportServlet underTest = new DatabaseImportServlet();
+        Method parseDateStrict = DatabaseImportServlet.class.getDeclaredMethod("parseDateStrict", String.class);
+        parseDateStrict.setAccessible(true);
+
+        Date parsed = (Date) parseDateStrict.invoke(underTest, "2026-05-20T07:00:00Z");
+
+        assertEquals(Date.valueOf("2026-05-20"), parsed);
+    }
+
+    @Test
+    public void testParseDateStrictRejectsInvalidInput() throws Throwable
+    {
+        DatabaseImportServlet underTest = new DatabaseImportServlet();
+        Method parseDateStrict = DatabaseImportServlet.class.getDeclaredMethod("parseDateStrict", String.class);
+        parseDateStrict.setAccessible(true);
+
+        Object parsed = parseDateStrict.invoke(underTest, "not-a-date");
+
+        assertEquals(null, parsed);
     }
 
 }

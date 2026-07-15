@@ -22,7 +22,9 @@
         },
 
         async saveWorkspaceName(name) {
-            if (!this.saveWorkspaceBtn) return;
+            if (!this.saveWorkspaceBtn) {
+                return;
+            }
             const params = new URLSearchParams();
             params.append('workspaceName', name);
 
@@ -43,7 +45,9 @@
         },
 
         showWorkspaceMessage(text, isError = false) {
-            if (!this.workspaceMessageEl) return;
+            if (!this.workspaceMessageEl) {
+                return;
+            }
             this.workspaceMessageEl.textContent = text;
             this.workspaceMessageEl.style.color = isError ? '#b91c1c' : '#047857';
         }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.email;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class EmailConfigResolver {
@@ -36,8 +37,8 @@ public final class EmailConfigResolver {
         if (graphDbProvider != null) {
             try {
                 graph = graphDbProvider.load();
-            } catch (Exception e) {
-                log.warning("Failed loading Graph config from database: " + e.getMessage());
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "Failed loading Graph config from database", e);
             }
         }
         if (isUsableGraph(graph)) {
@@ -49,8 +50,8 @@ public final class EmailConfigResolver {
         if (dbProvider != null) {
             try {
                 db = dbProvider.load();
-            } catch (Exception e) {
-                log.warning("Failed loading SMTP config from database: " + e.getMessage());
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "Failed loading SMTP config from database", e);
             }
         }
         if (isUsableSmtp(db)) {

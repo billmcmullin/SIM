@@ -1,16 +1,23 @@
 package com.sim.chatserver.email;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.URL;
+
+import javax.net.ssl.HttpsURLConnection;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class GraphTokenClientTest {
 
@@ -45,7 +52,7 @@ class GraphTokenClientTest {
         when(config.clientId()).thenReturn("client-1");
         when(config.clientSecret()).thenReturn("secret-1");
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         ByteArrayOutputStream postedBody = new ByteArrayOutputStream();
 
         when(conn.getOutputStream()).thenReturn(postedBody);
@@ -54,8 +61,9 @@ class GraphTokenClientTest {
                 new ByteArrayInputStream("{\"access_token\":\"tok-abc\",\"expires_in\":3600}".getBytes())
         );
 
-        try (MockedConstruction<URL> ignored = mockConstruction(URL.class,
+        try (MockedConstruction<URL> mocked = mockConstruction(URL.class,
                 (mock, context) -> when(mock.openConnection()).thenReturn(conn))) {
+            assertNotNull(mocked);
 
             GraphTokenClient client = new GraphTokenClient(config);
 
@@ -87,13 +95,14 @@ class GraphTokenClientTest {
         when(config.clientId()).thenReturn("client-1");
         when(config.clientSecret()).thenReturn("secret-1");
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         when(conn.getOutputStream()).thenReturn(new ByteArrayOutputStream());
         when(conn.getResponseCode()).thenReturn(401);
         when(conn.getErrorStream()).thenReturn(new ByteArrayInputStream("{\"error\":\"unauthorized\"}".getBytes()));
 
-        try (MockedConstruction<URL> ignored = mockConstruction(URL.class,
+        try (MockedConstruction<URL> mocked = mockConstruction(URL.class,
                 (mock, context) -> when(mock.openConnection()).thenReturn(conn))) {
+            assertNotNull(mocked);
 
             GraphTokenClient client = new GraphTokenClient(config);
 
@@ -116,13 +125,14 @@ class GraphTokenClientTest {
         when(config.clientId()).thenReturn("client-1");
         when(config.clientSecret()).thenReturn("secret-1");
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         when(conn.getOutputStream()).thenReturn(new ByteArrayOutputStream());
         when(conn.getResponseCode()).thenReturn(200);
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"expires_in\":3600}".getBytes()));
 
-        try (MockedConstruction<URL> ignored = mockConstruction(URL.class,
+        try (MockedConstruction<URL> mocked = mockConstruction(URL.class,
                 (mock, context) -> when(mock.openConnection()).thenReturn(conn))) {
+            assertNotNull(mocked);
 
             GraphTokenClient client = new GraphTokenClient(config);
 
@@ -145,11 +155,12 @@ class GraphTokenClientTest {
         when(config.clientId()).thenReturn("client-1");
         when(config.clientSecret()).thenReturn("secret-1");
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         when(conn.getOutputStream()).thenThrow(new RuntimeException("boom"));
 
-        try (MockedConstruction<URL> ignored = mockConstruction(URL.class,
+        try (MockedConstruction<URL> mocked = mockConstruction(URL.class,
                 (mock, context) -> when(mock.openConnection()).thenReturn(conn))) {
+            assertNotNull(mocked);
 
             GraphTokenClient client = new GraphTokenClient(config);
 

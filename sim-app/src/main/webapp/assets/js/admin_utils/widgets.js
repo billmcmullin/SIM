@@ -28,7 +28,9 @@
 
             document.getElementById('searchWidgetsBtn')?.addEventListener('click', () => this.reloadWidgetList());
             document.getElementById('clearWidgetSearchBtn')?.addEventListener('click', () => {
-                if (this.widgetSearchInput) this.widgetSearchInput.value = '';
+                if (this.widgetSearchInput) {
+                    this.widgetSearchInput.value = '';
+                }
                 this.reloadWidgetList();
             });
 
@@ -93,10 +95,14 @@
         // Try bulk: ?ids=id1,id2,...; fall back to per-widget ?widgetId=...
         async fetchWidgetStatuses() {
             const widgets = this.widgetState.widgets || [];
-            if (!widgets.length) return;
+            if (!widgets.length) {
+                return;
+            }
 
             const widgetIds = widgets.map(w => w.widgetId).filter(Boolean);
-            if (!widgetIds.length) return;
+            if (!widgetIds.length) {
+                return;
+            }
 
             const bulkUrl = `${this.contextPath}/admin/widgets/table-check?ids=${encodeURIComponent(widgetIds.join(','))}`;
             try {
@@ -175,7 +181,9 @@
                     msgEl.style.color = '#b91c1c';
                 }
             } else {
-                if (this.widgetTableExplorerMessage) this.widgetTableExplorerMessage.textContent = '';
+                if (this.widgetTableExplorerMessage) {
+                    this.widgetTableExplorerMessage.textContent = '';
+                }
             }
 
             this.renderWidgetTableExplorer();
@@ -215,7 +223,9 @@
                 const s = this.widgetSyncStatuses[entry.widgetId] || {};
                 s.synced = true;
                 s.lastSynced = lastSynced || s.lastSynced || null;
-                if (s.message === 'Syncing…') s.message = '';
+                if (s.message === 'Syncing…') {
+                    s.message = '';
+                }
                 this.widgetSyncStatuses[entry.widgetId] = s;
             });
             this.renderWidgetTableExplorer();
@@ -228,7 +238,9 @@
             }
             (this.widgetState.widgets || []).forEach(entry => {
                 const s = this.widgetSyncStatuses[entry.widgetId] || {};
-                if (s.message === 'Syncing…') s.message = '';
+                if (s.message === 'Syncing…') {
+                    s.message = '';
+                }
                 this.widgetSyncStatuses[entry.widgetId] = s;
             });
             this.renderWidgetTableExplorer();
@@ -236,7 +248,9 @@
 
         renderWidgetTable() {
             const tbody = document.getElementById('widgetTableBody');
-            if (!tbody) return;
+            if (!tbody) {
+                return;
+            }
 
             if (!this.widgetState.widgets.length) {
                 tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No widget entries available.</td></tr>';
@@ -252,12 +266,16 @@
                 </tr>`).join('');
             }
 
-            if (this.widgetSelectAll) this.widgetSelectAll.checked = false;
+            if (this.widgetSelectAll) {
+                this.widgetSelectAll.checked = false;
+            }
             this.renderWidgetTableExplorer();
         },
 
         renderWidgetTableExplorer() {
-            if (!this.widgetTableExplorerBody) return;
+            if (!this.widgetTableExplorerBody) {
+                return;
+            }
             if (!this.widgetState.widgets.length) {
                 this.widgetTableExplorerBody.innerHTML = '<tr><td colspan="4" class="empty-row">Widget IDs will appear here once the registry loads.</td></tr>';
                 return;
@@ -320,7 +338,9 @@
         },
 
         async deleteWidgetEntry(id) {
-            if (!confirm('Delete this widget?')) return;
+            if (!confirm('Delete this widget?')) {
+                return;
+            }
             try {
                 const url = `${this.contextPath}/admin/widgets?ids=${encodeURIComponent(String(id))}`;
                 const { ok, payload, status } = await Api.delete(url);
@@ -343,7 +363,9 @@
                 this.showWidgetMessage('No widgets selected.', true);
                 return;
             }
-            if (!confirm(`Delete ${selected.length} widget(s)?`)) return;
+            if (!confirm(`Delete ${selected.length} widget(s)?`)) {
+                return;
+            }
 
             try {
                 const idsParam = encodeURIComponent(selected.join(','));
@@ -389,7 +411,9 @@
             const data = new URLSearchParams();
             data.append('widgetId', widgetIdValue);
             data.append('displayName', widgetNameValue);
-            if (this.widgetState.editingId) data.append('id', this.widgetState.editingId);
+            if (this.widgetState.editingId) {
+                data.append('id', this.widgetState.editingId);
+            }
 
             try {
                 const { status, payload } = await Api.fetchJson(`${this.contextPath}/admin/widgets`, {
@@ -412,7 +436,9 @@
         },
 
         showWidgetMessage(text, isError = false) {
-            if (!this.widgetMessageEl) return;
+            if (!this.widgetMessageEl) {
+                return;
+            }
             this.widgetMessageEl.textContent = text;
             this.widgetMessageEl.style.color = isError ? '#b91c1c' : '#047857';
         }

@@ -53,7 +53,9 @@
 
         const data = new URLSearchParams();
         data.append('salesforceInstanceUrl', instanceUrl);
-        if (salesforceApiKey) data.append('salesforceApiKey', salesforceApiKey);
+        if (salesforceApiKey) {
+            data.append('salesforceApiKey', salesforceApiKey);
+        }
 
         const originalText = btn ? btn.textContent : '';
         setButtonState(btn, true, 'Testing...');
@@ -129,23 +131,35 @@
 
                 // Reveal stored notes
                 const apiKeyNote = document.getElementById('salesforceApiKeyStoredNote');
-                if (apiKeyNote) apiKeyNote.style.display = 'block';
+                if (apiKeyNote) {
+                    apiKeyNote.style.display = 'block';
+                }
 
                 const secretNote = document.getElementById('salesforceClientSecretStoredNote');
-                if (secretNote) secretNote.style.display = 'block';
+                if (secretNote) {
+                    secretNote.style.display = 'block';
+                }
 
                 const refreshNote = document.getElementById('salesforceRefreshTokenStoredNote');
-                if (refreshNote) refreshNote.style.display = 'block';
+                if (refreshNote) {
+                    refreshNote.style.display = 'block';
+                }
 
                 // Clear sensitive fields after save
                 const keyInput = document.getElementById('salesforceApiKey');
-                if (keyInput) keyInput.value = '';
+                if (keyInput) {
+                    keyInput.value = '';
+                }
 
                 const secretInput = document.getElementById('salesforceClientSecret');
-                if (secretInput) secretInput.value = '';
+                if (secretInput) {
+                    secretInput.value = '';
+                }
 
                 const refreshInput = document.getElementById('salesforceRefreshToken');
-                if (refreshInput) refreshInput.value = '';
+                if (refreshInput) {
+                    refreshInput.value = '';
+                }
             } else {
                 setResult(resultEl, payload?.message || 'Unable to save Salesforce configuration.', false);
             }
@@ -157,19 +171,27 @@
     }
 
     function setResult(el, message, success) {
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.textContent = message;
         el.style.color = success ? '#047857' : '#b91c1c';
     }
 
     function setButtonState(btn, disabled, text) {
-        if (!btn) return;
+        if (!btn) {
+            return;
+        }
         btn.disabled = disabled;
-        if (typeof text === 'string') btn.textContent = text;
+        if (typeof text === 'string') {
+            btn.textContent = text;
+        }
     }
 
     function trimToNull(v) {
-        if (v === null || v === undefined) return null;
+        if (v === null || v === undefined) {
+            return null;
+        }
         const t = String(v).trim();
         return t ? t : null;
     }

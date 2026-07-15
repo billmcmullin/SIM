@@ -13,12 +13,16 @@
     }
 
     function formatSignedInt(n) {
-        if (!Number.isFinite(n)) return '0';
+        if (!Number.isFinite(n)) {
+            return '0';
+        }
         return `${n > 0 ? '+' : ''}${Math.trunc(n)}`;
     }
 
     function formatPct(n) {
-        if (!Number.isFinite(n)) return '0.0';
+        if (!Number.isFinite(n)) {
+            return '0.0';
+        }
         return n.toFixed(1);
     }
 
@@ -30,16 +34,22 @@
     }
 
     function parseIntFromText(text) {
-        if (!text) return null;
+        if (!text) {
+            return null;
+        }
         const m = String(text).match(/-?\d+/);
-        if (!m) return null;
+        if (!m) {
+            return null;
+        }
         const n = parseInt(m[0], 10);
         return Number.isFinite(n) ? n : null;
     }
 
     function parseChatSummaryValues() {
         const summary = document.querySelector('.chat-progression-summary');
-        if (!summary) return { today: null, yesterday: null };
+        if (!summary) {
+            return { today: null, yesterday: null };
+        }
         const txt = summary.textContent || '';
         const todayMatch = txt.match(/Today:\s*([0-9]+)/i);
         const yMatch = txt.match(/Yesterday:\s*([0-9]+)/i);
@@ -64,7 +74,9 @@
     }
 
     function setConditionalMetricLink(el, value, hrefOrBuilder) {
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         const n = Number(value);
         if (!Number.isFinite(n)) {
             el.textContent = 'N/A';
@@ -75,7 +87,9 @@
             el.innerHTML = `<a class="metric-link metric-dynamic-link" href="${core.esc(href)}">${core.esc(String(n))}</a>`;
             if (typeof hrefOrBuilder === 'function') {
                 const a = el.querySelector('a.metric-dynamic-link');
-                if (a) a.__buildHref = hrefOrBuilder;
+                if (a) {
+                    a.__buildHref = hrefOrBuilder;
+                }
             }
         } else {
             el.textContent = String(n);
@@ -85,13 +99,19 @@
     function wireDynamicLinks() {
         document.addEventListener('click', async (event) => {
             const a = event.target.closest('a.metric-dynamic-link');
-            if (!a || !a.__buildHref) return;
+            if (!a || !a.__buildHref) {
+                return;
+            }
             event.preventDefault();
-            if (a.dataset.loading === '1') return;
+            if (a.dataset.loading === '1') {
+                return;
+            }
             try {
                 a.dataset.loading = '1';
                 const href = await a.__buildHref();
-                if (href) window.location.href = href;
+                if (href) {
+                    window.location.href = href;
+                }
             } catch (e) {
                 console.warn('Unable to open review selection:', e);
                 alert('Unable to open chat review for this metric right now.');
@@ -106,21 +126,33 @@
         nodes.forEach(node => {
             const txt = (node.textContent || '').trim();
             node.classList.remove('progression-up', 'progression-down', 'progression-flat');
-            if (txt.startsWith('+')) node.classList.add('progression-up');
-            else if (txt.startsWith('-')) node.classList.add('progression-down');
-            else node.classList.add('progression-flat');
+            if (txt.startsWith('+')) {
+                node.classList.add('progression-up');
+            } else if (txt.startsWith('-')) {
+                node.classList.add('progression-down');
+            } else {
+                node.classList.add('progression-flat');
+            }
         });
     }
 
     function applyProgressionDirectionStyling() {
         const direction = (window.chatProgressionDirection || '').toLowerCase().trim();
-        if (!direction) return;
+        if (!direction) {
+            return;
+        }
         const el = document.querySelector('.chat-progression-summary .progression');
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         el.classList.remove('progression-up', 'progression-down', 'progression-flat');
-        if (direction === 'up') el.classList.add('progression-up');
-        else if (direction === 'down') el.classList.add('progression-down');
-        else el.classList.add('progression-flat');
+        if (direction === 'up') {
+            el.classList.add('progression-up');
+        } else if (direction === 'down') {
+            el.classList.add('progression-down');
+        } else {
+            el.classList.add('progression-flat');
+        }
         el.setAttribute('data-direction', direction);
     }
 
@@ -130,7 +162,9 @@
 
     function hydrateDailyProgressSection(contextPath) {
         const section = document.getElementById('dailyProgressSection');
-        if (!section) return;
+        if (!section) {
+            return;
+        }
 
         const todayChatsEl = document.getElementById('dpTodayChats');
         const yesterdayChatsEl = document.getElementById('dpYesterdayChats');
@@ -154,9 +188,15 @@
                 chatDeltaEl.innerHTML = renderProgressPill(d, forcedDir);
             }
         } else {
-            if (todayChatsEl) todayChatsEl.textContent = 'N/A';
-            if (yesterdayChatsEl) yesterdayChatsEl.textContent = 'N/A';
-            if (chatDeltaEl) chatDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            if (todayChatsEl) {
+                todayChatsEl.textContent = 'N/A';
+            }
+            if (yesterdayChatsEl) {
+                yesterdayChatsEl.textContent = 'N/A';
+            }
+            if (chatDeltaEl) {
+                chatDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            }
         }
 
         const newUserVals = parseNewUsersFromServerRenderedDom();
@@ -172,9 +212,15 @@
                 usersDeltaEl.innerHTML = renderProgressPill(d, forcedDir);
             }
         } else {
-            if (todayUsersEl) todayUsersEl.textContent = 'N/A';
-            if (yesterdayUsersEl) yesterdayUsersEl.textContent = 'N/A';
-            if (usersDeltaEl) usersDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            if (todayUsersEl) {
+                todayUsersEl.textContent = 'N/A';
+            }
+            if (yesterdayUsersEl) {
+                yesterdayUsersEl.textContent = 'N/A';
+            }
+            if (usersDeltaEl) {
+                usersDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            }
         }
 
         const termVals = parseTermsFromServerRenderedDom();
@@ -190,22 +236,34 @@
                 termsDeltaEl.innerHTML = renderProgressPill(d, forcedDir);
             }
         } else {
-            if (todayTermsEl) todayTermsEl.textContent = 'N/A';
-            if (yesterdayTermsEl) yesterdayTermsEl.textContent = 'N/A';
-            if (termsDeltaEl) termsDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            if (todayTermsEl) {
+                todayTermsEl.textContent = 'N/A';
+            }
+            if (yesterdayTermsEl) {
+                yesterdayTermsEl.textContent = 'N/A';
+            }
+            if (termsDeltaEl) {
+                termsDeltaEl.innerHTML = '<span class="progression progression-flat">N/A</span>';
+            }
         }
 
         const summaryToday = document.getElementById('summaryTodayChats');
         const summaryYesterday = document.getElementById('summaryYesterdayChats');
-        if (Number.isFinite(chatVals.today)) setConditionalMetricLink(summaryToday, chatVals.today, () => buildWidgetReviewSelectionLink('today', contextPath));
-        if (Number.isFinite(chatVals.yesterday)) setConditionalMetricLink(summaryYesterday, chatVals.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
+        if (Number.isFinite(chatVals.today)) {
+            setConditionalMetricLink(summaryToday, chatVals.today, () => buildWidgetReviewSelectionLink('today', contextPath));
+        }
+        if (Number.isFinite(chatVals.yesterday)) {
+            setConditionalMetricLink(summaryYesterday, chatVals.yesterday, () => buildWidgetReviewSelectionLink('yesterday', contextPath));
+        }
 
         applyDeltaClasses(section);
     }
 
     function renderActiveUsersDelta(data) {
         const deltaEl = document.getElementById('activeUsersDelta');
-        if (!deltaEl) return;
+        if (!deltaEl) {
+            return;
+        }
 
         const activeUsers = typeof data.activeUsers === 'number' ? data.activeUsers : null;
         const activeUsersYesterday = typeof data.activeUsersYesterday === 'number' ? data.activeUsersYesterday : null;
@@ -228,8 +286,12 @@
             return;
         }
 
-        if (!Number.isFinite(pct)) pct = 0;
-        if (!direction) direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+        if (!Number.isFinite(pct)) {
+            pct = 0;
+        }
+        if (!direction) {
+            direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+        }
 
         deltaEl.classList.remove('progression-up', 'progression-down', 'progression-flat');
         deltaEl.classList.add(direction === 'up' ? 'progression-up' : direction === 'down' ? 'progression-down' : 'progression-flat');

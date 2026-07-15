@@ -23,6 +23,8 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -185,6 +187,7 @@ public class DatabaseImportServlet extends HttpServlet {
                         continue;
                     }
                     int cnt = replaceTableData(conn, table, d);
+                    realignSequenceBackedColumns(conn, table);
                     importedCounts.put(table, cnt);
                 }
 
@@ -194,6 +197,7 @@ public class DatabaseImportServlet extends HttpServlet {
                         continue;
                     }
                     int cnt = replaceTableData(conn, table, e.getValue());
+                    realignSequenceBackedColumns(conn, table);
                     importedCounts.put(table, cnt);
                 }
 
@@ -441,6 +445,40 @@ public class DatabaseImportServlet extends HttpServlet {
         return inserted;
     }
 
+    private void realignSequenceBackedColumns(Connection conn, String table) throws SQLException {
+        String sequenceLookupSql = """
+                SELECT column_name,
+                       pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name) AS seq_name
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = ?
+                 ORDER BY ordinal_position
+                """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sequenceLookupSql)) {
+            ps.setString(1, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String column = rs.getString("column_name");
+                    String sequenceName = rs.getString("seq_name");
+                    if (column == null || sequenceName == null || sequenceName.isBlank()) {
+                        continue;
+                    }
+
+                    if (!SQL_IDENTIFIER.matcher(column).matches()) {
+                        continue;
+                    }
+
+                    String setSequenceSql = "SELECT setval(?::regclass, COALESCE((SELECT MAX(" + q(column) + ") FROM " + q(table) + "), 0) + 1, false)";
+                    try (PreparedStatement setPs = conn.prepareStatement(setSequenceSql)) {
+                        setPs.setString(1, sequenceName);
+                        setPs.execute();
+                    }
+                }
+            }
+        }
+    }
+
     private Map<String, ColumnInfo> loadColumnInfo(Connection conn, String table) throws SQLException {
         Map<String, ColumnInfo> info = new LinkedHashMap<>();
         DatabaseMetaData meta = conn.getMetaData();
@@ -586,8 +624,31 @@ public class DatabaseImportServlet extends HttpServlet {
         try {
             return java.sql.Date.valueOf(v);
         } catch (IllegalArgumentException ignore) {
-            return null;
         }
+
+        try {
+            return java.sql.Date.valueOf(OffsetDateTime.parse(v).toLocalDate());
+        } catch (DateTimeParseException ignore) {
+        }
+
+        try {
+            return java.sql.Date.valueOf(Instant.parse(v).atOffset(java.time.ZoneOffset.UTC).toLocalDate());
+        } catch (DateTimeParseException ignore) {
+        }
+
+        try {
+            return java.sql.Date.valueOf(LocalDateTime.parse(v).toLocalDate());
+        } catch (DateTimeParseException ignore) {
+        }
+
+        if (v.length() >= 10) {
+            try {
+                return java.sql.Date.valueOf(LocalDate.parse(v.substring(0, 10)));
+            } catch (DateTimeParseException | IllegalArgumentException ignore) {
+            }
+        }
+
+        return null;
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

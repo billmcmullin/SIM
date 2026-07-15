@@ -68,7 +68,9 @@
         },
 
         renderUserTable(users) {
-            if (!this.userTableBody) return;
+            if (!this.userTableBody) {
+                return;
+            }
             if (!users.length) {
                 this.userTableBody.innerHTML = '<tr><td colspan="3" class="empty-row">No users found.</td></tr>';
                 return;
@@ -81,7 +83,9 @@
         },
 
         async deleteUser(id) {
-            if (!confirm('Delete this user?')) return;
+            if (!confirm('Delete this user?')) {
+                return;
+            }
             try {
                 const { ok, payload } = await Api.delete(`${this.contextPath}/admin/users?userId=${encodeURIComponent(id)}`);
                 if (ok) {

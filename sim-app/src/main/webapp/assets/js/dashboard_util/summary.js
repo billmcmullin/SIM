@@ -5,8 +5,12 @@
 
     function ensureSummaryProgressUi() {
         const bodyEl = document.getElementById('dailySummaryBody');
-        if (!bodyEl) return;
-        if (document.getElementById('dailySummaryProgressWrap')) return;
+        if (!bodyEl) {
+            return;
+        }
+        if (document.getElementById('dailySummaryProgressWrap')) {
+            return;
+        }
 
         const wrap = document.createElement('div');
         wrap.id = 'dailySummaryProgressWrap';
@@ -27,13 +31,19 @@
         const bar = document.getElementById('dailySummaryProgressBar');
         const txt = document.getElementById('dailySummaryProgressText');
         const p = Math.max(0, Math.min(100, Number(pct) || 0));
-        if (bar) bar.style.width = `${p}%`;
-        if (txt) txt.textContent = `${p}%${message ? ` • ${message}` : ''}`;
+        if (bar) {
+            bar.style.width = `${p}%`;
+        }
+        if (txt) {
+            txt.textContent = `${p}%${message ? ` • ${message}` : ''}`;
+        }
     }
 
     function hideSummaryProgressIfDone(inProgress) {
         const wrap = document.getElementById('dailySummaryProgressWrap');
-        if (!wrap) return;
+        if (!wrap) {
+            return;
+        }
         wrap.style.display = inProgress ? '' : 'none';
     }
 
@@ -108,10 +118,14 @@
         const btn = document.getElementById('copyDailySummaryBtn');
         const src = document.getElementById('dailySummaryCopyText');
         const status = document.getElementById('dailySummaryCopyStatus');
-        if (!btn || !src) return;
+        if (!btn || !src) {
+            return;
+        }
 
         const setStatus = (msg) => {
-            if (status) status.textContent = msg || '';
+            if (status) {
+                status.textContent = msg || '';
+            }
         };
 
         btn.addEventListener('click', async () => {
@@ -153,11 +167,15 @@
         const bodyEl = document.getElementById('dailySummaryBody');
         const metaEl = document.getElementById('dailySummaryMeta');
         const copyEl = document.getElementById('dailySummaryCopyText');
-        if (!bodyEl) return;
+        if (!bodyEl) {
+            return;
+        }
 
         ensureSummaryProgressUi();
         bodyEl.innerHTML = '<p style="margin:0;">Loading latest summary…</p>';
-        if (metaEl) metaEl.textContent = 'Loading latest daily analysis…';
+        if (metaEl) {
+            metaEl.textContent = 'Loading latest daily analysis…';
+        }
         setSummaryProgress(5, 'loading');
 
         let pollCount = 0;
@@ -175,7 +193,9 @@
 
                 if (!resp.ok) {
                     bodyEl.innerHTML = '<p style="margin:0;">Unable to load summary right now.</p>';
-                    if (metaEl) metaEl.textContent = `Status: ${resp.status}`;
+                    if (metaEl) {
+                        metaEl.textContent = `Status: ${resp.status}`;
+                    }
                     setSummaryProgress(0, 'error');
                     hideSummaryProgressIfDone(false);
                     return;
@@ -185,7 +205,9 @@
             } catch (e) {
                 console.warn('Unable to load daily summary:', e);
                 bodyEl.innerHTML = '<p style="margin:0;">Unable to load summary right now.</p>';
-                if (metaEl) metaEl.textContent = 'Request failed.';
+                if (metaEl) {
+                    metaEl.textContent = 'Request failed.';
+                }
                 setSummaryProgress(0, 'request failed');
                 hideSummaryProgressIfDone(false);
                 return;
@@ -193,7 +215,9 @@
 
             if (!data || data.status !== 'ok' || !data.summary) {
                 bodyEl.innerHTML = '<p style="margin:0;">Summary is not available yet.</p>';
-                if (metaEl) metaEl.textContent = 'No summary returned.';
+                if (metaEl) {
+                    metaEl.textContent = 'No summary returned.';
+                }
                 setSummaryProgress(0, 'not ready');
                 hideSummaryProgressIfDone(false);
                 return;
@@ -239,11 +263,15 @@
 
             hideSummaryProgressIfDone(inProgress);
 
-            if (!inProgress) return;
+            if (!inProgress) {
+                return;
+            }
             await new Promise(r => setTimeout(r, 2000));
         }
 
-        if (metaEl) metaEl.textContent = 'Summary is still generating. Please refresh shortly.';
+        if (metaEl) {
+            metaEl.textContent = 'Summary is still generating. Please refresh shortly.';
+        }
     }
 
     window.DashboardSummary = {

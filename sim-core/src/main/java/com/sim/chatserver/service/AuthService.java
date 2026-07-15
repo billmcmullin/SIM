@@ -69,7 +69,7 @@ public class AuthService {
             // No sensitive data in logs
             ok = storedHash != null && BCrypt.checkpw(password, storedHash);
         } catch (Exception e) {
-            log.log(Level.SEVERE, LOG_BCRYPT_THROW, e.toString());
+            log.log(Level.WARNING, LOG_BCRYPT_THROW, e.toString());
         }
 
         if (log.isLoggable(Level.INFO)) {

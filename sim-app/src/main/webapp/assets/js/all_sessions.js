@@ -58,21 +58,29 @@
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
 
     const fmt = ts => {
-        if (!ts) return '';
+        if (!ts) {
+            return '';
+        }
         try { return new Date(ts).toLocaleString(); } catch { return ts; }
     };
 
     function customerProfileUrl(sessionId, friendlyName) {
         const p = new URLSearchParams();
-        if (sessionId) p.set('sessionId', String(sessionId));
-        else if (friendlyName) p.set('friendlyName', String(friendlyName));
-        else return '';
+        if (sessionId) {
+            p.set('sessionId', String(sessionId));
+        } else if (friendlyName) {
+            p.set('friendlyName', String(friendlyName));
+        } else {
+            return '';
+        }
         return APP + '/customer-profile?' + p.toString();
     }
 
     function appendProfileLink(container, text, sessionId, friendlyName) {
         const label = (text === null || text === undefined) ? '' : String(text).trim();
-        if (!label) return;
+        if (!label) {
+            return;
+        }
         const href = customerProfileUrl(sessionId, friendlyName);
         if (!href) {
             container.textContent = label;
@@ -86,7 +94,9 @@
     }
 
     function renderSessionLabel(cell, label, sessionId) {
-        if (!cell) return;
+        if (!cell) {
+            return;
+        }
         cell.innerHTML = '';
 
         const primary = document.createElement('div');
@@ -118,7 +128,9 @@
     }
 
     function activityLabel() {
-        if (activityFilter === 'active') return `Active (last ${activeDaysFilter} days)`;
+        if (activityFilter === 'active') {
+            return `Active (last ${activeDaysFilter} days)`;
+        }
         return 'All';
     }
 
@@ -179,14 +191,19 @@
             u.searchParams.set('activeDays', String(activeDaysFilter));
         }
 
-        if (labeledOnly) u.searchParams.set('labeledOnly', 'true');
-        else u.searchParams.delete('labeledOnly');
+        if (labeledOnly) {
+            u.searchParams.set('labeledOnly', 'true');
+        } else {
+            u.searchParams.delete('labeledOnly');
+        }
 
         window.history.replaceState({}, '', u.toString());
     }
 
     function setActivityFilter(next) {
-        if (!['all', 'active'].includes(next)) next = 'all';
+        if (!['all', 'active'].includes(next)) {
+            next = 'all';
+        }
         activityFilter = next;
 
         syncFiltersToUrl();
@@ -205,9 +222,15 @@
     }
 
     async function loadSessions(reqPage = 1, search = '') {
-        if (!sessionsTableBody && !sessionsContainerDiv) return;
-        if (sessionsTableBody) sessionsTableBody.innerHTML = '<tr><td colspan="5" class="small-note">Loading sessions…</td></tr>';
-        if (sessionsContainerDiv) sessionsContainerDiv.innerHTML = '<div class="small-note">Loading sessions…</div>';
+        if (!sessionsTableBody && !sessionsContainerDiv) {
+            return;
+        }
+        if (sessionsTableBody) {
+            sessionsTableBody.innerHTML = '<tr><td colspan="5" class="small-note">Loading sessions…</td></tr>';
+        }
+        if (sessionsContainerDiv) {
+            sessionsContainerDiv.innerHTML = '<div class="small-note">Loading sessions…</div>';
+        }
 
         page = Math.max(1, reqPage);
         const params = new URLSearchParams();
@@ -216,7 +239,9 @@
         params.set('activity', activityFilter);
         params.set('activeDays', String(activeDaysFilter));
         params.set('labeledOnly', labeledOnly ? 'true' : 'false');
-        if (search) params.set('search', search);
+        if (search) {
+            params.set('search', search);
+        }
 
         try {
             const json = await safeFetchJson(DATA_URL + '?' + params.toString(), { credentials: 'same-origin' });
@@ -231,8 +256,12 @@
             }
         } catch (err) {
             const msg = `Unable to load sessions: ${err.message}`;
-            if (sessionsTableBody) sessionsTableBody.innerHTML = `<tr><td colspan="5" class="empty-row">${esc(msg)}</td></tr>`;
-            if (sessionsContainerDiv) sessionsContainerDiv.innerHTML = `<div class="empty-row">${esc(msg)}</div>`;
+            if (sessionsTableBody) {
+                sessionsTableBody.innerHTML = `<tr><td colspan="5" class="empty-row">${esc(msg)}</td></tr>`;
+            }
+            if (sessionsContainerDiv) {
+                sessionsContainerDiv.innerHTML = `<div class="empty-row">${esc(msg)}</div>`;
+            }
             console.error(err);
         }
     }
@@ -261,7 +290,9 @@
                     widgetLabel = s.widgets.map(wid => widgetNamesMap[wid] || wid).filter(Boolean).join(', ');
                 }
                 tdWidgets.textContent = widgetLabel;
-                if (widgetLabel) tdWidgets.title = widgetLabel;
+                if (widgetLabel) {
+                    tdWidgets.title = widgetLabel;
+                }
                 tr.appendChild(tdWidgets);
 
                 const tdCount = document.createElement('td');
@@ -409,7 +440,9 @@
 
     function toggleChatsCard(card, sessionId, btn) {
         const chatsEl = card.querySelector('.chats-list');
-        if (!chatsEl) return;
+        if (!chatsEl) {
+            return;
+        }
         if (chatsEl.style.display === 'block') {
             chatsEl.style.display = 'none';
             btn.textContent = 'Expand';
@@ -460,8 +493,14 @@
                 cb.checked = selectedChatIds.has(String(row.chatId || ''));
                 cb.addEventListener('change', () => {
                     const id = cb.dataset.chatId;
-                    if (!id) return;
-                    if (cb.checked) selectedChatIds.add(id); else selectedChatIds.delete(id);
+                    if (!id) {
+                        return;
+                    }
+                    if (cb.checked) {
+                        selectedChatIds.add(id);
+                    } else {
+                        selectedChatIds.delete(id);
+                    }
                     updateSelectionInfo();
                 });
                 tdCheck.appendChild(cb);
@@ -516,8 +555,14 @@
             cb.checked = selectedChatIds.has(String(row.chatId || ''));
             cb.addEventListener('change', () => {
                 const id = cb.dataset.chatId;
-                if (!id) return;
-                if (cb.checked) selectedChatIds.add(id); else selectedChatIds.delete(id);
+                if (!id) {
+                    return;
+                }
+                if (cb.checked) {
+                    selectedChatIds.add(id);
+                } else {
+                    selectedChatIds.delete(id);
+                }
                 updateSelectionInfo();
             });
             left.appendChild(cb);
@@ -549,7 +594,9 @@
     }
 
     async function selectAllInSession(sessionId, contextElement) {
-        if (!confirm('Select all chats in this session for review?')) return;
+        if (!confirm('Select all chats in this session for review?')) {
+            return;
+        }
         let loading;
         if (contextElement) {
             loading = document.createElement('span');
@@ -559,11 +606,15 @@
         try {
             const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
             (json.rows || []).forEach(r => {
-                if (r && r.chatId) selectedChatIds.add(String(r.chatId));
+                if (r && r.chatId) {
+                    selectedChatIds.add(String(r.chatId));
+                }
             });
             document.querySelectorAll('.chat-checkbox').forEach(cb => {
                 const id = cb.dataset.chatId;
-                if (id && selectedChatIds.has(id)) cb.checked = true;
+                if (id && selectedChatIds.has(id)) {
+                    cb.checked = true;
+                }
             });
             updateSelectionInfo();
             alert(`Selected ${json.rows ? json.rows.length : 0} chats from session.`);
@@ -571,12 +622,16 @@
             alert('Unable to select session chats: ' + err.message);
             console.error(err);
         } finally {
-            if (loading && loading.parentNode) loading.remove();
+            if (loading && loading.parentNode) {
+                loading.remove();
+            }
         }
     }
 
     async function selectAllAcrossAllSessions() {
-        if (!confirm('Select ALL chats from currently filtered sessions? This may take a while. Continue?')) return;
+        if (!confirm('Select ALL chats from currently filtered sessions? This may take a while. Continue?')) {
+            return;
+        }
         if (selectAllAllSessionsBtn) {
             selectAllAllSessionsBtn.disabled = true;
             selectAllAllSessionsBtn.textContent = 'Selecting…';
@@ -597,7 +652,9 @@
                 try {
                     const j = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(s.sessionId), { credentials: 'same-origin' });
                     (j.rows || []).forEach(r => {
-                        if (r && r.chatId) selectedChatIds.add(String(r.chatId));
+                        if (r && r.chatId) {
+                            selectedChatIds.add(String(r.chatId));
+                        }
                     });
                 } catch (err) {
                     console.warn('Failed fetch chats for session', s.sessionId, err);
@@ -605,7 +662,9 @@
             }
             document.querySelectorAll('.chat-checkbox').forEach(cb => {
                 const id = cb.dataset.chatId;
-                if (id && selectedChatIds.has(id)) cb.checked = true;
+                if (id && selectedChatIds.has(id)) {
+                    cb.checked = true;
+                }
             });
             updateSelectionInfo();
             alert(`Selected ${selectedChatIds.size} chats across ${sessions.length} sessions.`);
@@ -627,15 +686,23 @@
     }
 
     function updateSelectionInfo() {
-        if (!selectionInfo) return;
+        if (!selectionInfo) {
+            return;
+        }
         const n = selectedChatIds.size;
         selectionInfo.textContent = n ? `${n} selected` : '';
-        if (reviewSelectedBtn) reviewSelectedBtn.disabled = n === 0;
-        if (deselectSelectedBtn) deselectSelectedBtn.disabled = n === 0;
+        if (reviewSelectedBtn) {
+            reviewSelectedBtn.disabled = n === 0;
+        }
+        if (deselectSelectedBtn) {
+            deselectSelectedBtn.disabled = n === 0;
+        }
     }
 
     function renderPagination() {
-        if (!summaryEl) return;
+        if (!summaryEl) {
+            return;
+        }
         if (!paginationEl) {
             paginationEl = document.createElement('div');
             paginationEl.className = 'pagination-wrapper';
@@ -690,7 +757,9 @@
             const option = document.createElement('option');
             option.value = String(opt);
             option.textContent = String(opt);
-            if (opt === pageSize) option.selected = true;
+            if (opt === pageSize) {
+                option.selected = true;
+            }
             sizeSelect.appendChild(option);
         });
         sizeSelect.addEventListener('change', () => {
@@ -726,8 +795,12 @@
         // expected in HTML as a single toggle button
         toggleLabeledOnlyBtn = document.getElementById('toggleLabeledOnlyBtn');
 
-        if (showAllUsersBtn) showAllUsersBtn.addEventListener('click', () => setActivityFilter('all'));
-        if (showActiveUsersBtn) showActiveUsersBtn.addEventListener('click', () => setActivityFilter('active'));
+        if (showAllUsersBtn) {
+            showAllUsersBtn.addEventListener('click', () => setActivityFilter('all'));
+        }
+        if (showActiveUsersBtn) {
+            showActiveUsersBtn.addEventListener('click', () => setActivityFilter('active'));
+        }
 
         if (toggleLabeledOnlyBtn) {
             toggleLabeledOnlyBtn.addEventListener('click', () => setLabeledOnly(!labeledOnly));
@@ -756,7 +829,9 @@
 
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                if (searchInput) searchInput.value = '';
+                if (searchInput) {
+                    searchInput.value = '';
+                }
                 page = 1;
                 loadSessions(1, '');
             });
@@ -773,28 +848,28 @@
                 const selected = Array.from(selectedChatIds);
                 if (!selected.length) {
                     alert('No chats selected.');
-                    return;
-                }
-                try {
-                    const res = await fetch(SELECT_URL, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ selectedChatIds: selected })
-                    });
-                    if (!res.ok) {
-                        const txt = await res.text().catch(() => '');
-                        throw new Error(txt || `HTTP ${res.status}`);
+                } else {
+                    try {
+                        const res = await fetch(SELECT_URL, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ selectedChatIds: selected })
+                        });
+                        if (!res.ok) {
+                            const txt = await res.text().catch(() => '');
+                            throw new Error(txt || `HTTP ${res.status}`);
+                        }
+                        const json = await res.json();
+                        if (json.status === 'ok' && json.selectionId) {
+                            window.location.href = APP + '/dashboard/widgets/drilldown/review?selectionId=' + encodeURIComponent(json.selectionId);
+                        } else {
+                            throw new Error(json.message || 'Unable to create selection');
+                        }
+                    } catch (err) {
+                        alert('Unable to create selection: ' + err.message);
+                        console.error(err);
                     }
-                    const json = await res.json();
-                    if (json.status === 'ok' && json.selectionId) {
-                        window.location.href = APP + '/dashboard/widgets/drilldown/review?selectionId=' + encodeURIComponent(json.selectionId);
-                    } else {
-                        throw new Error(json.message || 'Unable to create selection');
-                    }
-                } catch (err) {
-                    alert('Unable to create selection: ' + err.message);
-                    console.error(err);
                 }
             });
         }

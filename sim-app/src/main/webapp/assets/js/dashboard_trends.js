@@ -43,10 +43,14 @@
     }
 
     async function openReviewForDay(dayLabel, widgetId) {
-        if (!dayLabel) return;
+        if (!dayLabel) {
+            return;
+        }
         try {
             const payload = { day: dayLabel };
-            if (widgetId) payload.widgetId = widgetId;
+            if (widgetId) {
+                payload.widgetId = widgetId;
+            }
 
             const res = await fetch(SELECT_BY_DAY_URL, {
                 method: 'POST',
@@ -59,7 +63,9 @@
             let json = {};
             try { json = JSON.parse(text); } catch { json = { message: text }; }
 
-            if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+            if (!res.ok) {
+                throw new Error(json.message || `HTTP ${res.status}`);
+            }
             if (json.status === 'ok' && json.selectionId) {
                 window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(json.selectionId)}`;
             } else {
@@ -83,10 +89,14 @@
                 }
             },
             onClick: async (event, elements, chart) => {
-                if (!elements || !elements.length) return;
+                if (!elements || !elements.length) {
+                    return;
+                }
                 const idx = elements[0].index;
                 const dayLabel = chart?.data?.labels?.[idx];
-                if (!dayLabel) return;
+                if (!dayLabel) {
+                    return;
+                }
                 await openReviewForDay(dayLabel, widgetId || null);
             }
         };
@@ -115,7 +125,9 @@
     }
 
     const widgetContainer = document.getElementById('widgetTrendCharts');
-    if (!widgetContainer) return;
+    if (!widgetContainer) {
+        return;
+    }
 
     if (!widgetSeries.length) {
         widgetContainer.innerHTML = '<p class="helper-note">No widget trend data available for this period.</p>';

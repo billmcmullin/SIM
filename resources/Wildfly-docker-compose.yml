@@ -9,7 +9,7 @@ services:
     volumes:
       - ..\sim-app\target\chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war
     environment:
-      DB_HOST: vectorpost
+      DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: chat
       DB_USER: postgres
@@ -20,7 +20,23 @@ services:
       SIM_EMAIL_CRYPTO_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
       TZ: America/Los_Angeles
     networks:
-      - dtp-net
+      - sim-net
+  chatDB:
+    image: postgres:latest
+    hostname: postgres
+    container_name: postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - type: volume
+        source: postgres-volume
+        target: /var/lib/postgresql
+    networks:
+      - sim-net
+    environment:
+        #Configure root password for Database
+        #Default root username for Postgres Database is 'postgres'
+      - POSTGRES_PASSWORD=root
   libreTranslate:
     image: libretranslate/libretranslate:latest
     hostname: libretranslate
@@ -30,8 +46,11 @@ services:
     environment:
       TZ: America/Los_Angeles
     networks:
-      - dtp-net
+      - sim-net
 networks:
-  dtp-net:
+  sim-net:
     external: true
-    name: dtp-net
+    name: sim-net
+volumes:
+  postgres-volume:
+    name: postgres-volume

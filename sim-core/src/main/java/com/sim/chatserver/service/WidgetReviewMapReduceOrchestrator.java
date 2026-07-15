@@ -314,7 +314,7 @@ public class WidgetReviewMapReduceOrchestrator {
     ) throws Exception {
 
         ProgressListener listener = progress == null ? NOOP_PROGRESS_LISTENER : progress;
-        log.severe("[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId=" + requestId);
+        log.log(Level.INFO, "[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId={0}", requestId);
 
         if (selectedEntries == null || selectedEntries.isEmpty()) {
             WorkspaceResponse empty = new WorkspaceResponse(400, "{\"status\":\"error\",\"message\":\"No selected entries provided.\"}", "application/json");

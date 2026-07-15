@@ -27,13 +27,29 @@
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;
 
     const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
-    const fmtDate = v => { if (!v) return ''; try { return new Date(v).toLocaleString(); } catch { return v; } };
-    const truncateResponse = (text) => { if (!text) return ''; return text.length <= 220 ? text : text.slice(0, 217) + '…'; };
+    const fmtDate = v => {
+        if (!v) {
+            return '';
+        }
+        try { return new Date(v).toLocaleString(); } catch { return v; }
+    };
+    const truncateResponse = (text) => {
+        if (!text) {
+            return '';
+        }
+        return text.length <= 220 ? text : text.slice(0, 217) + '…';
+    };
 
     function formatSessionDisplay(row) {
-        if (!row) return '';
-        if (row.sessionIdDisplay) return row.sessionIdDisplay;
-        if (row.displayLabel) return row.displayLabel;
+        if (!row) {
+            return '';
+        }
+        if (row.sessionIdDisplay) {
+            return row.sessionIdDisplay;
+        }
+        if (row.displayLabel) {
+            return row.displayLabel;
+        }
         return row.sessionId || '';
     }
 
@@ -42,16 +58,22 @@
         const sid = (sessionId === null || sessionId === undefined) ? '' : String(sessionId).trim();
         const fname = (friendlyName === null || friendlyName === undefined) ? '' : String(friendlyName).trim();
 
-        if (sid) p.set('sessionId', sid);
-        else if (fname) p.set('friendlyName', fname);
-        else return '';
+        if (sid) {
+            p.set('sessionId', sid);
+        } else if (fname) {
+            p.set('friendlyName', fname);
+        } else {
+            return '';
+        }
 
         return `${contextPath}/customer-profile?${p.toString()}`;
     }
 
     function appendProfileLink(container, text, sessionId, friendlyName) {
         const label = (text === null || text === undefined) ? '' : String(text).trim();
-        if (!label) return;
+        if (!label) {
+            return;
+        }
 
         const href = buildCustomerProfileUrl(sessionId, friendlyName);
         if (!href) {
@@ -69,7 +91,9 @@
 
     async function safeFetchJson(url) {
         const res = await fetch(url, { credentials: 'same-origin' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
         const ct = res.headers.get('content-type') || '';
         const text = await res.text();
         if (!ct.includes('application/json')) {
@@ -83,7 +107,9 @@
     }
 
     function renderRows(rows) {
-        if (!tableBody) return;
+        if (!tableBody) {
+            return;
+        }
         tableBody.innerHTML = '';
         if (!rows || rows.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="6" class="empty-row">No entries found.</td></tr>';
@@ -98,7 +124,9 @@
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.className = 'row-select';
-            if (row.chatId !== undefined && row.chatId !== null) input.dataset.chatId = String(row.chatId);
+            if (row.chatId !== undefined && row.chatId !== null) {
+                input.dataset.chatId = String(row.chatId);
+            }
             input.checked = selectedChats.has(row.chatId);
             tdSelect.appendChild(input);
             tr.appendChild(tdSelect);
@@ -180,7 +208,9 @@
     }
 
     function updateSelectAllCheckbox() {
-        if (!selectAllPageCheckbox) return;
+        if (!selectAllPageCheckbox) {
+            return;
+        }
         if (!latestRows.length) {
             selectAllPageCheckbox.checked = false;
             selectAllPageCheckbox.indeterminate = false;
@@ -195,9 +225,15 @@
     function updatePagination(totalPagesFromServer, currentPage) {
         state.totalPages = totalPagesFromServer || state.totalPages;
         state.page = currentPage || state.page;
-        if (pageInfo) pageInfo.textContent = `Page ${state.page} of ${state.totalPages} (${state.limit} per page)`;
-        if (prevBtn) prevBtn.disabled = state.page <= 1;
-        if (nextBtn) nextBtn.disabled = state.page >= state.totalPages;
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${state.page} of ${state.totalPages} (${state.limit} per page)`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = state.page <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = state.page >= state.totalPages;
+        }
     }
 
     function showError(message) {
@@ -208,7 +244,9 @@
 
     function bindControls() {
         [globalSearchInput, filterPrompt, filterResponse].forEach(input => {
-            if (!input) return;
+            if (!input) {
+                return;
+            }
             input.addEventListener('input', () => {
                 state.page = 1;
                 state.search = globalSearchInput ? globalSearchInput.value.trim() : '';
@@ -222,7 +260,9 @@
         if (pageSizeSelectEl) {
             pageSizeSelectEl.addEventListener('change', () => {
                 const val = parseInt(pageSizeSelectEl.value, 10);
-                if (Number.isNaN(val)) return;
+                if (Number.isNaN(val)) {
+                    return;
+                }
                 state.limit = val;
                 state.page = 1;
                 loadTable();
@@ -231,9 +271,13 @@
 
         if (tableBody) {
             tableBody.addEventListener('change', event => {
-                if (!event.target.matches('.row-select')) return;
+                if (!event.target.matches('.row-select')) {
+                    return;
+                }
                 const chatId = event.target.dataset.chatId;
-                if (!chatId) return;
+                if (!chatId) {
+                    return;
+                }
                 if (event.target.checked) {
                     const row = latestRows.find(r => r.chatId === chatId);
                     if (row) {
@@ -257,7 +301,9 @@
                 checkboxes.forEach(cb => {
                     cb.checked = checked;
                     const chatId = cb.dataset.chatId;
-                    if (!chatId) return;
+                    if (!chatId) {
+                        return;
+                    }
                     if (checked) {
                         const row = latestRows.find(r => r.chatId === chatId);
                         if (row) {
@@ -282,14 +328,24 @@
                     const params = new URLSearchParams();
                     params.append('widgetId', widgetId);
                     if (selectedDate) params.append('date', selectedDate); // NEW
-                    if (state.search) params.append('search', state.search);
-                    if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
-                    if (state.filters.response) params.append('filterResponse', state.filters.response);
+                    if (state.search) {
+                        params.append('search', state.search);
+                    }
+                    if (state.filters.prompt) {
+                        params.append('filterPrompt', state.filters.prompt);
+                    }
+                    if (state.filters.response) {
+                        params.append('filterResponse', state.filters.response);
+                    }
 
                     const res = await safeFetchJson(API_SELECT_IDS + '?' + params.toString());
-                    if (!res.status || res.status !== 'ok') throw new Error(res.message || 'Unable to collect IDs');
+                    if (!res.status || res.status !== 'ok') {
+                        throw new Error(res.message || 'Unable to collect IDs');
+                    }
                     (res.chatIds || []).forEach(chatId => {
-                        if (!chatId) return;
+                        if (!chatId) {
+                            return;
+                        }
                         selectedChats.set(chatId, { chatId, widgetName: widgetDisplayName || widgetId });
                     });
                     renderRows(latestRows);
@@ -331,7 +387,9 @@
 
         if (reviewBtn) {
             reviewBtn.addEventListener('click', async () => {
-                if (!selectedChats.size) return;
+                if (!selectedChats.size) {
+                    return;
+                }
                 const payload = {
                     widgetId,
                     selectedChatIds: Array.from(selectedChats.keys()),
@@ -355,11 +413,15 @@
                         throw new Error(t || `HTTP ${res.status}`);
                     }
                     const data = await res.json();
-                    if (!data.selectionId) throw new Error(data.message || 'No selectionId returned');
+                    if (!data.selectionId) {
+                        throw new Error(data.message || 'No selectionId returned');
+                    }
 
                     // keep date on navigation too
                     const nav = new URLSearchParams({ selectionId: data.selectionId });
-                    if (selectedDate) nav.append('date', selectedDate);
+                    if (selectedDate) {
+                        nav.append('date', selectedDate);
+                    }
                     window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?${nav.toString()}`;
                 } catch (err) {
                     showError(err.message || String(err));
@@ -378,12 +440,20 @@
             params.append('page', state.page);
             params.append('sortColumn', state.sortColumn);
             params.append('sortDir', state.sortDir);
-            if (state.search) params.append('search', state.search);
-            if (state.filters.prompt) params.append('filterPrompt', state.filters.prompt);
-            if (state.filters.response) params.append('filterResponse', state.filters.response);
+            if (state.search) {
+                params.append('search', state.search);
+            }
+            if (state.filters.prompt) {
+                params.append('filterPrompt', state.filters.prompt);
+            }
+            if (state.filters.response) {
+                params.append('filterResponse', state.filters.response);
+            }
 
             const res = await safeFetchJson(API_DATA + '?' + params.toString());
-            if (res.status !== 'ok') throw new Error(res.message || 'Unable to load data');
+            if (res.status !== 'ok') {
+                throw new Error(res.message || 'Unable to load data');
+            }
 
             latestRows = res.rows || [];
             state.totalPages = res.totalPages || 1;

@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -107,7 +108,7 @@ public class WidgetTableServlet extends HttpServlet {
             resp.setContentType("application/json");
             resp.getWriter().write(buildSingleResponse(widgetId, tableName, status.exists, count, status.message, false));
         } catch (SQLException e) {
-            log.severe("Unable to check widget table: " + e.getMessage());
+            log.log(Level.WARNING, "Unable to check widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to inspect the database.");
         }
@@ -170,7 +171,7 @@ public class WidgetTableServlet extends HttpServlet {
             out.append("]}");
             resp.getWriter().write(out.toString());
         } catch (SQLException e) {
-            log.severe("Unable to check widget tables (bulk): " + e.getMessage());
+            log.log(Level.WARNING, "Unable to check widget tables (bulk)", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to check widget table statuses.");
         }
@@ -214,7 +215,7 @@ public class WidgetTableServlet extends HttpServlet {
             resp.getWriter().write(buildSingleResponse(widgetId, tableName, true,
                     count, "Table created successfully.", true));
         } catch (SQLException e) {
-            log.severe("Unable to create widget table: " + e.getMessage());
+            log.log(Level.WARNING, "Unable to create widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to create the table.");
         }
