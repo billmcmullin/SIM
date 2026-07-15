@@ -98,7 +98,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        String contextPath = "";
         HttpSession s = req.getSession(false);
         if (s == null || s.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -641,15 +641,15 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        return values[0];
+        String normalized = value.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private String nvl(String s) {
@@ -700,14 +700,4 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 .replace("\r", "\\r");
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
 }

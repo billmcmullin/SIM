@@ -241,7 +241,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+        resp.getWriter().write(rendered);
     }
 
     private Map<String, SessionLabelStore.SessionLabel> mapLabelsSafe(Set<String> ids) {
@@ -271,7 +271,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
+                String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
                 Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                 if (sid == null || sid.isBlank()) {
                     continue;
@@ -613,15 +613,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }
@@ -629,12 +621,9 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
-    private String sanitizeForLog(String value) {
-        if (value == null) {
-            return "";
-        }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
+        String value = rs.getObject(column, String.class);
+        return safeDbText(value, maxLen);
     }
 
     private String safeContextPath(String contextPath) {

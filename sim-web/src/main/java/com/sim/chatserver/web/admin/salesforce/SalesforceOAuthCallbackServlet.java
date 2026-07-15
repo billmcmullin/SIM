@@ -10,7 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Map;
+import java.util.Enumeration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -258,6 +258,9 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
      * when present.
      */
     private String buildExternalRedirectUri(HttpServletRequest req) {
+        if (req == null) {
+            return "https://localhost/admin/salesforce/oauth/callback";
+        }
         String scheme = normalizeScheme(readForwardedHeader(req, "X-Forwarded-Proto"));
         if (isBlank(scheme)) {
             scheme = req.isSecure() ? "https" : "http";
@@ -321,12 +324,16 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (req == null || headerName == null || headerName.isBlank()) {
             return null;
         }
-        String raw = req.getHeader(headerName);
+        Enumeration<String> values = req.getHeaders(headerName);
+        if (values == null || !values.hasMoreElements()) {
+            return null;
+        }
+        String raw = values.nextElement();
         if (raw == null) {
             return null;
         }
         String token = firstToken(raw);
-        if (token == null) {
+        if (token == null || token.isBlank()) {
             return null;
         }
         String normalized = token.replace("\r", "").replace("\n", "").trim();
@@ -345,11 +352,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }

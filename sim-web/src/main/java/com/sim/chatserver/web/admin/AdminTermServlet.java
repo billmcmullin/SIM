@@ -3,6 +3,7 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -83,7 +84,7 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (var reader = Json.createReader(req.getInputStream())) {
+        try (var reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
         } catch (JsonException e) {
             log.log(Level.FINE, "Invalid term create payload", e);
@@ -152,7 +153,7 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (var reader = Json.createReader(req.getInputStream())) {
+        try (var reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
         } catch (JsonException e) {
             log.log(Level.FINE, "Invalid term update payload", e);
@@ -269,20 +270,12 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
-        return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
+        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -301,11 +294,11 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        String header = req.getHeader("Content-Type");
+        String header = req.getContentType();
         if (header == null) {
             return "";
         }
-        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase();
+        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
         return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 }

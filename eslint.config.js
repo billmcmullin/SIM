@@ -3,7 +3,7 @@ export default [
         files: ["sim-app/src/main/webapp/assets/js/**/*.js"],
         ignores: ["**/node_modules/**", "**/target/**"],
         languageOptions: {
-            ecmaVersion: 2021,
+            ecmaVersion: "latest",
             sourceType: "script",
             globals: {
                 window: "readonly",
@@ -41,8 +41,12 @@ export default [
         }
     },
     {
-        files: ["sim-app/src/main/webapp/assets/js/**/payload_builder.js"],
+        files: [
+            "sim-app/src/main/webapp/assets/js/**/widget_review*.js",
+            "sim-app/src/main/webapp/assets/js/widget_review_util/**/*.js"
+        ],
         languageOptions: {
+            ecmaVersion: "latest",
             sourceType: "module"
         }
     }

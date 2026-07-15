@@ -295,27 +295,12 @@ public class DashboardTopicsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
     }
 
     private String escapeHtml(String input) {
@@ -327,6 +312,17 @@ public class DashboardTopicsServlet extends HttpServlet {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (trimmed.isEmpty() || "/".equals(trimmed)) {
+            return "";
+        }
+        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
     }
 
     private static final class TopicPattern {

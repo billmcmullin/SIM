@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,6 +26,7 @@ import jakarta.servlet.http.HttpSession;
 public class AdminUserServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
+    private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
     @Inject
     UserService userService;
@@ -56,10 +59,17 @@ public class AdminUserServlet extends HttpServlet {
             return;
         }
 
+        if (!isValidJsonRequest(req)) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            return;
+        }
+
         JsonObject payload;
-        try (var reader = Json.createReader(req.getInputStream())) {
+        try (var reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
         } catch (JsonException | IOException e) {
+            log.log(Level.FINE, "Invalid admin user payload", e);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
             return;
@@ -79,7 +89,7 @@ public class AdminUserServlet extends HttpServlet {
             userService.createUser(username, password, role);
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\"}");
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Failed to create user", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create user.\"}");
@@ -91,7 +101,7 @@ public class AdminUserServlet extends HttpServlet {
         if (!isAdmin(req, resp)) {
             return;
         }
-        String userId = req.getParameter("userId");
+        String userId = firstQueryParam(req, "userId");
         if (userId == null || userId.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Missing userId.\"}");
@@ -122,5 +132,55 @@ public class AdminUserServlet extends HttpServlet {
             return false;
         }
         return true;
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String firstQueryParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int eq = pair.indexOf('=');
+            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
+            String key = urlDecode(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String val = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
+            return val.length() > 64 ? val.substring(0, 64) : val;
+        }
+        return null;
+    }
+
+    private String urlDecode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid query parameter encoding", ex);
+            return value;
+        }
     }
 }

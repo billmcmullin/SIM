@@ -280,16 +280,20 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        return Math.max(0, rs.getInt(column));
+        Integer value = rs.getObject(column, Integer.class);
+        return value == null ? 0 : Math.max(0, value);
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        int value = rs.getInt(column);
+        Integer value = rs.getObject(column, Integer.class);
+        if (value == null) {
+            return fallback;
+        }
         return value > 0 ? value : fallback;
     }
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        return sanitizeDbText(rs.getString(column), maxChars);
+        return sanitizeDbText(rs.getObject(column, String.class), maxChars);
     }
 
     private String sanitizeDbText(String s, int maxChars) {

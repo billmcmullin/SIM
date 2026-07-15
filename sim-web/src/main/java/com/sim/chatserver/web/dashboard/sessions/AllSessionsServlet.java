@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -406,7 +407,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+        try (JsonReader reader = Json.createReader(req.getReader())) {
             payload = reader.readObject();
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid JSON payload for session selection", e);
@@ -618,7 +619,7 @@ public class AllSessionsServlet extends HttpServlet {
             ps.setString(2, pattern);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), 256));
+                    String sid = sanitizeSessionId(readDbText(rs, "session_id", 256));
                     if (sid != null) {
                         ids.add(sid);
                     }
@@ -633,7 +634,7 @@ public class AllSessionsServlet extends HttpServlet {
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String sid = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
+                String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
                 if (sid == null) {
                     continue;
                 }
@@ -747,11 +748,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -779,12 +776,17 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        String header = req.getHeader("Content-Type");
+        String header = req.getContentType();
         if (header == null) {
             return "";
         }
-        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase();
+        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
         return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
+    }
+
+    private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
+        String value = rs.getObject(column, String.class);
+        return safeDbText(value, maxLen);
     }
 
     private String safeDbText(String value, int maxLen) {

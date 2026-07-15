@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -47,11 +48,11 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
-        String rawDate = req.getParameter("date");
+        String rawDate = firstQueryParam(req, "date");
         if (rawDate == null || rawDate.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "date parameter is required (yyyy-MM-dd).");
             return;
@@ -61,6 +62,7 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         try {
             date = LocalDate.parse(rawDate.trim());
         } catch (DateTimeParseException ex) {
+            log.log(Level.FINE, "Invalid date-review request parameter", ex);
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date format. Use yyyy-MM-dd.");
             return;
         }
@@ -91,13 +93,77 @@ public class DashboardDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String redirectUrl = req.getContextPath()
-                + "/dashboard/widgets/drilldown/review?selectionId="
+        String redirectPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8)
                 + "&date="
                 + URLEncoder.encode(date.toString(), StandardCharsets.UTF_8);
+        String redirectUrl = safeContextPath(req.getContextPath()) + redirectPath;
 
-        resp.sendRedirect(redirectUrl);
+        if (!isAllowedRedirect(redirectUrl)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid redirect target.");
+            return;
+        }
+
+        resp.sendRedirect(resp.encodeRedirectURL(redirectUrl));
+    }
+
+    private String firstQueryParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int eq = pair.indexOf('=');
+            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
+            String key = urlDecode(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String value = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
+            return value.length() > 32 ? value.substring(0, 32) : value;
+        }
+        return null;
+    }
+
+    private String urlDecode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid query parameter encoding", ex);
+            return value;
+        }
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return "";
+        }
+        return trimmed;
+    }
+
+    private boolean isAllowedRedirect(String redirectUrl) {
+        if (redirectUrl == null || redirectUrl.isBlank()) {
+            return false;
+        }
+        if (redirectUrl.contains("://") || redirectUrl.contains("\r") || redirectUrl.contains("\n")) {
+            return false;
+        }
+        return redirectUrl.contains("/dashboard/widgets/drilldown/review?selectionId=");
     }
 
     private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {
@@ -162,7 +228,7 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.WARNING, "Unable to list widgets for date review", e);
             return List.of();
         }

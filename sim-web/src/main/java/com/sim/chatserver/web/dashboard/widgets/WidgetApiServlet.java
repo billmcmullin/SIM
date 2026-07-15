@@ -84,6 +84,7 @@ public class WidgetApiServlet extends HttpServlet {
             try {
                 id = Integer.valueOf(idValue.trim());
             } catch (NumberFormatException ex) {
+                LOG.log(Level.FINE, "Invalid widget ID parameter", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder()
                                 .add("status", "error")
@@ -146,6 +147,7 @@ public class WidgetApiServlet extends HttpServlet {
             try {
                 ids.add(Integer.valueOf(token));
             } catch (NumberFormatException ex) {
+                LOG.log(Level.FINE, "Invalid widget IDs parameter", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder()
                                 .add("status", "error")
@@ -215,15 +217,11 @@ public class WidgetApiServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
+        String value = req.getParameter(name);
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 

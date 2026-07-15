@@ -129,7 +129,7 @@ public class DatabaseBackupServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String table = sanitizeIdentifier(rs.getString(1));
+                String table = readValidatedIdentifier(rs, 1);
                 if (table == null || table.isBlank()) {
                     continue;
                 }
@@ -213,8 +213,8 @@ public class DatabaseBackupServlet extends HttpServlet {
             ps.setString(1, tableName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String name = rs.getString(1);
-                    if (name != null && SAFE_SQL_IDENTIFIER.matcher(name).matches()) {
+                    String name = readValidatedIdentifier(rs, 1);
+                    if (name != null) {
                         out.add(name);
                     }
                 }
@@ -226,7 +226,7 @@ public class DatabaseBackupServlet extends HttpServlet {
     private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) throws SQLException {
         int sqlType = md.getColumnType(columnIndex);
         if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
-            byte[] bytes = sanitizeBinary(rs.getBytes(columnIndex));
+            byte[] bytes = readValidatedBinary(rs, columnIndex);
             if (bytes == null) {
                 return "";
             }
@@ -234,7 +234,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
 
         if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
-            Timestamp ts = rs.getTimestamp(columnIndex);
+            Timestamp ts = readValidatedTimestamp(rs, columnIndex);
             if (ts == null) {
                 return "";
             }
@@ -242,7 +242,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
 
         if (sqlType == Types.DATE) {
-            java.sql.Date d = rs.getDate(columnIndex);
+            java.sql.Date d = readValidatedDate(rs, columnIndex);
             if (d == null) {
                 return "";
             }
@@ -250,8 +250,28 @@ public class DatabaseBackupServlet extends HttpServlet {
             return localDate == null ? "" : localDate.toString();
         }
 
-        String value = sanitizeCellText(rs.getString(columnIndex));
+        String value = readValidatedCellText(rs, columnIndex);
         return value == null ? "" : value;
+    }
+
+    private String readValidatedIdentifier(ResultSet rs, int columnIndex) throws SQLException {
+        return sanitizeIdentifier(readValidatedCellText(rs, columnIndex));
+    }
+
+    private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
+        return sanitizeCellText(rs.getString(columnIndex));
+    }
+
+    private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
+        return sanitizeBinary(rs.getBytes(columnIndex));
+    }
+
+    private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
+        return rs.getTimestamp(columnIndex);
+    }
+
+    private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
+        return rs.getDate(columnIndex);
     }
 
     private String csvEscape(String s) {

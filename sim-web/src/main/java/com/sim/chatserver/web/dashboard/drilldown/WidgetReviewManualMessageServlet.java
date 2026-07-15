@@ -4,10 +4,12 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.sql.SQLException;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -148,7 +150,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (var reader = Json.createReader(req.getInputStream())) {
+        try (var reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             payload = reader.readObject();
         } catch (JsonException | ClassCastException ex) {
             log.log(Level.FINE, "Invalid manual-message payload", ex);
@@ -216,6 +218,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String encodedSlug = URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8);
         String targetUrl = stripTrailingSlash(baseUrl) + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
+        targetUrl = canonicalizeForValidation(targetUrl);
 
         TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(targetUrl);
         if (!trust.isValid()) {
@@ -308,13 +311,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     String body = upstream == null ? "" : upstream.body();
                     String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
                     String finalReport = extractPrimaryText(body);
+                        String finalReportForValidation = canonicalizeForValidation(finalReport);
 
-                    List<String> usedIdsFromText = extractUsedIdsFromText(finalReport, allIds);
+                        List<String> usedIdsFromText = extractUsedIdsFromText(finalReportForValidation, allIds);
                     List<String> usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
                     List<String> missingIds = subtract(allIds, usedIds);
 
                     ReviewOutputValidator.ValidationResult finalValidation
-                            = reviewOutputValidator.validateFinalReportHierarchical(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                            = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
                     boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
                     boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -506,6 +510,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 String body = upstream == null ? "" : upstream.body();
                 String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
                 String finalReport = extractPrimaryText(body);
+                String finalReportForValidation = canonicalizeForValidation(finalReport);
 
                 List<String> usedIds = reduceResult != null
                         ? distinctIds(reduceResult.getUsedChatIds())
@@ -519,7 +524,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 usedIds = subtract(allIds, missingIds);
 
                 ReviewOutputValidator.ValidationResult finalValidation
-                        = reviewOutputValidator.validateFinalReportHierarchical(finalReport, allIds, mrConfig.getReduceMessageMaxChars());
+                    = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
                 boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
                 boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -626,7 +631,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
 
         String text = extractPrimaryText(response.body());
-        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateFinalReport(text, mrConfig.getSinglePassMessageMaxChars());
+        String textForValidation = canonicalizeForValidation(text);
+        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateFinalReport(textForValidation, mrConfig.getSinglePassMessageMaxChars());
         if (!validation.isValid()) {
             log.warning("[manual-message][" + requestId + "][single-pass] final validation errors=" + validation.getErrors());
         } else if (!validation.getWarnings().isEmpty()) {
@@ -702,8 +708,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         WorkspaceResponse finalResp = orchestration.finalResponse();
 
         String finalText = extractPrimaryText(finalResp.body());
+        String finalTextForValidation = canonicalizeForValidation(finalText);
         ReviewOutputValidator.ValidationResult finalValidation
-                = reviewOutputValidator.validateFinalReportHierarchical(finalText, allIds, mrConfig.getReduceMessageMaxChars());
+            = reviewOutputValidator.validateFinalReportHierarchical(finalTextForValidation, allIds, mrConfig.getReduceMessageMaxChars());
 
         if (!finalValidation.isValid()) {
             log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + finalValidation.getErrors());
@@ -1024,7 +1031,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
 
-        String s = raw.trim();
+        String s = canonicalizeForValidation(raw);
+        if (s.isBlank()) {
+            return "";
+        }
         s = s.replaceFirst("^(https?://)+(https?://)", "$2");
         s = s.replaceFirst("^(https?://)(https?://)+", "$1");
         s = s.replace("https://https://", "https://")
@@ -1040,7 +1050,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 }
             }
 
-            URI u = new URI(s);
+            URI u = toSafeUri(s);
+            if (u == null) {
+                return "";
+            }
             String scheme = u.getScheme();
             String host = u.getHost();
             int port = u.getPort();
@@ -1052,9 +1065,32 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return port > 0
                     ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
                     : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL", e);
             return "";
+        }
+    }
+
+    private URI toSafeUri(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = canonicalizeForValidation(value);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        String lowered = normalized.toLowerCase(Locale.ROOT);
+        if (!lowered.startsWith("http://") && !lowered.startsWith("https://")) {
+            return null;
+        }
+        if (normalized.contains(" ") || normalized.contains("\t")) {
+            return null;
+        }
+        try {
+            return new URI(normalized).normalize();
+        } catch (URISyntaxException ex) {
+            log.log(Level.FINE, "Invalid URI syntax", ex);
+            return null;
         }
     }
 
@@ -1074,12 +1110,42 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        String header = req.getHeader("Content-Type");
+        String header = req.getContentType();
         if (header == null) {
             return "";
         }
-        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
+        String normalized = canonicalizeForValidation(header).toLowerCase(Locale.ROOT);
         return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        StringBuilder body = new StringBuilder();
+        char[] buffer = new char[4096];
+        try (var reader = req.getReader()) {
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                body.append(buffer, 0, read);
+                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+            }
+        }
+        return canonicalizeForValidation(body.toString());
+    }
+
+    private String canonicalizeForValidation(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        normalized = normalized.replace("\u0000", "")
+                .replace("\r", "")
+                .replace("\n", "\n")
+                .trim();
+        if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
+            return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
+        }
+        return normalized;
     }
 
     private String buildSlug(String workspaceName) {
