@@ -23,6 +23,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -179,7 +180,7 @@ public class WidgetSyncServlet extends HttpServlet {
             this.summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
             this.summaryStore.ensureTable();
             loadSyncSettings();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to initialize sync settings/store", e);
         }
 
@@ -236,7 +237,9 @@ public class WidgetSyncServlet extends HttpServlet {
             }
 
             JsonArrayBuilder arr = Json.createArrayBuilder();
-            statuses.forEach(s -> arr.add(s.toJson()));
+            for (WidgetSyncStatus status : statuses) {
+                arr.add(status.toJson());
+            }
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
@@ -700,7 +703,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String contentType = response.headers().firstValue("Content-Type").orElse("");
         if (!contentType.toLowerCase().contains("application/json")) {
-            throw new IOException("Unexpected content type '" + contentType + "'");
+            throw new IOException(String.format("Unexpected content type '%s'", contentType));
         }
 
         try (JsonReader reader = Json.createReader(new StringReader(body))) {
@@ -774,9 +777,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                Long persistedIntervalObj = rs.getObject("interval_seconds", Long.class);
-                long persistedInterval = persistedIntervalObj == null ? syncIntervalSeconds : persistedIntervalObj;
-                if (persistedIntervalObj == null) {
+                long persistedInterval = rs.getLong("interval_seconds");
+                if (rs.wasNull()) {
                     persistedInterval = syncIntervalSeconds;
                 }
                 if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
@@ -971,7 +973,11 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         String t = raw.trim();
-        if (!(t.startsWith("{") || t.startsWith("["))) {
+        if (t.isEmpty()) {
+            return raw;
+        }
+        char first = t.charAt(0);
+        if (first != '{' && first != '[') {
             return raw;
         }
 
@@ -1077,7 +1083,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (body == null) {
             return "";
         }
-        return body.length() > 512 ? body.substring(0, 512) + "…" : body;
+        return body.length() > 512 ? body.substring(0, 512) + "..." : body;
     }
 
     private String getString(JsonObject source, String key) {
@@ -1193,9 +1199,8 @@ public class WidgetSyncServlet extends HttpServlet {
             if (scheme == null || host == null || host.isBlank()) {
                 return "";
             }
-            return port > 0
-                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
-                    : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
+                String normalized = scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
+                return port > 0 ? normalized + ':' + port : normalized;
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL: {0}", s);
             return "";
@@ -1252,7 +1257,7 @@ public class WidgetSyncServlet extends HttpServlet {
             StringBuilder canonical = new StringBuilder();
             canonical.append(schemeLower).append("://").append(hostLower);
             if (port >= 0) {
-                canonical.append(":").append(port);
+                canonical.append(':').append(port);
             }
             canonical.append(path);
             if (query != null && !query.isBlank()) {
@@ -1269,16 +1274,18 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
+        String value = values[0];
         String trimmed = value.trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
-        return rs.getObject(columnName, Timestamp.class);
+        return rs.getTimestamp(columnName);
     }
 
     private String buildSlug(String workspaceName) {
@@ -1298,13 +1305,13 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static final class WidgetSyncStatus {
 
-        private final String widgetId;
-        private final String tableName;
-        private final boolean tableExists;
-        private final boolean synced;
-        private final String message;
+        final String widgetId;
+        final String tableName;
+        final boolean tableExists;
+        final boolean synced;
+        final String message;
 
-        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+        WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
             this.widgetId = widgetId;
             this.tableName = tableName;
             this.tableExists = tableExists;
@@ -1312,7 +1319,7 @@ public class WidgetSyncServlet extends HttpServlet {
             this.message = message;
         }
 
-        private JsonObject toJson() {
+        JsonObject toJson() {
             return Json.createObjectBuilder()
                     .add("widgetId", widgetId == null ? "" : widgetId)
                     .add("tableName", tableName == null ? "" : tableName)
@@ -1325,10 +1332,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static final class SyncSettings {
 
-        private final long intervalSeconds;
-        private final Timestamp lastSynced;
+        final long intervalSeconds;
+        final Timestamp lastSynced;
 
-        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+        SyncSettings(long intervalSeconds, Timestamp lastSynced) {
             this.intervalSeconds = intervalSeconds;
             this.lastSynced = lastSynced;
         }

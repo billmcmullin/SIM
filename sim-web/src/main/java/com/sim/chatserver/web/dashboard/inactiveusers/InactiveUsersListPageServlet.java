@@ -75,7 +75,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     @Inject
     AppDataSourceHolder dsHolder;
 
-    private static final class Row {
+    static final class Row {
 
         String sessionId;
         String displayLabel;
@@ -89,7 +89,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         String frustrationReason;
     }
 
-    private static final class FrustrationResult {
+    static final class FrustrationResult {
 
         boolean detected;
         double score;
@@ -268,9 +268,10 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 ? "All Inactive Users"
                 : "Inactive Users: " + widgetNameById.getOrDefault(widgetIdFilter, widgetIdFilter);
 
+        String sessionUser = safeSessionUser(s);
         String rendered = template
             .replace("${contextPath}", escapeHtml(contextPath))
-                .replace("${user}", escapeHtml(String.valueOf(s.getAttribute("user"))))
+            .replace("${user}", escapeHtml(sessionUser))
                 .replace("${title}", escapeHtml(title))
                 .replace("${scope}", escapeHtml(scope))
                 .replace("${widgetId}", escapeHtml(widgetIdFilter))
@@ -644,11 +645,25 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
+        String value = values[0];
         String normalized = value.replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
+    private String safeSessionUser(HttpSession session) {
+        if (session == null) {
+            return "";
+        }
+        Object user = session.getAttribute("user");
+        if (!(user instanceof String userText)) {
+            return "";
+        }
+        String normalized = userText.replace("\r", "").replace("\n", "").trim();
         return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 

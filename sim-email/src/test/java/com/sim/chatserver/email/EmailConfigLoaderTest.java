@@ -154,10 +154,10 @@ class EmailConfigLoaderTest {
 
         assertEquals(25, m.invoke(null, "25", "test"));
         assertEquals(65535, m.invoke(null, "65535", "test"));
-        assertNull(m.invoke(null, "0", "test"));
-        assertNull(m.invoke(null, "65536", "test"));
-        assertNull(m.invoke(null, "abc", "test"));
-        assertNull(m.invoke(null, null, "test"));
+        assertEquals(-1, m.invoke(null, "0", "test"));
+        assertEquals(-1, m.invoke(null, "65536", "test"));
+        assertEquals(-1, m.invoke(null, "abc", "test"));
+        assertEquals(-1, m.invoke(null, null, "test"));
     }
 
     @Test

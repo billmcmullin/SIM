@@ -4,6 +4,7 @@ import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -246,7 +247,7 @@ public final class DashboardRowsRenderer {
                 return "—";
             }
             return instant.atZone(ZoneId.systemDefault()).toLocalDateTime().format(TS_FMT);
-        } catch (RuntimeException e) {
+        } catch (DateTimeException | ArithmeticException e) {
             LOG.log(Level.FINE, "Unable to format timestamp", e);
             return ts.toString();
         }
@@ -282,47 +283,47 @@ public final class DashboardRowsRenderer {
     }
 
     @FunctionalInterface
-    private interface HtmlRenderAction {
+    interface HtmlRenderAction {
 
         void render(HtmlWriter writer) throws XMLStreamException;
     }
 
-    private static final class HtmlWriter {
+    static final class HtmlWriter {
 
-        private final XMLStreamWriter xml;
+        final XMLStreamWriter xml;
 
-        private HtmlWriter(XMLStreamWriter xml) {
+        HtmlWriter(XMLStreamWriter xml) {
             this.xml = xml;
         }
 
-        private void start(String tag, String... attrs) throws XMLStreamException {
+        void start(String tag, String... attrs) throws XMLStreamException {
             xml.writeStartElement(tag);
             for (int i = 0; i + 1 < attrs.length; i += 2) {
                 xml.writeAttribute(attrs[i], attrs[i + 1] == null ? "" : attrs[i + 1]);
             }
         }
 
-        private void end() throws XMLStreamException {
+        void end() throws XMLStreamException {
             xml.writeEndElement();
         }
 
-        private void text(String value) throws XMLStreamException {
+        void text(String value) throws XMLStreamException {
             xml.writeCharacters(value == null ? "" : value);
         }
 
-        private void element(String tag, String value) throws XMLStreamException {
+        void element(String tag, String value) throws XMLStreamException {
             start(tag);
             text(value);
             end();
         }
 
-        private void anchor(String cssClass, String href, String text) throws XMLStreamException {
+        void anchor(String cssClass, String href, String text) throws XMLStreamException {
             start("a", "class", cssClass, "href", href);
             text(text);
             end();
         }
 
-        private void span(String cssClass, String text) throws XMLStreamException {
+        void span(String cssClass, String text) throws XMLStreamException {
             start("span", "class", cssClass);
             text(text);
             end();

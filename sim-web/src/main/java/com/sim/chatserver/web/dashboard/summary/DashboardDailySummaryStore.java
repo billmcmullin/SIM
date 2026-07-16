@@ -402,12 +402,12 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return sanitizeText(value, maxLen);
     }
 
     private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return sanitizeText(value, maxLen);
     }
 
@@ -426,8 +426,8 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        if (value == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return min;
         }
         if (value < min) {

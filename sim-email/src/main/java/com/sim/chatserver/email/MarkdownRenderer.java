@@ -8,7 +8,7 @@ public class MarkdownRenderer {
     private final Parser parser = Parser.builder().build();
     private final HtmlRenderer renderer = HtmlRenderer.builder().build();
 
-    public String toHtml(String markdown) {
+    String toHtml(String markdown) {
         if (markdown == null || markdown.isBlank()) {
             return null;
         }

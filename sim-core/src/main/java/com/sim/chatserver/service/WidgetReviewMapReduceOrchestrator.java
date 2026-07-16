@@ -2,6 +2,7 @@
 package com.sim.chatserver.service;
 
 import java.io.StringReader;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -412,8 +413,9 @@ public class WidgetReviewMapReduceOrchestrator {
                     try {
                         MapBatchExecutionResult r = futures.get(i).join();
                         allMapBatchResults.add(r.result);
+                        boolean mapBatchSuccess = r.result.isSuccess();
 
-                        if (r.result.isSuccess()) {
+                        if (mapBatchSuccess) {
                             usedByProcessing.addAll(expectedForReq);
                             if (r.outputText != null && !r.outputText.isBlank()) {
                                 mapOutputs.add("### Batch " + req.getBatchIndex() + "\n" + r.outputText);
@@ -430,7 +432,7 @@ public class WidgetReviewMapReduceOrchestrator {
                                 requestId,
                                 req.getBatchIndex(),
                                 cumulativeBatchCounter,
-                                r.result.isSuccess(),
+                                mapBatchSuccess,
                                 usedByProcessing.size(),
                                 missingSoFar,
                                 round
@@ -827,16 +829,17 @@ public class WidgetReviewMapReduceOrchestrator {
                 mergedOutputs.add(sr.outputText == null ? "" : sr.outputText);
                 mergedMarkers.addAll(normalizeIds(sr.usedIdsDetected));
                 mergedExpected.addAll(normalizeIds(r.getExpectedChatIds()));
+                boolean subSuccess = r.isSuccess();
 
-                anySuccess |= r.isSuccess();
-                if (!r.isSuccess() && r.getErrorMessage() != null && !r.getErrorMessage().isBlank()) {
+                anySuccess = anySuccess || subSuccess;
+                if (!subSuccess && r.getErrorMessage() != null && !r.getErrorMessage().isBlank()) {
                     subErrors.add(r.getErrorMessage());
                 }
 
                 maxLatency = Math.max(maxLatency, r.getLatencyMs());
                 worstHttp = Math.max(worstHttp, r.getHttpStatus());
-                anyContextTooLarge |= r.isContextTooLargeDetected();
-                anyRetry |= r.isRetryUsed();
+                anyContextTooLarge = anyContextTooLarge || r.isContextTooLargeDetected();
+                anyRetry = anyRetry || r.isRetryUsed();
             }
 
             List<String> expectedDistinct = normalizeIds(mergedExpected);
@@ -935,9 +938,11 @@ public class WidgetReviewMapReduceOrchestrator {
 
         int status = response.statusCode();
         String mapText = status >= 400 ? "" : extractPrimaryTextFromWorkspaceResponse(response.body());
+        String canonicalMapText = canonicalizeForValidation(mapText);
 
-        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateMapOutput(mapText, mapMessageMaxChars);
-        if (!validation.isValid()) {
+        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateMapOutput(canonicalMapText, mapMessageMaxChars);
+        boolean mapOutputValid = validation.isValid();
+        if (!mapOutputValid) {
             log.warning("[map-reduce][" + requestId + "][map] non-fatal validation errors batch=" + req.getBatchIndex()
                     + " errors=" + validation.getErrors());
         }
@@ -987,7 +992,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchIndex(req.getBatchIndex())
                 .totalBatches(req.getTotalBatches())
                 .batchId(req.getBatchId())
-                .reasonCode(determineReasonCode(status, contextTooLarge, validation.isValid(), false))
+                .reasonCode(determineReasonCode(status, contextTooLarge, mapOutputValid, false))
                 .message(result.getErrorMessage())
                 .httpStatus(status)
                 .retryAttempted(retryUsed)
@@ -1098,17 +1103,19 @@ public class WidgetReviewMapReduceOrchestrator {
         }
 
         String reduceText = extractPrimaryTextFromWorkspaceResponse(reduceResponse.body());
+        String canonicalReduceText = canonicalizeForValidation(reduceText);
 
         ReviewOutputValidator.ValidationResult validation
-                = reviewOutputValidator.validateFinalReportHierarchical(reduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
+            = reviewOutputValidator.validateFinalReportHierarchical(canonicalReduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
+        boolean reduceOutputValid = validation.isValid();
 
-        boolean reduceSuccess = reduceResponse.statusCode() < 400 && validation.isValid() && coverageComplete;
+        boolean reduceSuccess = reduceResponse.statusCode() < 400 && reduceOutputValid && coverageComplete;
 
         String err = "";
         if (!reduceSuccess) {
             if (reduceResponse.statusCode() >= 400) {
                 err = "Reduce call failed with status " + reduceResponse.statusCode();
-            } else if (!validation.isValid()) {
+            } else if (!reduceOutputValid) {
                 err = String.join("; ", validation.getErrors());
             } else {
                 err = "Coverage incomplete. Missing chat IDs: " + missingIdsNorm;
@@ -1295,9 +1302,15 @@ public class WidgetReviewMapReduceOrchestrator {
                 return t;
             }
             return body;
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            log.log(Level.FINE, "[map-reduce] failed parsing workspace response; returning raw body", ex);
             return body;
         }
+    }
+
+    private String canonicalizeForValidation(String value) {
+        String normalized = Normalizer.normalize(Objects.toString(value, ""), Normalizer.Form.NFKC);
+        return normalized.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
     }
 
     private String buildOutboundMessage(String userMessage, String context, int maxTotalChars) {

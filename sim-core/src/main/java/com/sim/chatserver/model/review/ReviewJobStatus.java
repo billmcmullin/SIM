@@ -27,47 +27,47 @@ public final class ReviewJobStatus {
         CANCELLED
     }
 
-    private final String jobId;
-    private final String requestId;
+    final String jobId;
+    final String requestId;
 
-    private final Phase phase;
-    private final boolean done;
-    private final boolean success;
+    final Phase phase;
+    final boolean done;
+    final boolean success;
 
-    private final int totalSelected;
-    private final int totalBatches;
-    private final int completedBatches;
-    private final int failedBatches;
-    private final int retries;
+    final int totalSelected;
+    final int totalBatches;
+    final int completedBatches;
+    final int failedBatches;
+    final int retries;
 
     // richer deterministic coverage tracking
-    private final List<String> allSelectedChatIds;
-    private final List<String> usedChatIds;
-    private final List<String> missingChatIds;
+    final List<String> allSelectedChatIds;
+    final List<String> usedChatIds;
+    final List<String> missingChatIds;
 
-    private final int coveragePercent;
-    private final boolean coverageComplete;
+    final int coveragePercent;
+    final boolean coverageComplete;
 
-    private final long startedAtEpochMs;
-    private final long updatedAtEpochMs;
-    private final long finishedAtEpochMs;
+    final long startedAtEpochMs;
+    final long updatedAtEpochMs;
+    final long finishedAtEpochMs;
 
-    private final int httpStatus;
-    private final String message;
-    private final String errorMessage;
+    final int httpStatus;
+    final String message;
+    final String errorMessage;
 
     // final output payload for async completion UX
-    private final String finalReport;
-    private final String rawResponseBody;
-    private final String contentType;
+    final String finalReport;
+    final String rawResponseBody;
+    final String contentType;
 
-    private final List<Integer> failedBatchIndexes;
-    private final List<String> warnings;
+    final List<Integer> failedBatchIndexes;
+    final List<String> warnings;
 
     // NEW UI-friendly progress/activity fields
-    private final String activity;
-    private final int batchProgressPercent;
-    private final boolean running;
+    final String activity;
+    final int batchProgressPercent;
+    final boolean running;
 
     private ReviewJobStatus(Builder b) {
         this.jobId = requireNonBlank(b.jobId, "jobId");
@@ -118,7 +118,11 @@ public final class ReviewJobStatus {
         this.failedBatchIndexes = immutableDistinctPositiveInts(b.failedBatchIndexes);
         this.warnings = immutableDistinctStringsKeepCase(b.warnings);
 
-        this.running = b.running != null ? b.running.booleanValue() : !this.done;
+        if (b.running == null) {
+            this.running = !this.done;
+        } else {
+            this.running = b.running;
+        }
         this.batchProgressPercent = b.batchProgressPercent >= 0
                 ? clampPercent(b.batchProgressPercent)
                 : deriveBatchProgressPercent(this.totalBatches, this.completedBatches, this.phase, this.done);
@@ -356,7 +360,7 @@ public final class ReviewJobStatus {
                 .add("message", message)
                 .add("errorMessage", errorMessage)
                 .add("finalReport", finalReport)
-                .add("rawResponseBody", rawResponseBody)
+                .add("rawResponseBody", safeBodyPreview(rawResponseBody))
                 .add("contentType", contentType)
                 .add("failedBatchIndexes", toJsonArrayInts(failedBatchIndexes))
                 .add("warnings", toJsonArrayStrings(warnings))
@@ -721,5 +725,14 @@ public final class ReviewJobStatus {
             }
         }
         return b.build();
+    }
+
+    private static String safeBodyPreview(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        String normalized = body.replace("\u0000", "").replace("\r", "").trim();
+        int max = 512;
+        return normalized.length() > max ? normalized.substring(0, max) : normalized;
     }
 }

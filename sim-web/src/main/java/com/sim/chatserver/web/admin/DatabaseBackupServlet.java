@@ -71,7 +71,7 @@ public class DatabaseBackupServlet extends HttpServlet {
 
         resp.setStatus(HttpServletResponse.SC_OK);
         resp.setContentType("application/zip");
-        resp.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        resp.setHeader("Content-Disposition", String.format("attachment; filename=\"%s\"", fileName));
 
         try (Connection conn = Database.getConnection(); ZipOutputStream zip = new ZipOutputStream(resp.getOutputStream(), StandardCharsets.UTF_8)) {
 
@@ -259,19 +259,39 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        return sanitizeCellText(rs.getString(columnIndex));
+        String raw = rs.getString(columnIndex);
+        return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        return sanitizeBinary(rs.getBytes(columnIndex));
+        byte[] raw = rs.getBytes(columnIndex);
+        return sanitizeBinary(raw);
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
-        return rs.getTimestamp(columnIndex);
+        Timestamp value = rs.getTimestamp(columnIndex);
+        if (value == null) {
+            return null;
+        }
+        try {
+            java.time.Instant instant = value.toInstant();
+            return instant == null ? null : Timestamp.from(instant);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
-        return rs.getDate(columnIndex);
+        java.sql.Date value = rs.getDate(columnIndex);
+        if (value == null) {
+            return null;
+        }
+        try {
+            LocalDate localDate = value.toLocalDate();
+            return localDate == null ? null : java.sql.Date.valueOf(localDate);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private String csvEscape(String s) {
@@ -280,14 +300,14 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
         boolean needsQuotes = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
         String x = s.replace("\"", "\"\"");
-        return needsQuotes ? "\"" + x + "\"" : x;
+        return needsQuotes ? '"' + x + '"' : x;
     }
 
     private String quoteIdent(String ident) {
         if (ident == null || !SAFE_SQL_IDENTIFIER.matcher(ident).matches()) {
             throw new IllegalArgumentException("Invalid SQL identifier");
         }
-        return "\"" + ident.replace("\"", "\"\"") + "\"";
+        return '"' + ident.replace("\"", "\"\"") + '"';
     }
 
     private String toJsonArray(List<String> values) {
@@ -296,7 +316,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             if (i > 0) {
                 sb.append(", ");
             }
-            sb.append("\"").append(jsonEscape(values.get(i))).append("\"");
+            sb.append('"').append(jsonEscape(values.get(i))).append('"');
         }
         sb.append("]");
         return sb.toString();

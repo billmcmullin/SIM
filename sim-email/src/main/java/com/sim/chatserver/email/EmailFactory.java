@@ -24,7 +24,7 @@ public final class EmailFactory {
     /**
      * Builds Graph email service with provided config.
      */
-    public static EmailService graph(GraphEmailConfig config) {
+    private static EmailService graph(GraphEmailConfig config) {
         return new GraphEmailService(
                 config,
                 new GraphTokenClient(config),
@@ -59,6 +59,7 @@ public final class EmailFactory {
                 }
                 yield graph(gcfg);
             }
+            default -> throw new IllegalStateException("Unsupported email provider: " + provider);
         };
     }
 }

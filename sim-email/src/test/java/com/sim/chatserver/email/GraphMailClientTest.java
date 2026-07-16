@@ -2,9 +2,10 @@ package com.sim.chatserver.email;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+
+import javax.net.ssl.HttpsURLConnection;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,7 +45,7 @@ class GraphMailClientTest {
                 null
         );
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         when(conn.getOutputStream()).thenReturn(out);
@@ -94,7 +95,7 @@ class GraphMailClientTest {
                 "## md"
         );
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         when(conn.getOutputStream()).thenReturn(out);
@@ -130,7 +131,7 @@ class GraphMailClientTest {
                 "md"
         );
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         when(conn.getOutputStream()).thenReturn(out);
@@ -156,7 +157,7 @@ class GraphMailClientTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         EmailMessage message = msg(List.of("to@example.com"), null, null, "S", "T", null, null);
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         when(conn.getOutputStream()).thenReturn(out);
@@ -184,8 +185,8 @@ class GraphMailClientTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         EmailMessage message = msg(List.of("to@example.com"), null, null, "S", "T", null, null);
 
-        HttpURLConnection conn = mock(HttpURLConnection.class);
-        when(conn.getOutputStream()).thenThrow(new RuntimeException("boom"));
+        HttpsURLConnection conn = mock(HttpsURLConnection.class);
+        when(conn.getOutputStream()).thenThrow(new IllegalArgumentException("boom"));
 
         try (MockedConstruction<URL> mockedUrl = mockConstruction(
                 URL.class,

@@ -1,6 +1,5 @@
 package com.sim.chatserver.email;
 
-import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
@@ -24,7 +23,7 @@ public class SmtpEmailService implements EmailService {
     private final EmailConfig config;
     private final MarkdownRenderer markdownRenderer;
 
-    public SmtpEmailService(EmailConfig config, MarkdownRenderer markdownRenderer) {
+    SmtpEmailService(EmailConfig config, MarkdownRenderer markdownRenderer) {
         this.config = config;
         this.markdownRenderer = markdownRenderer;
     }
@@ -187,14 +186,18 @@ public class SmtpEmailService implements EmailService {
                     }
 
                     MimeBodyPart attachmentPart = new MimeBodyPart();
+                    byte[] content = a.content();
+                    if (content == null) {
+                        continue;
+                    }
                     attachmentPart.setFileName(a.fileName());
-                    attachmentPart.setContent(new ByteArrayInputStream(a.content()).readAllBytes(), a.contentType());
+                    attachmentPart.setContent(content, a.contentType());
                     mixed.addBodyPart(attachmentPart);
                 }
             }
 
             return mixed;
-        } catch (MessagingException | RuntimeException e) {
+        } catch (MessagingException | IllegalArgumentException e) {
             throw new EmailException("Failed to build email content", e);
         }
     }

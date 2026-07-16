@@ -30,11 +30,11 @@ public class GraphTokenClient {
     private volatile String cachedAccessToken;
     private volatile Instant cachedExpiresAt;
 
-    public GraphTokenClient(GraphEmailConfig config) {
+    GraphTokenClient(GraphEmailConfig config) {
         this.config = Objects.requireNonNull(config, "GraphEmailConfig is required");
     }
 
-    public synchronized String getAccessToken() {
+    synchronized String getAccessToken() {
         if (!config.isUsable()) {
             throw new EmailException(
                     "Graph config is incomplete (tenantId/clientId/clientSecret/senderUser required)",
@@ -47,24 +47,17 @@ public class GraphTokenClient {
             return cachedAccessToken;
         }
 
-        try {
-            TokenResponse tr = fetchToken();
-            this.cachedAccessToken = tr.accessToken;
-            this.cachedExpiresAt = Instant.now().plusSeconds(Math.max(60, tr.expiresIn));
-            return this.cachedAccessToken;
-        } catch (RuntimeException e) {
-            if (e instanceof EmailException ee) {
-                throw ee;
-            }
-            throw new EmailException("Graph token acquisition failed", e);
-        }
+        TokenResponse tr = fetchToken();
+        this.cachedAccessToken = tr.accessToken;
+        this.cachedExpiresAt = Instant.now().plusSeconds(Math.max(60, tr.expiresIn));
+        return this.cachedAccessToken;
     }
 
     private TokenResponse fetchToken() {
         HttpsURLConnection conn = null;
         try {
-            String tokenUrl = "https://" + config.effectiveAuthorityHost().trim()
-                    + "/" + enc(config.tenantId().trim())
+                String tokenUrl = "https://" + config.effectiveAuthorityHost().trim()
+                    + '/' + enc(config.tenantId().trim())
                     + "/oauth2/v2.0/token";
 
             URL url = URI.create(tokenUrl).toURL();
@@ -110,11 +103,11 @@ public class GraphTokenClient {
             }
 
             return new TokenResponse(accessToken, expiresIn);
-        } catch (IOException | RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             LOG.log(Level.SEVERE, "Graph token acquisition failed", e);
-            if (e instanceof EmailException ee) {
-                throw ee;
-            }
+            throw new EmailException("Graph token acquisition failed", e);
+        } catch (IOException e) {
+            LOG.log(Level.SEVERE, "Graph token acquisition failed", e);
             throw new EmailException("Graph token acquisition failed", e);
         } finally {
             if (conn != null) {
@@ -132,7 +125,7 @@ public class GraphTokenClient {
         final String accessToken;
         final long expiresIn;
 
-        private TokenResponse(String accessToken, long expiresIn) {
+        TokenResponse(String accessToken, long expiresIn) {
             this.accessToken = accessToken;
             this.expiresIn = expiresIn;
         }

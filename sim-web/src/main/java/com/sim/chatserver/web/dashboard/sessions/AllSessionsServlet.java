@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -65,6 +66,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final Pattern SAFE_CHAT_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
+    private static final Pattern SAFE_CONTENT_TYPE = Pattern.compile("^application/json(?:\\s*;\\s*charset=[a-z0-9._\\-]+)?$");
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
@@ -407,8 +409,11 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader reader = Json.createReader(req.getReader())) {
-            payload = reader.readObject();
+        try {
+            String requestBody = readRequestBody(req);
+            try (JsonReader reader = Json.createReader(new StringReader(requestBody))) {
+                payload = reader.readObject();
+            }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid JSON payload for session selection", e);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -748,7 +753,8 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -756,7 +762,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
@@ -781,11 +787,24 @@ public class AllSessionsServlet extends HttpServlet {
             return "";
         }
         String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
-        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
+        String bounded = normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
+        return SAFE_CONTENT_TYPE.matcher(bounded).matches() ? bounded : "";
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        if (req == null) {
+            return "";
+        }
+        byte[] bytes = req.getInputStream().readAllBytes();
+        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
+            return "";
+        }
+        String body = new String(bytes, StandardCharsets.UTF_8);
+        return body.replace("\u0000", "").replace("\r", "").trim();
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return safeDbText(value, maxLen);
     }
 
@@ -793,7 +812,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
         return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
     }
 

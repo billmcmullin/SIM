@@ -4,7 +4,6 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.sql.SQLException;
@@ -130,7 +129,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 mrConfig.getFinalReduceMaxAttempts()
         );
 
-        log.info("[manual-message][init] loaded config: " + mrConfig);
+        log.log(Level.INFO, "[manual-message][init] loaded config: {0}", mrConfig);
     }
 
     @Override
@@ -181,13 +180,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         List<SelectedEntry> selectedEntries = parseSelectedEntries(payload);
         JsonArray normalizedAttachments = normalizeAttachments(payload);
 
-        log.info("[manual-message][" + requestId + "] selectedEntriesParsed=" + selectedEntries.size());
+        log.log(Level.INFO, "[manual-message][{0}] selectedEntriesParsed={1}", new Object[]{requestId, selectedEntries.size()});
 
         EncryptedDbConfigStore.setAppDataSourceHolder(dsHolder);
         ServerConfig config;
         try {
             config = EncryptedDbConfigStore.load();
-        } catch (SQLException | RuntimeException ex) {
+        } catch (SQLException | IllegalStateException ex) {
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] Unable to load server configuration", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration not available.");
             return;
@@ -222,7 +221,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(targetUrl);
         if (!trust.isValid()) {
-            log.warning("[manual-message][" + requestId + "] blocked untrusted targetUrl reason=" + trust.getReason());
+            log.log(Level.WARNING, "[manual-message][{0}] blocked untrusted targetUrl reason={1}", new Object[]{requestId, trust.getReason()});
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace URL failed trust validation.");
             return;
         }
@@ -244,13 +243,21 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
             mirrorWorkspaceResponse(resp, upstream);
 
-            log.info("[manual-message][" + requestId + "] completed"
-                    + " status=" + upstream.statusCode()
-                    + " latencyMs=" + (System.currentTimeMillis() - startMs)
-                    + " mode=" + mode
-                    + " selected=" + selectedEntries.size()
-                    + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass"));
-        } catch (Exception ex) {
+                String completionLog = String.format(
+                    Locale.ROOT,
+                    "[manual-message][%s] completed status=%d latencyMs=%d mode=%s selected=%d strategy=%s",
+                    requestId,
+                    upstream.statusCode(),
+                    (System.currentTimeMillis() - startMs),
+                    mode,
+                    selectedEntries.size(),
+                    (useMapReduce ? "map-reduce-orchestrator" : "single-pass")
+                );
+                log.info(completionLog);
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] execution failed", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to process manual message.");
         }
@@ -261,18 +268,20 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         if (mrConfig.isExhaustiveMode()) {
             boolean use = n > 0;
-            log.info("[manual-message][strategy] exhaustiveMode=true"
-                    + " selected=" + n
-                    + " singlePassMaxSelected=" + mrConfig.getSinglePassMaxSelected()
-                    + " -> useMapReduce=" + use);
+                log.log(
+                    Level.INFO,
+                    "[manual-message][strategy] exhaustiveMode=true selected={0} singlePassMaxSelected={1} -> useMapReduce={2}",
+                    new Object[]{n, mrConfig.getSinglePassMaxSelected(), use}
+                );
             return use;
         }
 
         boolean use = n > mrConfig.getSinglePassMaxSelected();
-        log.info("[manual-message][strategy] exhaustiveMode=false"
-                + " selected=" + n
-                + " singlePassMaxSelected=" + mrConfig.getSinglePassMaxSelected()
-                + " -> useMapReduce=" + use);
+            log.log(
+                Level.INFO,
+                "[manual-message][strategy] exhaustiveMode=false selected={0} singlePassMaxSelected={1} -> useMapReduce={2}",
+                new Object[]{n, mrConfig.getSinglePassMaxSelected(), use}
+            );
         return use;
     }
 
@@ -512,16 +521,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 String finalReport = extractPrimaryText(body);
                 String finalReportForValidation = canonicalizeForValidation(finalReport);
 
-                List<String> usedIds = reduceResult != null
-                        ? distinctIds(reduceResult.getUsedChatIds())
-                        : distinctIds(orchestration == null ? List.of() : subtract(allIds, orchestration.missingChatIds()));
-
                 List<String> missingIds = reduceResult != null
                         ? distinctIds(reduceResult.getMissingChatIds())
                         : distinctIds(orchestration == null ? allIds : orchestration.missingChatIds());
 
                 missingIds = intersect(allIds, missingIds);
-                usedIds = subtract(allIds, missingIds);
+                List<String> usedIds = subtract(allIds, missingIds);
 
                 ReviewOutputValidator.ValidationResult finalValidation
                     = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
@@ -572,7 +577,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         warnings,
                         finalReport, body, contentType
                 );
-            } catch (Exception e) {
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
                 log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
                 return new ReviewJobService.JobResult(
                         500, false, "Failed",
@@ -606,7 +614,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
         String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
         String deterministicHeader = """
                 Deterministic metadata (use exactly; do not estimate):
@@ -634,9 +642,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String textForValidation = canonicalizeForValidation(text);
         ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateFinalReport(textForValidation, mrConfig.getSinglePassMessageMaxChars());
         if (!validation.isValid()) {
-            log.warning("[manual-message][" + requestId + "][single-pass] final validation errors=" + validation.getErrors());
+            log.log(Level.WARNING, "[manual-message][{0}][single-pass] final validation errors={1}", new Object[]{requestId, validation.getErrors()});
         } else if (!validation.getWarnings().isEmpty()) {
-            log.info("[manual-message][" + requestId + "][single-pass] final validation warnings=" + validation.getWarnings());
+            log.log(Level.INFO, "[manual-message][{0}][single-pass] final validation warnings={1}", new Object[]{requestId, validation.getWarnings()});
         }
 
         return response;
@@ -652,7 +660,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
         return runMapReduce(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, WidgetReviewMapReduceOrchestrator.NOOP_PROGRESS_LISTENER);
     }
 
@@ -667,11 +675,19 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             List<SelectedEntry> selectedEntries,
             String requestId,
             WidgetReviewMapReduceOrchestrator.ProgressListener progressListener
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
 
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = orchestrator.run(
-                targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
-        );
+        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
+        try {
+            orchestration = orchestrator.run(
+                    targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
+            );
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Map-reduce orchestration failed", e);
+        }
 
         List<MapBatchResult> mapBatchResults = orchestration.mapBatchResults();
         List<BatchFailure> failures = orchestration.batchFailures();
@@ -680,16 +696,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         List<String> allIds = distinctIds(extractAllIds(selectedEntries));
 
-        List<String> usedIds = reduceResult != null
-                ? distinctIds(reduceResult.getUsedChatIds())
-                : distinctIds(subtract(allIds, orchestration.missingChatIds()));
-
         List<String> missingIds = reduceResult != null
                 ? distinctIds(reduceResult.getMissingChatIds())
                 : distinctIds(orchestration.missingChatIds());
 
         missingIds = intersect(allIds, missingIds);
-        usedIds = subtract(allIds, missingIds);
+        List<String> usedIds = subtract(allIds, missingIds);
 
         CoverageSummary coverage = CoverageSummary.builder()
                 .allSelectedChatIds(allIds)
@@ -713,39 +725,44 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             = reviewOutputValidator.validateFinalReportHierarchical(finalTextForValidation, allIds, mrConfig.getReduceMessageMaxChars());
 
         if (!finalValidation.isValid()) {
-            log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + finalValidation.getErrors());
+            log.log(Level.WARNING, "[manual-message][{0}][reduce-validation] errors={1}", new Object[]{requestId, finalValidation.getErrors()});
         } else if (!finalValidation.getWarnings().isEmpty()) {
-            log.info("[manual-message][" + requestId + "][reduce-validation] warnings=" + finalValidation.getWarnings());
+            log.log(Level.INFO, "[manual-message][{0}][reduce-validation] warnings={1}", new Object[]{requestId, finalValidation.getWarnings()});
         }
 
         boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
         if (metadataMismatch) {
-            log.warning("[manual-message][" + requestId + "][coverage] metadata mismatch detected in final report.");
+            log.log(Level.WARNING, "[manual-message][{0}][coverage] metadata mismatch detected in final report.", requestId);
         }
 
         if (reduceResult != null) {
             if (!reduceResult.isSuccess() && reduceResult.getErrorMessage() != null && !reduceResult.getErrorMessage().isBlank()) {
-                log.warning("[manual-message][" + requestId + "][reduce-validation] errors=" + reduceResult.getErrorMessage());
+                log.log(Level.WARNING, "[manual-message][{0}][reduce-validation] errors={1}", new Object[]{requestId, reduceResult.getErrorMessage()});
             }
             if (!reduceResult.isCoverageComplete()) {
-                log.warning("[manual-message][" + requestId + "][coverage] incomplete missing=" + reduceResult.getMissingChatIds());
+                log.log(Level.WARNING, "[manual-message][{0}][coverage] incomplete missing={1}", new Object[]{requestId, reduceResult.getMissingChatIds()});
             }
         }
 
-        log.info("[manual-message][" + requestId + "][map-reduce-summary]"
-                + " reduceRequest=" + reduceRequest
-                + " reduceResultSuccess=" + (reduceResult != null && reduceResult.isSuccess())
-                + " coverage=" + coverage
-                + " mapBatchResults=" + mapBatchResults.size()
-                + " failures=" + failures.size()
-                + " coverageComplete=" + coverage.isCoverageComplete()
-                + " missingCount=" + coverage.getNotUsedChatIds().size()
-                + " metadataMismatch=" + metadataMismatch
-                + " strictFixedBatchMode=" + mrConfig.isStrictFixedBatchMode()
-                + " fixedBatchSize=" + mrConfig.getFixedBatchSize()
-                + " reduceInitialChunkSize=" + mrConfig.getReduceInitialChunkSize()
-                + " reduceMaxLevels=" + mrConfig.getReduceMaxLevels()
-                + " finalReduceMaxAttempts=" + mrConfig.getFinalReduceMaxAttempts());
+            String summaryLog = String.format(
+                Locale.ROOT,
+                "[manual-message][%s][map-reduce-summary] reduceRequest=%s reduceResultSuccess=%s coverage=%s mapBatchResults=%d failures=%d coverageComplete=%s missingCount=%d metadataMismatch=%s strictFixedBatchMode=%s fixedBatchSize=%d reduceInitialChunkSize=%d reduceMaxLevels=%d finalReduceMaxAttempts=%d",
+                requestId,
+                reduceRequest,
+                (reduceResult != null && reduceResult.isSuccess()),
+                coverage,
+                mapBatchResults.size(),
+                failures.size(),
+                coverage.isCoverageComplete(),
+                coverage.getNotUsedChatIds().size(),
+                metadataMismatch,
+                mrConfig.isStrictFixedBatchMode(),
+                mrConfig.getFixedBatchSize(),
+                mrConfig.getReduceInitialChunkSize(),
+                mrConfig.getReduceMaxLevels(),
+                mrConfig.getFinalReduceMaxAttempts()
+            );
+            log.info(summaryLog);
 
         return new MapReduceExecutionResult(finalResp, orchestration);
     }
@@ -796,8 +813,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 return t;
             }
             return body;
-        } catch (Exception ignored) {
-            log.log(Level.FINE, "Unable to parse upstream response payload", ignored);
+        } catch (JsonException | ClassCastException ex) {
+            log.log(Level.FINE, "Unable to parse upstream response payload", ex);
             return body;
         }
     }
@@ -1087,8 +1104,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return null;
         }
         try {
-            return new URI(normalized).normalize();
-        } catch (URISyntaxException ex) {
+            return URI.create(normalized).normalize();
+        } catch (IllegalArgumentException ex) {
             log.log(Level.FINE, "Invalid URI syntax", ex);
             return null;
         }
@@ -1119,18 +1136,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {
-        StringBuilder body = new StringBuilder();
-        char[] buffer = new char[4096];
-        try (var reader = req.getReader()) {
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                body.append(buffer, 0, read);
-                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size.");
-                }
-            }
+        byte[] bytes = req.getInputStream().readAllBytes();
+        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
+            throw new IOException("Payload exceeds allowed size.");
         }
-        return canonicalizeForValidation(body.toString());
+        return canonicalizeForValidation(new String(bytes, StandardCharsets.UTF_8));
     }
 
     private String canonicalizeForValidation(String value) {
@@ -1219,10 +1229,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private static final class MapReduceExecutionResult {
 
-        private final WorkspaceResponse response;
-        private final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
+        final WorkspaceResponse response;
+        final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
 
-        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+        MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
             this.response = response;
             this.orchestration = orchestration;
         }

@@ -17,51 +17,60 @@ public final class EmailMessage {
     private final String markdownBody;
     private final List<EmailAttachment> attachments;
 
-    private EmailMessage(Builder b) {
-        this.from = b.from;
-        this.to = List.copyOf(b.to);
-        this.cc = List.copyOf(b.cc);
-        this.bcc = List.copyOf(b.bcc);
-        this.subject = b.subject;
-        this.textBody = b.textBody;
-        this.htmlBody = b.htmlBody;
-        this.markdownBody = b.markdownBody;
-        this.attachments = List.copyOf(b.attachments);
+    EmailMessage(
+            String from,
+            List<String> to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String textBody,
+            String htmlBody,
+            String markdownBody,
+            List<EmailAttachment> attachments) {
+        this.from = from;
+        this.to = List.copyOf(to);
+        this.cc = List.copyOf(cc);
+        this.bcc = List.copyOf(bcc);
+        this.subject = subject;
+        this.textBody = textBody;
+        this.htmlBody = htmlBody;
+        this.markdownBody = markdownBody;
+        this.attachments = List.copyOf(attachments);
     }
 
-    public String from() {
+    String from() {
         return from;
     }
 
-    public List<String> to() {
+    List<String> to() {
         return to;
     }
 
-    public List<String> cc() {
+    List<String> cc() {
         return cc;
     }
 
-    public List<String> bcc() {
+    List<String> bcc() {
         return bcc;
     }
 
-    public String subject() {
+    String subject() {
         return subject;
     }
 
-    public String textBody() {
+    String textBody() {
         return textBody;
     }
 
-    public String htmlBody() {
+    String htmlBody() {
         return htmlBody;
     }
 
-    public String markdownBody() {
+    String markdownBody() {
         return markdownBody;
     }
 
-    public List<EmailAttachment> attachments() {
+    List<EmailAttachment> attachments() {
         return attachments;
     }
 
@@ -154,7 +163,16 @@ public final class EmailMessage {
             if (isBlank(textBody) && isBlank(htmlBody) && isBlank(markdownBody)) {
                 throw new IllegalArgumentException("At least one body (text/html/markdown) is required");
             }
-            return new EmailMessage(this);
+                return new EmailMessage(
+                    from,
+                    to,
+                    cc,
+                    bcc,
+                    subject,
+                    textBody,
+                    htmlBody,
+                    markdownBody,
+                    attachments);
         }
 
         private boolean isBlank(String s) {
