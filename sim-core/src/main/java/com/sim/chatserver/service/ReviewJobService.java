@@ -35,7 +35,7 @@ public class ReviewJobService {
     @FunctionalInterface
     public interface JobTask {
 
-        JobResult run(String jobId) throws Exception;
+        JobResult run(String jobId);
     }
 
     private final ExecutorService executor;
@@ -99,7 +99,7 @@ public class ReviewJobService {
                         result.rawResponseBody(),
                         result.contentType()
                 );
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", ex);
                 failJob(jobId, 500, ex.getMessage() == null ? "Async job failed." : ex.getMessage());
             } finally {
@@ -561,7 +561,8 @@ public class ReviewJobService {
         for (Future<?> f : futures.values()) {
             try {
                 f.cancel(true);
-            } catch (Exception ignored) {
+            } catch (RuntimeException ex) {
+                log.log(Level.FINE, "Unable to cancel review job future cleanly", ex);
             }
         }
         futures.clear();
@@ -602,7 +603,7 @@ public class ReviewJobService {
                 ? Math.max(0, Math.min(100, coveragePercent))
                 : deriveCoveragePercent(allIds, usedIds, missingIds, old.getCoveragePercent());
 
-        boolean complete = missingIds.isEmpty();
+        boolean complete = coverageComplete || missingIds.isEmpty();
 
         ReviewJobStatus updated = ReviewJobStatus.builder()
                 .jobId(old.getJobId())
@@ -711,44 +712,6 @@ public class ReviewJobService {
         private final String finalReport;
         private final String rawResponseBody;
         private final String contentType;
-
-        public JobResult(
-                int httpStatus,
-                boolean success,
-                String message,
-                String errorMessage,
-                int totalBatches,
-                int completedBatches,
-                int failedBatches,
-                int retries,
-                int coveragePercent,
-                boolean coverageComplete,
-                List<String> missingChatIds,
-                List<Integer> failedBatchIndexes,
-                List<String> warnings,
-                String finalReport,
-                String rawResponseBody,
-                String contentType
-        ) {
-            this(
-                    httpStatus,
-                    success,
-                    message,
-                    errorMessage,
-                    totalBatches,
-                    completedBatches,
-                    failedBatches,
-                    retries,
-                    List.of(),
-                    List.of(),
-                    missingChatIds,
-                    failedBatchIndexes,
-                    warnings,
-                    finalReport,
-                    rawResponseBody,
-                    contentType
-            );
-        }
 
         public JobResult(
                 int httpStatus,

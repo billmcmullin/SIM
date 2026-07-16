@@ -29,6 +29,7 @@ import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 
 public class WidgetReviewMapReduceOrchestrator {
@@ -437,7 +438,7 @@ public class WidgetReviewMapReduceOrchestrator {
                                 missingSoFar,
                                 round
                         );
-                    } catch (Exception ex) {
+                    } catch (CompletionException ex) {
                         failedBatches.add(req.getBatchIndex());
                         log.log(Level.WARNING, "[map-reduce][" + requestId + "] batch failed batchIndex=" + req.getBatchIndex(), ex);
 
@@ -752,7 +753,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .build();
 
         if (mergedSuccess) {
-            return new MapBatchExecutionResult(true, mergedOutput, merged, null, mergedMarkerUsed);
+            return new MapBatchExecutionResult(mergedOutput, merged, null, mergedMarkerUsed);
         }
 
         BatchFailure failure = BatchFailure.builder()
@@ -770,14 +771,14 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchChatIds(expected)
                 .build();
 
-        return new MapBatchExecutionResult(false, "", merged, failure, mergedMarkerUsed);
+        return new MapBatchExecutionResult("", merged, failure, mergedMarkerUsed);
     }
 
     private MapBatchExecutionResult executeMapBatchWithAdaptiveRebatch(
             String apiKey, JsonArray attachments, MapBatchRequest req, String requestId, int round
     ) throws Exception {
         try {
-            return executeMapBatch(apiKey, attachments, req, requestId, round);
+            return executeMapBatch(apiKey, attachments, req, requestId);
         } catch (IllegalArgumentException ex) {
             String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase(Locale.ROOT);
             boolean likelyTooLarge = msg.contains("too large") || msg.contains("re-batch");
@@ -874,7 +875,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     .build();
 
             if (success) {
-                return new MapBatchExecutionResult(true, modelOutput, mergedResult, null, markerDistinct);
+                return new MapBatchExecutionResult(modelOutput, mergedResult, null, markerDistinct);
             }
 
             BatchFailure failure = BatchFailure.builder()
@@ -892,13 +893,13 @@ public class WidgetReviewMapReduceOrchestrator {
                     .batchChatIds(expectedDistinct)
                     .build();
 
-            return new MapBatchExecutionResult(false, "", mergedResult, failure, markerDistinct);
+            return new MapBatchExecutionResult("", mergedResult, failure, markerDistinct);
         }
     }
 
-    private MapBatchExecutionResult executeMapBatch(
-            String apiKey, JsonArray attachments, MapBatchRequest req, String requestId, int round
-    ) throws Exception {
+        private MapBatchExecutionResult executeMapBatch(
+            String apiKey, JsonArray attachments, MapBatchRequest req, String requestId
+        ) throws Exception {
         long start = System.currentTimeMillis();
 
         String deterministicHeader = contextBuilderService.buildBatchDeterministicHeader(
@@ -943,8 +944,11 @@ public class WidgetReviewMapReduceOrchestrator {
         ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateMapOutput(canonicalMapText, mapMessageMaxChars);
         boolean mapOutputValid = validation.isValid();
         if (!mapOutputValid) {
-            log.warning("[map-reduce][" + requestId + "][map] non-fatal validation errors batch=" + req.getBatchIndex()
-                    + " errors=" + validation.getErrors());
+            log.log(
+                Level.WARNING,
+                "[map-reduce][{0}][map] non-fatal validation errors batch={1} errors={2}",
+                new Object[]{requestId, req.getBatchIndex(), validation.getErrors()}
+            );
         }
 
         List<String> contractIds = parseCoveredIdsContract(mapText);
@@ -984,7 +988,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .build();
 
         if (success) {
-            return new MapBatchExecutionResult(true, mapText, result, null, markerDetected);
+            return new MapBatchExecutionResult(mapText, result, null, markerDetected);
         }
 
         BatchFailure failure = BatchFailure.builder()
@@ -992,7 +996,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchIndex(req.getBatchIndex())
                 .totalBatches(req.getTotalBatches())
                 .batchId(req.getBatchId())
-                .reasonCode(determineReasonCode(status, contextTooLarge, mapOutputValid, false))
+                .reasonCode(determineReasonCode(status, contextTooLarge, mapOutputValid))
                 .message(result.getErrorMessage())
                 .httpStatus(status)
                 .retryAttempted(retryUsed)
@@ -1002,7 +1006,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchChatIds(expectedIds)
                 .build();
 
-        return new MapBatchExecutionResult(false, "", result, failure, markerDetected);
+        return new MapBatchExecutionResult("", result, failure, markerDetected);
     }
 
     private ReduceExecutionResult executeReduce(
@@ -1019,7 +1023,11 @@ public class WidgetReviewMapReduceOrchestrator {
         List<String> usedIdsNorm = normalizeIds(usedChatIds);
 
         missingIdsNorm = intersect(allIdsNorm, missingIdsNorm);
-        usedIdsNorm = subtract(allIdsNorm, missingIdsNorm);
+        if (usedIdsNorm.isEmpty()) {
+            usedIdsNorm = subtract(allIdsNorm, missingIdsNorm);
+        } else {
+            usedIdsNorm = intersect(allIdsNorm, usedIdsNorm);
+        }
         coverageComplete = missingIdsNorm.isEmpty();
 
         String deterministicReduceHeader = minimalHeader
@@ -1184,7 +1192,7 @@ public class WidgetReviewMapReduceOrchestrator {
         return new ArrayList<>(ids);
     }
 
-    private String determineReasonCode(int status, boolean contextTooLarge, boolean validMapOutput, boolean coverageOkUnused) {
+    private String determineReasonCode(int status, boolean contextTooLarge, boolean validMapOutput) {
         if (contextTooLarge) {
             return "context_too_large";
         }
@@ -1302,7 +1310,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 return t;
             }
             return body;
-        } catch (Exception ex) {
+        } catch (JsonException ex) {
             log.log(Level.FINE, "[map-reduce] failed parsing workspace response; returning raw body", ex);
             return body;
         }
@@ -1347,7 +1355,7 @@ public class WidgetReviewMapReduceOrchestrator {
         private final List<String> usedIdsDetected;
 
         private MapBatchExecutionResult(
-                boolean success, String outputText, MapBatchResult result, BatchFailure failure, List<String> usedIdsDetected
+            String outputText, MapBatchResult result, BatchFailure failure, List<String> usedIdsDetected
         ) {
             this.outputText = outputText;
             this.result = result;

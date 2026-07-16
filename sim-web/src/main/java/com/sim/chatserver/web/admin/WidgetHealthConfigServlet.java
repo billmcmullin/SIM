@@ -6,6 +6,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
@@ -44,7 +45,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             store = new WidgetHealthConfigStore(dsHolder.getDataSource());
             store.ensureTable();
             store.ensureDefaultRow();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
             throw new ServletException("Failed to initialize widget health config store", e);
         }
@@ -66,7 +67,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             }
 
             writeJson(resp, HttpServletResponse.SC_OK, toJson(cfg));
-        } catch (Exception e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load widget health config", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorJson("Unable to load widget health config."));
         }
@@ -113,13 +114,13 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             WidgetHealthConfig saved = store.save(cfg);
             writeJson(resp, HttpServletResponse.SC_OK, toJson(saved));
 
-        } catch (Exception e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException | JsonException e) {
             log.log(Level.WARNING, "Unable to save widget health config", e);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Unable to save widget health config."));
         }
     }
 
-    private void ensureStore() throws Exception {
+    private void ensureStore() throws SQLException {
         if (store == null) {
             store = new WidgetHealthConfigStore(dsHolder.getDataSource());
             store.ensureTable();
@@ -177,7 +178,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         String val;
         try {
             val = obj.getString(key, null);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException e) {
             log.log(Level.FINE, "Unable to read JSON string key {0} directly; falling back to raw value", key);
             val = obj.get(key).toString();
             if (val != null && val.startsWith("\"") && val.endsWith("\"") && val.length() >= 2) {
@@ -197,11 +198,11 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
         try {
             return obj.getInt(key);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException e) {
             log.log(Level.FINE, "Unable to read JSON int key {0} directly; trying parse fallback", key);
             try {
                 return Integer.parseInt(obj.get(key).toString().replace("\"", "").trim());
-            } catch (RuntimeException ex) {
+            } catch (NumberFormatException ex) {
                 log.log(Level.FINE, "Unable to parse JSON int key {0}; using fallback", key);
                 return fallback;
             }
@@ -220,8 +221,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+        if (req == null) {
             return false;
         }
         long len = req.getContentLengthLong();

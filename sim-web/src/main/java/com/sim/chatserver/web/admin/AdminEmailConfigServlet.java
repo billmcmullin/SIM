@@ -21,7 +21,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
-import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -69,7 +68,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         try {
             EmailConfig db = dbProvider == null ? null : dbProvider.load();
             dbConfigured = db != null && hasText(db.host()) && db.port() > 0;
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Failed checking DB SMTP config", e);
         }
 
@@ -140,7 +139,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             EmailConfig existing = null;
             try {
                 existing = dbProvider.load();
-            } catch (Exception e) {
+            } catch (IllegalArgumentException | IllegalStateException e) {
                 log.log(Level.WARNING, "Unable to load existing SMTP config.", e);
             }
             finalPassword = existing == null ? "" : safe(existing.password());
@@ -164,7 +163,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .add("message", "SMTP configuration saved.")
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed to save SMTP configuration", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to save SMTP configuration.");
         }
@@ -209,7 +208,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                                 defaultFrom = safe(existing.defaultFrom());
                             }
                         }
-                    } catch (Exception e) {
+                    } catch (IllegalArgumentException | IllegalStateException e) {
                         log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
                     }
                 }
@@ -257,7 +256,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "SMTP test failed", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "SMTP test failed.");
         }
@@ -299,11 +298,6 @@ public class AdminEmailConfigServlet extends HttpServlet {
     }
 
     private JsonObject readValidatedJsonPayload(HttpServletRequest req) throws IOException {
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-            throw new IllegalArgumentException("Unsupported content type");
-        }
-
         long len = req.getContentLengthLong();
         if (len < 0 || len > MAX_JSON_PAYLOAD_BYTES) {
             throw new IllegalArgumentException("Invalid content length");

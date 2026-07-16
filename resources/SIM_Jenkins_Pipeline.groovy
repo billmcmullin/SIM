@@ -222,8 +222,11 @@ pipeline {
                             npm init -y >/dev/null 2>&1
                         fi
 
-                        npm install --no-audit --no-fund --save-dev eslint@9.12.0
-                        npm install -D eslint-formatter-checkstyle
+                        # Recreate the lockfile so transitive dependencies are re-resolved each run.
+                        rm -f package-lock.json
+
+                        npm install --no-audit --no-fund --save-dev eslint@9.39.5 eslint-formatter-checkstyle
+                        npm ls @eslint/plugin-kit || true
 
                         # JSON report for Jenkins Warnings NG
                         npx eslint "sim-app/src/main/webapp/assets/js/**/*.js" \

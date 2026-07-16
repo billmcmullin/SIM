@@ -113,7 +113,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         List<WidgetEntry> widgets;
         try {
             widgets = WidgetStore.list(null);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load widgets", e);
             widgets = List.of();
         }
@@ -153,7 +153,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                         row.frustrationDetected = fr.detected;
                         row.frustrationScore = fr.score;
                         row.frustrationReason = fr.reason;
-                    } catch (SQLException | RuntimeException ex) {
+                    } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
                         row.frustrationDetected = false;
                         row.frustrationScore = 0.0;
                         row.frustrationReason = "";
@@ -204,7 +204,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to compute inactive users", e);
         }
 
@@ -254,7 +254,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         }
         try {
             return SessionLabelStore.mapDisplayNames(ids);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load session labels", e);
             return Map.of();
         }
@@ -617,8 +617,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }

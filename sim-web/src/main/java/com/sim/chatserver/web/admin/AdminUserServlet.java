@@ -89,7 +89,7 @@ public class AdminUserServlet extends HttpServlet {
             userService.createUser(username, password, role);
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\"}");
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed to create user", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create user.\"}");
@@ -136,10 +136,6 @@ public class AdminUserServlet extends HttpServlet {
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
         if (req == null) {
-            return false;
-        }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
             return false;
         }
         long len = req.getContentLengthLong();

@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -58,7 +59,7 @@ public class DashboardDailySummaryStore {
         try (Connection conn = dataSource.getConnection(); PreparedStatement ps = conn.prepareStatement(TABLE_SQL)) {
             ps.execute();
             ensureSuggestedNextActionColumn(conn);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to ensure dashboard_daily_summary table", e);
             throw new IllegalStateException("Unable to ensure dashboard_daily_summary table", e);
         }
@@ -71,7 +72,7 @@ public class DashboardDailySummaryStore {
                 """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.execute();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to ensure suggested_next_action column", e);
         }
     }
@@ -187,7 +188,7 @@ public class DashboardDailySummaryStore {
 
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", firstSqlError);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", firstSqlError);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
         }
@@ -335,7 +336,7 @@ public class DashboardDailySummaryStore {
                             .add("fromFallback", false))
                     .build();
 
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to fetch dashboard daily summary", e);
             return Json.createObjectBuilder()
                     .add("status", "error")
@@ -356,9 +357,9 @@ public class DashboardDailySummaryStore {
         String suggested = value(getSafeString(rs, "suggested_next_action", 2000), "");
         int entryCount = getSafeInt(rs, "entry_count", 0, Integer.MAX_VALUE);
 
-        Timestamp startedAt = rs.getTimestamp("started_at");
-        Timestamp generatedAt = rs.getTimestamp("generated_at");
-        Timestamp updatedAt = rs.getTimestamp("updated_at");
+        Timestamp startedAt = getSafeTimestamp(rs, "started_at");
+        Timestamp generatedAt = getSafeTimestamp(rs, "generated_at");
+        Timestamp updatedAt = getSafeTimestamp(rs, "updated_at");
 
         boolean inProgress = "running".equals(status) || "queued".equals(status);
 
@@ -388,7 +389,7 @@ public class DashboardDailySummaryStore {
                         .add("suggestedNextAction", suggested)
                         .add("entryCount", entryCount))
                 .add("meta", Json.createObjectBuilder()
-                        .add("day", rs.getDate("summary_day") == null ? "" : rs.getDate("summary_day").toLocalDate().toString())
+                        .add("day", getSafeDay(rs, "summary_day"))
                         .add("slot", getSafeInt(rs, "slot", 0, 3))
                         .add("generatedAt", fmtTs(generatedAt))
                         .add("startedAt", fmtTs(startedAt))
@@ -437,6 +438,34 @@ public class DashboardDailySummaryStore {
             return max;
         }
         return value;
+    }
+
+    private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
+        Timestamp value = rs.getTimestamp(column);
+        if (value == null) {
+            return null;
+        }
+        try {
+            Instant instant = value.toInstant();
+            return instant == null ? null : Timestamp.from(instant);
+        } catch (IllegalArgumentException | DateTimeException e) {
+            log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
+            return null;
+        }
+    }
+
+    private String getSafeDay(ResultSet rs, String column) throws SQLException {
+        java.sql.Date day = rs.getDate(column);
+        if (day == null) {
+            return "";
+        }
+        try {
+            LocalDate localDay = day.toLocalDate();
+            return localDay == null ? "" : localDay.toString();
+        } catch (IllegalArgumentException | DateTimeException e) {
+            log.log(Level.FINE, "Invalid date value for column " + column, e);
+            return "";
+        }
     }
 
     private String suggestNextAction(String status, String quality, String response, String usage) {

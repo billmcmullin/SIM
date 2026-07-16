@@ -295,10 +295,11 @@ public class DashboardTopicsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
+        String value = values[0];
         String trimmed = value.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }

@@ -1115,24 +1115,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = safeContentType(req);
-        if (contentType.isEmpty() || !contentType.contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
-    private String safeContentType(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-        String header = req.getContentType();
-        if (header == null) {
-            return "";
-        }
-        String normalized = canonicalizeForValidation(header).toLowerCase(Locale.ROOT);
-        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {

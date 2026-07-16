@@ -63,6 +63,8 @@ mvn clean test-compile jtest:agent verify jtest:jtest -pl sim-core,sim-web,sim-a
 mvn org.owasp:dependency-check-maven:12.2.2:aggregate -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DnvdApiKey=<API KEY> -DdataDirectory=<DC_DB_DIRECTORY>
 ```
 
+- Suppression governance: see [dependency-check-suppressions-tracking.md](dependency-check-suppressions-tracking.md) for active suppressions, review cadence, and removal criteria.
+
 - Purge OWASP:
 
 ```bash

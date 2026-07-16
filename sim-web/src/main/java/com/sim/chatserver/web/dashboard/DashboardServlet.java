@@ -685,7 +685,7 @@ public class DashboardServlet extends HttpServlet {
             Throwable cause = ex.getCause();
             log.log(Level.WARNING, "Failed to compute " + label, cause == null ? ex : cause);
             return fallback;
-        } catch (RuntimeException ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.WARNING, "Failed to compute " + label, ex);
             return fallback;
         }

@@ -6,6 +6,8 @@ import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
 import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
@@ -21,6 +23,8 @@ import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardPro
  * Day-keyed refresh behavior for "today/yesterday" sensitive metrics
  */
 public class DashboardCacheRegistry {
+
+    private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getName());
 
     // TTLs (shorter for day-sensitive metrics)
     private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
@@ -73,12 +77,16 @@ public class DashboardCacheRegistry {
 
     public List<WidgetStat> getWidgetStats(Supplier<List<WidgetStat>> loader) {
         String dayKey = currentDayKey();
+        boolean invalidate = false;
         synchronized (dayKeyLock) {
             if (widgetStatsDayKey == null || !widgetStatsDayKey.equals(dayKey)) {
-                synchronized (widgetLock) {
-                    widgetStatsCache = null;
-                }
                 widgetStatsDayKey = dayKey;
+                invalidate = true;
+            }
+        }
+        if (invalidate) {
+            synchronized (widgetLock) {
+                widgetStatsCache = null;
             }
         }
         return getSingle(widgetLock, () -> widgetStatsCache, v -> widgetStatsCache = v, WIDGET_STATS_TTL_MILLIS, loader);
@@ -90,12 +98,16 @@ public class DashboardCacheRegistry {
 
     public ProgressStat getChatProgression(Supplier<ProgressStat> loader) {
         String dayKey = currentDayKey();
+        boolean invalidate = false;
         synchronized (dayKeyLock) {
             if (chatProgressionDayKey == null || !chatProgressionDayKey.equals(dayKey)) {
-                synchronized (chatProgLock) {
-                    chatProgressionCache = null;
-                }
                 chatProgressionDayKey = dayKey;
+                invalidate = true;
+            }
+        }
+        if (invalidate) {
+            synchronized (chatProgLock) {
+                chatProgressionCache = null;
             }
         }
         return getSingle(chatProgLock, () -> chatProgressionCache, v -> chatProgressionCache = v, CHAT_PROGRESSION_TTL_MILLIS, loader);
@@ -103,12 +115,16 @@ public class DashboardCacheRegistry {
 
     public ProgressStat getNewUserProgression(Supplier<ProgressStat> loader) {
         String dayKey = currentDayKey();
+        boolean invalidate = false;
         synchronized (dayKeyLock) {
             if (newUserProgressionDayKey == null || !newUserProgressionDayKey.equals(dayKey)) {
-                synchronized (newUserProgLock) {
-                    newUserProgressionCache = null;
-                }
                 newUserProgressionDayKey = dayKey;
+                invalidate = true;
+            }
+        }
+        if (invalidate) {
+            synchronized (newUserProgLock) {
+                newUserProgressionCache = null;
             }
         }
         return getSingle(newUserProgLock, () -> newUserProgressionCache, v -> newUserProgressionCache = v, NEW_USER_PROGRESSION_TTL_MILLIS, loader);
@@ -116,12 +132,16 @@ public class DashboardCacheRegistry {
 
     public List<TopTopic> getTopTopics(Supplier<List<TopTopic>> loader) {
         String dayKey = currentDayKey();
+        boolean invalidate = false;
         synchronized (dayKeyLock) {
             if (topTopicsDayKey == null || !topTopicsDayKey.equals(dayKey)) {
-                synchronized (topTopicsLock) {
-                    topTopicsCache = null;
-                }
                 topTopicsDayKey = dayKey;
+                invalidate = true;
+            }
+        }
+        if (invalidate) {
+            synchronized (topTopicsLock) {
+                topTopicsCache = null;
             }
         }
         return getSingle(topTopicsLock, () -> topTopicsCache, v -> topTopicsCache = v, TOP_TOPICS_TTL_MILLIS, loader);
@@ -133,12 +153,16 @@ public class DashboardCacheRegistry {
 
     public DashboardProgressMetrics getDashboardProgressMetrics(Supplier<DashboardProgressMetrics> loader) {
         String dayKey = currentDayKey();
+        boolean invalidate = false;
         synchronized (dayKeyLock) {
             if (dashboardProgressDayKey == null || !dashboardProgressDayKey.equals(dayKey)) {
-                synchronized (dashboardProgressLock) {
-                    dashboardProgressCache = null;
-                }
                 dashboardProgressDayKey = dayKey;
+                invalidate = true;
+            }
+        }
+        if (invalidate) {
+            synchronized (dashboardProgressLock) {
+                dashboardProgressCache = null;
             }
         }
 
@@ -153,6 +177,7 @@ public class DashboardCacheRegistry {
 
     public SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
         long now = System.currentTimeMillis();
+        boolean triggerRefresh = false;
 
         Entry<SessionOverview> current;
         synchronized (sessionLock) {
@@ -165,9 +190,12 @@ public class DashboardCacheRegistry {
             }
             if (isWithinGrace(current, now) && !current.refreshing) {
                 current.refreshing = true;
-                startAsyncSessionRefresh(key, loader);
-                return current.value;
+                triggerRefresh = true;
             }
+        }
+        if (triggerRefresh) {
+            startAsyncSessionRefresh(key, loader);
+            return current == null ? null : current.value;
         }
 
         synchronized (sessionLock) {
@@ -234,6 +262,7 @@ public class DashboardCacheRegistry {
     ) {
         long now = System.currentTimeMillis();
         Entry<T> current = getter.get();
+        boolean triggerRefresh = false;
 
         if (isFresh(current, now)) {
             return current.value;
@@ -241,6 +270,7 @@ public class DashboardCacheRegistry {
 
         if (isWithinGrace(current, now)) {
             if (!current.refreshing) {
+                T staleValue;
                 synchronized (lock) {
                     Entry<T> c2 = getter.get();
                     long now2 = System.currentTimeMillis();
@@ -249,10 +279,14 @@ public class DashboardCacheRegistry {
                     }
                     if (isWithinGrace(c2, now2) && !c2.refreshing) {
                         c2.refreshing = true;
-                        startAsyncSingleRefresh(lock, getter, setter, ttlMillis, loader);
+                        triggerRefresh = true;
                     }
-                    return c2 == null ? null : c2.value;
+                    staleValue = c2 == null ? null : c2.value;
                 }
+                if (triggerRefresh) {
+                    startAsyncSingleRefresh(lock, getter, setter, ttlMillis, loader);
+                }
+                return staleValue;
             }
             return current.value;
         }
@@ -345,7 +379,8 @@ public class DashboardCacheRegistry {
         try {
             T value = loader.get();
             return value != null ? value : fallback;
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
+            log.log(Level.FINE, "Dashboard cache refresh loader failed; using fallback value", ex);
             return fallback;
         }
     }
@@ -363,19 +398,19 @@ public class DashboardCacheRegistry {
 
     private static final class Entry<T> {
 
-        private volatile T value;
-        private volatile long expiresAt;
-        private volatile long staleUntil;
-        private volatile boolean refreshing;
+        volatile T value;
+        volatile long expiresAt;
+        volatile long staleUntil;
+        volatile boolean refreshing;
 
-        private Entry(T value, long expiresAt, long staleUntil) {
+        Entry(T value, long expiresAt, long staleUntil) {
             this.value = value;
             this.expiresAt = expiresAt;
             this.staleUntil = staleUntil;
             this.refreshing = false;
         }
 
-        private static <T> Entry<T> of(T value, long expiresAt, long staleUntil) {
+        static <T> Entry<T> of(T value, long expiresAt, long staleUntil) {
             return new Entry<>(value, expiresAt, staleUntil);
         }
     }

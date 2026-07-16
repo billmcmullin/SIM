@@ -135,6 +135,9 @@
                         <nvdApiDelay>${nvdApiDelay}</nvdApiDelay>
                         <connectionTimeout>${connectionTimeout}</connectionTimeout>
                         <readTimeout>${readTimeout}</readTimeout>
+                        <suppressionFiles>
+                            <suppressionFile>${project.basedir}/resources/dependency-check-suppressions.xml</suppressionFile>
+                        </suppressionFiles>
 
                         <!-- Keep CI resilient if NVD is temporarily unavailable -->
                         <failOnError>false</failOnError>

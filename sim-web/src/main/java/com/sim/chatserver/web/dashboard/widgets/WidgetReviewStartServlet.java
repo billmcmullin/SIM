@@ -291,8 +291,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
-        String contentType = req.getHeader("Content-Type");
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+        if (req == null) {
             return false;
         }
         long len = req.getContentLengthLong();

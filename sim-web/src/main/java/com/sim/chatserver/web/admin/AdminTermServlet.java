@@ -5,8 +5,6 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -32,7 +30,6 @@ public class AdminTermServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminTermServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
-    private static final Pattern SAFE_CONTENT_TYPE = Pattern.compile("^application/json(?:\\s*;\\s*charset=[a-z0-9._\\-]+)?$");
 
     @Inject
     TermsStore termsStore;
@@ -280,8 +277,7 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -294,25 +290,8 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = safeContentType(req);
-        if (contentType.isEmpty() || !contentType.contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
-    private String safeContentType(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-        String header = req.getContentType();
-        if (header == null) {
-            return "";
-        }
-        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
-        String bounded = normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
-        return SAFE_CONTENT_TYPE.matcher(bounded).matches() ? bounded : "";
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {

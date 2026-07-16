@@ -19,7 +19,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -66,7 +65,6 @@ public class AllSessionsServlet extends HttpServlet {
     private static final Pattern SAFE_CHAT_ID = Pattern.compile("^[A-Za-z0-9_:\\-.]+$");
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_INT_PARAM = Pattern.compile("^-?\\d{1,10}$");
-    private static final Pattern SAFE_CONTENT_TYPE = Pattern.compile("^application/json(?:\\s*;\\s*charset=[a-z0-9._\\-]+)?$");
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
@@ -753,8 +751,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -770,25 +767,8 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = safeContentType(req);
-        if (contentType.isEmpty() || !contentType.contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
-    private String safeContentType(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-        String header = req.getContentType();
-        if (header == null) {
-            return "";
-        }
-        String normalized = header.replace("\r", "").replace("\n", "").trim().toLowerCase(Locale.ROOT);
-        String bounded = normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
-        return SAFE_CONTENT_TYPE.matcher(bounded).matches() ? bounded : "";
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {
