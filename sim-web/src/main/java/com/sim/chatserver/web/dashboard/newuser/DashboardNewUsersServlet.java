@@ -120,6 +120,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
     }
 
     private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) throws IOException {
+        if (req == null || resp == null || session == null) {
+            return;
+        }
         int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
@@ -146,6 +149,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
     }
 
     private void handleData(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (req == null || resp == null) {
+            return;
+        }
         LocalDate rangeEnd = LocalDate.now(ZoneId.systemDefault());
         int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
         LocalDate rangeStart = rangeEnd.minusDays(days - 1);
@@ -185,6 +191,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
     }
 
     private void handleDay(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        if (req == null || resp == null) {
+            return;
+        }
         Optional<LocalDate> dayOpt = parseLocalDate(firstParam(req, "day"));
         if (dayOpt.isEmpty()) {
             writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing or invalid day.");
@@ -492,7 +501,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        String value = values[0];
         if (value == null) {
             return null;
         }

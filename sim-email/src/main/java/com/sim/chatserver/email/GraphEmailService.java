@@ -15,7 +15,7 @@ public class GraphEmailService implements EmailService {
     private final GraphMailClient mailClient;
     private final MarkdownRenderer markdownRenderer;
 
-    public GraphEmailService(
+    GraphEmailService(
             GraphEmailConfig config,
             GraphTokenClient tokenClient,
             GraphMailClient mailClient,
@@ -32,19 +32,12 @@ public class GraphEmailService implements EmailService {
         validateConfig();
         validateMessage(message);
 
-        try {
-            String token = tokenClient.getAccessToken();
-            mailClient.sendMail(token, config, message, markdownRenderer);
+        String token = tokenClient.getAccessToken();
+        mailClient.sendMail(token, config, message, markdownRenderer);
 
-            LOG.info("Graph email sent successfully. sender=" + safe(config.senderUser())
-                    + ", subject=" + safe(message.subject())
-                    + ", toCount=" + size(message.to()));
-        } catch (Exception e) {
-            if (e instanceof EmailException ee) {
-                throw ee;
-            }
-            throw new EmailException("Failed to send email via Microsoft Graph", e);
-        }
+        LOG.info("Graph email sent successfully. sender=" + safe(config.senderUser())
+                + ", subject=" + safe(message.subject())
+                + ", toCount=" + size(message.to()));
     }
 
     private void validateConfig() {

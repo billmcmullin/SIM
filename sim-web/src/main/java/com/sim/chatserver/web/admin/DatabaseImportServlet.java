@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.text.Normalizer;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -69,6 +70,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,253}$");
     private static final Pattern SAFE_SYNC_URL = Pattern.compile("^https?://[A-Za-z0-9.-]+(?::\\d{1,5})?(?:/[-A-Za-z0-9._~%!$&'()*+,;=:@/]*)?(?:\\?[-A-Za-z0-9._~%!$&'()*+,;=:@/?]*)?$");
+    private static final Pattern SAFE_DB_TEXT = Pattern.compile("^[A-Za-z0-9_ .:/#@,;\\-]*$");
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -93,7 +95,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private static final String POST_IMPORT_SYNC_URL = sanitizeSyncUrlValue(readEnv("SIM_POST_IMPORT_SYNC_URL"));
+        private static final String POST_IMPORT_SYNC_URL = readEnv("SIM_POST_IMPORT_SYNC_URL");
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -805,7 +807,8 @@ public class DatabaseImportServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -832,7 +835,9 @@ public class DatabaseImportServlet extends HttpServlet {
             return "";
         }
         String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC);
+        String bounded = normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        return sanitizeSyncUrlValue(bounded);
     }
 
     private static String sanitizeSyncUrlValue(String candidate) {
@@ -869,15 +874,19 @@ public class DatabaseImportServlet extends HttpServlet {
         if (raw == null) {
             return null;
         }
-        String normalized = stripControlChars(raw).trim();
+        String normalized = Normalizer.normalize(stripControlChars(raw), Normalizer.Form.NFKC).trim();
         if (normalized.isEmpty()) {
             return null;
         }
-        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+        String bounded = normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+        return SAFE_DB_TEXT.matcher(bounded).matches() ? bounded : null;
     }
 
     private Integer readNullableInt(ResultSet rs, String columnName) throws SQLException {
-        Integer value = rs.getObject(columnName, Integer.class);
+        int value = rs.getInt(columnName);
+        if (rs.wasNull()) {
+            return null;
+        }
         return value;
     }
 

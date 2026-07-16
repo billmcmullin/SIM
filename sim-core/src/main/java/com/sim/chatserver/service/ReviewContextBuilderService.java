@@ -638,9 +638,11 @@ public class ReviewContextBuilderService {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
+            final char[] hex = "0123456789abcdef".toCharArray();
+            StringBuilder sb = new StringBuilder(bytes.length * 2);
             for (byte b : bytes) {
-                sb.append(String.format("%02x", b));
+                int v = b & 0xFF;
+                sb.append(hex[v >>> 4]).append(hex[v & 0x0F]);
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException ex) {
@@ -651,14 +653,14 @@ public class ReviewContextBuilderService {
     private static final class Strategy {
 
         @SuppressWarnings("unused")
-        private final String name;
-        private final int topRelevantCount;
-        private final int newestCount;
-        private final int oldestCount;
-        private final int randomCount;
-        private final int maxHashLines;
+        final String name;
+        final int topRelevantCount;
+        final int newestCount;
+        final int oldestCount;
+        final int randomCount;
+        final int maxHashLines;
 
-        private Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
+        Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
             this.name = name;
             this.topRelevantCount = topRelevantCount;
             this.newestCount = newestCount;

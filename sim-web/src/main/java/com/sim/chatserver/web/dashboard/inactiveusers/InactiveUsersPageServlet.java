@@ -239,9 +239,13 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 .replace("${defaultDays}", String.valueOf(days))
             .replace("${inactiveUsersDataB64}", jsonDataB64);
 
+        byte[] renderedBytes = rendered.getBytes(StandardCharsets.UTF_8);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        resp.getWriter().write(rendered);
+        resp.setContentLength(renderedBytes.length);
+        try (var output = resp.getOutputStream()) {
+            output.write(renderedBytes);
+        }
     }
 
     private Map<String, SessionLabelStore.SessionLabel> mapLabelsSafe(Set<String> ids) {
@@ -613,16 +617,17 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
+        Map<String, String[]> params = req.getParameterMap();
+        String[] values = params == null ? null : params.get(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String trimmed = value.trim();
+        String trimmed = values[0].replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return safeDbText(value, maxLen);
     }
 
@@ -641,7 +646,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
         if (normalized.length() > maxLen) {
             return normalized.substring(0, maxLen);
         }

@@ -4,7 +4,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
@@ -174,17 +173,15 @@ class GraphEmailServiceTest {
     }
 
     @Test
-    @DisplayName("send wraps non-EmailException into EmailException")
-    void send_nonEmailException_wrapped() {
+    @DisplayName("send propagates non-EmailException runtime failures")
+    void send_nonEmailException_propagated() {
         when(config.isUsable()).thenReturn(true);
         when(tokenClient.getAccessToken()).thenThrow(new RuntimeException("boom"));
 
         EmailMessage message = msg(List.of("to@example.com"), null, null, "Hello", "Body", null, null);
 
-        EmailException ex = assertThrows(EmailException.class, () -> service.send(message));
-        assertEquals("Failed to send email via Microsoft Graph", ex.getMessage());
-        assertNotNull(ex.getCause());
-        assertEquals("boom", ex.getCause().getMessage());
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.send(message));
+        assertEquals("boom", ex.getMessage());
 
         verify(tokenClient).getAccessToken();
         verifyNoInteractions(mailClient);

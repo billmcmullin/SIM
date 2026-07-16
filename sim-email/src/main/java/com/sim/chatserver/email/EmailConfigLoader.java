@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Loads SMTP configuration from: 1) Environment variables (MAIL_*) 2) External
@@ -46,6 +47,10 @@ public final class EmailConfigLoader {
     private static final int MAX_ENV_TEXT_LEN = 512;
     private static final int MAX_ENV_SECRET_LEN = 4096;
     private static final int MAX_PATH_LEN = 2048;
+    private static final Pattern SAFE_HOST = Pattern.compile("^[a-zA-Z0-9.-]{1,253}$");
+    private static final Pattern SAFE_PORT_TEXT = Pattern.compile("^\\d{1,5}$");
+    private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
+    private static final Pattern SAFE_EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     @FunctionalInterface
     interface EnvAccessor {
@@ -74,7 +79,7 @@ public final class EmailConfigLoader {
      * Backward-compatible convenience loader: ENV -> PROPERTIES -> fallback
      * localhost:25
      */
-    public static EmailConfig load() {
+    static EmailConfig load() {
         EmailConfig env = loadEnvOnly();
         if (env != null) {
             return env;
@@ -102,17 +107,17 @@ public final class EmailConfigLoader {
      * Loads SMTP config from environment variables only. Required: MAIL_HOST,
      * MAIL_PORT Returns null if missing/invalid.
      */
-    public static EmailConfig loadEnvOnly() {
+    static EmailConfig loadEnvOnly() {
         String host = trimToNull(envSanitized(ENV_HOST, MAX_ENV_TEXT_LEN));
-        Integer port = parsePort(trimToNull(envSanitized(ENV_PORT, 6)), "ENV " + ENV_PORT);
+        int port = parsePort(trimToNull(envSanitized(ENV_PORT, 6)), "ENV " + ENV_PORT);
 
-        if (host == null || port == null) {
+        if (host == null || port < 1) {
             return null;
         }
 
-        boolean auth = parseBoolean(env(ENV_AUTH), false);
-        boolean starttls = parseBoolean(env(ENV_STARTTLS), false);
-        boolean ssl = parseBoolean(env(ENV_SSL), false);
+        boolean auth = parseBoolean(envSanitized(ENV_AUTH, 16), false);
+        boolean starttls = parseBoolean(envSanitized(ENV_STARTTLS, 16), false);
+        boolean ssl = parseBoolean(envSanitized(ENV_SSL, 16), false);
 
         String username = defaultString(envSanitized(ENV_USERNAME, MAX_ENV_TEXT_LEN), "");
         String password = defaultString(envSanitized(ENV_PASSWORD, MAX_ENV_SECRET_LEN), "");
@@ -127,7 +132,7 @@ public final class EmailConfigLoader {
      *
      * Required: mail.host, mail.port Returns null if missing/invalid.
      */
-    public static EmailConfig loadPropertiesOnly() {
+    static EmailConfig loadPropertiesOnly() {
         Properties p = loadExternalPropsFromEnvPath();
         if (p.isEmpty()) {
             p = loadClasspathProps();
@@ -141,9 +146,9 @@ public final class EmailConfigLoader {
         }
 
         String host = trimToNull(p.getProperty(PROP_HOST));
-        Integer port = parsePort(trimToNull(p.getProperty(PROP_PORT)), "properties " + PROP_PORT);
+        int port = parsePort(trimToNull(p.getProperty(PROP_PORT)), "properties " + PROP_PORT);
 
-        if (host == null || port == null) {
+        if (host == null || port < 1) {
             return null;
         }
 
@@ -203,20 +208,20 @@ public final class EmailConfigLoader {
         return p;
     }
 
-    private static Integer parsePort(String value, String sourceLabel) {
+    private static int parsePort(String value, String sourceLabel) {
         if (value == null) {
-            return null;
+            return -1;
         }
         try {
             int port = Integer.parseInt(value.trim());
             if (port < 1 || port > 65535) {
                 log.log(Level.WARNING, "Invalid SMTP port out of range in {0}.", sourceLabel);
-                return null;
+                return -1;
             }
             return port;
         } catch (NumberFormatException e) {
             log.log(Level.WARNING, "Invalid SMTP port in {0}.", sourceLabel);
-            return null;
+            return -1;
         }
     }
 
@@ -245,7 +250,35 @@ public final class EmailConfigLoader {
     }
 
     private static String envSanitized(String key, int maxLength) {
-        return sanitizeUntrustedText(env(key), maxLength);
+        return validateEnvValue(key, sanitizeUntrustedText(env(key), maxLength));
+    }
+
+    private static String validateEnvValue(String key, String value) {
+        if (value == null) {
+            return null;
+        }
+
+        return switch (key) {
+            case ENV_HOST -> SAFE_HOST.matcher(value).matches() ? value : null;
+            case ENV_PORT -> SAFE_PORT_TEXT.matcher(value).matches() ? value : null;
+            case ENV_AUTH, ENV_STARTTLS, ENV_SSL -> SAFE_BOOL_TEXT.matcher(value).matches() ? value : null;
+            case ENV_FROM -> SAFE_EMAIL.matcher(value).matches() ? value : null;
+            case ENV_CONFIG_FILE -> isSafePathText(value) ? value : null;
+            default -> value;
+        };
+    }
+
+    private static boolean isSafePathText(String value) {
+        if (value == null || value.length() > MAX_PATH_LEN) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isISOControl(c)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String sanitizeUntrustedText(String value, int maxLength) {

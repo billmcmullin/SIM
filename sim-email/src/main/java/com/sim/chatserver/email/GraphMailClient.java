@@ -1,15 +1,20 @@
 package com.sim.chatserver.email;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.IOException;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.net.ssl.HttpsURLConnection;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sends mail through Microsoft Graph API.
@@ -19,14 +24,14 @@ public class GraphMailClient {
     private static final Logger LOG = Logger.getLogger(GraphMailClient.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
-        HttpURLConnection conn = null;
+    void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
+        HttpsURLConnection conn = null;
         try {
             String sender = config.senderUser().trim();
             String endpoint = "https://graph.microsoft.com/v1.0/users/" + sender + "/sendMail";
 
             URL url = URI.create(endpoint).toURL();
-            conn = (HttpURLConnection) url.openConnection();
+            conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setConnectTimeout(10000);
@@ -71,11 +76,10 @@ public class GraphMailClient {
                         new RuntimeException("graph_send_http_" + status)
                 );
             }
-        } catch (Exception e) {
+        } catch (EmailException e) {
+            throw e;
+        } catch (IOException | IllegalArgumentException e) {
             LOG.log(Level.SEVERE, "Graph mail send failed", e);
-            if (e instanceof EmailException ee) {
-                throw ee;
-            }
             throw new EmailException("Graph mail send failed", e);
         } finally {
             if (conn != null) {

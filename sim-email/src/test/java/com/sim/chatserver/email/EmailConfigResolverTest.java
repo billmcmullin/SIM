@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -127,7 +128,7 @@ class EmailConfigResolverTest {
     }
 
     @Test
-    void resolve_handlesDbException_andReturnsNone_whenNoOtherUsableConfig() {
+    void resolve_propagatesDbException_whenNoOtherUsableConfig() {
         DbEmailConfigProvider db = mock(DbEmailConfigProvider.class);
 
         try (MockedStatic<EmailConfigLoader> loader = mockStatic(EmailConfigLoader.class)) {
@@ -136,11 +137,8 @@ class EmailConfigResolverTest {
             when(db.load()).thenThrow(new RuntimeException("db down"));
 
             EmailConfigResolver resolver = new EmailConfigResolver(db);
-            ResolvedEmailConfig result = resolver.resolve();
-
-            assertEquals(EmailConfigSource.NONE, result.source());
-            assertFalse(result.valid());
-            assertNull(result.config());
+            RuntimeException ex = assertThrows(RuntimeException.class, resolver::resolve);
+            assertEquals("db down", ex.getMessage());
             verify(db, times(1)).load();
         }
     }

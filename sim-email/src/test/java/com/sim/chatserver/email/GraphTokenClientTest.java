@@ -156,7 +156,7 @@ class GraphTokenClientTest {
         when(config.clientSecret()).thenReturn("secret-1");
 
         HttpsURLConnection conn = mock(HttpsURLConnection.class);
-        when(conn.getOutputStream()).thenThrow(new RuntimeException("boom"));
+        when(conn.getOutputStream()).thenThrow(new IllegalArgumentException("boom"));
 
         try (MockedConstruction<URL> mocked = mockConstruction(URL.class,
                 (mock, context) -> when(mock.openConnection()).thenReturn(conn))) {

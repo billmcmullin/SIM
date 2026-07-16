@@ -1,4 +1,5 @@
 // widget_review.js
+/* global XMLHttpRequest, HTMLElement */
 import {
     getJson,
     postJson,
@@ -100,7 +101,9 @@ const state = {
 
 function reorderReportSections(markdown) {
     const md = String(markdown || "");
-    if (!md.trim()) return md;
+    if (!md.trim()) {
+        return md;
+    }
 
     const desiredOrder = [
         "Executive Chat Analysis",
@@ -126,7 +129,9 @@ function reorderReportSections(markdown) {
         const start = i;
         i++;
 
-        while (i < lines.length && !/^##\s+/.test(lines[i])) i++;
+        while (i < lines.length && !/^##\s+/.test(lines[i])) {
+            i++;
+        }
         const end = i;
 
         sections.push({
@@ -136,18 +141,24 @@ function reorderReportSections(markdown) {
         });
     }
 
-    if (!sections.length) return md;
+    if (!sections.length) {
+        return md;
+    }
 
     const desiredKeys = desiredOrder.map((s) => s.toLowerCase());
     const byKey = new Map(sections.map((s) => [s.key, s]));
 
     const ordered = [];
     for (const k of desiredKeys) {
-        if (byKey.has(k)) ordered.push(byKey.get(k).content);
+        if (byKey.has(k)) {
+            ordered.push(byKey.get(k).content);
+        }
     }
 
     for (const s of sections) {
-        if (!desiredKeys.includes(s.key)) ordered.push(s.content);
+        if (!desiredKeys.includes(s.key)) {
+            ordered.push(s.content);
+        }
     }
 
     return ordered.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -269,13 +280,17 @@ function getCurrentReportMarkdown() {
 function setReportMarkdown(md) {
     state.lastReportMarkdown = String(md || "");
     const responseEl = byId("manualMessageResponse");
-    if (!responseEl) return;
+    if (!responseEl) {
+        return;
+    }
     renderMarkdown(responseEl, state.lastReportMarkdown || "No analysis yet.");
 }
 
 function setQuickPdfVisibility({ show, enabled }) {
     const btn = byId("quickPdfAfterAnalyzeBtn");
-    if (!btn) return;
+    if (!btn) {
+        return;
+    }
     btn.hidden = !show;
     btn.disabled = !enabled;
 }
@@ -353,7 +368,9 @@ export function showStatus(el, text, tone = "neutral") { renderStatusPill(el, te
 
 async function initPage() {
     const tbody = byId("widgetReviewBody");
-    if (!tbody) return;
+    if (!tbody) {
+        return;
+    }
 
     wireBasicUi();
     wireManualMessageUi();
@@ -377,9 +394,15 @@ async function initPage() {
             const p = raw.searchTerms.prompt || "";
             const r = raw.searchTerms.response || "";
             const parts = [];
-            if (g) parts.push(`global: "${escapeHtml(g)}"`);
-            if (p) parts.push(`prompt: "${escapeHtml(p)}"`);
-            if (r) parts.push(`response: "${escapeHtml(r)}"`);
+            if (g) {
+                parts.push(`global: "${escapeHtml(g)}"`);
+            }
+            if (p) {
+                parts.push(`prompt: "${escapeHtml(p)}"`);
+            }
+            if (r) {
+                parts.push(`response: "${escapeHtml(r)}"`);
+            }
             searchTermsDisplay.innerHTML = parts.length
                 ? `<span>Applied search terms: ${parts.join(" • ")}</span>`
                 : `<span>No search terms were applied.</span>`;
@@ -422,24 +445,31 @@ function wireBasicUi() {
         });
     }
 
-    if (prevBtn) prevBtn.addEventListener("click", () => {
-        state.page = Math.max(1, state.page - 1);
-        renderTable();
-    });
+    if (prevBtn) {
+        prevBtn.addEventListener("click", () => {
+            state.page = Math.max(1, state.page - 1);
+            renderTable();
+        });
+    }
 
-    if (nextBtn) nextBtn.addEventListener("click", () => {
-        const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
-        state.page = Math.min(totalPages, state.page + 1);
-        renderTable();
-    });
+    if (nextBtn) {
+        nextBtn.addEventListener("click", () => {
+            const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
+            state.page = Math.min(totalPages, state.page + 1);
+            renderTable();
+        });
+    }
 
     if (selectAllVisible) {
         selectAllVisible.addEventListener("change", () => {
             const checked = !!selectAllVisible.checked;
             for (const r of getCurrentPageRows()) {
                 const key = rowKey(r);
-                if (checked) state.selectedIds.add(key);
-                else state.selectedIds.delete(key);
+                if (checked) {
+                    state.selectedIds.add(key);
+                } else {
+                    state.selectedIds.delete(key);
+                }
             }
             renderTable();
         });
@@ -447,7 +477,9 @@ function wireBasicUi() {
 
     if (selectAllBtn) {
         selectAllBtn.addEventListener("click", () => {
-            for (const r of state.filteredRows) state.selectedIds.add(rowKey(r));
+            for (const r of state.filteredRows) {
+                state.selectedIds.add(rowKey(r));
+            }
             renderTable();
         });
     }
@@ -459,26 +491,51 @@ function wireBasicUi() {
         });
     }
 
-    if (exportCsvBtn) exportCsvBtn.addEventListener("click", async () => {
-        try { await exportSelected("csv"); } catch (e) { error("csv export failed", e); alert(e.message || "CSV export failed."); }
-    });
-    if (exportJsonBtn) exportJsonBtn.addEventListener("click", async () => {
-        try { await exportSelected("json"); } catch (e) { error("json export failed", e); alert(e.message || "JSON export failed."); }
-    });
-    if (exportTextBtn) exportTextBtn.addEventListener("click", async () => {
-        try { await exportSelected("text"); } catch (e) { error("text export failed", e); alert(e.message || "Text export failed."); }
-    });
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener("click", async () => {
+            try {
+                await exportSelected("csv");
+            } catch (e) {
+                error("csv export failed", e);
+                alert(e.message || "CSV export failed.");
+            }
+        });
+    }
+    if (exportJsonBtn) {
+        exportJsonBtn.addEventListener("click", async () => {
+            try {
+                await exportSelected("json");
+            } catch (e) {
+                error("json export failed", e);
+                alert(e.message || "JSON export failed.");
+            }
+        });
+    }
+    if (exportTextBtn) {
+        exportTextBtn.addEventListener("click", async () => {
+            try {
+                await exportSelected("text");
+            } catch (e) {
+                error("text export failed", e);
+                alert(e.message || "Text export failed.");
+            }
+        });
+    }
 
-    if (exportBtn) exportBtn.addEventListener("click", async () => {
-        let f = (exportFormatSel?.value || "csv").toLowerCase();
-        if (f === "pdf") f = "csv";
-        try {
-            await exportSelected(f);
-        } catch (e) {
-            error("export failed", e);
-            alert(e.message || "Export failed.");
-        }
-    });
+    if (exportBtn) {
+        exportBtn.addEventListener("click", async () => {
+            let f = (exportFormatSel?.value || "csv").toLowerCase();
+            if (f === "pdf") {
+                f = "csv";
+            }
+            try {
+                await exportSelected(f);
+            } catch (e) {
+                error("export failed", e);
+                alert(e.message || "Export failed.");
+            }
+        });
+    }
 }
 
 function wireManualMessageUi() {
@@ -490,7 +547,9 @@ function wireManualMessageUi() {
     const cancelBtn = byId("manualMessageCancelJobBtn");
     const quickPdfBtn = byId("quickPdfAfterAnalyzeBtn");
 
-    if (!toggleBtn || !section) return;
+    if (!toggleBtn || !section) {
+        return;
+    }
 
     const openSection = () => {
         section.hidden = false;
@@ -508,11 +567,16 @@ function wireManualMessageUi() {
 
     toggleBtn.addEventListener("click", () => {
         const isHidden = section.hidden || section.getAttribute("aria-hidden") === "true";
-        if (isHidden) openSection();
-        else closeSection();
+        if (isHidden) {
+            openSection();
+        } else {
+            closeSection();
+        }
     });
 
-    if (closeBtn) closeBtn.addEventListener("click", closeSection);
+    if (closeBtn) {
+        closeBtn.addEventListener("click", closeSection);
+    }
 
     if (clearBtn) {
         clearBtn.addEventListener("click", () => {
@@ -528,7 +592,9 @@ function wireManualMessageUi() {
 
     if (cancelBtn) {
         cancelBtn.addEventListener("click", async () => {
-            if (!state.activeJobId) return;
+            if (!state.activeJobId) {
+                return;
+            }
             try {
                 await cancelJob(state.activeJobId);
                 setManualStatus("Stop requested.");
@@ -550,7 +616,9 @@ function wireManualMessageUi() {
         });
     }
 
-    if (sendBtn) sendBtn.addEventListener("click", onManualMessageSend);
+    if (sendBtn) {
+        sendBtn.addEventListener("click", onManualMessageSend);
+    }
 }
 
 function wireDetailCardUi() {
@@ -561,7 +629,9 @@ function wireDetailCardUi() {
     if (promptBtn) {
         promptBtn.addEventListener("click", async () => {
             const row = getActiveDetailRow();
-            if (!row) return;
+            if (!row) {
+                return;
+            }
             await translateText(row.prompt || "", langSel?.value || "en", "promptTranslationMeta", "promptTranslationOutput", "Prompt");
         });
     }
@@ -569,7 +639,9 @@ function wireDetailCardUi() {
     if (responseBtn) {
         responseBtn.addEventListener("click", async () => {
             const row = getActiveDetailRow();
-            if (!row) return;
+            if (!row) {
+                return;
+            }
             await translateText(row.response || "", langSel?.value || "en", "responseTranslationMeta", "responseTranslationOutput", "Response");
         });
     }
@@ -583,7 +655,9 @@ async function onManualMessageSend() {
     const useAsync = true;
 
     if (!selectedEntries.length) {
-        if (statusEl) statusEl.textContent = "Select at least one chat entry.";
+        if (statusEl) {
+            statusEl.textContent = "Select at least one chat entry.";
+        }
         return;
     }
 
@@ -592,7 +666,9 @@ async function onManualMessageSend() {
         resetProgressUi();
         setQuickPdfVisibility({ show: true, enabled: false });
 
-        if (statusEl) statusEl.textContent = "Submitting analysis job…";
+        if (statusEl) {
+            statusEl.textContent = "Submitting analysis job…";
+        }
         setReportMarkdown("");
 
         const { status, data } = await sendManualMessage({
@@ -607,7 +683,9 @@ async function onManualMessageSend() {
 
         if (useAsync && (status === 202 || data?.status === "accepted")) {
             const jobId = data?.jobId || "";
-            if (!jobId) throw new Error("Job accepted but no jobId returned.");
+            if (!jobId) {
+                throw new Error("Job accepted but no jobId returned.");
+            }
 
             state.activeJobId = jobId;
             state.jobPollStartedAt = Date.now();
@@ -615,7 +693,9 @@ async function onManualMessageSend() {
             toggleCancelButton(true);
             showProgressBlock(true);
 
-            if (statusEl) statusEl.textContent = `Job accepted (${jobId.slice(0, 8)}…). Starting…`;
+            if (statusEl) {
+                statusEl.textContent = `Job accepted (${jobId.slice(0, 8)}…). Starting…`;
+            }
             startJobPolling(jobId);
             return;
         }
@@ -623,7 +703,9 @@ async function onManualMessageSend() {
         const responseText =
             data?.textResponse || data?.response || data?.message || data?.answer || data?.output || data?.raw || "No response returned.";
         setReportMarkdown(reorderReportSections(String(responseText)));
-        if (statusEl) statusEl.textContent = "Finished.";
+        if (statusEl) {
+            statusEl.textContent = "Finished.";
+        }
         setQuickPdfVisibility({ show: true, enabled: !!String(responseText || "").trim() });
     } catch (e) {
         const requestId = e?.data?.requestId || e?.requestId || "";
@@ -705,7 +787,9 @@ function applyJobStatusToUi(payload) {
     const progress = payload?.progress || null;
     const coverageObj = payload?.coverage || null;
 
-    if (!job) return;
+    if (!job) {
+        return;
+    }
 
     showProgressBlock(true);
 
@@ -755,7 +839,9 @@ function applyJobStatusToUi(payload) {
     );
 
     const synthParsed = parseSynthesisFromActivity(activity);
-    if (synthParsed) state.synth = { ...state.synth, ...synthParsed };
+    if (synthParsed) {
+        state.synth = { ...state.synth, ...synthParsed };
+    }
 
     if (!Number.isFinite(progressPercent)) {
         progressPercent = deriveWeightedProgress({
@@ -776,7 +862,9 @@ function applyJobStatusToUi(payload) {
     }
 
     progressPercent = Math.max(0, Math.min(100, Math.round(progressPercent)));
-    if (progressBar) progressBar.value = progressPercent;
+    if (progressBar) {
+        progressBar.value = progressPercent;
+    }
 
     const showBatchCounts = totalBatches > 0;
     const batchSegment = showBatchCounts
@@ -804,12 +892,16 @@ function applyJobStatusToUi(payload) {
         missingText.style.display = "none";
     }
 
-    if (phasePill) phasePill.textContent = humanizePhase(phase);
+    if (phasePill) {
+        phasePill.textContent = humanizePhase(phase);
+    }
 
     const fallbackActivity = showBatchCounts
         ? `Working on batch ${Math.max(1, completedBatches + (done ? 0 : 1))} of ${Math.max(1, totalBatches)}...`
         : "Preparing analysis...";
-    if (activityText) activityText.textContent = activity || fallbackActivity;
+    if (activityText) {
+        activityText.textContent = activity || fallbackActivity;
+    }
 
     if (batchText) {
         batchText.textContent = showBatchCounts
@@ -817,17 +909,29 @@ function applyJobStatusToUi(payload) {
             : "—";
     }
 
-    if (runtimeText) runtimeText.textContent = formatDurationHms(Math.max(0, Date.now() - state.jobPollStartedAt));
-    if (lastUpdateText) lastUpdateText.textContent = new Date().toLocaleTimeString();
+    if (runtimeText) {
+        runtimeText.textContent = formatDurationHms(Math.max(0, Date.now() - state.jobPollStartedAt));
+    }
+    if (lastUpdateText) {
+        lastUpdateText.textContent = new Date().toLocaleTimeString();
+    }
 
     if (synthText || synthProgress) {
         const p = String(phase || "").toUpperCase();
         if (done || p !== "REDUCE") {
-            if (synthText) synthText.textContent = "";
-            if (synthProgress) synthProgress.textContent = "";
+            if (synthText) {
+                synthText.textContent = "";
+            }
+            if (synthProgress) {
+                synthProgress.textContent = "";
+            }
         } else {
-            if (synthText) synthText.textContent = formatSynthesisLine(phase, state.synth) || "Finalizing report...";
-            if (synthProgress) synthProgress.textContent = `${deriveSynthesisPercent(state.synth)}%`;
+            if (synthText) {
+                synthText.textContent = formatSynthesisLine(phase, state.synth) || "Finalizing report...";
+            }
+            if (synthProgress) {
+                synthProgress.textContent = `${deriveSynthesisPercent(state.synth)}%`;
+            }
         }
     }
 
@@ -869,7 +973,9 @@ function applyJobStatusToUi(payload) {
 
 function showProgressBlock(show) {
     const block = byId("manualMessageProgressBlock");
-    if (block) block.hidden = !show;
+    if (block) {
+        block.hidden = !show;
+    }
 }
 
 function resetProgressUi() {
@@ -887,21 +993,41 @@ function resetProgressUi() {
     const synthText = byId("manualMessageSynthesisText");
     const synthProgress = byId("manualMessageSynthesisProgress");
 
-    if (progressBar) progressBar.value = 0;
-    if (progressText) progressText.textContent = "Waiting to start…";
-    if (coverageText) coverageText.textContent = "";
+    if (progressBar) {
+        progressBar.value = 0;
+    }
+    if (progressText) {
+        progressText.textContent = "Waiting to start…";
+    }
+    if (coverageText) {
+        coverageText.textContent = "";
+    }
     if (missingText) {
         missingText.textContent = "";
         missingText.style.display = "none";
     }
 
-    if (phasePill) phasePill.textContent = "Waiting to start";
-    if (activityText) activityText.textContent = "Waiting for first update…";
-    if (batchText) batchText.textContent = "—";
-    if (runtimeText) runtimeText.textContent = "00:00:00";
-    if (lastUpdateText) lastUpdateText.textContent = "—";
-    if (synthText) synthText.textContent = "";
-    if (synthProgress) synthProgress.textContent = "";
+    if (phasePill) {
+        phasePill.textContent = "Waiting to start";
+    }
+    if (activityText) {
+        activityText.textContent = "Waiting for first update…";
+    }
+    if (batchText) {
+        batchText.textContent = "—";
+    }
+    if (runtimeText) {
+        runtimeText.textContent = "00:00:00";
+    }
+    if (lastUpdateText) {
+        lastUpdateText.textContent = "—";
+    }
+    if (synthText) {
+        synthText.textContent = "";
+    }
+    if (synthProgress) {
+        synthProgress.textContent = "";
+    }
 
     state.synth = createInitialSynthState();
     showProgressBlock(false);
@@ -909,7 +1035,9 @@ function resetProgressUi() {
 
 function toggleCancelButton(enabled) {
     const cancelBtn = byId("manualMessageCancelJobBtn");
-    if (cancelBtn) cancelBtn.disabled = !enabled;
+    if (cancelBtn) {
+        cancelBtn.disabled = !enabled;
+    }
 }
 
 function setManualStatus(text) {
@@ -944,7 +1072,9 @@ function getJsonViaXhr(url) {
         xhr.setRequestHeader("Accept", "application/json");
 
         xhr.onreadystatechange = () => {
-            if (xhr.readyState !== 4) return;
+            if (xhr.readyState !== 4) {
+                return;
+            }
 
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {
@@ -971,7 +1101,9 @@ function applyFilterAndRender() {
     const q = (byId("reviewSearchInput")?.value || "").trim().toLowerCase();
     state.filteredRows = filterRows(state.rows, q);
     renderTable();
-    if (state.manualSectionOpen) updateManualSelectedCount();
+    if (state.manualSectionOpen) {
+        updateManualSelectedCount();
+    }
 }
 
 function renderTable() {
@@ -979,16 +1111,22 @@ function renderTable() {
     const pageInfo = byId("pageInfo");
     const selectAllVisible = byId("reviewSelectAll");
 
-    if (!tbody) return;
+    if (!tbody) {
+        return;
+    }
 
     if (!state.filteredRows.length) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-row">No chats found.</td></tr>`;
-        if (pageInfo) pageInfo.textContent = "0 results";
+        if (pageInfo) {
+            pageInfo.textContent = "0 results";
+        }
         if (selectAllVisible) {
             selectAllVisible.checked = false;
             selectAllVisible.indeterminate = false;
         }
-        if (state.manualSectionOpen) updateManualSelectedCount();
+        if (state.manualSectionOpen) {
+            updateManualSelectedCount();
+        }
         return;
     }
 
@@ -1018,27 +1156,44 @@ function renderTable() {
         cb.addEventListener("click", (ev) => ev.stopPropagation());
         cb.addEventListener("change", () => {
             const key = cb.getAttribute("data-key") || "";
-            if (!key) return;
-            if (cb.checked) state.selectedIds.add(key);
-            else state.selectedIds.delete(key);
+            if (!key) {
+                return;
+            }
+            if (cb.checked) {
+                state.selectedIds.add(key);
+            } else {
+                state.selectedIds.delete(key);
+            }
             syncVisibleSelectAll();
-            if (state.manualSectionOpen) updateManualSelectedCount();
+            if (state.manualSectionOpen) {
+                updateManualSelectedCount();
+            }
         });
     });
 
     tbody.onclick = (ev) => {
         const target = ev.target;
-        if (!(target instanceof HTMLElement)) return;
-        if (target.closest("input.row-select")) return;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+        if (target.closest("input.row-select")) {
+            return;
+        }
 
         const tr = target.closest("tr[data-row-key]");
-        if (!tr) return;
+        if (!tr) {
+            return;
+        }
 
         const key = tr.getAttribute("data-row-key") || "";
-        if (!key) return;
+        if (!key) {
+            return;
+        }
 
         const row = state.rows.find((x) => rowKey(x) === key);
-        if (!row) return;
+        if (!row) {
+            return;
+        }
 
         openDetailCard(row);
         renderTable();
@@ -1049,7 +1204,9 @@ function renderTable() {
     }
 
     syncVisibleSelectAll();
-    if (state.manualSectionOpen) updateManualSelectedCount();
+    if (state.manualSectionOpen) {
+        updateManualSelectedCount();
+    }
 }
 
 function openDetailCard(row) {
@@ -1058,7 +1215,9 @@ function openDetailCard(row) {
     const prompt = byId("detailPrompt");
     const response = byId("detailResponse");
 
-    if (!card || !title || !prompt || !response) return;
+    if (!card || !title || !prompt || !response) {
+        return;
+    }
 
     state.activeDetailKey = rowKey(row);
 
@@ -1073,7 +1232,9 @@ function openDetailCard(row) {
 }
 
 function getActiveDetailRow() {
-    if (!state.activeDetailKey) return null;
+    if (!state.activeDetailKey) {
+        return null;
+    }
     return state.rows.find((r) => rowKey(r) === state.activeDetailKey) || null;
 }
 
@@ -1089,13 +1250,17 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
     const out = byId(outId);
 
     if (!sourceText || !sourceText.trim()) {
-        if (meta) meta.textContent = `${label} is empty; nothing to translate.`;
+        if (meta) {
+            meta.textContent = `${label} is empty; nothing to translate.`;
+        }
         if (out) { out.textContent = ""; out.style.display = "none"; }
         return;
     }
 
     try {
-        if (meta) meta.textContent = "Translating…";
+        if (meta) {
+            meta.textContent = "Translating…";
+        }
         if (out) { out.textContent = ""; out.style.display = "none"; }
 
         const res = await fetch(DEFAULTS.translateEndpoint, {
@@ -1121,21 +1286,27 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
         const src = data.sourceLang || "auto";
         const dst = data.targetLang || (targetLang || "en");
 
-        if (meta) meta.textContent = `${label}: ${src} → ${dst}`;
+        if (meta) {
+            meta.textContent = `${label}: ${src} → ${dst}`;
+        }
         if (out) {
             out.textContent = translated || "(empty translation)";
             out.style.display = "block";
         }
     } catch (e) {
         warn("translation failed", e);
-        if (meta) meta.textContent = `Translation failed: ${e?.message || "Unknown error"}`;
+        if (meta) {
+            meta.textContent = `Translation failed: ${e?.message || "Unknown error"}`;
+        }
         if (out) { out.textContent = ""; out.style.display = "none"; }
     }
 }
 
 function syncVisibleSelectAll() {
     const selectAllVisible = byId("reviewSelectAll");
-    if (!selectAllVisible) return;
+    if (!selectAllVisible) {
+        return;
+    }
 
     const pageRows = getCurrentPageRows();
     if (!pageRows.length) {
@@ -1146,7 +1317,9 @@ function syncVisibleSelectAll() {
 
     let selectedCount = 0;
     for (const r of pageRows) {
-        if (state.selectedIds.has(rowKey(r))) selectedCount++;
+        if (state.selectedIds.has(rowKey(r))) {
+            selectedCount++;
+        }
     }
 
     selectAllVisible.checked = selectedCount === pageRows.length;
@@ -1163,23 +1336,33 @@ function getSelectedEntries() {
 
 function updateManualSelectedCount() {
     const el = byId("manualMessageSelectedCount");
-    if (!el) return;
+    if (!el) {
+        return;
+    }
     el.textContent = `Selected chats: ${getSelectedEntries().length}`;
 }
 
 function renderLoadingRow(text) {
     const tbody = byId("widgetReviewBody");
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
+    }
 }
 
 function renderErrorRow(text) {
     const tbody = byId("widgetReviewBody");
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-row">${escapeHtml(text)}</td></tr>`;
+    }
 }
 
 function humanizeLoadError(e) {
-    if (e instanceof TypeError) return "Network/CSP blocked the data request. Check browser console + server/proxy logs.";
-    if (typeof e?.status === "number") return `Failed to load selected chats (HTTP ${e.status}).`;
+    if (e instanceof TypeError) {
+        return "Network/CSP blocked the data request. Check browser console + server/proxy logs.";
+    }
+    if (typeof e?.status === "number") {
+        return `Failed to load selected chats (HTTP ${e.status}).`;
+    }
     return "Failed to load selected chats.";
 }
 
