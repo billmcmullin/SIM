@@ -198,8 +198,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+        if (req == null) {
             return false;
         }
         long len = req.getContentLengthLong();

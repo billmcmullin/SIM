@@ -10,10 +10,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.SelectedEntry;
 
 public class ReviewContextBuilderService {
+
+    private static final Logger log = Logger.getLogger(ReviewContextBuilderService.class.getName());
 
     private static final int DEFAULT_MAX_CONTEXT_CHARS = 52000;
     private static final int MAX_TERMS = 12;
@@ -646,6 +650,7 @@ public class ReviewContextBuilderService {
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException ex) {
+            log.log(Level.FINE, "SHA-256 algorithm unavailable, falling back to hashCode", ex);
             return Integer.toHexString((value == null ? "" : value).hashCode());
         }
     }

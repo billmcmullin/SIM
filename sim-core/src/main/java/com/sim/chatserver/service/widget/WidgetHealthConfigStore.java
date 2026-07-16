@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.Normalizer;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -222,7 +223,7 @@ public class WidgetHealthConfigStore {
         cfg.setRequestCookie(trimToNull(readSanitizedDbText(rs, "request_cookie", 4096)));
         cfg.setUpdatedBy(trimToNull(readSanitizedDbText(rs, "updated_by", 100)));
 
-        Timestamp ts = rs.getTimestamp("updated_at");
+        Timestamp ts = readSafeTimestamp(rs, "updated_at");
         cfg.setUpdatedAt(ts == null ? null : ts.toInstant());
 
         return normalize(cfg);
@@ -280,20 +281,37 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        return value == null ? 0 : Math.max(0, value);
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
+            return 0;
+        }
+        return Math.max(0, value);
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        if (value == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return fallback;
         }
         return value > 0 ? value : fallback;
     }
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        return sanitizeDbText(rs.getObject(column, String.class), maxChars);
+        return sanitizeDbText(rs.getString(column), maxChars);
+    }
+
+    private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
+        Timestamp value = rs.getTimestamp(column);
+        if (value == null) {
+            return null;
+        }
+        try {
+            Instant instant = value.toInstant();
+            return instant == null ? null : Timestamp.from(instant);
+        } catch (DateTimeException | IllegalArgumentException e) {
+            log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
+            return null;
+        }
     }
 
     private String sanitizeDbText(String s, int maxChars) {

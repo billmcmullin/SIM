@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,8 +44,9 @@ public class TermsStore {
                 if (meta != null && meta.getDatabaseProductName() != null) {
                     product = meta.getDatabaseProductName().toLowerCase();
                 }
-            } catch (Exception e) {
-                // defensive: fall through to generic SQL
+            } catch (SQLException e) {
+                // Defensive fallback to generic SQL when metadata is unavailable.
+                log.log(Level.FINE, "Unable to resolve database product metadata", e);
                 product = "";
             }
 
@@ -116,8 +118,8 @@ public class TermsStore {
             ps.setString(3, sanitizedPattern);
             ps.setString(4, sanitizedType);
             ps.executeUpdate();
-            return;
         } catch (SQLException e) {
+            log.log(Level.FINE, "Upsert failed; trying update+insert fallback for term {0}", sanitizedName);
             try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement upd = conn.prepareStatement(
                     "UPDATE term_definition SET description = ?, match_pattern = ?, match_type = ?, system_flag = TRUE WHERE name = ?")) {
                 upd.setString(1, sanitizedDescription);
@@ -147,11 +149,11 @@ public class TermsStore {
                 "SELECT id, name, description, match_pattern, match_type, system_flag FROM term_definition ORDER BY name ASC"); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 terms.add(new TermDefinition(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        rs.getString("description"),
-                        rs.getString("match_pattern"),
-                        rs.getString("match_type"),
+                        readNonNegativeLong(rs, "id"),
+                        readSafeDbText(rs, "name", 1024),
+                        readSafeDbText(rs, "description", 4096),
+                        readSafeDbText(rs, "match_pattern", 8192),
+                        readSafeDbText(rs, "match_type", 64),
                         rs.getBoolean("system_flag")
                 ));
             }
@@ -177,6 +179,7 @@ public class TermsStore {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.FINE, "Create term RETURNING fallback path used for term {0}", sanitizedName);
             try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO term_definition (name, description, match_pattern, match_type, system_flag) VALUES (?, ?, ?, ?, FALSE)")) {
                 ps.setString(1, sanitizedName);
@@ -220,6 +223,7 @@ public class TermsStore {
                 }
             }
         } catch (SQLException e) {
+            log.log(Level.FINE, "Update term RETURNING fallback path used for id {0}", id);
             try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement(
                     "UPDATE term_definition SET name = ?, description = ?, match_pattern = ?, match_type = ? WHERE id = ?")) {
                 ps.setString(1, sanitizedName);
@@ -323,11 +327,31 @@ public class TermsStore {
                         }
                     }
                 }
-            } catch (Exception e) {
-                log.warning("Failed to test term '" + td.getName() + "': " + e.getMessage());
+            } catch (IllegalArgumentException e) {
+                log.log(Level.FINE, "Failed to test term '" + td.getName() + "'", e);
             }
         }
         return bestTerm;
+    }
+
+    private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        if (rs.wasNull()) {
+            return 0L;
+        }
+        return Math.max(0L, value);
+    }
+
+    private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        String value = rs.getString(column);
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+        if (normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 
     private static String normalizeMatchType(String type) {

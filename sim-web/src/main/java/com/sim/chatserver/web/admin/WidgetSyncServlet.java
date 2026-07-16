@@ -23,7 +23,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1274,8 +1273,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }

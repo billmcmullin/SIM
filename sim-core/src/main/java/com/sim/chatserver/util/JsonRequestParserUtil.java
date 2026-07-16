@@ -124,7 +124,8 @@ public final class JsonRequestParserUtil {
                 default ->
                     defaultValue;
             };
-        } catch (RuntimeException ex) {
+        } catch (ClassCastException ex) {
+            log.log(Level.FINE, "Invalid boolean JSON value type for key " + key, ex);
             return defaultValue;
         }
     }

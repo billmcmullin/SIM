@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -259,12 +260,12 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = rs.getString(columnIndex);
+        String raw = rs.getObject(columnIndex, String.class);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        byte[] raw = rs.getBytes(columnIndex);
+        byte[] raw = rs.getObject(columnIndex, byte[].class);
         return sanitizeBinary(raw);
     }
 
@@ -276,7 +277,8 @@ public class DatabaseBackupServlet extends HttpServlet {
         try {
             java.time.Instant instant = value.toInstant();
             return instant == null ? null : Timestamp.from(instant);
-        } catch (RuntimeException ex) {
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
             return null;
         }
     }
@@ -289,7 +291,8 @@ public class DatabaseBackupServlet extends HttpServlet {
         try {
             LocalDate localDate = value.toLocalDate();
             return localDate == null ? null : java.sql.Date.valueOf(localDate);
-        } catch (RuntimeException ex) {
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Ignoring invalid date cell", ex);
             return null;
         }
     }

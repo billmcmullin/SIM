@@ -81,7 +81,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             } catch (SQLException e) {
                 log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
                 widgets = List.of();
-            } catch (RuntimeException e) {
+            } catch (IllegalArgumentException | IllegalStateException e) {
                 log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
                 widgets = List.of();
             }
@@ -100,7 +100,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             Map<String, SessionLabelStore.SessionLabel> labels;
             try {
                 labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
-            } catch (RuntimeException ex) {
+            } catch (IllegalArgumentException | IllegalStateException ex) {
                 log.log(Level.WARNING, "Unable to resolve session display labels", ex);
                 labels = Map.of();
             }
