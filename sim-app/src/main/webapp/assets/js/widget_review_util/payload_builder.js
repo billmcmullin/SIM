@@ -64,7 +64,9 @@ export function buildExportPayload({
 
     if (normalizedFormat === "pdf") {
         const md = String(reportMarkdown || "").trim();
-        if (md) payload.reportMarkdown = md;
+        if (md) {
+            payload.reportMarkdown = md;
+        }
     }
 
     return payload;

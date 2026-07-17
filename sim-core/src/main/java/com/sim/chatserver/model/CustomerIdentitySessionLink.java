@@ -15,7 +15,7 @@ public class CustomerIdentitySessionLink {
         return sessionId;
     }
 
-    void setSessionId(String sessionId) {
+    final void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 
@@ -23,7 +23,7 @@ public class CustomerIdentitySessionLink {
         return identityId;
     }
 
-    void setIdentityId(Long identityId) {
+    final void setIdentityId(Long identityId) {
         this.identityId = identityId;
     }
 
@@ -31,7 +31,7 @@ public class CustomerIdentitySessionLink {
         return displayNameSnapshot;
     }
 
-    void setDisplayNameSnapshot(String displayNameSnapshot) {
+    final void setDisplayNameSnapshot(String displayNameSnapshot) {
         this.displayNameSnapshot = displayNameSnapshot;
     }
 
@@ -39,7 +39,7 @@ public class CustomerIdentitySessionLink {
         return contactEmailSnapshot;
     }
 
-    void setContactEmailSnapshot(String contactEmailSnapshot) {
+    final void setContactEmailSnapshot(String contactEmailSnapshot) {
         this.contactEmailSnapshot = contactEmailSnapshot;
     }
 
@@ -47,7 +47,7 @@ public class CustomerIdentitySessionLink {
         return linkedAt;
     }
 
-    void setLinkedAt(OffsetDateTime linkedAt) {
+    final void setLinkedAt(OffsetDateTime linkedAt) {
         this.linkedAt = linkedAt;
     }
 
@@ -55,7 +55,7 @@ public class CustomerIdentitySessionLink {
         return updatedAt;
     }
 
-    void setUpdatedAt(OffsetDateTime updatedAt) {
+    final void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
 }

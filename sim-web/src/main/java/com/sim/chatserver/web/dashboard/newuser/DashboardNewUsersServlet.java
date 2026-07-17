@@ -64,7 +64,6 @@ public class DashboardNewUsersServlet extends HttpServlet {
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final int DEFAULT_DAYS = 7;
-    private static final Set<Integer> ALLOWED_DAYS = Set.of(7, 14, 30, 90);
 
     private static final String PATH_PAGE = "/dashboard/new-users";
     private static final String PATH_DATA = "/dashboard/new-users/data";
@@ -401,7 +400,10 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
         try {
             int d = Integer.parseInt(value.trim());
-            return ALLOWED_DAYS.contains(d) ? OptionalInt.of(d) : OptionalInt.empty();
+            return switch (d) {
+                case 7, 14, 30, 90 -> OptionalInt.of(d);
+                default -> OptionalInt.empty();
+            };
         } catch (NumberFormatException e) {
             log.log(Level.FINE, "Invalid days parameter", e);
             return OptionalInt.empty();
@@ -502,7 +504,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+        String[] values = parameterMap.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -563,7 +566,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final Map<LocalDate, Integer> byDay = new LinkedHashMap<>();
         final List<LatestRow> latest = new ArrayList<>();
 
-        Metrics(LocalDate start, LocalDate end) {
+        private Metrics(LocalDate start, LocalDate end) {
             this.start = start;
             this.end = end;
             long days = ChronoUnit.DAYS.between(start, end);
@@ -572,7 +575,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
         }
 
-        void incrementDay(LocalDate day) {
+        private void incrementDay(LocalDate day) {
             if (day == null || day.isBefore(start) || day.isAfter(end)) {
                 return;
             }
@@ -580,7 +583,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             byDay.put(day, next);
         }
 
-        String toTrendJson() {
+        private String toTrendJson() {
             JsonArrayBuilder labels = Json.createArrayBuilder();
             JsonArrayBuilder values = Json.createArrayBuilder();
             byDay.forEach((d, c) -> {
@@ -599,7 +602,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
         final List<LatestRow> rows;
 
-        DayResult(List<LatestRow> rows) {
+        private DayResult(List<LatestRow> rows) {
             this.rows = rows;
         }
     }
@@ -612,7 +615,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final int totalChats;
         final String chatEntriesUrl;
 
-        LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
+        private LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
             this.display = display;
             this.rawSessionId = rawSessionId;
             this.firstSeen = firstSeen;

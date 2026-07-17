@@ -6,7 +6,9 @@
 export function trimToBudget(text, maxChars) {
     const s = (text ?? "").toString();
     const n = Number(maxChars);
-    if (!Number.isFinite(n) || n <= 0) return "";
+    if (!Number.isFinite(n) || n <= 0) {
+        return "";
+    }
     return s.length <= n ? s : s.slice(0, n);
 }
 
@@ -23,7 +25,9 @@ export function compressWhitespace(text) {
  */
 export function estimateTokens(text) {
     const s = (text ?? "").toString().trim();
-    if (!s) return 0;
+    if (!s) {
+        return 0;
+    }
     return Math.ceil(s.length / 4);
 }
 
@@ -39,7 +43,9 @@ export function normalizeTextForBudget(text, maxChars = 12000) {
  */
 export function trimToTokenBudget(text, maxTokens = 3000) {
     const n = Number(maxTokens);
-    if (!Number.isFinite(n) || n <= 0) return "";
+    if (!Number.isFinite(n) || n <= 0) {
+        return "";
+    }
     const maxChars = n * 4;
     return trimToBudget((text ?? "").toString(), maxChars);
 }
@@ -50,7 +56,7 @@ export function trimToTokenBudget(text, maxTokens = 3000) {
 export function budgetText(text, { maxChars = 12000, maxTokens = null } = {}) {
     let normalized = compressWhitespace(text);
 
-    if (maxTokens != null) {
+    if (maxTokens !== null && maxTokens !== undefined) {
         normalized = trimToTokenBudget(normalized, maxTokens);
     }
 
@@ -61,6 +67,6 @@ export function budgetText(text, { maxChars = 12000, maxTokens = null } = {}) {
         chars: normalized.length,
         tokensEstimated: estimateTokens(normalized),
         maxChars: Number(maxChars),
-        maxTokens: maxTokens == null ? null : Number(maxTokens)
+        maxTokens: (maxTokens === null || maxTokens === undefined) ? null : Number(maxTokens)
     };
 }

@@ -1,6 +1,7 @@
 // src/main/java/com/sim/chatserver/service/WidgetReviewMapReduceOrchestrator.java
 package com.sim.chatserver.service;
 
+import java.io.IOException;
 import java.io.StringReader;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -403,7 +404,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     futures.add(CompletableFuture.supplyAsync(() -> {
                         try {
                             return executeMapBatchWithAdaptiveRebatchAndRecovery(apiKey, attachments, req, requestId, rFinal);
-                        } catch (Exception ex) {
+                        } catch (IOException | InterruptedException ex) {
                             throw new CompletionException(ex);
                         }
                     }, executor));
@@ -519,7 +520,7 @@ public class WidgetReviewMapReduceOrchestrator {
             int totalSelected, int totalBatches, List<String> mapOutputs, List<Integer> failedBatches, String requestId,
             boolean coverageComplete, List<String> missingChatIds, List<String> allSelectedChatIds, List<String> usedChatIds,
             ProgressListener listener
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
 
         List<String> current = mapOutputs == null ? List.of() : new ArrayList<>(mapOutputs);
         int level = 1;
@@ -528,10 +529,11 @@ public class WidgetReviewMapReduceOrchestrator {
         while (current.size() > 1 && level <= reduceMaxLevels) {
             boolean levelSucceeded = false;
             int localChunk = chunkSize;
+            List<String> nextLevel = new ArrayList<>();
 
             while (!levelSucceeded && localChunk >= reduceMinChunkSize) {
                 List<List<String>> chunks = chunk(current, localChunk);
-                List<String> nextLevel = new ArrayList<>(chunks.size());
+                nextLevel.clear();
                 boolean anyChunkFailed = false;
 
                 for (int i = 0; i < chunks.size(); i++) {
@@ -570,7 +572,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 if (anyChunkFailed) {
                     localChunk = localChunk / 2;
                 } else {
-                    current = nextLevel;
+                    current = new ArrayList<>(nextLevel);
                     levelSucceeded = true;
                     listener.onReduceLevelCompleted(requestId, level, chunks.size(), nextLevel.size());
                 }
@@ -680,7 +682,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private MapBatchExecutionResult executeMapBatchWithAdaptiveRebatchAndRecovery(
             String apiKey, JsonArray attachments, MapBatchRequest req, String requestId, int round
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
 
         MapBatchExecutionResult primary = executeMapBatchWithAdaptiveRebatch(apiKey, attachments, req, requestId, round);
 
@@ -778,7 +780,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private MapBatchExecutionResult executeMapBatchWithAdaptiveRebatch(
             String apiKey, JsonArray attachments, MapBatchRequest req, String requestId, int round
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
         try {
             return executeMapBatch(apiKey, attachments, req, requestId);
         } catch (IllegalArgumentException ex) {
@@ -899,9 +901,9 @@ public class WidgetReviewMapReduceOrchestrator {
         }
     }
 
-        private MapBatchExecutionResult executeMapBatch(
+    private MapBatchExecutionResult executeMapBatch(
             String apiKey, JsonArray attachments, MapBatchRequest req, String requestId
-        ) throws Exception {
+        ) throws IOException, InterruptedException {
         long start = System.currentTimeMillis();
 
         String deterministicHeader = contextBuilderService.buildBatchDeterministicHeader(
@@ -1016,7 +1018,7 @@ public class WidgetReviewMapReduceOrchestrator {
             int totalSelected, int totalBatches, List<String> mapOutputs, List<Integer> failedBatches, String requestId,
             boolean coverageComplete, List<String> missingChatIds, List<String> allSelectedChatIds, List<String> usedChatIds,
             boolean minimalHeader
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
 
         long start = System.currentTimeMillis();
 
@@ -1271,7 +1273,7 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                if (i != null && i.compareTo(0) > 0) {
+                if (i != null && i > 0) {
                     s.add(i);
                 }
             }

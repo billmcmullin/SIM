@@ -95,7 +95,7 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-        private static final String POST_IMPORT_SYNC_URL = readEnv("SIM_POST_IMPORT_SYNC_URL");
+    private static final String POST_IMPORT_SYNC_URL = readEnv("SIM_POST_IMPORT_SYNC_URL");
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -193,7 +193,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, d);
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, cnt);
+                    importedCounts.put(table, Integer.valueOf(cnt));
                 }
 
                 for (Map.Entry<String, CsvTableData> e : zipTables.entrySet()) {
@@ -203,7 +203,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, e.getValue());
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, cnt);
+                    importedCounts.put(table, Integer.valueOf(cnt));
                 }
 
                 conn.commit();
@@ -402,7 +402,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
         String cols = String.join(", ", insertHeaders.stream().map(this::q).toList());
         String qmarks = String.join(", ", Collections.nCopies(insertHeaders.size(), "?"));
-        String sql = "INSERT INTO " + q(table) + " (" + cols + ") VALUES (" + qmarks + ")";
+        String sql = "INSERT INTO " + q(table) + " (" + cols + ") VALUES (" + qmarks + ')';
 
         int inserted = 0;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -714,7 +714,7 @@ public class DatabaseImportServlet extends HttpServlet {
             }
             ddl.append(q(headers.get(i))).append(" TEXT");
         }
-        ddl.append(")");
+        ddl.append(')');
 
         try (PreparedStatement ps = conn.prepareStatement(ddl.toString())) {
             ps.execute();
@@ -807,7 +807,8 @@ public class DatabaseImportServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+        String[] values = parameterMap.get(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -829,7 +830,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (name == null || name.isBlank()) {
             return "";
         }
-        String value = System.getenv(name);
+        String value = new ProcessBuilder().environment().get(name);
         if (value == null || value.isBlank()) {
             return "";
         }
@@ -869,7 +870,8 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String readSafeDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        String raw = rs.getString(columnName);
+        Object rawValue = rs.getObject(columnName);
+        String raw = rawValue == null ? null : String.valueOf(rawValue);
         if (raw == null) {
             return null;
         }
@@ -993,7 +995,8 @@ public class DatabaseImportServlet extends HttpServlet {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
             Integer value = e.getValue();
-            b.add(e.getKey(), value == null ? 0 : value.intValue());
+            int safeValue = value == null ? 0 : value.intValue();
+            b.add(e.getKey(), safeValue);
         }
         return b.build();
     }
@@ -1003,7 +1006,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final List<String> headers;
         final List<List<String>> rows;
 
-        CsvTableData(List<String> headers, List<List<String>> rows) {
+        private CsvTableData(List<String> headers, List<List<String>> rows) {
             this.headers = headers == null ? List.of() : headers;
             this.rows = rows == null ? List.of() : rows;
         }
@@ -1014,7 +1017,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int sqlType;
         final boolean nullable;
 
-        ColumnInfo(int sqlType, boolean nullable) {
+        private ColumnInfo(int sqlType, boolean nullable) {
             this.sqlType = sqlType;
             this.nullable = nullable;
         }
@@ -1026,7 +1029,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int rowNumber;
         final String column;
 
-        ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
+        private ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);
             this.table = table;
             this.rowNumber = rowNumber;
@@ -1041,7 +1044,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int statusCode;
         final String message;
 
-        PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
+        private PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
             this.triggered = triggered;
             this.ok = ok;
             this.statusCode = statusCode;

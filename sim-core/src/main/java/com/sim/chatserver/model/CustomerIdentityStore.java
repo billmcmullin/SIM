@@ -43,7 +43,7 @@ public final class CustomerIdentityStore {
         }
     }
 
-    public static void ensureTables() throws SQLException {
+    private static void ensureTables() throws SQLException {
         try (Connection c = Database.getConnection()) {
             ensureIdentityTable(c);
             ensureSessionTable(c);
@@ -298,7 +298,7 @@ public final class CustomerIdentityStore {
                 while (rs.next()) {
                     CustomerIdentitySessionLink link = new CustomerIdentitySessionLink();
                     link.setSessionId(readSanitizedDbText(rs, "session_id", 256));
-                    link.setIdentityId(readNonNegativeLong(rs, "identity_id"));
+                    link.setIdentityId(readNonNegativeLongObject(rs, "identity_id"));
                     link.setDisplayNameSnapshot(readSanitizedDbText(rs, "display_name_snapshot", 512));
                     link.setContactEmailSnapshot(readSanitizedDbText(rs, "contact_email_snapshot", 512));
 
@@ -320,7 +320,7 @@ public final class CustomerIdentityStore {
 
     private static CustomerIdentity mapIdentity(ResultSet rs) throws SQLException {
         CustomerIdentity x = new CustomerIdentity();
-        x.setIdentityId(readNonNegativeLong(rs, "identity_id"));
+        x.setIdentityId(readNonNegativeLongObject(rs, "identity_id"));
         x.setCanonicalEmail(readSanitizedDbText(rs, "canonical_email", 512));
         x.setCanonicalName(readSanitizedDbText(rs, "canonical_name", 512));
         x.setSalesforceContactId(readSanitizedDbText(rs, "salesforce_contact_id", 256));
@@ -351,7 +351,7 @@ public final class CustomerIdentityStore {
         if (columnExists(conn, table, column)) {
             return;
         }
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD COLUMN " + q(column) + " " + sqlType)) {
+        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD COLUMN " + q(column) + ' ' + sqlType)) {
             ps.executeUpdate();
         }
     }
@@ -391,7 +391,7 @@ public final class CustomerIdentityStore {
         }
 
         try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD CONSTRAINT " + q(constraintName)
-                + " PRIMARY KEY (" + q(column) + ")")) {
+            + " PRIMARY KEY (" + q(column) + ')')) {
             ps.executeUpdate();
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to add primary key {0} on table {1}", new Object[]{constraintName, table});
@@ -461,7 +461,11 @@ public final class CustomerIdentityStore {
         if (ident == null || !SQL_IDENTIFIER.matcher(ident).matches()) {
             throw new IllegalArgumentException("Invalid SQL identifier");
         }
-        return "\"" + ident + "\"";
+        return new StringBuilder(ident.length() + 2)
+            .append('"')
+            .append(ident)
+            .append('"')
+            .toString();
     }
 
     private static boolean isBlank(String v) {
@@ -473,13 +477,16 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String raw = rs.getString(column);
+        String raw = rs.getObject(column, String.class);
         return sanitizeDbText(raw, maxChars);
     }
 
-    private static long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        long value = rs.getLong(column);
-        return Math.max(0L, value);
+    private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
+        Long value = rs.getObject(column, Long.class);
+        if (value == null || value.compareTo(0L) < 0) {
+            return 0L;
+        }
+        return value;
     }
 
     private static String sanitizeDbText(String value, int maxChars) {

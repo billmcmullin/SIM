@@ -1,12 +1,16 @@
 // widget_review_util/render_util.js
 
 export function renderLoading(el, text = "Loading...") {
-    if (!el) return;
+    if (!el) {
+        return;
+    }
     el.innerHTML = `<div class="wr-loading">${escapeHtml(text)}</div>`;
 }
 
 export function renderError(el, message, requestId = "") {
-    if (!el) return;
+    if (!el) {
+        return;
+    }
     const rid = requestId ? `<div class="wr-request-id">Request ID: ${escapeHtml(requestId)}</div>` : "";
     el.innerHTML = `
     <div class="wr-error">
@@ -24,7 +28,9 @@ export function renderError(el, message, requestId = "") {
  * 3) el.innerHTML = sanitized
  */
 export function renderMarkdown(el, md) {
-    if (!el) return;
+    if (!el) {
+        return;
+    }
 
     const markdown = (md ?? "").toString();
 
@@ -62,7 +68,9 @@ export function renderMarkdown(el, md) {
 }
 
 export function renderStatusPill(el, text, tone = "neutral") {
-    if (!el) return;
+    if (!el) {
+        return;
+    }
     el.innerHTML = `<span class="wr-pill wr-pill-${escapeHtml(tone)}">${escapeHtml(text || "")}</span>`;
 }
 

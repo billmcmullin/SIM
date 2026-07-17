@@ -281,27 +281,28 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Integer value = rs.getObject(column, Integer.class);
+        if (value == null) {
             return 0;
         }
         return Math.max(0, value);
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Integer value = rs.getObject(column, Integer.class);
+        if (value == null) {
             return fallback;
         }
         return value > 0 ? value : fallback;
     }
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        return sanitizeDbText(rs.getString(column), maxChars);
+        String value = rs.getObject(column, String.class);
+        return sanitizeDbText(value, maxChars);
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        Timestamp value = rs.getTimestamp(column);
+        Timestamp value = rs.getObject(column, Timestamp.class);
         if (value == null) {
             return null;
         }
@@ -351,7 +352,7 @@ public class WidgetHealthConfigStore {
             return id;
         }
 
-        public void setId(int id) {
+        private void setId(int id) {
             this.id = id;
         }
 

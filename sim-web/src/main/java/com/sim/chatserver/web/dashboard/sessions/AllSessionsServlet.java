@@ -87,7 +87,7 @@ public class AllSessionsServlet extends HttpServlet {
             this.sessionId = sessionId;
         }
 
-        private void accept(Timestamp ts, int count, String widgetId) {
+        void accept(Timestamp ts, int count, String widgetId) {
             if (ts != null) {
                 Instant instant = ts.toInstant();
                 if (firstSeen == null || instant.isBefore(firstSeen)) {
@@ -110,7 +110,7 @@ public class AllSessionsServlet extends HttpServlet {
         final String prompt;
         final Timestamp createdAt;
 
-        private ChatRow(String chatId, String prompt, Timestamp createdAt) {
+        ChatRow(String chatId, String prompt, Timestamp createdAt) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.createdAt = createdAt;
@@ -159,7 +159,7 @@ public class AllSessionsServlet extends HttpServlet {
         String search = sanitizeTextParam(searchParam, MAX_SEARCH_LENGTH);
         String searchTerm = search == null ? "" : search.trim();
         boolean hasSearch = !searchTerm.isBlank();
-        String normalizedSearch = hasSearch ? "%" + searchTerm + "%" : null;
+        String normalizedSearch = hasSearch ? '%' + searchTerm + '%' : null;
 
         String activity = sanitizeActivity(activityParam);
 
@@ -751,7 +751,8 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+        String[] values = parameterMap.get(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -775,16 +776,23 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        byte[] bytes = req.getInputStream().readAllBytes();
-        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
-            return "";
+        StringBuilder body = new StringBuilder();
+        try (var reader = req.getReader()) {
+            char[] chunk = new char[4096];
+            int read;
+            while ((read = reader.read(chunk)) != -1) {
+                body.append(chunk, 0, read);
+                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+            }
         }
-        String body = new String(bytes, StandardCharsets.UTF_8);
-        return body.replace("\u0000", "").replace("\r", "").trim();
+        return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object valueObj = rs.getObject(column);
+        String value = valueObj == null ? null : String.valueOf(valueObj);
         return safeDbText(value, maxLen);
     }
 
@@ -823,7 +831,7 @@ public class AllSessionsServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;

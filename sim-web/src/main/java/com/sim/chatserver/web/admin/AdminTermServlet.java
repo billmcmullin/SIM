@@ -44,7 +44,7 @@ public class AdminTermServlet extends HttpServlet {
             List<TermDefinition> terms = termsStore.listAll();
             JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
             terms.forEach(term -> arrayBuilder.add(Json.createObjectBuilder()
-                    .add("id", term.getId())
+                    .add("id", term.getId() == null ? 0L : term.getId().longValue())
                     .add("name", term.getName())
                     .add("description", term.getDescription())
                     .add("matchPattern", term.getMatchPattern())
@@ -171,7 +171,7 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
-        Long id = payload.getJsonNumber("id") == null ? null : payload.getJsonNumber("id").longValue();
+        Long id = payload.getJsonNumber("id") == null ? null : Long.valueOf(payload.getJsonNumber("id").toString());
         String name = payload.getString("name", "").trim();
         String description = payload.getString("description", "").trim();
         String pattern = payload.getString("matchPattern", "").trim();
@@ -197,7 +197,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                            .add("id", updated.getId())
+                        .add("id", updated.getId() == null ? 0L : updated.getId().longValue())
                             .add("name", updated.getName())
                             .add("description", updated.getDescription())
                             .add("matchPattern", updated.getMatchPattern())
@@ -232,7 +232,7 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            long id = Long.parseLong(idParam);
+            Long id = Long.valueOf(idParam);
             boolean deleted = termsStore.deleteTerm(id);
             if (!deleted) {
                 resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
@@ -277,7 +277,7 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        String[] values = req.getParameterMap().get(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -298,11 +298,18 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        byte[] bytes = req.getInputStream().readAllBytes();
-        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
-            return "";
+        StringBuilder body = new StringBuilder();
+        try (var reader = req.getReader()) {
+            char[] chunk = new char[4096];
+            int read;
+            while ((read = reader.read(chunk)) != -1) {
+                body.append(chunk, 0, read);
+                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+            }
         }
-        return new String(bytes, StandardCharsets.UTF_8)
+        return body.toString()
                 .replace("\u0000", "")
                 .replace("\r", "")
                 .trim();

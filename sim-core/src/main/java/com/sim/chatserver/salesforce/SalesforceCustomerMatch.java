@@ -15,7 +15,7 @@ public class SalesforceCustomerMatch {
         return contactId;
     }
 
-    void setContactId(String contactId) {
+    final void setContactId(String contactId) {
         this.contactId = contactId;
     }
 
@@ -23,7 +23,7 @@ public class SalesforceCustomerMatch {
         return accountId;
     }
 
-    void setAccountId(String accountId) {
+    final void setAccountId(String accountId) {
         this.accountId = accountId;
     }
 
@@ -31,7 +31,7 @@ public class SalesforceCustomerMatch {
         return name;
     }
 
-    void setName(String name) {
+    final void setName(String name) {
         this.name = name;
     }
 
@@ -39,7 +39,7 @@ public class SalesforceCustomerMatch {
         return email;
     }
 
-    void setEmail(String email) {
+    final void setEmail(String email) {
         this.email = email;
     }
 
@@ -47,7 +47,7 @@ public class SalesforceCustomerMatch {
         return phone;
     }
 
-    void setPhone(String phone) {
+    final void setPhone(String phone) {
         this.phone = phone;
     }
 
@@ -55,7 +55,7 @@ public class SalesforceCustomerMatch {
         return title;
     }
 
-    void setTitle(String title) {
+    final void setTitle(String title) {
         this.title = title;
     }
 
@@ -63,7 +63,7 @@ public class SalesforceCustomerMatch {
         return department;
     }
 
-    void setDepartment(String department) {
+    final void setDepartment(String department) {
         this.department = department;
     }
 
@@ -71,7 +71,7 @@ public class SalesforceCustomerMatch {
         return rawJson;
     }
 
-    void setRawJson(String rawJson) {
+    final void setRawJson(String rawJson) {
         this.rawJson = rawJson;
     }
 
