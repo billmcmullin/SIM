@@ -172,7 +172,7 @@ public final class WidgetStore {
         }
 
         String placeholders = java.util.Arrays.stream(validIds).mapToObj(i -> "?").collect(Collectors.joining(","));
-        String sql = "DELETE FROM widget_entries WHERE id IN (" + placeholders + ")";
+        String sql = "DELETE FROM widget_entries WHERE id IN (" + placeholders + ')';
 
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
@@ -247,19 +247,21 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Integer value = rs.getObject(column, Integer.class);
+        if (value == null) {
             return 0;
         }
         return Math.max(0, value);
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        return sanitizeDbText(rs.getString(column), maxChars);
+        String value = rs.getObject(column, String.class);
+        return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        return toInstantRequired(rs.getTimestamp("created_at"));
+        Timestamp value = rs.getObject("created_at", Timestamp.class);
+        return toInstantRequired(value);
     }
 
     private static Instant toInstantRequired(Timestamp timestamp) {
@@ -286,7 +288,7 @@ public final class WidgetStore {
 
     public static final class DuplicateWidgetIdException extends SQLException {
 
-        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
+        DuplicateWidgetIdException(String widgetId, Throwable cause) {
             super("Widget ID '" + widgetId + "' already exists.", cause);
         }
     }

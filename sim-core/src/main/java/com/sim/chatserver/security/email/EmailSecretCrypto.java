@@ -5,7 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.text.Normalizer;
 import java.util.Base64;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -22,6 +25,8 @@ import javax.crypto.spec.SecretKeySpec;
  * )
  */
 public final class EmailSecretCrypto {
+
+    private static final Logger log = Logger.getLogger(EmailSecretCrypto.class.getName());
 
     private static final String ENV_KEY = "SIM_EMAIL_CRYPTO_KEY";
     private static final String ENV_TRANSFORM = "SIM_EMAIL_CRYPTO_TRANSFORMATION";
@@ -96,6 +101,7 @@ public final class EmailSecretCrypto {
             byte[] plain = cipher.doFinal(cipherBytes);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException notBase64) {
+            log.log(Level.FINE, "Secret payload is not Base64; using legacy plaintext fallback", notBase64);
             return encoded; // legacy plaintext
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Failed to decrypt secret", e);
@@ -103,7 +109,7 @@ public final class EmailSecretCrypto {
     }
 
     private static SecretKey loadKey() {
-        String b64 = System.getenv(ENV_KEY);
+        String b64 = readEnvCanonical(ENV_KEY, 4096);
         if (b64 == null || b64.isBlank()) {
             throw new IllegalStateException("Missing required environment variable: " + ENV_KEY);
         }
@@ -141,7 +147,7 @@ public final class EmailSecretCrypto {
     }
 
     private static String resolveCipherTransformation() {
-        String configured = System.getenv(ENV_TRANSFORM);
+        String configured = readEnvCanonical(ENV_TRANSFORM, 128);
         if (configured == null || configured.isBlank()) {
             return DEFAULT_TRANSFORM;
         }
@@ -154,5 +160,19 @@ public final class EmailSecretCrypto {
 
     private static String buildDefaultCipherTransformation() {
         return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
+    }
+
+    private static String readEnvCanonical(String key, int maxChars) {
+        String raw = System.getenv(key);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC)
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 }

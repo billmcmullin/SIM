@@ -62,9 +62,10 @@ public class WidgetExportServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getName());
 
     private static final String DEFAULT_FORMAT = "csv";
-    private static final int FALLBACK_ROW_LIMIT = Integer.getInteger("export.fallbackRowLimit", 40);
-    private static final int DB_ID_CHUNK_SIZE = Integer.getInteger("export.dbIdChunkSize", 500);
+    private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
+    private static final int DB_ID_CHUNK_SIZE = parseIntProperty("export.dbIdChunkSize", 500);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
+    private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -77,9 +78,17 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
+        if (!isValidJsonRequest(req)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
+            return;
+        }
+
         JsonObject payload;
-        try (JsonReader jr = Json.createReader(req.getReader())) {
-            payload = jr.readObject();
+        try {
+            String requestBody = readRequestBody(req);
+            try (JsonReader jr = Json.createReader(new java.io.StringReader(requestBody))) {
+                payload = jr.readObject();
+            }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid export payload", e);
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
@@ -106,7 +115,7 @@ public class WidgetExportServlet extends HttpServlet {
         try {
             List<TermChatSnapshot> exportRows = resolveExportRows(selection, selectedChatIds);
 
-            String filename = "chats-export-" + Instant.now().toString().replace(":", "-") + "." + extensionFor(format);
+            String filename = "chats-export-" + Instant.now().toString().replace(":", "-") + '.' + extensionFor(format);
             String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
             String disposition = "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encoded;
 
@@ -127,10 +136,11 @@ public class WidgetExportServlet extends HttpServlet {
             }
 
             long ms = (System.nanoTime() - startedAt) / 1_000_000L;
-            log.info(() -> String.format(
-                    "[export] format=%s selectionId=%s selectedIds=%d rows=%d durationMs=%d",
-                    format, selectionId, selectedChatIds.size(), exportRows.size(), ms
-            ));
+                log.info(() -> "[export] format=" + format
+                    + " selectionId=" + selectionId
+                    + " selectedIds=" + selectedChatIds.size()
+                    + " rows=" + exportRows.size()
+                    + " durationMs=" + ms);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Export failed", e);
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed.");
@@ -161,7 +171,7 @@ public class WidgetExportServlet extends HttpServlet {
                     ids.add(id);
                 }
             }
-        } catch (RuntimeException ex) {
+        } catch (ClassCastException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to parse selectedChatIds payload", ex);
         }
 
@@ -243,7 +253,7 @@ public class WidgetExportServlet extends HttpServlet {
                 String placeholders = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
                 String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
                         + quoteIdentifier(tableName)
-                        + " WHERE widget_chat_id IN (" + placeholders + ")";
+            + " WHERE widget_chat_id IN (" + placeholders + ')';
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     int idx = 1;
@@ -327,11 +337,15 @@ public class WidgetExportServlet extends HttpServlet {
                 String sessionId = safe(row.getSessionId());
                 String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
                 String createdAt = row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString();
-                out.write(("Session: " + sessionId + " (" + sessionDisplay + ")\n").getBytes(StandardCharsets.UTF_8));
-                out.write(("Created At: " + createdAt + "\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("Session: " + sessionId + " (" + sessionDisplay + ')').getBytes(StandardCharsets.UTF_8));
+                out.write('\n');
+                out.write(("Created At: " + createdAt).getBytes(StandardCharsets.UTF_8));
+                out.write('\n');
                 out.write(("Prompt:\n" + safe(row.getPrompt()) + "\n\n").getBytes(StandardCharsets.UTF_8));
-                out.write(("Response:\n" + safe(row.getResponse()) + "\n").getBytes(StandardCharsets.UTF_8));
-                out.write(("----------------------------------------\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("Response:\n" + safe(row.getResponse())).getBytes(StandardCharsets.UTF_8));
+                out.write('\n');
+                out.write(("----------------------------------------").getBytes(StandardCharsets.UTF_8));
+                out.write('\n');
             }
         }
     }
@@ -344,7 +358,7 @@ public class WidgetExportServlet extends HttpServlet {
             try (OutputStream out = resp.getOutputStream()) {
                 out.write(pdfBytes);
             }
-        } catch (Throwable t) {
+        } catch (Exception t) {
             log.log(Level.WARNING, "PDF generation failed; falling back to text export.", t);
             resp.setContentType("text/plain; charset=UTF-8");
             try (OutputStream out = resp.getOutputStream()) {
@@ -550,11 +564,11 @@ public class WidgetExportServlet extends HttpServlet {
             if (r == null) {
                 continue;
             }
-            sb.append("Chat ID: ").append(safe(r.getChatId())).append("\n");
-            sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append("\n");
-            sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append("\n");
-            sb.append("Response: ").append(trimForCell(safe(r.getResponse()), 180)).append("\n");
-            sb.append("--------------------------------------------------\n");
+            sb.append("Chat ID: ").append(safe(r.getChatId())).append('\n');
+            sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append('\n');
+            sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append('\n');
+            sb.append("Response: ").append(trimForCell(safe(r.getResponse()), 180)).append('\n');
+            sb.append("--------------------------------------------------").append('\n');
         }
         return sb.toString();
     }
@@ -605,10 +619,10 @@ public class WidgetExportServlet extends HttpServlet {
 
     private List<String> splitPipeRow(String row) {
         String r = row == null ? "" : row.trim();
-        if (r.startsWith("|")) {
+        if (!r.isEmpty() && r.charAt(0) == '|') {
             r = r.substring(1);
         }
-        if (r.endsWith("|")) {
+        if (!r.isEmpty() && r.charAt(r.length() - 1) == '|') {
             r = r.substring(0, r.length() - 1);
         }
 
@@ -624,7 +638,7 @@ public class WidgetExportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.length() <= max ? s : s.substring(0, max) + "…";
+        return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
     private String safe(String s) {
@@ -659,7 +673,39 @@ public class WidgetExportServlet extends HttpServlet {
         }
         boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
         String escaped = s.replace("\"", "\"\"");
-        return needsQuote ? "\"" + escaped + "\"" : escaped;
+        return needsQuote ? '"' + escaped + '"' : escaped;
+    }
+
+    private static int parseIntProperty(String name, int fallback) {
+        String raw = System.getProperty(name);
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed > 0 ? parsed : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private boolean isValidJsonRequest(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        long len = req.getContentLengthLong();
+        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        if (req == null) {
+            return "";
+        }
+        byte[] bytes = req.getInputStream().readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
+        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
+            throw new IOException("Payload exceeds allowed size.");
+        }
+        return new String(bytes, StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {

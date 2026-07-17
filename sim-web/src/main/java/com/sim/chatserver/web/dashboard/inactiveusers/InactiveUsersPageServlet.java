@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -35,6 +36,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -181,18 +183,19 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 byWidget.put(wid, inactiveRows);
 
                 for (InactiveRow wr : perWidgetAgg.values()) {
-                    InactiveRow ar = allAgg.computeIfAbsent(wr.sessionId, k -> {
-                        InactiveRow x = new InactiveRow();
-                        x.sessionId = k;
-                        x.widgetId = "ALL";
-                        x.widgetLabel = "All Widgets";
-                        x.chats = 0;
-                        x.lastEntry = null;
-                        x.frustrationDetected = false;
-                        x.frustrationScore = 0.0;
-                        x.frustrationReason = "";
-                        return x;
-                    });
+                    InactiveRow ar = allAgg.get(wr.sessionId);
+                    if (ar == null) {
+                        ar = new InactiveRow();
+                        ar.sessionId = wr.sessionId;
+                        ar.widgetId = "ALL";
+                        ar.widgetLabel = "All Widgets";
+                        ar.chats = 0;
+                        ar.lastEntry = null;
+                        ar.frustrationDetected = false;
+                        ar.frustrationScore = 0.0;
+                        ar.frustrationReason = "";
+                        allAgg.put(wr.sessionId, ar);
+                    }
                     ar.chats += wr.chats;
                     if (ar.lastEntry == null || (wr.lastEntry != null && wr.lastEntry.after(ar.lastEntry))) {
                         ar.lastEntry = wr.lastEntry;
@@ -554,7 +557,11 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 .add("widgetNames", widgetNamesObj)
                 .build();
 
-        return payload.toString();
+        StringWriter sw = new StringWriter();
+        try (JsonWriter writer = Json.createWriter(sw)) {
+            writer.writeObject(payload);
+            return sw.toString();
+        }
     }
 
     private JsonObject toJson(InactiveRow r) {
@@ -617,7 +624,8 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+        String[] values = parameterMap.get(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -626,7 +634,8 @@ public class InactiveUsersPageServlet extends HttpServlet {
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object valueObj = rs.getObject(column);
+        String value = valueObj == null ? null : String.valueOf(valueObj);
         return safeDbText(value, maxLen);
     }
 
@@ -635,7 +644,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;

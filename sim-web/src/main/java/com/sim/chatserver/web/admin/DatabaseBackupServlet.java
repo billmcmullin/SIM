@@ -200,7 +200,8 @@ public class DatabaseBackupServlet extends HttpServlet {
         w.write("  \"exportedTableCount\": " + exported.size() + ",\n");
         w.write("  \"skippedTableCount\": " + skipped.size() + ",\n");
         w.write("  \"exportedTables\": " + toJsonArray(exported) + ",\n");
-        w.write("  \"skippedTables\": " + toJsonArray(skipped) + "\n");
+        w.write("  \"skippedTables\": " + toJsonArray(skipped));
+        w.write('\n');
         w.write("}\n");
 
         w.flush();
@@ -260,20 +261,26 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = rs.getObject(columnIndex, String.class);
+        String raw = rs.getString(columnIndex);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        byte[] raw = rs.getObject(columnIndex, byte[].class);
+        byte[] raw = rs.getBytes(columnIndex);
         return sanitizeBinary(raw);
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
-        Timestamp value = rs.getTimestamp(columnIndex);
+        String raw = readValidatedCellText(rs, columnIndex);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        Timestamp value = parseTimestamp(raw);
         if (value == null) {
             return null;
         }
+
         try {
             java.time.Instant instant = value.toInstant();
             return instant == null ? null : Timestamp.from(instant);
@@ -284,7 +291,12 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
-        java.sql.Date value = rs.getDate(columnIndex);
+        String raw = readValidatedCellText(rs, columnIndex);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        java.sql.Date value = parseDate(raw);
         if (value == null) {
             return null;
         }
@@ -321,7 +333,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             }
             sb.append('"').append(jsonEscape(values.get(i))).append('"');
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -348,7 +360,7 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private String sanitizeCellText(String value) {
         if (value == null) {
-            return null;
+            return "";
         }
         String normalized = value.replace('\u0000', ' ').replace("\r", "");
         return normalized.length() > MAX_CELL_TEXT_LENGTH
@@ -358,11 +370,57 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private byte[] sanitizeBinary(byte[] bytes) {
         if (bytes == null) {
-            return null;
+            return new byte[0];
         }
         if (bytes.length <= MAX_BINARY_BYTES) {
             return bytes;
         }
         return Arrays.copyOf(bytes, MAX_BINARY_BYTES);
+    }
+
+    private Timestamp parseTimestamp(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        String normalized = raw.trim();
+        try {
+            return Timestamp.from(java.time.Instant.parse(normalized));
+        } catch (DateTimeException ignored) {
+        }
+
+        try {
+            return Timestamp.from(java.time.OffsetDateTime.parse(normalized).toInstant());
+        } catch (DateTimeException ignored) {
+        }
+
+        try {
+            return Timestamp.valueOf(normalized.replace('T', ' '));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private java.sql.Date parseDate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        String normalized = raw.trim();
+        try {
+            return java.sql.Date.valueOf(normalized);
+        } catch (IllegalArgumentException ignored) {
+        }
+
+        try {
+            return java.sql.Date.valueOf(java.time.OffsetDateTime.parse(normalized).toLocalDate());
+        } catch (DateTimeException ignored) {
+        }
+
+        try {
+            return java.sql.Date.valueOf(java.time.Instant.parse(normalized).atOffset(java.time.ZoneOffset.UTC).toLocalDate());
+        } catch (DateTimeException ignored) {
+            return null;
+        }
     }
 }

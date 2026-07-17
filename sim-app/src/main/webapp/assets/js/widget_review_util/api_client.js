@@ -20,7 +20,9 @@ export function buildHeaders(extra = {}) {
  */
 async function parseBody(res) {
     const text = await res.text();
-    if (!text) return {};
+    if (!text) {
+        return {};
+    }
     try {
         return JSON.parse(text);
     } catch {
@@ -73,7 +75,7 @@ export async function getJson(url, options = {}) {
  */
 export async function postJson(url, payload = {}, options = {}) {
     const headers = buildHeaders(options.headers || {});
-    const body = options.body != null ? options.body : JSON.stringify(payload);
+    const body = (options.body !== null && options.body !== undefined) ? options.body : JSON.stringify(payload);
 
     const res = await fetch(url, {
         method: "POST",
@@ -119,7 +121,9 @@ export async function postForm(url, formObj = {}, options = {}) {
     const form = new URLSearchParams();
 
     Object.entries(formObj || {}).forEach(([k, v]) => {
-        if (v === undefined || v === null) return;
+        if (v === undefined || v === null) {
+            return;
+        }
         form.set(k, typeof v === "string" ? v : String(v));
     });
 
@@ -150,7 +154,9 @@ export async function postJsonWithFormFallback(url, payload = {}, options = {}) 
     try {
         return await postJson(url, payload, options);
     } catch (e) {
-        if (e?.status !== 415) throw e;
+        if (e?.status !== 415) {
+            throw e;
+        }
 
         warn("postJson got 415, retrying as form-urlencoded", { url });
 
@@ -158,9 +164,14 @@ export async function postJsonWithFormFallback(url, payload = {}, options = {}) 
         // Arrays/objects are encoded as JSON strings.
         const formObj = {};
         Object.entries(payload || {}).forEach(([k, v]) => {
-            if (v === undefined || v === null) return;
-            if (typeof v === "object") formObj[k] = JSON.stringify(v);
-            else formObj[k] = v;
+            if (v === undefined || v === null) {
+                return;
+            }
+            if (typeof v === "object") {
+                formObj[k] = JSON.stringify(v);
+            } else {
+                formObj[k] = v;
+            }
         });
 
         return await postForm(url, formObj, options);

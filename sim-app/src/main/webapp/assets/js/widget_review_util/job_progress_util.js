@@ -24,7 +24,9 @@ export function humanizePhase(phase) {
  *  - "final synthesis attempt 2/4"
  */
 export function parseSynthesisFromActivity(activity) {
-    if (!activity) return null;
+    if (!activity) {
+        return null;
+    }
     const txt = String(activity).toLowerCase();
 
     const levelChunk = txt.match(/synthesis\s+l(\d+).*chunk\s+(\d+)\s*\/\s*(\d+)/i);
@@ -60,10 +62,14 @@ export function parseSynthesisFromActivity(activity) {
  * - done: 100
  */
 export function deriveWeightedProgress({ phase, done, completedBatches, totalBatches, synth }) {
-    if (done) return 100;
+    if (done) {
+        return 100;
+    }
     const p = String(phase || "").toUpperCase();
 
-    if (p === "QUEUED") return 3;
+    if (p === "QUEUED") {
+        return 3;
+    }
 
     if (p === "MAP") {
         if (totalBatches > 0) {
@@ -105,7 +111,9 @@ export function deriveSynthesisPercent(synth) {
  */
 export function formatSynthesisLine(phase, synth) {
     const p = String(phase || "").toUpperCase();
-    if (p !== "REDUCE") return "";
+    if (p !== "REDUCE") {
+        return "";
+    }
 
     if (synth?.finalAttempt > 0 && synth?.finalAttemptTotal > 0) {
         return `Finalizing report (${synth.finalAttempt}/${synth.finalAttemptTotal})`;
@@ -119,7 +127,9 @@ export function formatSynthesisLine(phase, synth) {
  */
 export function mergeSynthFromActivity(currentSynth, activity) {
     const parsed = parseSynthesisFromActivity(activity);
-    if (!parsed) return currentSynth;
+    if (!parsed) {
+        return currentSynth;
+    }
     return { ...(currentSynth || {}), ...parsed };
 }
 

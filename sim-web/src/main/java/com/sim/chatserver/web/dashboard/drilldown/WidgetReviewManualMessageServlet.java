@@ -1,7 +1,9 @@
 // src/main/java/com/sim/chatserver/web/dashboard/drilldown/WidgetReviewManualMessageServlet.java
 package com.sim.chatserver.web.dashboard.drilldown;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -681,8 +683,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw e;
-        } catch (RuntimeException e) {
-            throw new IOException("Map-reduce orchestration failed", e);
         } catch (Exception e) {
             throw new IOException("Map-reduce orchestration failed", e);
         }
@@ -1109,10 +1109,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -1121,18 +1117,19 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!isValidJsonRequest(req)) {
             throw new IOException("Invalid JSON request payload.");
         }
-        StringBuilder body = new StringBuilder();
-        try (var reader = req.getReader()) {
-            char[] chunk = new char[4096];
+        try (InputStream in = req.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[4096];
             int read;
-            while ((read = reader.read(chunk)) != -1) {
-                body.append(chunk, 0, read);
-                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+            int total = 0;
+            while ((read = in.read(chunk)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
                     throw new IOException("Payload exceeds allowed size.");
                 }
+                out.write(chunk, 0, read);
             }
+            return canonicalizeForValidation(out.toString(StandardCharsets.UTF_8));
         }
-        return canonicalizeForValidation(body.toString());
     }
 
     private String canonicalizeForValidation(String value) {
@@ -1224,7 +1221,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final WorkspaceResponse response;
         final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
 
-        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+        MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
             this.response = response;
             this.orchestration = orchestration;
         }

@@ -115,7 +115,7 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
+    final List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
         List<List<SelectedEntry>> out = new ArrayList<>();
         if (entries == null || entries.isEmpty()) {
             return out;
@@ -128,17 +128,17 @@ public class ReviewContextBuilderService {
         return out;
     }
 
-    List<List<SelectedEntry>> splitForMapAdaptive(List<SelectedEntry> entries, int preferredBatchSize, int minBatchSize) {
+    final List<List<SelectedEntry>> splitForMapAdaptive(List<SelectedEntry> entries, int preferredBatchSize, int minBatchSize) {
         int safeMin = Math.max(1, minBatchSize);
         int safePreferred = Math.max(safeMin, preferredBatchSize);
         return splitForMap(entries, safePreferred);
     }
 
-    String buildMapBatchContext(String userMessage, List<SelectedEntry> batch, int batchIndex, int totalBatches, int maxChars) {
+    final String buildMapBatchContext(String userMessage, List<SelectedEntry> batch, int batchIndex, int totalBatches, int maxChars) {
         return buildMapBatchContext(userMessage, batch, batchIndex, totalBatches, maxChars, null);
     }
 
-    String buildMapBatchContext(
+    final String buildMapBatchContext(
             String userMessage,
             List<SelectedEntry> batch,
             int batchIndex,
@@ -203,15 +203,15 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    String buildReduceContext(String userMessage, List<String> mapOutputs, int maxChars) {
+    final String buildReduceContext(String userMessage, List<String> mapOutputs, int maxChars) {
         return buildReduceContext(userMessage, mapOutputs, List.of(), maxChars);
     }
 
-    String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
+    final String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
         return buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, List.of(), List.of(), maxChars);
     }
 
-    String buildReduceContext(
+    final String buildReduceContext(
             String userMessage,
             List<String> mapOutputs,
             List<Integer> failedBatchIndexes,
@@ -234,10 +234,13 @@ public class ReviewContextBuilderService {
             appendWithinLimit(fallback, "- all_selected_ids_count: " + allDistinct.size() + '\n', maxChars);
             appendWithinLimit(fallback, "- missing_ids_count: " + missingDistinct.size() + '\n', maxChars);
             appendWithinLimit(fallback, "- user_request: " + safe(userMessage, "") + '\n', maxChars);
-            appendWithinLimit(fallback, "\nSynthesis instruction:\n"
-                    + "- No batch outputs were available.\n"
-                    + "- Report that analysis is blocked by batch-processing failures.\n"
-                    + "- Include failed batch indexes as reason chats were not used.\n", maxChars);
+                appendWithinLimit(fallback, """
+
+                    Synthesis instruction:
+                    - No batch outputs were available.
+                    - Report that analysis is blocked by batch-processing failures.
+                    - Include failed batch indexes as reason chats were not used.
+                    """, maxChars);
             return trimTo(fallback.toString(), maxChars);
         }
 
@@ -279,38 +282,35 @@ public class ReviewContextBuilderService {
             appendWithinLimit(sb, "... (" + notIncluded + " batch outputs omitted/truncated for token safety)\n", maxChars);
         }
 
-        appendWithinLimit(sb, "\nSynthesis instruction:\n"
-                + "- Merge and de-duplicate findings across included batch outputs.\n"
-                + "- Keep required markdown structure.\n"
-                + "- Prefer concrete evidence over generic statements.\n"
-                + "- Preserve coverage accounting and carry-forward IDs.\n"
-                + "- If deterministic counts/IDs are present, use them exactly (do not estimate).\n"
-                + "- Treat failed_batch_indexes as not-processed batches and include that reason.\n"
-                + "- If missing_ids is non-empty, report them exactly under coverage and carry-forward.\n"
-                + "- If evidence is truncated, say so briefly and avoid fabrication.\n", maxChars);
+        appendWithinLimit(sb, """
+
+            Synthesis instruction:
+            - Merge and de-duplicate findings across included batch outputs.
+            - Keep required markdown structure.
+            - Prefer concrete evidence over generic statements.
+            - Preserve coverage accounting and carry-forward IDs.
+            - If deterministic counts/IDs are present, use them exactly (do not estimate).
+            - Treat failed_batch_indexes as not-processed batches and include that reason.
+            - If missing_ids is non-empty, report them exactly under coverage and carry-forward.
+            - If evidence is truncated, say so briefly and avoid fabrication.
+            """, maxChars);
 
         return trimTo(sb.toString(), maxChars);
     }
 
-    String buildBatchDeterministicHeader(int totalSelected, int totalBatches, int batchIndex, List<SelectedEntry> batch) {
+    final String buildBatchDeterministicHeader(int totalSelected, int totalBatches, int batchIndex, List<SelectedEntry> batch) {
         List<String> batchIds = extractKnownIds(batch);
-        return """
-                Deterministic metadata (use exactly; do not estimate):
-                - exact_total_selected: %d
-                - exact_total_batches: %d
-                - exact_batch_index: %d
-                - exact_batch_size: %d
-                - exact_batch_ids: %s
-            """.formatted(
-                totalSelected,
-                totalBatches,
-                batchIndex,
-                batchIds.size(),
-                batchIds
-            );
+        StringBuilder sb = new StringBuilder(192);
+        sb.append("Deterministic metadata (use exactly; do not estimate):\n");
+        sb.append("- exact_total_selected: ").append(totalSelected).append('\n');
+        sb.append("- exact_total_batches: ").append(totalBatches).append('\n');
+        sb.append("- exact_batch_index: ").append(batchIndex).append('\n');
+        sb.append("- exact_batch_size: ").append(batchIds.size()).append('\n');
+        sb.append("- exact_batch_ids: ").append(batchIds).append('\n');
+        return sb.toString();
     }
 
-    List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
+    final List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
         if (entry == null) {
             return List.of();
         }
@@ -343,7 +343,7 @@ public class ReviewContextBuilderService {
         return out;
     }
 
-    List<SelectedEntry> explodeLargeEntriesToSegments(List<SelectedEntry> entries, int promptChunkChars, int responseChunkChars) {
+    final List<SelectedEntry> explodeLargeEntriesToSegments(List<SelectedEntry> entries, int promptChunkChars, int responseChunkChars) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }
@@ -575,14 +575,16 @@ public class ReviewContextBuilderService {
                 matched.addAll(samplingService.matchedTerms(e, terms));
             }
 
-            String line = String.format(
-                    Locale.ROOT,
-                    "- Batch %d/%d size=%d avgPromptChars=%d avgResponseChars=%d matchedTerms=%s%n",
-                    b + 1, batches, slice.size(),
-                    slice.isEmpty() ? 0 : (pChars / slice.size()),
-                    slice.isEmpty() ? 0 : (rChars / slice.size()),
-                    matched
-            );
+                int avgPromptChars = slice.isEmpty() ? 0 : (pChars / slice.size());
+                int avgResponseChars = slice.isEmpty() ? 0 : (rChars / slice.size());
+                String line = new StringBuilder(128)
+                    .append("- Batch ").append(b + 1).append('/').append(batches)
+                    .append(" size=").append(slice.size())
+                    .append(" avgPromptChars=").append(avgPromptChars)
+                    .append(" avgResponseChars=").append(avgResponseChars)
+                    .append(" matchedTerms=").append(matched)
+                    .append('\n')
+                    .toString();
 
             if (out.length() + line.length() > budget) {
                 out.append("... (remaining batch signals omitted due to size)\n");
@@ -665,7 +667,7 @@ public class ReviewContextBuilderService {
         sb.append(Character.forDigit(value & 0x0F, 16));
     }
 
-    private static final class Strategy {
+    static final class Strategy {
 
         @SuppressWarnings("unused")
         final String name;
@@ -675,7 +677,7 @@ public class ReviewContextBuilderService {
         final int randomCount;
         final int maxHashLines;
 
-        private Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
+        Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
             this.name = name;
             this.topRelevantCount = topRelevantCount;
             this.newestCount = newestCount;

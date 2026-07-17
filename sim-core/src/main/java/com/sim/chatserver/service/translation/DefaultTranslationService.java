@@ -11,12 +11,14 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 
@@ -63,7 +65,7 @@ public class DefaultTranslationService implements TranslationService {
     public DefaultTranslationService() {
         this.translateUrl = envOrDefault("SIM_TRANSLATE_URL", DEFAULT_TRANSLATE_URL);
         this.detectUrl = toDetectUrl(this.translateUrl);
-        this.apiKey = System.getenv("SIM_TRANSLATE_API_KEY");
+        this.apiKey = envOrDefault("SIM_TRANSLATE_API_KEY", "");
     }
 
     @Override
@@ -95,7 +97,10 @@ public class DefaultTranslationService implements TranslationService {
 
             translated = fixCommonMojibake(translated);
             return TranslationResult.ok(source, target, translated);
-        } catch (Exception ex) {
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.WARNING, "Translation failed", ex);
             return TranslationResult.fail("Unable to translate at this time.");
         }
@@ -206,7 +211,10 @@ public class DefaultTranslationService implements TranslationService {
                 }
                 return top.getString("language", "").toLowerCase(Locale.ROOT);
             }
-        } catch (Exception e) {
+        } catch (IOException | InterruptedException | JsonException | ClassCastException | IllegalStateException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             log.log(Level.FINE, "Provider language detect failed, using heuristic fallback", e);
             return "";
         }
@@ -267,7 +275,7 @@ public class DefaultTranslationService implements TranslationService {
                     }
                 }
             }
-        } catch (Exception parseEx) {
+        } catch (JsonException | ClassCastException | IllegalStateException parseEx) {
             throw new IOException("Unable to parse translation response: " + body, parseEx);
         }
 
@@ -290,8 +298,22 @@ public class DefaultTranslationService implements TranslationService {
     }
 
     private String envOrDefault(String key, String fallback) {
-        String v = System.getenv(key);
-        return (v == null || v.isBlank()) ? fallback : v.trim();
+        String v = sanitizeEnvValue(System.getenv(key), 4096);
+        String safeFallback = Objects.requireNonNullElse(fallback, "").trim();
+        return (v == null || v.isBlank()) ? safeFallback : v;
+    }
+
+    private String sanitizeEnvValue(String value, int maxChars) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 
     private String toDetectUrl(String translateEndpoint) {

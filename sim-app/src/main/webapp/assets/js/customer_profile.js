@@ -172,7 +172,9 @@
             if (sid) {
                 qs.set('sessionId', sid);
             }
-            if (!sid && fname) qs.set('friendlyName', fname); // fallback route support
+            if (!sid && fname) {
+                qs.set('friendlyName', fname); // fallback route support
+            }
 
             a.href = `${localContextPath}/customer-profile?${qs.toString()}`;
             a.textContent = node.textContent && node.textContent.trim() ? node.textContent.trim() : (sid || fname);

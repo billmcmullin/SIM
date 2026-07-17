@@ -1,5 +1,7 @@
 package com.sim.chatserver.config;
 
+import java.text.Normalizer;
+
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -12,15 +14,15 @@ public final class DataSourceFactory {
     }
 
     public static HikariDataSource createFromEnv() {
-        String jdbcUrl = System.getenv("DB_URL");
+        String jdbcUrl = readEnvOrDefault("DB_URL", null, 4096);
         if (jdbcUrl == null || jdbcUrl.isBlank()) {
-            String host = System.getenv().getOrDefault("DB_HOST", "localhost");
-            String port = System.getenv().getOrDefault("DB_PORT", "5432");
-            String db = System.getenv().getOrDefault("DB_NAME", "chat");
-            jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db;
+            String host = readEnvOrDefault("DB_HOST", "localhost", 256);
+            String port = readEnvOrDefault("DB_PORT", "5432", 16);
+            String db = readEnvOrDefault("DB_NAME", "chat", 256);
+            jdbcUrl = "jdbc:postgresql://" + host + ':' + port + '/' + db;
         }
-        String user = System.getenv().getOrDefault("DB_USER", "postgres");
-        String pass = System.getenv("DB_PASSWORD");
+        String user = readEnvOrDefault("DB_USER", "postgres", 256);
+        String pass = readEnvOrDefault("DB_PASSWORD", null, 4096);
 
         HikariConfig cfg = new HikariConfig();
         cfg.setJdbcUrl(jdbcUrl);
@@ -32,5 +34,19 @@ public final class DataSourceFactory {
         cfg.setMaximumPoolSize(10);
         cfg.setPoolName("chatserver-hikari");
         return new HikariDataSource(cfg);
+    }
+
+    private static String readEnvOrDefault(String key, String fallback, int maxChars) {
+        String raw = System.getenv(key);
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC)
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            normalized = normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 }

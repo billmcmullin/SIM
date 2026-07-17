@@ -16,12 +16,18 @@ export function rowKey(r = {}) {
  * Normalize selected/review entries into a safe shape.
  */
 export function normalizeSelectedEntries(entries, max = 5000) {
-    if (!Array.isArray(entries)) return [];
+    if (!Array.isArray(entries)) {
+        return [];
+    }
     const out = [];
 
     for (const e of entries) {
-        if (out.length >= max) break;
-        if (!e || typeof e !== "object") continue;
+        if (out.length >= max) {
+            break;
+        }
+        if (!e || typeof e !== "object") {
+            continue;
+        }
 
         out.push({
             chatId: str(e.chatId, 200),
@@ -42,22 +48,31 @@ export function normalizeSelectedEntries(entries, max = 5000) {
  */
 export function normalizeIncomingRows(payload, max = 5000) {
     let rows = [];
-    if (Array.isArray(payload)) rows = payload;
-    else if (Array.isArray(payload?.rows)) rows = payload.rows;
-    else if (Array.isArray(payload?.selectedEntries)) rows = payload.selectedEntries;
-    else if (Array.isArray(payload?.data)) rows = payload.data;
+    if (Array.isArray(payload)) {
+        rows = payload;
+    } else if (Array.isArray(payload?.rows)) {
+        rows = payload.rows;
+    } else if (Array.isArray(payload?.selectedEntries)) {
+        rows = payload.selectedEntries;
+    } else if (Array.isArray(payload?.data)) {
+        rows = payload.data;
+    }
 
     return normalizeSelectedEntries(rows, max);
 }
 
 export function dedupeByKey(arr, keyFn) {
-    if (!Array.isArray(arr) || typeof keyFn !== "function") return [];
+    if (!Array.isArray(arr) || typeof keyFn !== "function") {
+        return [];
+    }
     const seen = new Set();
     const out = [];
 
     for (const item of arr) {
         const key = keyFn(item);
-        if (seen.has(key)) continue;
+        if (seen.has(key)) {
+            continue;
+        }
         seen.add(key);
         out.push(item);
     }
@@ -66,7 +81,9 @@ export function dedupeByKey(arr, keyFn) {
 }
 
 export function chunkBy(arr, size = 100) {
-    if (!Array.isArray(arr) || size <= 0) return [];
+    if (!Array.isArray(arr) || size <= 0) {
+        return [];
+    }
     const out = [];
     for (let i = 0; i < arr.length; i += size) {
         out.push(arr.slice(i, i + size));
@@ -78,7 +95,9 @@ export function chunkBy(arr, size = 100) {
  * Return selected entries from rows + selected key set.
  */
 export function getSelectedEntries(rows = [], selectedIds = new Set()) {
-    if (!Array.isArray(rows) || !(selectedIds instanceof Set)) return [];
+    if (!Array.isArray(rows) || !(selectedIds instanceof Set)) {
+        return [];
+    }
     return rows.filter((r) => selectedIds.has(rowKey(r)));
 }
 
@@ -86,9 +105,13 @@ export function getSelectedEntries(rows = [], selectedIds = new Set()) {
  * Apply free-text filter for review table.
  */
 export function filterRows(rows = [], query = "") {
-    if (!Array.isArray(rows)) return [];
+    if (!Array.isArray(rows)) {
+        return [];
+    }
     const q = String(query || "").trim().toLowerCase();
-    if (!q) return [...rows];
+    if (!q) {
+        return [...rows];
+    }
 
     return rows.filter((r) => {
         const hay = `${r.chatId || ""} ${r.prompt || ""} ${r.response || ""} ${r.sessionId || ""}`.toLowerCase();

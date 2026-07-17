@@ -1,7 +1,6 @@
 package com.sim.chatserver.util;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -51,6 +50,17 @@ public final class JsonRequestParserUtil {
         }
 
         int max = Math.max(1, maxBodyBytes);
+        long declaredLength = req.getContentLengthLong();
+        if (declaredLength > max) {
+            log.warning(() -> "JSON request body exceeds declared limit: maxBytes=" + max + ", contentLength=" + declaredLength);
+            return emptyObject();
+        }
+
+        String contentType = req.getContentType();
+        if (contentType != null && !contentType.toLowerCase(java.util.Locale.ROOT).contains("application/json")) {
+            log.fine(() -> "Skipping non-JSON content type: " + contentType);
+            return emptyObject();
+        }
 
         try (InputStream in = new BufferedInputStream(req.getInputStream())) {
             byte[] body = readAtMost(in, max);
@@ -149,6 +159,7 @@ public final class JsonRequestParserUtil {
                 parsed = Integer.parseInt(s.trim());
             }
         } catch (NumberFormatException | ClassCastException ex) {
+            log.log(Level.FINE, "Invalid integer JSON value for key " + key, ex);
             parsed = defaultValue;
         }
 
@@ -188,25 +199,11 @@ public final class JsonRequestParserUtil {
     }
 
     private static byte[] readAtMost(InputStream in, int maxBytes) throws IOException, BodyTooLargeException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
-        byte[] buffer = new byte[8192];
-        int total = 0;
-
-        while (true) {
-            int read = in.read(buffer);
-            if (read < 0) {
-                break;
-            }
-
-            total += read;
-            if (total > maxBytes) {
-                throw new BodyTooLargeException("maxBytes=" + maxBytes + ", actual>" + maxBytes);
-            }
-
-            baos.write(buffer, 0, read);
+        byte[] payload = in.readNBytes(maxBytes + 1);
+        if (payload.length > maxBytes) {
+            throw new BodyTooLargeException("maxBytes=" + maxBytes + ", actual>" + maxBytes);
         }
-
-        return baos.toByteArray();
+        return payload;
     }
 
     private static JsonObject emptyObject() {
@@ -229,7 +226,7 @@ public final class JsonRequestParserUtil {
     @SuppressWarnings("serial")
     private static final class BodyTooLargeException extends IOException {
 
-        BodyTooLargeException(String message) {
+        private BodyTooLargeException(String message) {
             super(message);
         }
     }

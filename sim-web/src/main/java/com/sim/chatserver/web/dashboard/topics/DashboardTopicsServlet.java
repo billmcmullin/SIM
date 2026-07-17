@@ -133,8 +133,8 @@ public class DashboardTopicsServlet extends HttpServlet {
 
                             Set<String> matchedTopics = matchTopics(prompt, activeTopics);
                             for (String topic : matchedTopics) {
-                                globalCounts.merge(topic, 1, Integer::sum);
-                                widgetMap.merge(topic, 1, Integer::sum);
+                                globalCounts.put(topic, globalCounts.getOrDefault(topic, 0) + 1);
+                                widgetMap.put(topic, widgetMap.getOrDefault(topic, 0) + 1);
                             }
                         }
                     }
@@ -295,7 +295,8 @@ public class DashboardTopicsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+        String[] values = parameterMap.get(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -328,10 +329,10 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     private static final class TopicPattern {
 
-        private final String name;
-        private final Pattern pattern;
+        final String name;
+        final Pattern pattern;
 
-        private TopicPattern(String name, Pattern pattern) {
+        TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
         }
@@ -339,10 +340,10 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     private static final class DateWindow {
 
-        private final LocalDate startInclusive;
-        private final LocalDate endExclusive;
+        final LocalDate startInclusive;
+        final LocalDate endExclusive;
 
-        private DateWindow(LocalDate startInclusive, LocalDate endExclusive) {
+        DateWindow(LocalDate startInclusive, LocalDate endExclusive) {
             this.startInclusive = startInclusive;
             this.endExclusive = endExclusive;
         }

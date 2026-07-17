@@ -18,7 +18,9 @@ export function escapeHtml(s) {
  */
 export function extractFilenameFromContentDisposition(contentDisposition) {
     const cd = String(contentDisposition || "");
-    if (!cd) return "";
+    if (!cd) {
+        return "";
+    }
 
     const star = cd.match(/filename\*=UTF-8''([^;]+)/i);
     if (star && star[1]) {
@@ -30,10 +32,14 @@ export function extractFilenameFromContentDisposition(contentDisposition) {
     }
 
     const quoted = cd.match(/filename="([^"]+)"/i);
-    if (quoted && quoted[1]) return quoted[1];
+    if (quoted && quoted[1]) {
+        return quoted[1];
+    }
 
     const plain = cd.match(/filename=([^;]+)/i);
-    if (plain && plain[1]) return plain[1].trim();
+    if (plain && plain[1]) {
+        return plain[1].trim();
+    }
 
     return "";
 }
@@ -59,7 +65,9 @@ export function normalizeIds(ids) {
 
     for (const id of Array.isArray(ids) ? ids : []) {
         const n = String(id ?? "").trim().toLowerCase();
-        if (!n || seen.has(n)) continue;
+        if (!n || seen.has(n)) {
+            continue;
+        }
         seen.add(n);
         out.push(n);
     }
@@ -74,7 +82,9 @@ export function subtractIds(a, b) {
     const setA = new Set(normalizeIds(a));
     const setB = new Set(normalizeIds(b));
 
-    for (const id of setB) setA.delete(id);
+    for (const id of setB) {
+        setA.delete(id);
+    }
     return Array.from(setA);
 }
 
@@ -87,7 +97,9 @@ export function intersectIds(a, b) {
 
     const out = [];
     for (const id of setA) {
-        if (setB.has(id)) out.push(id);
+        if (setB.has(id)) {
+            out.push(id);
+        }
     }
     return out;
 }
@@ -97,7 +109,9 @@ export function intersectIds(a, b) {
  */
 export function setTextById(id, value = "") {
     const el = document.getElementById(id);
-    if (el) el.textContent = String(value ?? "");
+    if (el) {
+        el.textContent = String(value ?? "");
+    }
     return el;
 }
 
@@ -106,7 +120,9 @@ export function setTextById(id, value = "") {
  */
 export function setBlockTextById(id, value = "", show = true, displayMode = "block") {
     const el = document.getElementById(id);
-    if (!el) return null;
+    if (!el) {
+        return null;
+    }
     el.textContent = String(value ?? "");
     el.style.display = show ? displayMode : "none";
     return el;

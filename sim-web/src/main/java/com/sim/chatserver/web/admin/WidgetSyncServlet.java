@@ -23,6 +23,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -279,9 +280,10 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
+        RequestParamContext params = RequestParamContext.from(req);
         long intervalSeconds;
         try {
-            String raw = firstParam(req, "intervalSeconds");
+            String raw = params.first("intervalSeconds");
             intervalSeconds = Long.parseLong(raw == null ? "" : raw.trim());
             if (intervalSeconds < MIN_INTERVAL_SECONDS) {
                 intervalSeconds = MIN_INTERVAL_SECONDS;
@@ -776,10 +778,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String sql = "SELECT interval_seconds, last_synced FROM widget_sync_settings WHERE id = 1";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                long persistedInterval = rs.getLong("interval_seconds");
-                if (rs.wasNull()) {
-                    persistedInterval = syncIntervalSeconds;
-                }
+                long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", syncIntervalSeconds);
                 if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
                     persistedInterval = syncIntervalSeconds;
                 }
@@ -1269,21 +1268,116 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+    private long readPersistedIntervalSeconds(ResultSet rs, String columnName, long fallback) throws SQLException {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return fallback;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
+        String raw = rs.getString(columnName);
+        if (raw == null || raw.isBlank()) {
+            return fallback;
         }
-        String value = values[0];
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        String trimmed = raw.trim();
+        if (!trimmed.matches("^\\d{1,12}$")) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid persisted sync interval value", ex);
+            return fallback;
+        }
     }
 
     private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
-        return rs.getTimestamp(columnName);
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return null;
+        }
+        String raw = rs.getString(columnName);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim();
+        try {
+            return Timestamp.valueOf(normalized);
+        } catch (IllegalArgumentException ex) {
+            try {
+                return Timestamp.from(OffsetDateTime.parse(normalized).toInstant());
+            } catch (DateTimeParseException ignored) {
+                try {
+                    return Timestamp.from(Instant.parse(normalized));
+                } catch (DateTimeParseException ignoredToo) {
+                    log.log(Level.FINE, "Unable to parse persisted timestamp value", ex);
+                    return null;
+                }
+            }
+        }
+    }
+
+    private String firstParam(HttpServletRequest req, String name) {
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(Map<String, String[]> parameterMap) {
+            this.parameterMap = parameterMap == null ? Map.of() : parameterMap;
+        }
+
+        private static RequestParamContext from(HttpServletRequest req) {
+            return req == null ? new RequestParamContext(Map.of()) : new RequestParamContext(req.getParameterMap());
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        }
+    }
+
+    private static final class WidgetSyncStatus {
+
+        final String widgetId;
+        final String tableName;
+        final boolean tableExists;
+        final boolean synced;
+        final String message;
+
+        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+            this.widgetId = widgetId;
+            this.tableName = tableName;
+            this.tableExists = tableExists;
+            this.synced = synced;
+            this.message = message;
+        }
+
+        private JsonObject toJson() {
+            return Json.createObjectBuilder()
+                    .add("widgetId", widgetId == null ? "" : widgetId)
+                    .add("tableName", tableName == null ? "" : tableName)
+                    .add("tableExists", tableExists)
+                    .add("synced", synced)
+                    .add("message", message == null ? "" : message)
+                    .build();
+        }
+    }
+
+    private static final class SyncSettings {
+
+        final long intervalSeconds;
+        final Timestamp lastSynced;
+
+        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+            this.intervalSeconds = intervalSeconds;
+            this.lastSynced = lastSynced;
+        }
     }
 
     private String buildSlug(String workspaceName) {
@@ -1301,41 +1395,4 @@ public class WidgetSyncServlet extends HttpServlet {
         return (value != null && value.endsWith("/")) ? value.substring(0, value.length() - 1) : value;
     }
 
-    private static final class WidgetSyncStatus {
-
-        final String widgetId;
-        final String tableName;
-        final boolean tableExists;
-        final boolean synced;
-        final String message;
-
-        WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
-            this.widgetId = widgetId;
-            this.tableName = tableName;
-            this.tableExists = tableExists;
-            this.synced = synced;
-            this.message = message;
-        }
-
-        JsonObject toJson() {
-            return Json.createObjectBuilder()
-                    .add("widgetId", widgetId == null ? "" : widgetId)
-                    .add("tableName", tableName == null ? "" : tableName)
-                    .add("tableExists", tableExists)
-                    .add("synced", synced)
-                    .add("message", message == null ? "" : message)
-                    .build();
-        }
-    }
-
-    private static final class SyncSettings {
-
-        final long intervalSeconds;
-        final Timestamp lastSynced;
-
-        SyncSettings(long intervalSeconds, Timestamp lastSynced) {
-            this.intervalSeconds = intervalSeconds;
-            this.lastSynced = lastSynced;
-        }
-    }
 }

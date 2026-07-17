@@ -327,7 +327,9 @@
                 try {
                     const params = new URLSearchParams();
                     params.append('widgetId', widgetId);
-                    if (selectedDate) params.append('date', selectedDate); // NEW
+                    if (selectedDate) {
+                        params.append('date', selectedDate); // NEW
+                    }
                     if (state.search) {
                         params.append('search', state.search);
                     }
@@ -435,7 +437,9 @@
         try {
             const params = new URLSearchParams();
             params.append('widgetId', widgetId);
-            if (selectedDate) params.append('date', selectedDate); // NEW
+            if (selectedDate) {
+                params.append('date', selectedDate); // NEW
+            }
             params.append('limit', state.limit);
             params.append('page', state.page);
             params.append('sortColumn', state.sortColumn);
