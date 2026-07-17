@@ -33,7 +33,7 @@ public class ServerConfig {
         return serverHost;
     }
 
-    public void setServerHost(String serverHost) {
+    void setServerHost(String serverHost) {
         this.serverHost = serverHost;
     }
 
@@ -41,7 +41,7 @@ public class ServerConfig {
         return serverPort;
     }
 
-    public void setServerPort(int serverPort) {
+    void setServerPort(int serverPort) {
         this.serverPort = serverPort;
     }
 
@@ -49,7 +49,7 @@ public class ServerConfig {
         return connectionInfo;
     }
 
-    public void setConnectionInfo(String connectionInfo) {
+    void setConnectionInfo(String connectionInfo) {
         this.connectionInfo = connectionInfo;
     }
 
@@ -57,7 +57,7 @@ public class ServerConfig {
         return apiKey;
     }
 
-    public void setApiKey(String apiKey) {
+    void setApiKey(String apiKey) {
         this.apiKey = apiKey;
     }
 
@@ -65,7 +65,7 @@ public class ServerConfig {
         return workspaceName;
     }
 
-    public void setWorkspaceName(String workspaceName) {
+    void setWorkspaceName(String workspaceName) {
         this.workspaceName = workspaceName;
     }
 

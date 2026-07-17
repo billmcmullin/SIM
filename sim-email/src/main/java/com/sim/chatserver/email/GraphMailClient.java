@@ -24,7 +24,7 @@ public class GraphMailClient {
     private static final Logger LOG = Logger.getLogger(GraphMailClient.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
+    final void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
         HttpsURLConnection conn = null;
         try {
             String sender = config.senderUser().trim();

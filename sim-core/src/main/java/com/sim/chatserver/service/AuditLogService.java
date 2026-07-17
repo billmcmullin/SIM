@@ -1,6 +1,5 @@
 package com.sim.chatserver.service;
 
-import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -14,10 +13,10 @@ public class AuditLogService {
     private static final int MAX_FIELD_CHARS = 180;
     private static final int MAX_REASON_CHARS = 300;
 
-    private final Logger log;
+    private final Logger ownerLogger;
 
     public AuditLogService(Class<?> owner) {
-        this.log = Logger.getLogger(owner == null ? AuditLogService.class.getName() : owner.getName());
+        this.ownerLogger = Logger.getLogger(owner == null ? AuditLogService.class.getName() : owner.getName());
     }
 
     public void logManualMessageRequest(ManualMessageAuditEvent event) {
@@ -28,54 +27,56 @@ public class AuditLogService {
         // Severity by status class
         Level level = toLevel(event.statusCode());
 
-        String line = String.format(
-                Locale.ROOT,
-                "manual-message requestId=%s user=%s ip=%s mode=%s reset=%s retried=%s "
-                + "selected=%d sampled=%d msgChars=%d ctxChars=%d attach=%d status=%d latencyMs=%d "
-                + "ua=\"%s\" origin=\"%s\" referer=\"%s\"",
+        ownerLogger.log(
+            level,
+            "manual-message requestId={0} user={1} ip={2} mode={3} reset={4} retried={5} selected={6} sampled={7} msgChars={8} ctxChars={9} attach={10} status={11} latencyMs={12} ua=\"{13}\" origin=\"{14}\" referer=\"{15}\"",
+            new Object[]{
                 safe(event.requestId()),
                 safe(event.username()),
                 safe(event.clientIp()),
                 safe(event.mode()),
-                event.requestReset(),
-                event.retried(),
-                nonNegative(event.selectedCount()),
-                nonNegative(event.sampledCount()),
-                nonNegative(event.messageChars()),
-                nonNegative(event.contextChars()),
-                nonNegative(event.attachmentCount()),
-                event.statusCode(),
-                Math.max(0L, event.latencyMs()),
+                Boolean.toString(event.requestReset()),
+                Boolean.toString(event.retried()),
+                Integer.toString(nonNegative(event.selectedCount())),
+                Integer.toString(nonNegative(event.sampledCount())),
+                Integer.toString(nonNegative(event.messageChars())),
+                Integer.toString(nonNegative(event.contextChars())),
+                Integer.toString(nonNegative(event.attachmentCount())),
+                Integer.toString(event.statusCode()),
+                Long.toString(Math.max(0L, event.latencyMs())),
                 truncate(scrub(event.userAgent()), MAX_FIELD_CHARS),
                 truncate(scrub(event.origin()), MAX_FIELD_CHARS),
                 truncate(scrub(event.referer()), MAX_FIELD_CHARS)
+            }
         );
-
-        log.log(level, line);
     }
 
     public void logValidationFailure(String requestId, String username, String clientIp, String reason) {
-        log.warning(String.format(
-                Locale.ROOT,
-                "manual-message validation-failure requestId=%s user=%s ip=%s reason=\"%s\"",
+        ownerLogger.log(
+            Level.WARNING,
+            "manual-message validation-failure requestId={0} user={1} ip={2} reason=\"{3}\"",
+            new Object[]{
                 safe(requestId),
                 safe(username),
                 safe(clientIp),
                 truncate(scrub(reason), MAX_REASON_CHARS)
-        ));
+            }
+        );
     }
 
     public void logUpstreamFailure(String requestId, String username, String clientIp, int statusCode, String summary) {
         Level level = toLevel(statusCode);
-        log.log(level, String.format(
-                Locale.ROOT,
-                "manual-message upstream-failure requestId=%s user=%s ip=%s status=%d summary=\"%s\"",
+        ownerLogger.log(
+            level,
+            "manual-message upstream-failure requestId={0} user={1} ip={2} status={3} summary=\"{4}\"",
+            new Object[]{
                 safe(requestId),
                 safe(username),
                 safe(clientIp),
-                statusCode,
+                Integer.toString(statusCode),
                 truncate(scrub(summary), MAX_REASON_CHARS)
-        ));
+            }
+        );
     }
 
     private Level toLevel(int statusCode) {

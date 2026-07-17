@@ -30,7 +30,7 @@ public class ReviewSamplingService {
 
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public List<String> keywordTerms(String text, int maxTerms) {
+    List<String> keywordTerms(String text, int maxTerms) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
@@ -44,7 +44,7 @@ public class ReviewSamplingService {
                 .collect(Collectors.toList());
     }
 
-    public int scoreEntry(SelectedEntry e, List<String> terms) {
+    int scoreEntry(SelectedEntry e, List<String> terms) {
         if (e == null || terms == null || terms.isEmpty()) {
             return 0;
         }
@@ -59,7 +59,7 @@ public class ReviewSamplingService {
         return score;
     }
 
-    public List<SelectedEntry> topRelevant(List<SelectedEntry> entries, List<String> terms, int n) {
+    List<SelectedEntry> topRelevant(List<SelectedEntry> entries, List<String> terms, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -69,7 +69,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    public List<SelectedEntry> newest(List<SelectedEntry> entries, int n) {
+    List<SelectedEntry> newest(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -79,7 +79,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    public List<SelectedEntry> oldest(List<SelectedEntry> entries, int n) {
+    List<SelectedEntry> oldest(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -89,7 +89,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    public List<SelectedEntry> randomSample(List<SelectedEntry> entries, int n) {
+    List<SelectedEntry> randomSample(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -103,7 +103,7 @@ public class ReviewSamplingService {
      * Stratified sample for large selections: - relevance - newest - oldest -
      * random Then dedup by chatId while preserving insertion order.
      */
-    public List<SelectedEntry> stratifiedSample(
+    List<SelectedEntry> stratifiedSample(
             List<SelectedEntry> entries,
             String userMessage,
             int topRelevantCount,
@@ -126,7 +126,7 @@ public class ReviewSamplingService {
         return dedupeByChatId(merged);
     }
 
-    public List<SelectedEntry> dedupeByChatId(List<SelectedEntry> entries) {
+    List<SelectedEntry> dedupeByChatId(List<SelectedEntry> entries) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }
@@ -147,7 +147,7 @@ public class ReviewSamplingService {
         return new ArrayList<>(out.values());
     }
 
-    public Set<String> matchedTerms(SelectedEntry e, List<String> terms) {
+    Set<String> matchedTerms(SelectedEntry e, List<String> terms) {
         Set<String> out = new HashSet<>();
         if (e == null || terms == null || terms.isEmpty()) {
             return out;

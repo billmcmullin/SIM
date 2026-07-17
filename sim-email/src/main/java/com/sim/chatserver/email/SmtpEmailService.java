@@ -1,6 +1,7 @@
 package com.sim.chatserver.email;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -180,25 +181,30 @@ public class SmtpEmailService implements EmailService {
             mixed.addBodyPart(bodyPart);
 
             if (message.attachments() != null) {
-                for (EmailAttachment a : message.attachments()) {
-                    if (a == null) {
-                        continue;
-                    }
-
-                    MimeBodyPart attachmentPart = new MimeBodyPart();
-                    byte[] content = a.content();
-                    if (content == null) {
-                        continue;
-                    }
-                    attachmentPart.setFileName(a.fileName());
-                    attachmentPart.setContent(content, a.contentType());
-                    mixed.addBodyPart(attachmentPart);
-                }
+                message.attachments().stream()
+                        .filter(Objects::nonNull)
+                        .forEach(attachment -> addAttachmentPart(mixed, attachment));
             }
 
             return mixed;
         } catch (MessagingException | IllegalArgumentException e) {
             throw new EmailException("Failed to build email content", e);
+        }
+    }
+
+    private void addAttachmentPart(MimeMultipart mixed, EmailAttachment attachment) {
+        byte[] content = attachment.content();
+        if (content == null) {
+            return;
+        }
+
+        try {
+            MimeBodyPart attachmentPart = new MimeBodyPart();
+            attachmentPart.setFileName(attachment.fileName());
+            attachmentPart.setContent(content, attachment.contentType());
+            mixed.addBodyPart(attachmentPart);
+        } catch (MessagingException e) {
+            throw new EmailException("Failed to add attachment", e);
         }
     }
 

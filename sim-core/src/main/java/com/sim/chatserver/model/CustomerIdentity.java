@@ -50,7 +50,7 @@ public class CustomerIdentity {
         return salesforceContactId;
     }
 
-    public void setSalesforceContactId(String salesforceContactId) {
+    void setSalesforceContactId(String salesforceContactId) {
         this.salesforceContactId = salesforceContactId;
     }
 
@@ -58,7 +58,7 @@ public class CustomerIdentity {
         return salesforceAccountId;
     }
 
-    public void setSalesforceAccountId(String salesforceAccountId) {
+    void setSalesforceAccountId(String salesforceAccountId) {
         this.salesforceAccountId = salesforceAccountId;
     }
 
@@ -66,7 +66,7 @@ public class CustomerIdentity {
         return email;
     }
 
-    public void setEmail(String email) {
+    void setEmail(String email) {
         this.email = email;
     }
 
@@ -74,7 +74,7 @@ public class CustomerIdentity {
         return phone;
     }
 
-    public void setPhone(String phone) {
+    void setPhone(String phone) {
         this.phone = phone;
     }
 
@@ -82,7 +82,7 @@ public class CustomerIdentity {
         return title;
     }
 
-    public void setTitle(String title) {
+    void setTitle(String title) {
         this.title = title;
     }
 
@@ -90,7 +90,7 @@ public class CustomerIdentity {
         return department;
     }
 
-    public void setDepartment(String department) {
+    void setDepartment(String department) {
         this.department = department;
     }
 
@@ -98,7 +98,7 @@ public class CustomerIdentity {
         return rawJson;
     }
 
-    public void setRawJson(String rawJson) {
+    void setRawJson(String rawJson) {
         this.rawJson = rawJson;
     }
 
@@ -114,7 +114,7 @@ public class CustomerIdentity {
         return createdAt;
     }
 
-    public void setCreatedAt(OffsetDateTime createdAt) {
+    void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 
@@ -122,7 +122,7 @@ public class CustomerIdentity {
         return updatedAt;
     }
 
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
+    void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
 
@@ -130,7 +130,7 @@ public class CustomerIdentity {
         return lastSyncedAt;
     }
 
-    public void setLastSyncedAt(OffsetDateTime lastSyncedAt) {
+    void setLastSyncedAt(OffsetDateTime lastSyncedAt) {
         this.lastSyncedAt = lastSyncedAt;
     }
 }

@@ -379,8 +379,8 @@ public class DashboardCacheRegistry {
         try {
             T value = loader.get();
             return value != null ? value : fallback;
-        } catch (RuntimeException ex) {
-            log.log(Level.FINE, "Dashboard cache refresh loader failed; using fallback value", ex);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", ex);
             return fallback;
         }
     }
@@ -396,7 +396,7 @@ public class DashboardCacheRegistry {
         return LocalDate.now(ZoneId.systemDefault()).toString();
     }
 
-    private static final class Entry<T> {
+    static final class Entry<T> {
 
         volatile T value;
         volatile long expiresAt;

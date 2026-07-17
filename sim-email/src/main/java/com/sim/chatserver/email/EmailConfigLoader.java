@@ -250,7 +250,31 @@ public final class EmailConfigLoader {
     }
 
     private static String envSanitized(String key, int maxLength) {
-        return validateEnvValue(key, sanitizeUntrustedText(env(key), maxLength));
+        String canonicalKey = canonicalizeEnvKey(key);
+        if (canonicalKey == null) {
+            return null;
+        }
+        return validateEnvValue(canonicalKey, sanitizeUntrustedText(env(canonicalKey), maxLength));
+    }
+
+    private static String canonicalizeEnvKey(String key) {
+        String normalized = sanitizeUntrustedText(key, 64);
+        if (normalized == null) {
+            return null;
+        }
+
+        return switch (normalized) {
+            case ENV_HOST,
+                    ENV_PORT,
+                    ENV_AUTH,
+                    ENV_STARTTLS,
+                    ENV_SSL,
+                    ENV_USERNAME,
+                    ENV_PASSWORD,
+                    ENV_FROM,
+                    ENV_CONFIG_FILE -> normalized;
+            default -> null;
+        };
     }
 
     private static String validateEnvValue(String key, String value) {
@@ -264,7 +288,8 @@ public final class EmailConfigLoader {
             case ENV_AUTH, ENV_STARTTLS, ENV_SSL -> SAFE_BOOL_TEXT.matcher(value).matches() ? value : null;
             case ENV_FROM -> SAFE_EMAIL.matcher(value).matches() ? value : null;
             case ENV_CONFIG_FILE -> isSafePathText(value) ? value : null;
-            default -> value;
+            case ENV_USERNAME, ENV_PASSWORD -> value;
+            default -> null;
         };
     }
 

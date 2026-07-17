@@ -142,7 +142,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             page = 1;
             offset = 0;
         } else {
-            int parsed = rawLimit == null ? DEFAULT_LIMIT : rawLimit;
+            int parsed = valueOrDefault(rawLimit, DEFAULT_LIMIT);
             limit = clampLimit(parsed);
             offset = (page - 1) * limit;
         }
@@ -250,11 +250,19 @@ public class WidgetReviewDataServlet extends HttpServlet {
             writeJson(resp, body);
 
             final long t3 = System.nanoTime();
-            log.info(String.format(
-                    "review-data timings ms: prep=%.2f db=%.2f json=%.2f total=%.2f rows=%d totalRows=%d limit=%d page=%d unbounded=%s",
-                    nsToMs(t1 - t0), nsToMs(t2 - t1), nsToMs(t3 - t2), nsToMs(t3 - t0),
-                    rows.size(), totalRows, limit, page, String.valueOf(unboundedRequested)
-            ));
+            log.log(Level.INFO,
+                    "review-data timings ms: prep={0} db={1} json={2} total={3} rows={4} totalRows={5} limit={6} page={7} unbounded={8}",
+                    new Object[]{
+                        twoDecimals(nsToMs(t1 - t0)),
+                        twoDecimals(nsToMs(t2 - t1)),
+                        twoDecimals(nsToMs(t3 - t2)),
+                        twoDecimals(nsToMs(t3 - t0)),
+                        Integer.toString(rows.size()),
+                        Integer.toString(totalRows),
+                        Integer.toString(limit),
+                        Integer.toString(page),
+                        Boolean.toString(unboundedRequested)
+                    });
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to fetch selected rows", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
@@ -286,7 +294,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             page = 1;
             offset = 0;
         } else {
-            limit = clampLimit(rawLimit == null ? DEFAULT_LIMIT : rawLimit);
+            limit = clampLimit(valueOrDefault(rawLimit, DEFAULT_LIMIT));
             offset = (page - 1) * limit;
         }
 
@@ -349,10 +357,16 @@ public class WidgetReviewDataServlet extends HttpServlet {
         writeJson(resp, body);
 
         final long t1 = System.nanoTime();
-        log.info(String.format(
-                "review-data snapshot timings ms: total=%.2f rows=%d totalRows=%d limit=%d page=%d unbounded=%s",
-                nsToMs(t1 - t0), pageRows.size(), totalRows, limit, page, String.valueOf(unboundedRequested)
-        ));
+        log.log(Level.INFO,
+            "review-data snapshot timings ms: total={0} rows={1} totalRows={2} limit={3} page={4} unbounded={5}",
+            new Object[]{
+                twoDecimals(nsToMs(t1 - t0)),
+                Integer.toString(pageRows.size()),
+                Integer.toString(totalRows),
+                Integer.toString(limit),
+                Integer.toString(page),
+                Boolean.toString(unboundedRequested)
+            });
     }
 
     private QueryParts buildQuery(String tableName, String sortColumn, String sortDir, String search, LocalDate selectedDate) {
@@ -423,11 +437,11 @@ public class WidgetReviewDataServlet extends HttpServlet {
     private boolean tableExistsCached(Connection conn, String tableName) throws SQLException {
         Boolean cached = tableExistsCache.get(tableName);
         if (cached != null) {
-            return cached;
+            return Boolean.TRUE.equals(cached);
         }
 
         boolean exists = tableExists(conn, tableName);
-        tableExistsCache.put(tableName, exists);
+        tableExistsCache.put(tableName, exists ? Boolean.TRUE : Boolean.FALSE);
         return exists;
     }
 
@@ -461,7 +475,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
             return true;
         }
-        return parsed != null && parsed <= 0;
+        return parsed != null && parsed.compareTo(0) <= 0;
     }
 
     private Integer parseIntegerOrNull(String value) {
@@ -474,6 +488,10 @@ public class WidgetReviewDataServlet extends HttpServlet {
             log.log(Level.FINE, "Invalid integer parameter value", ex);
             return null;
         }
+    }
+
+    private int valueOrDefault(Integer value, int fallback) {
+        return value == null ? fallback : value;
     }
 
     private String firstParam(HttpServletRequest req, String name) {
@@ -617,6 +635,13 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
     private double nsToMs(long ns) {
         return ns / 1_000_000.0;
+    }
+
+    private String twoDecimals(double value) {
+        long scaled = Math.round(value * 100.0);
+        long whole = scaled / 100;
+        long fraction = Math.abs(scaled % 100);
+        return whole + "." + (fraction < 10 ? "0" : "") + fraction;
     }
 
     private void writeJson(HttpServletResponse resp, String body) throws IOException {

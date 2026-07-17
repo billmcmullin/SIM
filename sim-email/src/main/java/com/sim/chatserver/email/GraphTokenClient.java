@@ -34,7 +34,7 @@ public class GraphTokenClient {
         this.config = Objects.requireNonNull(config, "GraphEmailConfig is required");
     }
 
-    synchronized String getAccessToken() {
+    final synchronized String getAccessToken() {
         if (!config.isUsable()) {
             throw new EmailException(
                     "Graph config is incomplete (tenantId/clientId/clientSecret/senderUser required)",
@@ -103,10 +103,7 @@ public class GraphTokenClient {
             }
 
             return new TokenResponse(accessToken, expiresIn);
-        } catch (IllegalArgumentException e) {
-            LOG.log(Level.SEVERE, "Graph token acquisition failed", e);
-            throw new EmailException("Graph token acquisition failed", e);
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             LOG.log(Level.SEVERE, "Graph token acquisition failed", e);
             throw new EmailException("Graph token acquisition failed", e);
         } finally {
