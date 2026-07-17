@@ -348,6 +348,8 @@ public class WidgetReviewMapReduceOrchestrator {
         List<Integer> failedBatches = new ArrayList<>();
         List<MapBatchResult> allMapBatchResults = new ArrayList<>();
         List<BatchFailure> allBatchFailures = new ArrayList<>();
+        List<CompletableFuture<MapBatchExecutionResult>> futures = new ArrayList<>();
+        List<MapBatchRequest> reqs = new ArrayList<>();
 
         int totalSelected = selectedEntries.size();
         int cumulativeBatchCounter = 0;
@@ -370,8 +372,8 @@ public class WidgetReviewMapReduceOrchestrator {
 
             ExecutorService executor = Executors.newFixedThreadPool(mapMaxParallel);
             try {
-                List<CompletableFuture<MapBatchExecutionResult>> futures = new ArrayList<>();
-                List<MapBatchRequest> reqs = new ArrayList<>();
+                futures.clear();
+                reqs.clear();
 
                 for (int i = 0; i < totalBatchesThisRound; i++) {
                     int batchIndex = ++cumulativeBatchCounter;
@@ -419,7 +421,7 @@ public class WidgetReviewMapReduceOrchestrator {
                         if (mapBatchSuccess) {
                             usedByProcessing.addAll(expectedForReq);
                             if (r.outputText != null && !r.outputText.isBlank()) {
-                                mapOutputs.add("### Batch " + req.getBatchIndex() + "\n" + r.outputText);
+                                mapOutputs.add("### Batch " + req.getBatchIndex() + '\n' + r.outputText);
                             }
                         } else {
                             failedBatches.add(req.getBatchIndex());
@@ -529,7 +531,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
             while (!levelSucceeded && localChunk >= reduceMinChunkSize) {
                 List<List<String>> chunks = chunk(current, localChunk);
-                List<String> nextLevel = new ArrayList<>();
+                List<String> nextLevel = new ArrayList<>(chunks.size());
                 boolean anyChunkFailed = false;
 
                 for (int i = 0; i < chunks.size(); i++) {
@@ -562,7 +564,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     }
 
                     String summary = trimTo(chunkResult.reduceResult.getFinalReport(), reduceChunkSummaryMaxChars);
-                    nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + "\n" + summary);
+                    nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + '\n' + summary);
                 }
 
                 if (anyChunkFailed) {
@@ -958,7 +960,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
         boolean success = status < 400 && mapText != null && !mapText.isBlank();
 
-        String err = success ? "" : ("Map call failed or empty output (status=" + status + ")");
+        String err = success ? "" : ("Map call failed or empty output (status=" + status + ')');
 
         List<String> usedForCoverage = success ? expectedIds : List.of();
         List<String> omittedForCoverage = success ? List.of() : expectedIds;
@@ -1041,7 +1043,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 - used_count: %d
                 - missing_count: %d
                 """.formatted(
-                        totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
+                    totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
                         String.valueOf(coverageComplete), usedIdsNorm.size(), missingIdsNorm.size()
                 )
                 : """
@@ -1055,7 +1057,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 - used_ids_count: %d
                 - missing_ids_count: %d
                 """.formatted(
-                        totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
+                    totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
                         String.valueOf(coverageComplete), allIdsNorm.size(), usedIdsNorm.size(), missingIdsNorm.size()
                 );
 
@@ -1269,7 +1271,7 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                if (i != null && i > 0) {
+                if (i != null && i.compareTo(0) > 0) {
                     s.add(i);
                 }
             }
@@ -1347,14 +1349,14 @@ public class WidgetReviewMapReduceOrchestrator {
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private static final class MapBatchExecutionResult {
+    static final class MapBatchExecutionResult {
 
-        private final String outputText;
-        private final MapBatchResult result;
-        private final BatchFailure failure;
-        private final List<String> usedIdsDetected;
+        final String outputText;
+        final MapBatchResult result;
+        final BatchFailure failure;
+        final List<String> usedIdsDetected;
 
-        private MapBatchExecutionResult(
+        MapBatchExecutionResult(
             String outputText, MapBatchResult result, BatchFailure failure, List<String> usedIdsDetected
         ) {
             this.outputText = outputText;
@@ -1364,13 +1366,13 @@ public class WidgetReviewMapReduceOrchestrator {
         }
     }
 
-    private static final class ReduceExecutionResult {
+    static final class ReduceExecutionResult {
 
-        private final WorkspaceResponse response;
-        private final ReduceRequest reduceRequest;
-        private final ReduceResult reduceResult;
+        final WorkspaceResponse response;
+        final ReduceRequest reduceRequest;
+        final ReduceResult reduceResult;
 
-        private ReduceExecutionResult(WorkspaceResponse response, ReduceRequest reduceRequest, ReduceResult reduceResult) {
+        ReduceExecutionResult(WorkspaceResponse response, ReduceRequest reduceRequest, ReduceResult reduceResult) {
             this.response = response;
             this.reduceRequest = reduceRequest;
             this.reduceResult = reduceResult;
@@ -1394,7 +1396,7 @@ public class WidgetReviewMapReduceOrchestrator {
         private final boolean coverageComplete;
         private final int coveragePassesUsed;
 
-        public OrchestrationResult(
+        OrchestrationResult(
                 WorkspaceResponse finalResponse,
                 List<String> mapOutputs,
                 List<Integer> failedBatchIndexes,
@@ -1408,7 +1410,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     totalSelected, totalBatches, List.of(), List.of(), List.of(), false, 0);
         }
 
-        private OrchestrationResult(
+        OrchestrationResult(
                 WorkspaceResponse finalResponse,
                 List<String> mapOutputs,
                 List<Integer> failedBatchIndexes,
@@ -1439,14 +1441,14 @@ public class WidgetReviewMapReduceOrchestrator {
             this.coveragePassesUsed = Math.max(0, coveragePassesUsed);
         }
 
-        public OrchestrationResult withBatchFailures(List<BatchFailure> failures) {
+        OrchestrationResult withBatchFailures(List<BatchFailure> failures) {
             return new OrchestrationResult(
                     finalResponse, mapOutputs, failedBatchIndexes, mapBatchResults, reduceRequest, reduceResult,
                     totalSelected, totalBatches, failures, allSelectedChatIds, missingChatIds, coverageComplete, coveragePassesUsed
             );
         }
 
-        public OrchestrationResult withCoverage(
+        OrchestrationResult withCoverage(
                 List<String> allSelectedChatIds, List<String> missingChatIds, boolean coverageComplete, int coveragePassesUsed
         ) {
             return new OrchestrationResult(

@@ -69,9 +69,9 @@ public class ReviewContextBuilderService {
         StringBuilder sb = new StringBuilder();
 
         appendWithinLimit(sb, "Selected chats context\n", maxChars);
-        appendWithinLimit(sb, "- total_selected: " + total + "\n", maxChars);
-        appendWithinLimit(sb, "- sampled_for_evidence: " + sample.size() + "\n", maxChars);
-        appendWithinLimit(sb, "- omitted_from_inline_evidence: " + Math.max(0, total - sample.size()) + "\n", maxChars);
+        appendWithinLimit(sb, "- total_selected: " + total + '\n', maxChars);
+        appendWithinLimit(sb, "- sampled_for_evidence: " + sample.size() + '\n', maxChars);
+        appendWithinLimit(sb, "- omitted_from_inline_evidence: " + Math.max(0, total - sample.size()) + '\n', maxChars);
 
         appendWithinLimit(sb, "\nCoverage index (sampled subset):\n", maxChars);
         appendWithinLimit(sb, buildHashIndex(sample, strategy.maxHashLines), maxChars);
@@ -95,11 +95,11 @@ public class ReviewContextBuilderService {
         List<String> omittedIds = computeOmittedIds(entries, includedIds);
         if (sb.length() < maxChars - 350) {
             appendWithinLimit(sb, "\nDeterministic coverage metadata:\n", maxChars);
-            appendWithinLimit(sb, "- exact_total_selected: " + total + "\n", maxChars);
-            appendWithinLimit(sb, "- exact_included_count: " + includedIds.size() + "\n", maxChars);
-            appendWithinLimit(sb, "- exact_omitted_count: " + omittedIds.size() + "\n", maxChars);
-            appendWithinLimit(sb, "- exact_included_ids: " + toBracketedIds(includedIds, 500) + "\n", maxChars);
-            appendWithinLimit(sb, "- exact_omitted_ids: " + toBracketedIds(omittedIds, MAX_OMITTED_IDS_LIST) + "\n", maxChars);
+            appendWithinLimit(sb, "- exact_total_selected: " + total + '\n', maxChars);
+            appendWithinLimit(sb, "- exact_included_count: " + includedIds.size() + '\n', maxChars);
+            appendWithinLimit(sb, "- exact_omitted_count: " + omittedIds.size() + '\n', maxChars);
+            appendWithinLimit(sb, "- exact_included_ids: " + toBracketedIds(includedIds, 500) + '\n', maxChars);
+            appendWithinLimit(sb, "- exact_omitted_ids: " + toBracketedIds(omittedIds, MAX_OMITTED_IDS_LIST) + '\n', maxChars);
         }
 
         if (sb.length() < maxChars - 300) {
@@ -115,7 +115,7 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    public List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
+    List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
         List<List<SelectedEntry>> out = new ArrayList<>();
         if (entries == null || entries.isEmpty()) {
             return out;
@@ -128,17 +128,17 @@ public class ReviewContextBuilderService {
         return out;
     }
 
-    public List<List<SelectedEntry>> splitForMapAdaptive(List<SelectedEntry> entries, int preferredBatchSize, int minBatchSize) {
+    List<List<SelectedEntry>> splitForMapAdaptive(List<SelectedEntry> entries, int preferredBatchSize, int minBatchSize) {
         int safeMin = Math.max(1, minBatchSize);
         int safePreferred = Math.max(safeMin, preferredBatchSize);
         return splitForMap(entries, safePreferred);
     }
 
-    public String buildMapBatchContext(String userMessage, List<SelectedEntry> batch, int batchIndex, int totalBatches, int maxChars) {
+    String buildMapBatchContext(String userMessage, List<SelectedEntry> batch, int batchIndex, int totalBatches, int maxChars) {
         return buildMapBatchContext(userMessage, batch, batchIndex, totalBatches, maxChars, null);
     }
 
-    public String buildMapBatchContext(
+    String buildMapBatchContext(
             String userMessage,
             List<SelectedEntry> batch,
             int batchIndex,
@@ -165,10 +165,10 @@ public class ReviewContextBuilderService {
         StringBuilder sb = new StringBuilder();
 
         mustAppendWithinLimit(sb, "Map batch context\n", maxChars, "Map batch header does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- batch: " + batchIndex + "/" + totalBatches + "\n", maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- entries_in_batch: " + batch.size() + "\n", maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- query_terms: " + terms + "\n", maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- expected_chat_ids: " + toBracketedIds(expected, 5000) + "\n", maxChars, "Expected IDs line does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- batch: " + batchIndex + '/' + totalBatches + '\n', maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- entries_in_batch: " + batch.size() + '\n', maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- query_terms: " + terms + '\n', maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- expected_chat_ids: " + toBracketedIds(expected, 5000) + '\n', maxChars, "Expected IDs line does not fit maxChars; reduce batch size and retry.");
         mustAppendWithinLimit(sb, "- strict_heading_rule: use '### Chat <id>' for every expected ID\n", maxChars, "Strict rule line does not fit maxChars; reduce batch size and retry.");
 
         mustAppendWithinLimit(sb, "\nPer-chat evidence:\n", maxChars, "Per-chat evidence header does not fit maxChars; reduce batch size and retry.");
@@ -188,13 +188,13 @@ public class ReviewContextBuilderService {
         List<String> omittedIds = computeOmittedIdsByBatch(batchIds, includedIds);
 
         mustAppendWithinLimit(sb, "\nDeterministic batch coverage metadata:\n", maxChars, "Coverage metadata header does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_total: " + batchIds.size() + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_included: " + includedIds.size() + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_omitted: " + omittedIds.size() + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_ids: " + toBracketedIds(batchIds, 5000) + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_expected_ids: " + toBracketedIds(expected, 5000) + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_included_ids: " + toBracketedIds(includedIds, 5000) + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_omitted_ids: " + toBracketedIds(omittedIds, 5000) + "\n", maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_total: " + batchIds.size() + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_included: " + includedIds.size() + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_omitted: " + omittedIds.size() + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_ids: " + toBracketedIds(batchIds, 5000) + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_expected_ids: " + toBracketedIds(expected, 5000) + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_included_ids: " + toBracketedIds(includedIds, 5000) + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, "- exact_batch_omitted_ids: " + toBracketedIds(omittedIds, 5000) + '\n', maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
 
         if (!omittedIds.isEmpty()) {
             throw new IllegalArgumentException("Map batch coverage incomplete; omitted IDs present. Re-batch required.");
@@ -203,15 +203,15 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    public String buildReduceContext(String userMessage, List<String> mapOutputs, int maxChars) {
+    String buildReduceContext(String userMessage, List<String> mapOutputs, int maxChars) {
         return buildReduceContext(userMessage, mapOutputs, List.of(), maxChars);
     }
 
-    public String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
+    String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
         return buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, List.of(), List.of(), maxChars);
     }
 
-    public String buildReduceContext(
+    String buildReduceContext(
             String userMessage,
             List<String> mapOutputs,
             List<Integer> failedBatchIndexes,
@@ -230,10 +230,10 @@ public class ReviewContextBuilderService {
             StringBuilder fallback = new StringBuilder();
             appendWithinLimit(fallback, "Map-Reduce synthesis context\n", maxChars);
             appendWithinLimit(fallback, "- map_outputs: 0\n", maxChars);
-            appendWithinLimit(fallback, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + "\n", maxChars);
-            appendWithinLimit(fallback, "- all_selected_ids_count: " + allDistinct.size() + "\n", maxChars);
-            appendWithinLimit(fallback, "- missing_ids_count: " + missingDistinct.size() + "\n", maxChars);
-            appendWithinLimit(fallback, "- user_request: " + safe(userMessage, "") + "\n", maxChars);
+            appendWithinLimit(fallback, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + '\n', maxChars);
+            appendWithinLimit(fallback, "- all_selected_ids_count: " + allDistinct.size() + '\n', maxChars);
+            appendWithinLimit(fallback, "- missing_ids_count: " + missingDistinct.size() + '\n', maxChars);
+            appendWithinLimit(fallback, "- user_request: " + safe(userMessage, "") + '\n', maxChars);
             appendWithinLimit(fallback, "\nSynthesis instruction:\n"
                     + "- No batch outputs were available.\n"
                     + "- Report that analysis is blocked by batch-processing failures.\n"
@@ -243,14 +243,14 @@ public class ReviewContextBuilderService {
 
         StringBuilder sb = new StringBuilder();
         appendWithinLimit(sb, "Map-Reduce synthesis context\n", maxChars);
-        appendWithinLimit(sb, "- map_outputs_count: " + mapOutputs.size() + "\n", maxChars);
-        appendWithinLimit(sb, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + "\n", maxChars);
-        appendWithinLimit(sb, "- all_selected_ids_count: " + allDistinct.size() + "\n", maxChars);
-        appendWithinLimit(sb, "- missing_ids_count: " + missingDistinct.size() + "\n", maxChars);
+        appendWithinLimit(sb, "- map_outputs_count: " + mapOutputs.size() + '\n', maxChars);
+        appendWithinLimit(sb, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + '\n', maxChars);
+        appendWithinLimit(sb, "- all_selected_ids_count: " + allDistinct.size() + '\n', maxChars);
+        appendWithinLimit(sb, "- missing_ids_count: " + missingDistinct.size() + '\n', maxChars);
 
-        appendWithinLimit(sb, "- all_selected_ids_preview: " + toBracketedIds(allDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + "\n", maxChars);
-        appendWithinLimit(sb, "- missing_ids_preview: " + toBracketedIds(missingDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + "\n", maxChars);
-        appendWithinLimit(sb, "- user_request: " + safe(userMessage, "") + "\n", maxChars);
+        appendWithinLimit(sb, "- all_selected_ids_preview: " + toBracketedIds(allDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + '\n', maxChars);
+        appendWithinLimit(sb, "- missing_ids_preview: " + toBracketedIds(missingDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + '\n', maxChars);
+        appendWithinLimit(sb, "- user_request: " + safe(userMessage, "") + '\n', maxChars);
 
         appendWithinLimit(sb, "\nMap outputs (truncated):\n", maxChars);
 
@@ -265,7 +265,7 @@ public class ReviewContextBuilderService {
             }
 
             String clean = trimTo(safe(out, ""), MAX_MAP_OUTPUT_ITEM_CHARS);
-            String block = "### Batch Output " + idx + "\n" + clean + "\n\n";
+            String block = "### Batch Output " + idx + '\n' + clean + "\n\n";
             if (!appendWithinLimit(sb, block, maxChars)) {
                 omitted++;
             } else {
@@ -292,7 +292,7 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    public String buildBatchDeterministicHeader(int totalSelected, int totalBatches, int batchIndex, List<SelectedEntry> batch) {
+    String buildBatchDeterministicHeader(int totalSelected, int totalBatches, int batchIndex, List<SelectedEntry> batch) {
         List<String> batchIds = extractKnownIds(batch);
         return """
                 Deterministic metadata (use exactly; do not estimate):
@@ -301,10 +301,16 @@ public class ReviewContextBuilderService {
                 - exact_batch_index: %d
                 - exact_batch_size: %d
                 - exact_batch_ids: %s
-                """.formatted(totalSelected, totalBatches, batchIndex, batchIds.size(), batchIds);
+            """.formatted(
+                totalSelected,
+                totalBatches,
+                batchIndex,
+                batchIds.size(),
+                batchIds
+            );
     }
 
-    public List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
+    List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
         if (entry == null) {
             return List.of();
         }
@@ -328,8 +334,8 @@ public class ReviewContextBuilderService {
 
             out.add(new SelectedEntry(
                     entry.getChatId(),
-                    "[segment " + (i + 1) + "/" + segments + "] " + p,
-                    "[segment " + (i + 1) + "/" + segments + "] " + r,
+                    "[segment " + (i + 1) + '/' + segments + "] " + p,
+                    "[segment " + (i + 1) + '/' + segments + "] " + r,
                     entry.getCreatedAt(),
                     entry.getSessionId()
             ));
@@ -337,7 +343,7 @@ public class ReviewContextBuilderService {
         return out;
     }
 
-    public List<SelectedEntry> explodeLargeEntriesToSegments(List<SelectedEntry> entries, int promptChunkChars, int responseChunkChars) {
+    List<SelectedEntry> explodeLargeEntriesToSegments(List<SelectedEntry> entries, int promptChunkChars, int responseChunkChars) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }
@@ -387,10 +393,10 @@ public class ReviewContextBuilderService {
         String prompt = compressText(e.getPrompt(), PROMPT_SNIPPET_CHARS);
         String response = compressText(e.getResponse(), RESPONSE_SNIPPET_CHARS);
 
-        return "### Chat " + id + "\n"
-                + "- Created At: " + createdAt + "\n"
-                + "- Session ID: " + sessionId + "\n"
-                + "- Prompt:\n" + prompt + "\n"
+        return "### Chat " + id + '\n'
+                + "- Created At: " + createdAt + '\n'
+                + "- Session ID: " + sessionId + '\n'
+                + "- Prompt:\n" + prompt + '\n'
                 + "- Response:\n" + response;
     }
 
@@ -401,10 +407,10 @@ public class ReviewContextBuilderService {
         String prompt = safe(e.getPrompt(), "(empty)").trim();
         String response = safe(e.getResponse(), "(empty)").trim();
 
-        return "### Chat " + id + "\n"
-                + "- Created At: " + createdAt + "\n"
-                + "- Session ID: " + sessionId + "\n"
-                + "- Prompt:\n" + prompt + "\n"
+        return "### Chat " + id + '\n'
+                + "- Created At: " + createdAt + '\n'
+                + "- Session ID: " + sessionId + '\n'
+                + "- Prompt:\n" + prompt + '\n'
                 + "- Response:\n" + response;
     }
 
@@ -419,7 +425,7 @@ public class ReviewContextBuilderService {
                 break;
             }
             out.append(normalizeId(safe(e.getChatId(), "(unknown)")))
-                    .append("|")
+                    .append('|')
                     .append(sha1Hex(safe(e.getPrompt(), "")))
                     .append('\n');
             count++;
@@ -501,7 +507,7 @@ public class ReviewContextBuilderService {
                 break;
             }
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -531,7 +537,7 @@ public class ReviewContextBuilderService {
                 }
                 break;
             }
-            String line = "- " + id + "\n";
+            String line = "- " + id + '\n';
             if (sb.length() + line.length() > budget) {
                 break;
             }
@@ -556,7 +562,7 @@ public class ReviewContextBuilderService {
             int from = b * batchSize;
             int to = Math.min(total, from + batchSize);
 
-            List<SelectedEntry> slice = new ArrayList<>(sample.subList(from, to));
+            List<SelectedEntry> slice = sample.subList(from, to);
             int pChars = 0;
             int rChars = 0;
             Set<String> matched = new HashSet<>();
@@ -620,7 +626,7 @@ public class ReviewContextBuilderService {
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return normalized.substring(0, Math.max(0, maxChars - 1)) + "…";
+        return normalized.substring(0, Math.max(0, maxChars - 1)) + "â€¦";
     }
 
     private String trimTo(String value, int maxChars) {
@@ -642,17 +648,21 @@ public class ReviewContextBuilderService {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            final char[] hex = "0123456789abcdef".toCharArray();
             StringBuilder sb = new StringBuilder(bytes.length * 2);
             for (byte b : bytes) {
                 int v = b & 0xFF;
-                sb.append(hex[v >>> 4]).append(hex[v & 0x0F]);
+                appendHexByte(sb, v);
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException ex) {
             log.log(Level.FINE, "SHA-256 algorithm unavailable, falling back to hashCode", ex);
             return Integer.toHexString((value == null ? "" : value).hashCode());
         }
+    }
+
+    private static void appendHexByte(StringBuilder sb, int value) {
+        sb.append(Character.forDigit((value >>> 4) & 0x0F, 16));
+        sb.append(Character.forDigit(value & 0x0F, 16));
     }
 
     private static final class Strategy {
@@ -665,7 +675,7 @@ public class ReviewContextBuilderService {
         final int randomCount;
         final int maxHashLines;
 
-        Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
+        private Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
             this.name = name;
             this.topRelevantCount = topRelevantCount;
             this.newestCount = newestCount;
@@ -675,3 +685,4 @@ public class ReviewContextBuilderService {
         }
     }
 }
+

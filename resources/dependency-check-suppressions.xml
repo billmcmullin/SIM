@@ -2,17 +2,53 @@
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
     <suppress>
         <notes>
-            False positive: internal module com.sim.chatserver:sim-core was matched to
-            unrelated SimStudio advisories (CVE-2026-3431, CVE-2026-3432).
-            Added: 2026-07-16.
-            Remove when Dependency-Check no longer maps these CVEs to
-            pkg:maven/com.sim.chatserver/sim-core OR if SimStudio is ever introduced
-            as a real dependency (in that case, replace suppression with real upgrade).
+            False positive: internal SIM modules were matched to unrelated SimStudioAI
+            "sim" advisories due name similarity.
+            Verified against report descriptions: CVEs reference Next.js/TypeScript paths
+            (apps/sim/...) not present in this Java codebase.
+            Updated: 2026-07-17.
+            Remove when Dependency-Check matching no longer maps these CVEs to
+            com.sim.chatserver artifacts, or if SimStudioAI is added as a real dependency.
             Review cadence: every quarter and after Dependency-Check engine/version
             upgrades.
         </notes>
-        <packageUrl regex="true">^pkg:maven/com\.sim\.chatserver/sim-core@.*$</packageUrl>
+        <packageUrl regex="true">^pkg:maven/com\.sim\.chatserver/sim-(core|email|web)@.*$</packageUrl>
+        <cve>CVE-2025-10096</cve>
+        <cve>CVE-2025-15099</cve>
+        <cve>CVE-2025-7107</cve>
+        <cve>CVE-2025-7114</cve>
+        <cve>CVE-2025-9800</cve>
+        <cve>CVE-2025-9801</cve>
+        <cve>CVE-2025-9805</cve>
         <cve>CVE-2026-3431</cve>
         <cve>CVE-2026-3432</cve>
+    </suppress>
+
+    <suppress>
+        <notes>
+            False positive for this project context: CVE-2026-23907 and CVE-2026-33929
+            affect Apache PDFBox example application code (ExtractEmbeddedFiles), not
+            the library APIs used by this project.
+            Verification on 2026-07-17:
+            - pdfbox-2.0.24.jar and xmpbox-2.0.24.jar contain no
+              org/apache/pdfbox/examples/* entries.
+            - source tree contains no ExtractEmbeddedFiles/PDComplexFileSpecification
+              usage.
+            Keep scoped to current versions only.
+        </notes>
+        <packageUrl>pkg:maven/org.apache.pdfbox/pdfbox@2.0.24</packageUrl>
+        <cve>CVE-2026-23907</cve>
+        <cve>CVE-2026-33929</cve>
+    </suppress>
+
+    <suppress>
+        <notes>
+            Same rationale as pdfbox suppression above: example-only CVEs reported on
+            xmpbox transitive artifact in this scan context.
+            Keep scoped to current versions only.
+        </notes>
+        <packageUrl>pkg:maven/org.apache.pdfbox/xmpbox@2.0.24</packageUrl>
+        <cve>CVE-2026-23907</cve>
+        <cve>CVE-2026-33929</cve>
     </suppress>
 </suppressions>

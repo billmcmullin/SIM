@@ -298,7 +298,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.length() > 512 ? s.substring(0, 512) + "…" : s;
+        return s.length() > 512 ? s.substring(0, 512) + "..." : s;
     }
 
     private Map<String, CsvTableData> readZipTables(InputStream input) throws IOException {
@@ -313,14 +313,8 @@ public class DatabaseImportServlet extends HttpServlet {
 
                 String table = name.substring("tables/".length(), name.length() - 4);
 
-                ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = zis.read(buffer)) != -1) {
-                    bos.write(buffer, 0, read);
-                }
-
-                CsvTableData data = readCsv(new ByteArrayInputStream(bos.toByteArray()));
+                byte[] csvBytes = zis.readAllBytes();
+                CsvTableData data = readCsv(new ByteArrayInputStream(csvBytes));
                 out.put(table, data);
             }
         }
@@ -498,10 +492,10 @@ public class DatabaseImportServlet extends HttpServlet {
                 if (dataType == null) {
                     continue;
                 }
-                int type = dataType;
+                int type = dataType.intValue();
                 type = sanitizeSqlType(type);
                 Integer nullableFlag = readNullableInt(rs, "NULLABLE");
-                boolean nullable = nullableFlag == null || nullableFlag != ResultSetMetaData.columnNoNulls;
+                boolean nullable = nullableFlag == null || nullableFlag.intValue() != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
         }
@@ -584,20 +578,10 @@ public class DatabaseImportServlet extends HttpServlet {
                     ps.setDouble(idx, Double.parseDouble(v));
                 case Types.NUMERIC, Types.DECIMAL ->
                     ps.setBigDecimal(idx, new BigDecimal(v));
-                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> {
-                    Timestamp ts = parseTimestampStrict(v);
-                    if (ts == null) {
-                        throw new SQLException("Invalid timestamp format '" + v + "'");
-                    }
-                    ps.setTimestamp(idx, ts);
-                }
-                case Types.DATE -> {
-                    java.sql.Date d = parseDateStrict(v);
-                    if (d == null) {
-                        throw new SQLException("Invalid date format '" + v + "'");
-                    }
-                    ps.setDate(idx, d);
-                }
+                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
+                    bindTimestamp(ps, idx, v);
+                case Types.DATE ->
+                    bindDate(ps, idx, v);
                 case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY ->
                     ps.setBytes(idx, Base64.getDecoder().decode(v));
                 default ->
@@ -625,6 +609,14 @@ public class DatabaseImportServlet extends HttpServlet {
         }
 
         return null;
+    }
+
+    private void bindTimestamp(PreparedStatement ps, int idx, String v) throws SQLException {
+        Timestamp ts = parseTimestampStrict(v);
+        if (ts == null) {
+            throw new SQLException("Invalid timestamp format '" + v + '\'');
+        }
+        ps.setTimestamp(idx, ts);
     }
 
     private java.sql.Date parseDateStrict(String v) {
@@ -658,6 +650,14 @@ public class DatabaseImportServlet extends HttpServlet {
         return null;
     }
 
+    private void bindDate(PreparedStatement ps, int idx, String v) throws SQLException {
+        java.sql.Date d = parseDateStrict(v);
+        if (d == null) {
+            throw new SQLException("Invalid date format '" + v + '\'');
+        }
+        ps.setDate(idx, d);
+    }
+
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         try (ResultSet rs = meta.getTables(null, "public", tableName, new String[]{"TABLE"})) {
@@ -682,7 +682,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     + "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
                     + "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
                     + "last_synced_at TIMESTAMPTZ"
-                    + ")";
+                        + ')';
             case "customer_identity_session" -> "CREATE TABLE IF NOT EXISTS " + q(table) + " ("
                     + "session_id TEXT PRIMARY KEY, "
                     + "identity_id BIGINT NOT NULL REFERENCES customer_identity(identity_id) ON DELETE CASCADE, "
@@ -690,7 +690,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     + "contact_email_snapshot VARCHAR(320), "
                     + "linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
                     + "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
-                    + ")";
+                        + ')';
             default -> "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)";
         };
 
@@ -800,7 +800,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (ident == null || !SQL_IDENTIFIER.matcher(ident).matches()) {
             throw new IllegalArgumentException("Invalid SQL identifier");
         }
-        return "\"" + ident + "\"";
+        return '"' + ident + '"';
     }
 
     private String firstParam(HttpServletRequest req, String name) {
@@ -993,40 +993,40 @@ public class DatabaseImportServlet extends HttpServlet {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
             Integer value = e.getValue();
-            b.add(e.getKey(), value == null ? 0 : value);
+            b.add(e.getKey(), value == null ? 0 : value.intValue());
         }
         return b.build();
     }
 
-    private static final class CsvTableData {
+    static final class CsvTableData {
 
         final List<String> headers;
         final List<List<String>> rows;
 
-        private CsvTableData(List<String> headers, List<List<String>> rows) {
+        CsvTableData(List<String> headers, List<List<String>> rows) {
             this.headers = headers == null ? List.of() : headers;
             this.rows = rows == null ? List.of() : rows;
         }
     }
 
-    private static final class ColumnInfo {
+    static final class ColumnInfo {
 
         final int sqlType;
         final boolean nullable;
 
-        private ColumnInfo(int sqlType, boolean nullable) {
+        ColumnInfo(int sqlType, boolean nullable) {
             this.sqlType = sqlType;
             this.nullable = nullable;
         }
     }
 
-    private static final class ImportException extends SQLException {
+    static final class ImportException extends SQLException {
 
         final String table;
         final int rowNumber;
         final String column;
 
-        private ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
+        ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);
             this.table = table;
             this.rowNumber = rowNumber;
@@ -1034,14 +1034,14 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
-    private static final class PostImportSyncResult {
+    static final class PostImportSyncResult {
 
         final boolean triggered;
         final boolean ok;
         final int statusCode;
         final String message;
 
-        private PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
+        PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
             this.triggered = triggered;
             this.ok = ok;
             this.statusCode = statusCode;

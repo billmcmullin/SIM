@@ -36,7 +36,7 @@ public final class WidgetStore {
      * Explicit bootstrap call (instead of static initializer). Call this during
      * application startup.
      */
-    public static void ensureTableExists() {
+    private static void ensureTableExists() {
         try (Connection connection = Database.getConnection();
              PreparedStatement statement = connection.prepareStatement(CREATE_TABLE_SQL)) {
             statement.executeUpdate();
@@ -60,7 +60,7 @@ public final class WidgetStore {
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql.toString())) {
 
             if (hasFilter) {
-                String pattern = "%" + safeFilterInput + "%";
+                String pattern = '%' + safeFilterInput + '%';
                 statement.setString(1, pattern);
                 statement.setString(2, pattern);
             }
@@ -81,7 +81,7 @@ public final class WidgetStore {
         }
     }
 
-    public static WidgetEntry create(String widgetId, String displayName) throws SQLException {
+    private static WidgetEntry create(String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
         String normalizedWidgetId = normalizeRequired(widgetId, "widgetId");
@@ -108,7 +108,7 @@ public final class WidgetStore {
         }
     }
 
-    public static WidgetEntry update(int id, String widgetId, String displayName) throws SQLException {
+    private static WidgetEntry update(int id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
         if (id <= 0) {
@@ -147,10 +147,11 @@ public final class WidgetStore {
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        if (id == null || id <= 0) {
+        int resolvedId = id == null ? 0 : id;
+        if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
-        return update(id, widgetId, displayName);
+        return update(resolvedId, widgetId, displayName);
     }
 
     public static int deleteBulk(Collection<Integer> ids) throws SQLException {
@@ -160,21 +161,22 @@ public final class WidgetStore {
             return 0;
         }
 
-        List<Integer> validIds = ids.stream()
+        int[] validIds = ids.stream()
                 .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
                 .filter(i -> i > 0)
-                .toList();
+                .toArray();
 
-        if (validIds.isEmpty()) {
+        if (validIds.length == 0) {
             return 0;
         }
 
-        String placeholders = validIds.stream().map(i -> "?").collect(Collectors.joining(","));
+        String placeholders = java.util.Arrays.stream(validIds).mapToObj(i -> "?").collect(Collectors.joining(","));
         String sql = "DELETE FROM widget_entries WHERE id IN (" + placeholders + ")";
 
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
-            for (Integer value : validIds) {
+            for (int value : validIds) {
                 statement.setInt(index++, value);
             }
             return statement.executeUpdate();
@@ -183,7 +185,7 @@ public final class WidgetStore {
                 ensureTableExists();
                 try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
                     int index = 1;
-                    for (Integer value : validIds) {
+                    for (int value : validIds) {
                         statement.setInt(index++, value);
                     }
                     return statement.executeUpdate();
@@ -284,7 +286,7 @@ public final class WidgetStore {
 
     public static final class DuplicateWidgetIdException extends SQLException {
 
-        public DuplicateWidgetIdException(String widgetId, Throwable cause) {
+        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
             super("Widget ID '" + widgetId + "' already exists.", cause);
         }
     }

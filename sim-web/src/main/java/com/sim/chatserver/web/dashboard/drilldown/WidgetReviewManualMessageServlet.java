@@ -243,16 +243,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
             mirrorWorkspaceResponse(resp, upstream);
 
-                String completionLog = String.format(
-                    Locale.ROOT,
-                    "[manual-message][%s] completed status=%d latencyMs=%d mode=%s selected=%d strategy=%s",
-                    requestId,
-                    upstream.statusCode(),
-                    (System.currentTimeMillis() - startMs),
-                    mode,
-                    selectedEntries.size(),
-                    (useMapReduce ? "map-reduce-orchestrator" : "single-pass")
-                );
+                String completionLog = "[manual-message][" + requestId + "] completed"
+                        + " status=" + upstream.statusCode()
+                        + " latencyMs=" + (System.currentTimeMillis() - startMs)
+                        + " mode=" + mode
+                        + " selected=" + selectedEntries.size()
+                        + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
                 log.info(completionLog);
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) {
@@ -337,8 +333,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     String completionMsg = ok
                             ? "Completed"
                             : (httpOk
-                                    ? ("Completed with partial coverage (missing=" + missingIds.size() + ")")
-                                    : ("Completed with upstream errors (status=" + httpStatus + ")"));
+                                ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
+                                : ("Completed with upstream errors (status=" + httpStatus + ')'));
 
                     String errMsg = ok ? ""
                             : (!httpOk
@@ -382,7 +378,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), allIds, List.of(),
-                                "Map round " + round + "/" + totalRounds + " started • remaining=" + remainingBeforeRound
+                                "Map round " + round + '/' + totalRounds + " started • remaining=" + remainingBeforeRound
                         );
                     }
 
@@ -416,8 +412,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Batch " + batchIndex + " " + (success ? "completed" : "failed")
-                                + " • " + liveCompletedBatches.get() + "/" + Math.max(1, liveTotalBatches.get())
+                                "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
+                                + " • " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
                                 + " complete"
                         );
                     }
@@ -446,7 +442,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                     Math.max(liveFailedBatches.get(), 0),
                                     0,
                                     allIds, List.of(), List.of(), List.of(),
-                                    "Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal + " • summaries=" + chunkSize
+                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " • summaries=" + chunkSize
                             );
                             return;
                         }
@@ -458,7 +454,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Synthesis L" + level + " • chunk " + chunkIndex + "/" + totalChunksAtLevel
+                                "Synthesis L" + level + " • chunk " + chunkIndex + '/' + totalChunksAtLevel
                                 + " • size=" + chunkSize + " • cfg=" + currentChunkSizeConfig
                         );
                     }
@@ -466,8 +462,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     @Override
                     public void onReduceChunkCompleted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, boolean success, int httpStatus) {
                         String phaseText = (level == 999)
-                                ? ("Final synthesis attempt " + chunkIndex + "/" + reduceFinalAttemptTotal)
-                                : ("Synthesis L" + level + " chunk " + chunkIndex + "/" + totalChunksAtLevel);
+                                ? ("Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal)
+                                : ("Synthesis L" + level + " chunk " + chunkIndex + '/' + totalChunksAtLevel);
 
                         jobs.updateReduceProgress(
                                 jid,
@@ -476,7 +472,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                phaseText + " " + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ")"
+                                phaseText + ' ' + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ')'
                         );
                     }
 
@@ -502,7 +498,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ")"
+                                "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ')'
                         );
                     }
                 };
@@ -539,8 +535,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 String completionMsg = ok
                         ? "Completed"
                         : (httpOk
-                                ? ("Completed with partial coverage (missing=" + missingIds.size() + ")")
-                                : ("Completed with upstream errors (status=" + httpStatus + ")"));
+                        ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
+                        : ("Completed with upstream errors (status=" + httpStatus + ')'));
 
                 String errMsg = ok ? ""
                         : (!httpOk
@@ -620,7 +616,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 Deterministic metadata (use exactly; do not estimate):
                 - exact_total_selected: %d
                 - execution_mode: single-pass
-                """.formatted(selectedEntries.size());
+            """.formatted(selectedEntries.size());
 
         String promptWithMeta = controlledPrompt + "\n\n" + deterministicHeader;
         String context = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getSinglePassContextMaxChars());
@@ -685,6 +681,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw e;
+        } catch (RuntimeException e) {
+            throw new IOException("Map-reduce orchestration failed", e);
         } catch (Exception e) {
             throw new IOException("Map-reduce orchestration failed", e);
         }
@@ -744,24 +742,20 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
         }
 
-            String summaryLog = String.format(
-                Locale.ROOT,
-                "[manual-message][%s][map-reduce-summary] reduceRequest=%s reduceResultSuccess=%s coverage=%s mapBatchResults=%d failures=%d coverageComplete=%s missingCount=%d metadataMismatch=%s strictFixedBatchMode=%s fixedBatchSize=%d reduceInitialChunkSize=%d reduceMaxLevels=%d finalReduceMaxAttempts=%d",
-                requestId,
-                reduceRequest,
-                (reduceResult != null && reduceResult.isSuccess()),
-                coverage,
-                mapBatchResults.size(),
-                failures.size(),
-                coverage.isCoverageComplete(),
-                coverage.getNotUsedChatIds().size(),
-                metadataMismatch,
-                mrConfig.isStrictFixedBatchMode(),
-                mrConfig.getFixedBatchSize(),
-                mrConfig.getReduceInitialChunkSize(),
-                mrConfig.getReduceMaxLevels(),
-                mrConfig.getFinalReduceMaxAttempts()
-            );
+            String summaryLog = "[manual-message][" + requestId + "][map-reduce-summary]"
+                    + " reduceRequest=" + reduceRequest
+                    + " reduceResultSuccess=" + (reduceResult != null && reduceResult.isSuccess())
+                    + " coverage=" + coverage
+                    + " mapBatchResults=" + mapBatchResults.size()
+                    + " failures=" + failures.size()
+                    + " coverageComplete=" + coverage.isCoverageComplete()
+                    + " missingCount=" + coverage.getNotUsedChatIds().size()
+                    + " metadataMismatch=" + metadataMismatch
+                    + " strictFixedBatchMode=" + mrConfig.isStrictFixedBatchMode()
+                    + " fixedBatchSize=" + mrConfig.getFixedBatchSize()
+                    + " reduceInitialChunkSize=" + mrConfig.getReduceInitialChunkSize()
+                    + " reduceMaxLevels=" + mrConfig.getReduceMaxLevels()
+                    + " finalReduceMaxAttempts=" + mrConfig.getFinalReduceMaxAttempts();
             log.info(summaryLog);
 
         return new MapReduceExecutionResult(finalResp, orchestration);
@@ -858,7 +852,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         List<String> reasons = new ArrayList<>();
         if (failures != null) {
             for (BatchFailure bf : failures) {
-                reasons.add(bf.reasonForCoverage() + " (batch " + bf.getBatchIndex() + ")");
+                reasons.add(bf.reasonForCoverage() + " (batch " + bf.getBatchIndex() + ')');
             }
         }
         if (missingIds != null && !missingIds.isEmpty()) {
@@ -1080,7 +1074,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             return port > 0
-                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ":" + port
+                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ':' + port
                     : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL", e);
@@ -1115,16 +1109,30 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+            return false;
+        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {
-        byte[] bytes = req.getInputStream().readAllBytes();
-        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
-            throw new IOException("Payload exceeds allowed size.");
+        if (!isValidJsonRequest(req)) {
+            throw new IOException("Invalid JSON request payload.");
         }
-        return canonicalizeForValidation(new String(bytes, StandardCharsets.UTF_8));
+        StringBuilder body = new StringBuilder();
+        try (var reader = req.getReader()) {
+            char[] chunk = new char[4096];
+            int read;
+            while ((read = reader.read(chunk)) != -1) {
+                body.append(chunk, 0, read);
+                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+            }
+        }
+        return canonicalizeForValidation(body.toString());
     }
 
     private String canonicalizeForValidation(String value) {
@@ -1216,7 +1224,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final WorkspaceResponse response;
         final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
 
-        MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
             this.response = response;
             this.orchestration = orchestration;
         }

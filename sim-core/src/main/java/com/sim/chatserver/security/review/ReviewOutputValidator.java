@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -343,13 +344,13 @@ public class ReviewOutputValidator {
                 && lower.contains("missing_chat_ids");
 
         if (!hasDeterministicFields) {
-            Integer provided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
-            Integer used = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
-            Integer notUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
+            OptionalInt provided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+            OptionalInt used = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+            OptionalInt notUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
 
-            if (provided == null || used == null || notUsed == null) {
+            if (provided.isEmpty() || used.isEmpty() || notUsed.isEmpty()) {
                 errors.add("Coverage metadata incomplete: expected deterministic ID fields or complete coverage count lines.");
-            } else if (used.intValue() + notUsed.intValue() != provided.intValue()) {
+            } else if (used.getAsInt() + notUsed.getAsInt() != provided.getAsInt()) {
                 errors.add("Coverage metadata mismatch: chats_used + chats_not_used does not equal chats_provided.");
             }
         }
@@ -384,8 +385,8 @@ public class ReviewOutputValidator {
         List<String> metaAll = parseIdsFromMetadataLine(normalized, META_ALL_SELECTED);
         List<String> metaUsed = parseIdsFromMetadataLine(normalized, META_USED);
         List<String> metaMissing = parseIdsFromMetadataLine(normalized, META_MISSING);
-        Boolean metaCoverageComplete = parseCoverageComplete(normalized);
-        Integer exactTotalSelected = parseIntMetadata(normalized, META_EXACT_TOTAL_SELECTED);
+        TriState metaCoverageComplete = parseCoverageComplete(normalized);
+        OptionalInt exactTotalSelected = parseIntMetadata(normalized, META_EXACT_TOTAL_SELECTED);
 
         if (metaAll.isEmpty()) {
             errors.add("Coverage metadata mismatch: all_selected_chat_ids is missing/empty.");
@@ -425,54 +426,59 @@ public class ReviewOutputValidator {
             errors.add("Coverage metadata mismatch: used_chat_ids ∪ missing_chat_ids does not equal all_selected_chat_ids.");
         }
 
-        if (metaCoverageComplete != null) {
+        if (metaCoverageComplete != TriState.ABSENT) {
             boolean derivedComplete = metaMissingSet.isEmpty();
-            if (metaCoverageComplete.booleanValue() != derivedComplete) {
+            boolean reportedComplete = metaCoverageComplete == TriState.TRUE;
+            if (reportedComplete != derivedComplete) {
                 errors.add("Coverage metadata mismatch: coverage_complete does not match missing_chat_ids emptiness.");
             }
         }
 
-        if (exactTotalSelected != null && exactTotalSelected.intValue() != metaAllSet.size()) {
+        if (exactTotalSelected.isPresent() && exactTotalSelected.getAsInt() != metaAllSet.size()) {
             errors.add("Coverage metadata mismatch: exact_total_selected does not match all_selected_chat_ids size.");
         }
 
-        Integer chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
-        Integer chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
-        Integer chatsNotUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
+        OptionalInt chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+        OptionalInt chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+        OptionalInt chatsNotUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
 
-        if (chatsProvided != null && chatsProvided.intValue() != metaAllSet.size()) {
+        if (chatsProvided.isPresent() && chatsProvided.getAsInt() != metaAllSet.size()) {
             errors.add("Coverage metadata mismatch: 'Chats provided' does not match all_selected_chat_ids size.");
         }
-        if (chatsUsed != null && chatsUsed.intValue() != metaUsedSet.size()) {
+        if (chatsUsed.isPresent() && chatsUsed.getAsInt() != metaUsedSet.size()) {
             errors.add("Coverage metadata mismatch: 'Chats used in analysis' does not match used_chat_ids size.");
         }
-        if (chatsNotUsed != null && chatsNotUsed.intValue() != metaMissingSet.size()) {
+        if (chatsNotUsed.isPresent() && chatsNotUsed.getAsInt() != metaMissingSet.size()) {
             errors.add("Coverage metadata mismatch: 'Chats not used' does not match missing_chat_ids size.");
         }
-        if (chatsProvided != null && chatsUsed != null && chatsNotUsed != null) {
-            if (chatsUsed.intValue() + chatsNotUsed.intValue() != chatsProvided.intValue()) {
+        if (chatsProvided.isPresent() && chatsUsed.isPresent() && chatsNotUsed.isPresent()) {
+            if (chatsUsed.getAsInt() + chatsNotUsed.getAsInt() != chatsProvided.getAsInt()) {
                 errors.add("Coverage metadata mismatch: chats_used + chats_not_used does not equal chats_provided.");
             }
         }
     }
 
     private void validateCoveragePercentageConsistency(String normalized, List<String> errors, List<String> warnings) {
-        Integer chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
-        Integer chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
-        Integer coveragePct = parseIntMetadata(normalized, COVERAGE_PERCENTAGE);
+        OptionalInt chatsProvided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
+        OptionalInt chatsUsed = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
+        OptionalInt coveragePct = parseIntMetadata(normalized, COVERAGE_PERCENTAGE);
 
-        if (coveragePct == null || chatsProvided == null || chatsUsed == null) {
+        if (coveragePct.isEmpty() || chatsProvided.isEmpty() || chatsUsed.isEmpty()) {
             return;
         }
 
-        if (coveragePct < 0 || coveragePct > 100) {
+        int coveragePctValue = coveragePct.getAsInt();
+        int chatsProvidedValue = chatsProvided.getAsInt();
+        int chatsUsedValue = chatsUsed.getAsInt();
+
+        if (coveragePctValue < 0 || coveragePctValue > 100) {
             errors.add("Coverage metadata mismatch: coverage percentage out of valid range 0..100.");
             return;
         }
 
-        if (chatsProvided > 0) {
-            int derived = (int) Math.round((chatsUsed.doubleValue() * 100.0) / chatsProvided.doubleValue());
-            if (Math.abs(derived - coveragePct.intValue()) > 1) {
+        if (chatsProvidedValue > 0) {
+            int derived = (int) Math.round((chatsUsedValue * 100.0) / chatsProvidedValue);
+            if (Math.abs(derived - coveragePctValue) > 1) {
                 warnings.add("Coverage percentage may be inconsistent with used/provided counts (derived=" + derived + "%).");
             }
         }
@@ -614,35 +620,49 @@ public class ReviewOutputValidator {
         return normalizeIds(out);
     }
 
-    private Boolean parseCoverageComplete(String text) {
+    private TriState parseCoverageComplete(String text) {
         if (text == null || text.isBlank()) {
-            return null;
+            return TriState.ABSENT;
         }
         Matcher m = META_COVERAGE_COMPLETE.matcher(text);
         if (!m.find()) {
-            return null;
+            return TriState.ABSENT;
         }
         String v = m.group(1);
         if (v == null) {
-            return null;
+            return TriState.ABSENT;
         }
-        return Boolean.valueOf(v.trim().toLowerCase(Locale.ROOT));
+        String normalized = v.trim().toLowerCase(Locale.ROOT);
+        if ("true".equals(normalized)) {
+            return TriState.TRUE;
+        }
+        if ("false".equals(normalized)) {
+            return TriState.FALSE;
+        }
+        return TriState.ABSENT;
     }
 
-    private Integer parseIntMetadata(String text, Pattern pattern) {
+    private OptionalInt parseIntMetadata(String text, Pattern pattern) {
         if (text == null || text.isBlank()) {
-            return null;
+            return OptionalInt.empty();
         }
         Matcher m = pattern.matcher(text);
         if (!m.find()) {
-            return null;
+            return OptionalInt.empty();
         }
         try {
-            return Integer.valueOf(m.group(1));
+            return OptionalInt.of(Integer.parseInt(m.group(1)));
         } catch (NumberFormatException e) {
             LOGGER.log(Level.FINE, "Invalid integer metadata value for pattern: {0}", pattern.pattern());
-            return null;
+            return OptionalInt.empty();
         }
+    }
+
+    private enum TriState {
+
+        TRUE,
+        FALSE,
+        ABSENT
     }
 
     public static final class ValidationResult {

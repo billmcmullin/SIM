@@ -69,7 +69,7 @@ public final class ReviewJobStatus {
     final int batchProgressPercent;
     final boolean running;
 
-    private ReviewJobStatus(Builder b) {
+    ReviewJobStatus(Builder b) {
         this.jobId = requireNonBlank(b.jobId, "jobId");
         this.requestId = defaultIfBlank(b.requestId, "");
 
@@ -121,7 +121,7 @@ public final class ReviewJobStatus {
         if (b.running == null) {
             this.running = !this.done;
         } else {
-            this.running = b.running;
+            this.running = Boolean.TRUE.equals(b.running);
         }
         this.batchProgressPercent = b.batchProgressPercent >= 0
                 ? clampPercent(b.batchProgressPercent)
@@ -329,6 +329,8 @@ public final class ReviewJobStatus {
                 90;
             case COMPLETED, FAILED, CANCELLED ->
                 100;
+            default ->
+                100;
         };
     }
 
@@ -393,46 +395,46 @@ public final class ReviewJobStatus {
 
     public static final class Builder {
 
-        private String jobId;
-        private String requestId;
+        String jobId;
+        String requestId;
 
-        private Phase phase;
-        private boolean done;
-        private boolean success;
+        Phase phase;
+        boolean done;
+        boolean success;
 
-        private int totalSelected;
-        private int totalBatches;
-        private int completedBatches;
-        private int failedBatches;
-        private int retries;
+        int totalSelected;
+        int totalBatches;
+        int completedBatches;
+        int failedBatches;
+        int retries;
 
-        private List<String> allSelectedChatIds = new ArrayList<>();
-        private List<String> usedChatIds = new ArrayList<>();
-        private List<String> missingChatIds = new ArrayList<>();
+        List<String> allSelectedChatIds = new ArrayList<>();
+        List<String> usedChatIds = new ArrayList<>();
+        List<String> missingChatIds = new ArrayList<>();
 
-        private int coveragePercent;
-        private boolean coverageComplete;
+        int coveragePercent;
+        boolean coverageComplete;
 
-        private long startedAtEpochMs;
-        private long updatedAtEpochMs;
-        private long finishedAtEpochMs;
+        long startedAtEpochMs;
+        long updatedAtEpochMs;
+        long finishedAtEpochMs;
 
-        private int httpStatus;
-        private String message;
-        private String errorMessage;
+        int httpStatus;
+        String message;
+        String errorMessage;
 
-        private String finalReport;
-        private String rawResponseBody;
-        private String contentType;
+        String finalReport;
+        String rawResponseBody;
+        String contentType;
 
-        private List<Integer> failedBatchIndexes = new ArrayList<>();
-        private List<String> warnings = new ArrayList<>();
+        List<Integer> failedBatchIndexes = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
 
-        private String activity;
-        private int batchProgressPercent = -1;
-        private Boolean running;
+        String activity;
+        int batchProgressPercent = -1;
+        Boolean running;
 
-        private Builder() {
+        Builder() {
         }
 
         public Builder jobId(String jobId) {
@@ -576,7 +578,7 @@ public final class ReviewJobStatus {
         }
 
         public Builder running(boolean running) {
-            this.running = running;
+            this.running = running ? Boolean.TRUE : Boolean.FALSE;
             return this;
         }
 
@@ -650,8 +652,8 @@ public final class ReviewJobStatus {
                 "Queued...";
             case MAP ->
                 totalBatches > 0
-                ? "Analyzing chats: batch " + Math.max(0, completedBatches) + "/" + totalBatches
-                + (failedBatches > 0 ? " (failures: " + failedBatches + ")" : "")
+                ? "Analyzing chats: batch " + Math.max(0, completedBatches) + '/' + totalBatches
+                + (failedBatches > 0 ? " (failures: " + failedBatches + ')' : "")
                 : "Analyzing chats...";
             case REDUCE ->
                 "Synthesizing final report...";
@@ -661,6 +663,8 @@ public final class ReviewJobStatus {
                 "Failed";
             case CANCELLED ->
                 "Cancelled";
+            default ->
+                "Queued...";
         };
     }
 
@@ -696,7 +700,7 @@ public final class ReviewJobStatus {
         }
         Set<Integer> out = new LinkedHashSet<>();
         for (Integer i : src) {
-            if (i != null && i > 0) {
+            if (i != null && i.compareTo(0) > 0) {
                 out.add(i);
             }
         }
@@ -720,7 +724,7 @@ public final class ReviewJobStatus {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    b.add(v);
+                    b.add(Integer.parseInt(v.toString()));
                 }
             }
         }

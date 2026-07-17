@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -59,7 +60,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardNewUsersServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users.html";
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final int DEFAULT_DAYS = 7;
@@ -101,7 +102,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             handlePage(req, resp, session);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed in /dashboard/new-users flow", e);
             if (!resp.isCommitted()) {
                 if (reqExpectsJson(path)) {
@@ -394,16 +395,16 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return totals;
     }
 
-    private Optional<Integer> parseDays(String value) {
+    private OptionalInt parseDays(String value) {
         if (value == null || value.isBlank()) {
-            return Optional.empty();
+            return OptionalInt.empty();
         }
         try {
             int d = Integer.parseInt(value.trim());
-            return ALLOWED_DAYS.contains(d) ? Optional.of(d) : Optional.empty();
+            return ALLOWED_DAYS.contains(d) ? OptionalInt.of(d) : OptionalInt.empty();
         } catch (NumberFormatException e) {
             log.log(Level.FINE, "Invalid days parameter", e);
-            return Optional.empty();
+            return OptionalInt.empty();
         }
     }
 
@@ -501,8 +502,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -533,7 +533,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;
@@ -556,14 +556,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private static final class Metrics {
+    static final class Metrics {
 
         final LocalDate start;
         final LocalDate end;
         final Map<LocalDate, Integer> byDay = new LinkedHashMap<>();
         final List<LatestRow> latest = new ArrayList<>();
 
-        private Metrics(LocalDate start, LocalDate end) {
+        Metrics(LocalDate start, LocalDate end) {
             this.start = start;
             this.end = end;
             long days = ChronoUnit.DAYS.between(start, end);
@@ -572,19 +572,20 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
         }
 
-        private void incrementDay(LocalDate day) {
+        void incrementDay(LocalDate day) {
             if (day == null || day.isBefore(start) || day.isAfter(end)) {
                 return;
             }
-            byDay.put(day, byDay.getOrDefault(day, 0) + 1);
+            int next = byDay.getOrDefault(day, 0) + 1;
+            byDay.put(day, next);
         }
 
-        private String toTrendJson() {
+        String toTrendJson() {
             JsonArrayBuilder labels = Json.createArrayBuilder();
             JsonArrayBuilder values = Json.createArrayBuilder();
             byDay.forEach((d, c) -> {
                 labels.add(d.format(DATE_FMT));
-                values.add(c);
+                values.add(c == null ? 0 : c);
             });
             JsonObject o = Json.createObjectBuilder()
                     .add("labels", labels)
@@ -594,16 +595,16 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private static final class DayResult {
+    static final class DayResult {
 
         final List<LatestRow> rows;
 
-        private DayResult(List<LatestRow> rows) {
+        DayResult(List<LatestRow> rows) {
             this.rows = rows;
         }
     }
 
-    private static final class LatestRow {
+    static final class LatestRow {
 
         final String display;
         final String rawSessionId;
@@ -611,7 +612,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final int totalChats;
         final String chatEntriesUrl;
 
-        private LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
+        LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
             this.display = display;
             this.rawSessionId = rawSessionId;
             this.firstSeen = firstSeen;

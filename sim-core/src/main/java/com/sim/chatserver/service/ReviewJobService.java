@@ -309,8 +309,8 @@ public class ReviewJobService {
             List<String> usedChatIds,
             List<String> missingChatIds
     ) {
-        String msg = "Map round " + round + "/" + Math.max(1, maxRounds)
-                + " · batch " + batchIndex + "/" + Math.max(1, totalBatches)
+        String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
+            + " · batch " + batchIndex + '/' + Math.max(1, totalBatches)
                 + " running...";
         updateMapProgress(
                 jobId,
@@ -337,8 +337,8 @@ public class ReviewJobService {
             List<String> usedChatIds,
             List<String> missingChatIds
     ) {
-        String msg = "Map round " + round + "/" + Math.max(1, maxRounds)
-                + " · batch " + batchIndex + "/" + Math.max(1, totalBatches)
+        String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
+                + " · batch " + batchIndex + '/' + Math.max(1, totalBatches)
                 + " completed";
         updateMapProgress(
                 jobId,
