@@ -21,6 +21,8 @@ import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
+import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
@@ -60,6 +62,20 @@ public class WidgetAvailabilityChecker {
         String checkedAt = DateTimeFormatter.ISO_INSTANT.format(start);
 
         EffectiveConfig cfg = resolveEffectiveConfig();
+        log.info(() -> "Widget availability check starting: method=" + safeMsg(cfg.method)
+                + " url=" + safeUrl(cfg.url)
+                + " timeoutMs=" + cfg.timeoutMs
+                + " expectFieldSet=" + (cfg.expectField != null)
+                + " expectValueSet=" + (cfg.expectValue != null)
+                + sourceSuffix(cfg));
+
+        if ((cfg.apiKeyValue != null || cfg.requestCookie != null) && !isHttpsUrl(cfg.url)) {
+            long latencyMs = Duration.between(start, Instant.now()).toMillis();
+            log.warning(() -> "Widget availability check blocked: sensitive auth material requires HTTPS url="
+                + safeUrl(cfg.url) + sourceSuffix(cfg));
+            return down(checkedAt, latencyMs, "Sensitive auth material configured but healthcheck URL is not HTTPS"
+                + sourceSuffix(cfg));
+        }
 
         try {
             String effectiveWidgetId = effectiveWidgetId(cfg);
@@ -71,6 +87,8 @@ public class WidgetAvailabilityChecker {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(cfg.url))
                     .timeout(Duration.ofMillis(cfg.timeoutMs));
+
+                applyApiKeyHeader(builder, cfg);
 
             switch (cfg.method) {
                 case "HEAD" -> builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
@@ -87,29 +105,52 @@ public class WidgetAvailabilityChecker {
             long latencyMs = Duration.between(start, Instant.now()).toMillis();
             int status = response.statusCode();
             String body = response.body() == null ? "" : response.body();
+            String contentType = headerValue(response, "content-type");
+            String wwwAuthenticate = headerValue(response, "www-authenticate");
 
             if (status < 200 || status >= 300) {
+                log.warning(() -> "Widget availability check returned non-success status=" + status
+                        + " contentType=" + safeMsg(contentType)
+                        + authHeaderSuffix(wwwAuthenticate)
+                        + " latencyMs=" + latencyMs
+                        + " url=" + safeUrl(cfg.url)
+                        + bodySnippetSuffix(body)
+                        + sourceSuffix(cfg));
                 return down(checkedAt, latencyMs, "Non-success HTTP status: " + status
+                        + authHeaderSuffix(wwwAuthenticate)
                         + bodySnippetSuffix(body) + sourceSuffix(cfg));
             }
 
             if (cfg.expectField != null && cfg.expectValue != null) {
                 boolean jsonOk = matchesExpectedJson(body, cfg.expectField, cfg.expectValue);
                 if (!jsonOk) {
+                    log.warning(() -> "Widget availability JSON expectation failed field=" + cfg.expectField
+                            + " expectedValue=" + cfg.expectValue
+                            + " latencyMs=" + latencyMs
+                            + " url=" + safeUrl(cfg.url)
+                            + bodySnippetSuffix(body)
+                            + sourceSuffix(cfg));
                     return down(checkedAt, latencyMs, "JSON expectation failed: "
                             + cfg.expectField + "=" + cfg.expectValue + sourceSuffix(cfg));
                 }
             }
 
+            log.info(() -> "Widget availability check succeeded status=" + status
+                    + " contentType=" + safeMsg(contentType)
+                    + " latencyMs=" + latencyMs
+                    + " url=" + safeUrl(cfg.url)
+                    + sourceSuffix(cfg));
             return up(checkedAt, latencyMs, "Healthcheck succeeded" + sourceSuffix(cfg));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             long latencyMs = Duration.between(start, Instant.now()).toMillis();
-            log.log(Level.FINE, "Widget availability check interrupted", e);
+            log.log(Level.WARNING, "Widget availability check interrupted for url=" + safeUrl(cfg.url)
+                    + sourceSuffix(cfg), e);
             return down(checkedAt, latencyMs, "Interrupted during healthcheck" + sourceSuffix(cfg));
         } catch (IOException | IllegalArgumentException e) {
             long latencyMs = Duration.between(start, Instant.now()).toMillis();
-            log.log(Level.FINE, "Widget availability check error", e);
+            log.log(Level.WARNING, "Widget availability check error for url=" + safeUrl(cfg.url)
+                    + " latencyMs=" + latencyMs + sourceSuffix(cfg), e);
             return down(checkedAt, latencyMs, "Exception: " + e.getClass().getSimpleName()
                     + " - " + safeMsg(e.getMessage()) + sourceSuffix(cfg));
         }
@@ -118,12 +159,17 @@ public class WidgetAvailabilityChecker {
     private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt) throws IOException, InterruptedException {
         String probeUrl = buildEmbedStreamUrl(cfg.url, cfg.widgetId);
         String payload = buildSyntheticPayload();
+        log.info(() -> "Widget synthetic SSE probe starting: url=" + safeUrl(probeUrl)
+            + " timeoutMs=" + cfg.timeoutMs
+            + sourceSuffix(cfg));
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
                 .uri(URI.create(probeUrl))
                 .timeout(Duration.ofMillis(cfg.timeoutMs))
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "text/plain;charset=UTF-8");
+
+        applyApiKeyHeader(req, cfg);
 
         if (cfg.requestOrigin != null) {
             req.header("Origin", cfg.requestOrigin);
@@ -150,23 +196,47 @@ public class WidgetAvailabilityChecker {
         long latencyMs = Duration.between(start, Instant.now()).toMillis();
         int status = response.statusCode();
         String body = response.body() == null ? "" : response.body();
+        String contentType = headerValue(response, "content-type");
+        String wwwAuthenticate = headerValue(response, "www-authenticate");
 
         if (status < 200 || status >= 300) {
+            log.warning(() -> "Widget synthetic SSE probe returned non-success status=" + status
+                + " contentType=" + safeMsg(contentType)
+                + authHeaderSuffix(wwwAuthenticate)
+                + " latencyMs=" + latencyMs
+                + " url=" + safeUrl(probeUrl)
+                + bodySnippetSuffix(body)
+                + sourceSuffix(cfg));
             return down(checkedAt, latencyMs, "Synthetic SSE probe failed: HTTP " + status
+                + authHeaderSuffix(wwwAuthenticate)
                     + bodySnippetSuffix(body) + sourceSuffix(cfg));
         }
 
-        String contentType = headerValue(response, "content-type");
         if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("text/event-stream")) {
+            log.warning(() -> "Widget synthetic SSE probe returned unexpected content-type=" + safeMsg(contentType)
+                + " latencyMs=" + latencyMs
+                + " url=" + safeUrl(probeUrl)
+                + bodySnippetSuffix(body)
+                + sourceSuffix(cfg));
             return down(checkedAt, latencyMs, "Synthetic SSE probe failed: content-type is not text/event-stream"
                     + " (actual=" + safeMsg(contentType) + ")" + sourceSuffix(cfg));
         }
 
         SseValidationResult sse = validateSseBody(body);
         if (!sse.ok) {
+            log.warning(() -> "Widget synthetic SSE probe validation failed reason=" + safeMsg(sse.reason)
+                + " latencyMs=" + latencyMs
+                + " url=" + safeUrl(probeUrl)
+                + bodySnippetSuffix(body)
+                + sourceSuffix(cfg));
             return down(checkedAt, latencyMs, "Synthetic SSE probe failed: " + sse.reason + sourceSuffix(cfg));
         }
 
+        log.info(() -> "Widget synthetic SSE probe succeeded status=" + status
+            + " contentType=" + safeMsg(contentType)
+            + " latencyMs=" + latencyMs
+            + " url=" + safeUrl(probeUrl)
+            + sourceSuffix(cfg));
         return up(checkedAt, latencyMs, "Synthetic SSE probe succeeded" + sourceSuffix(cfg));
     }
 
@@ -332,7 +402,20 @@ public class WidgetAvailabilityChecker {
                     cfg.requestReferer = trimToNull(db.getRequestReferer());
                     cfg.requestUserAgent = trimToNull(db.getRequestUserAgent());
                     cfg.requestCookie = trimToNull(db.getRequestCookie());
+                    cfg.apiKeyHeaderName = trimToNull(db.getApiKeyHeaderName());
+                    cfg.apiKeyValue = trimToNull(db.getApiKeyValue());
 
+                    if (cfg.apiKeyValue == null) {
+                        cfg.apiKeyValue = resolveGlobalServerApiKey();
+                    }
+                    if (cfg.apiKeyValue != null && cfg.apiKeyHeaderName == null) {
+                        cfg.apiKeyHeaderName = "Authorization";
+                    }
+
+                    log.info(() -> "Widget availability config resolved from DB: method=" + safeMsg(cfg.method)
+                            + " url=" + safeUrl(cfg.url)
+                            + " timeoutMs=" + cfg.timeoutMs
+                            + sourceSuffix(cfg));
                     return cfg;
                 }
             }
@@ -354,7 +437,19 @@ public class WidgetAvailabilityChecker {
         envCfg.requestReferer = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_REFERER", ""));
         envCfg.requestUserAgent = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_USER_AGENT", ""));
         envCfg.requestCookie = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_COOKIE", ""));
+        envCfg.apiKeyHeaderName = trimToNull(env("WIDGET_HEALTHCHECK_API_KEY_HEADER", "Authorization"));
+        envCfg.apiKeyValue = trimToNull(env("WIDGET_HEALTHCHECK_API_KEY", ""));
+        if (envCfg.apiKeyValue == null) {
+            envCfg.apiKeyValue = resolveGlobalServerApiKey();
+        }
+        if (envCfg.apiKeyValue != null && envCfg.apiKeyHeaderName == null) {
+            envCfg.apiKeyHeaderName = "Authorization";
+        }
 
+        log.info(() -> "Widget availability config resolved from ENV/DEFAULT: method=" + safeMsg(envCfg.method)
+            + " url=" + safeUrl(envCfg.url)
+            + " timeoutMs=" + envCfg.timeoutMs
+            + sourceSuffix(envCfg));
         return envCfg;
     }
 
@@ -469,8 +564,100 @@ public class WidgetAvailabilityChecker {
         return t.isEmpty() ? null : t;
     }
 
+    private boolean isHttpsUrl(String value) {
+        String t = trimToNull(value);
+        if (t == null) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(t);
+            return "https".equalsIgnoreCase(uri.getScheme());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private String safeMsg(String msg) {
         return msg == null ? "" : msg;
+    }
+
+    private void applyApiKeyHeader(HttpRequest.Builder requestBuilder, EffectiveConfig cfg) {
+        if (requestBuilder == null || cfg == null || cfg.apiKeyValue == null) {
+            return;
+        }
+        String headerName = cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName;
+        String headerValue = cfg.apiKeyValue;
+        if ("authorization".equalsIgnoreCase(headerName)) {
+            String token = trimToNull(headerValue);
+            if (token == null) {
+                return;
+            }
+            token = stripAuthorizationPrefix(token);
+            if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                token = token.substring(7).trim();
+            }
+            if (token.isEmpty()) {
+                return;
+            }
+            headerValue = "Bearer " + token;
+        }
+        requestBuilder.header(headerName, headerValue);
+    }
+
+    private String stripAuthorizationPrefix(String token) {
+        String t = trimToNull(token);
+        if (t == null) {
+            return "";
+        }
+        if (t.regionMatches(true, 0, "Authorization:", 0, 14)) {
+            return t.substring(14).trim();
+        }
+        return t;
+    }
+
+    private String resolveGlobalServerApiKey() {
+        try {
+            ServerConfig config = EncryptedDbConfigStore.load();
+            if (config == null) {
+                return null;
+            }
+            return trimToNull(config.getApiKey());
+        } catch (java.sql.SQLException | RuntimeException e) {
+            log.log(Level.FINE, "Unable to resolve global server API key fallback", e);
+            return null;
+        }
+    }
+
+    private String authHeaderSuffix(String wwwAuthenticate) {
+        String t = trimToNull(wwwAuthenticate);
+        return t == null ? "" : " [www-authenticate=" + t + "]";
+    }
+
+    private String safeUrl(String url) {
+        if (url == null) {
+            return "";
+        }
+        try {
+            URI uri = URI.create(url);
+            StringBuilder sb = new StringBuilder();
+            if (uri.getScheme() != null) {
+                sb.append(uri.getScheme()).append("://");
+            }
+            if (uri.getHost() != null) {
+                sb.append(uri.getHost());
+            } else if (uri.getAuthority() != null) {
+                sb.append(uri.getAuthority());
+            }
+            if (uri.getPort() != -1) {
+                sb.append(':').append(uri.getPort());
+            }
+            if (uri.getPath() != null) {
+                sb.append(uri.getPath());
+            }
+            return sb.toString();
+        } catch (RuntimeException e) {
+            return safeMsg(url);
+        }
     }
 
     private String sourceSuffix(EffectiveConfig cfg) {
@@ -489,6 +676,10 @@ public class WidgetAvailabilityChecker {
         }
         if (cfg.requestCookie != null) {
             sb.append(" [cookie-set]");
+        }
+        if (cfg.apiKeyValue != null) {
+            sb.append(" [api-key-set]");
+            sb.append(" [api-key-header=").append(cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName).append(']');
         }
         return sb.toString();
     }
@@ -530,6 +721,8 @@ public class WidgetAvailabilityChecker {
         String requestReferer;
         String requestUserAgent;
         String requestCookie;
+        String apiKeyHeaderName;
+        String apiKeyValue;
     }
 
     private static final class SseValidationResult {

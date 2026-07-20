@@ -4,6 +4,7 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -220,7 +221,7 @@ public class WidgetExportServlet extends HttpServlet {
                 return exportRows;
             }
 
-            Map<String, Integer> order = indexByOrder(selectedChatIds);
+            Map<String, OrderIndex> order = indexByOrder(selectedChatIds);
             for (TermChatSnapshot s : selection.snapshots) {
                 String chatId = s.getChatId();
                 if (chatId != null && order.containsKey(chatId)) {
@@ -228,7 +229,7 @@ public class WidgetExportServlet extends HttpServlet {
                 }
             }
 
-            exportRows.sort(Comparator.comparingInt(x -> order.getOrDefault(safe(x.getChatId()), Integer.MAX_VALUE)));
+            exportRows.sort(Comparator.comparingInt(x -> orderValue(order, safe(x.getChatId()))));
             return exportRows;
         }
 
@@ -238,7 +239,7 @@ public class WidgetExportServlet extends HttpServlet {
 
         String widgetId = selection.widgetId;
         String tableName = sanitizeWidgetTableName(widgetId);
-        Map<String, Integer> order = indexByOrder(selectedChatIds);
+        Map<String, OrderIndex> order = indexByOrder(selectedChatIds);
 
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
@@ -284,17 +285,28 @@ public class WidgetExportServlet extends HttpServlet {
             }
         }
 
-        exportRows.sort(Comparator.comparingInt(x -> order.getOrDefault(safe(x.getChatId()), Integer.MAX_VALUE)));
+        exportRows.sort(Comparator.comparingInt(x -> orderValue(order, safe(x.getChatId()))));
         return exportRows;
     }
 
-    private Map<String, Integer> indexByOrder(List<String> ids) {
-        Map<String, Integer> out = new LinkedHashMap<>();
+    private Map<String, OrderIndex> indexByOrder(List<String> ids) {
+        Map<String, OrderIndex> out = new LinkedHashMap<>();
         int i = 0;
         for (String id : ids) {
-            out.putIfAbsent(id, i++);
+            if (!out.containsKey(id)) {
+                out.put(id, new OrderIndex(i));
+                i++;
+            }
         }
         return out;
+    }
+
+    private int orderValue(Map<String, OrderIndex> order, String chatId) {
+        if (order == null || chatId == null) {
+            return Integer.MAX_VALUE;
+        }
+        OrderIndex idx = order.get(chatId);
+        return idx == null ? Integer.MAX_VALUE : idx.value;
     }
 
     private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) throws IOException {
@@ -358,7 +370,7 @@ public class WidgetExportServlet extends HttpServlet {
             try (OutputStream out = resp.getOutputStream()) {
                 out.write(pdfBytes);
             }
-        } catch (Exception t) {
+        } catch (IOException | RuntimeException t) {
             log.log(Level.WARNING, "PDF generation failed; falling back to text export.", t);
             resp.setContentType("text/plain; charset=UTF-8");
             try (OutputStream out = resp.getOutputStream()) {
@@ -677,14 +689,19 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private static int parseIntProperty(String name, int fallback) {
-        String raw = System.getProperty(name);
+        if (name == null || name.isBlank()) {
+            return fallback;
+        }
+        String envName = name.trim().toUpperCase(Locale.ROOT).replace('.', '_');
+        String raw = System.getenv(envName);
         if (raw == null || raw.isBlank()) {
             return fallback;
         }
         try {
             int parsed = Integer.parseInt(raw.trim());
             return parsed > 0 ? parsed : fallback;
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid export servlet numeric setting", ex);
             return fallback;
         }
     }
@@ -701,11 +718,13 @@ public class WidgetExportServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        byte[] bytes = req.getInputStream().readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-        if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
-            throw new IOException("Payload exceeds allowed size.");
+        try (var reader = req.getReader(); var out = new StringWriter()) {
+            long copied = reader.transferTo(out);
+            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
+                throw new IOException("Payload exceeds allowed size.");
+            }
+            return out.toString().replace("\u0000", "").replace("\r", "").trim();
         }
-        return new String(bytes, StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -751,5 +770,14 @@ public class WidgetExportServlet extends HttpServlet {
             normalized = normalized.substring(0, 60);
         }
         return normalized;
+    }
+
+    private static final class OrderIndex {
+
+        final int value;
+
+        private OrderIndex(int value) {
+            this.value = value;
+        }
     }
 }

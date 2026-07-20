@@ -32,6 +32,22 @@
         return t ? t : null;
     }
 
+    function logHealthDebug(level, message, data) {
+        const logger = (window.console && typeof window.console[level] === 'function')
+            ? window.console[level].bind(window.console)
+            : (window.console && typeof window.console.log === 'function'
+                ? window.console.log.bind(window.console)
+                : null);
+        if (!logger) {
+            return;
+        }
+        if (typeof data === 'undefined') {
+            logger('[WidgetHealthcheck] ' + message);
+        } else {
+            logger('[WidgetHealthcheck] ' + message, data);
+        }
+    }
+
     function readForm() {
         const timeoutRaw = $('whcTimeoutMs')?.value;
         let timeoutMs = Number.parseInt(timeoutRaw, 10);
@@ -54,8 +70,14 @@
             requestOrigin: toNullIfBlank($('whcRequestOrigin')?.value),
             requestReferer: toNullIfBlank($('whcRequestReferer')?.value),
             requestUserAgent: toNullIfBlank($('whcRequestUserAgent')?.value),
-            requestCookie: toNullIfBlank($('whcRequestCookie')?.value)
+            requestCookie: toNullIfBlank($('whcRequestCookie')?.value),
+            apiKeyHeaderName: toNullIfBlank($('whcApiKeyHeaderName')?.value),
+            apiKeyValue: toNullIfBlank($('whcApiKeyValue')?.value)
         };
+
+        if (payload.apiKeyValue && !payload.apiKeyHeaderName) {
+            payload.apiKeyHeaderName = 'Authorization';
+        }
 
         if (!['GET', 'HEAD', 'POST'].includes(payload.method)) {
             payload.method = 'GET';
@@ -99,7 +121,21 @@
             $('whcRequestUserAgent').value = cfg.requestUserAgent || '';
         }
         if ($('whcRequestCookie')) {
-            $('whcRequestCookie').value = cfg.requestCookie || '';
+            $('whcRequestCookie').value = '';
+        }
+        if ($('whcRequestCookieStoredNote')) {
+            const cookieStored = cfg.requestCookieStored === true || cfg.requestCookieStored === 'true';
+            $('whcRequestCookieStoredNote').style.display = cookieStored ? 'inline' : 'none';
+        }
+        if ($('whcApiKeyHeaderName')) {
+            $('whcApiKeyHeaderName').value = cfg.apiKeyHeaderName || 'Authorization';
+        }
+        if ($('whcApiKeyValue')) {
+            $('whcApiKeyValue').value = '';
+        }
+        if ($('whcApiKeyStoredNote')) {
+            const stored = cfg.apiKeyStored === true || cfg.apiKeyStored === 'true';
+            $('whcApiKeyStoredNote').style.display = stored ? 'inline' : 'none';
         }
     }
 
@@ -187,26 +223,39 @@
     async function testWidgetHealthNow() {
         setMessage('Running availability test...', false);
         try {
+            logHealthDebug('info', 'Starting availability test request', {
+                endpoint: endpoint('/admin/widget-availability.json')
+            });
+
             const res = await fetch(endpoint('/admin/widget-availability.json'), {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' }
             });
 
+            logHealthDebug('info', 'Availability test response status', {
+                status: res.status,
+                ok: res.ok
+            });
+
             if (res.status === 401) {
                 setMessage('Not authenticated. Please sign in again.', true);
+                logHealthDebug('warn', 'Availability test unauthorized (401)');
                 return;
             }
             if (res.status === 403) {
                 setMessage('Admin role required.', true);
+                logHealthDebug('warn', 'Availability test forbidden (403)');
                 return;
             }
             if (!res.ok) {
                 const text = await res.text();
+                logHealthDebug('error', 'Availability test HTTP error body', text);
                 throw new Error('Test failed (' + res.status + '): ' + text);
             }
 
             const data = await res.json();
+            logHealthDebug('info', 'Availability test payload', data);
             const ok = !!data.available;
             const detail = data && data.details ? ` Details: ${data.details}` : '';
             const latency = (data && typeof data.latencyMs !== 'undefined') ? ` Latency: ${data.latencyMs}ms.` : '';
@@ -218,6 +267,7 @@
                 setMessage('Availability test failed.' + latency + checked + detail, true);
             }
         } catch (err) {
+            logHealthDebug('error', 'Availability test request failed', err);
             setMessage('Availability test error: ' + (err?.message || err), true);
         }
     }

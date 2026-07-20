@@ -104,6 +104,28 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             cfg.setRequestUserAgent(stringOrNull(in, "requestUserAgent"));
             cfg.setRequestCookie(stringOrNull(in, "requestCookie"));
 
+            // Optional API key header configuration
+            cfg.setApiKeyHeaderName(stringOrNull(in, "apiKeyHeaderName"));
+            cfg.setApiKeyValue(stringOrNull(in, "apiKeyValue"));
+
+            WidgetHealthConfig existing = store.load();
+
+            if (cfg.getApiKeyHeaderName() == null && existing != null && existing.getApiKeyHeaderName() != null) {
+                cfg.setApiKeyHeaderName(existing.getApiKeyHeaderName());
+            }
+
+            if (cfg.getApiKeyValue() == null) {
+                if (existing != null) {
+                    cfg.setApiKeyValue(existing.getApiKeyValue());
+                }
+            }
+
+            if (cfg.getRequestCookie() == null) {
+                if (existing != null) {
+                    cfg.setRequestCookie(existing.getRequestCookie());
+                }
+            }
+
             HttpSession session = req.getSession(false);
             String updatedBy = session != null && session.getAttribute("user") != null
                     ? String.valueOf(session.getAttribute("user"))
@@ -155,7 +177,9 @@ public class WidgetHealthConfigServlet extends HttpServlet {
                 .add("requestOrigin", safe(cfg == null ? null : cfg.getRequestOrigin()))
                 .add("requestReferer", safe(cfg == null ? null : cfg.getRequestReferer()))
                 .add("requestUserAgent", safe(cfg == null ? null : cfg.getRequestUserAgent()))
-                .add("requestCookie", safe(cfg == null ? null : cfg.getRequestCookie()))
+                .add("requestCookieStored", cfg != null && cfg.getRequestCookie() != null)
+                .add("apiKeyHeaderName", safe(cfg == null ? null : cfg.getApiKeyHeaderName()))
+                .add("apiKeyStored", cfg != null && cfg.getApiKeyValue() != null)
                 .add("updatedBy", safe(cfg == null ? null : cfg.getUpdatedBy()))
                 .add("updatedAt", cfg == null || cfg.getUpdatedAt() == null ? "" : cfg.getUpdatedAt().toString());
 

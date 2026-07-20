@@ -90,7 +90,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
 
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
-        resp.sendRedirect(resp.encodeRedirectURL(safeAuthorizeUrl));
+        resp.sendRedirect(safeAuthorizeUrl);
     }
 
     private boolean isAdmin(HttpServletRequest req) {

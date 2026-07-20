@@ -163,7 +163,7 @@
                             </div>
                         </div>
 
-                        <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summaryâ€¦
+                        <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summary...
                         </p>
 
                         <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
@@ -182,7 +182,7 @@
                         <input type="hidden" id="dailySummaryCopyText" value="">
 
                         <div id="dailySummaryBody" style="margin-top:10px;">
-                            <p style="margin:0;">Generating summary of quality, response, and usage for todayâ€¦</p>
+                            <p style="margin:0;">Generating summary of quality, response, and usage for today...</p>
                         </div>
                     </article>
 
@@ -283,7 +283,7 @@
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                     <h2 style="margin:0;">Term Distribution based on Prompts</h2>
                     <p id="termLegendModeSummary" class="helper-note" style="margin:6px 0 10px 0;">
-                        Total entries shown: â€”
+                        Total entries shown: --
                     </p>
                     <button id="termLegendValueToggleBtn" type="button" class="ghost-btn">
                         Show Totals
@@ -303,17 +303,17 @@
                         <div>
                             <h2>Top 10 Sessions</h2>
                             <p>Most frequent Session IDs across all widget tables.</p>
-                            <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">â€”</strong></p>
+                            <p style="margin:4px 0 0 0;">Total sessions: <strong id="totalSessions">--</strong></p>
                             <p style="margin:4px 0 0 0;">
                                 Active (<span id="activeDaysLabel">7</span> days):
                                 <strong><a id="activeSessionsLink"
-                                        href="${contextPath}/dashboard/sessions?activity=active&activeDays=7">â€”</a></strong>
+                                        href="${contextPath}/dashboard/sessions?activity=active&activeDays=7">--</a></strong>
                                 <span id="activeUsersDelta" class="progression progression-flat"
-                                    style="margin-left:8px;">â€”</span>
+                                    style="margin-left:8px;">--</span>
                                 &nbsp;|&nbsp;
                                 Inactive:
                                 <strong><a id="inactiveSessionsLink"
-                                        href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">â€”</a></strong>
+                                        href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">--</a></strong>
                             </p>
                         </div>
                     </div>
@@ -392,7 +392,7 @@
                         banner.style.background = '#fef2f2';
                         banner.style.border = '1px solid #fecaca';
                         banner.style.color = '#991b1b';
-                        banner.textContent = text || 'Chat Widget Service Unavailable â€” responses may fail';
+                        banner.textContent = text || 'Chat Widget Service Unavailable - responses may fail';
                     }
                 }
 
@@ -417,10 +417,10 @@
                             ok,
                             ok
                                 ? 'Chat Widget Service Available'
-                                : 'Chat Widget Service Unavailable â€” responses may fail' + details
+                                : 'Chat Widget Service Unavailable - responses may fail' + details
                         );
                     } catch (e) {
-                        showBanner(false, 'Chat Widget Service Unavailable â€” status check failed');
+                        showBanner(false, 'Chat Widget Service Unavailable - status check failed');
                     }
                 }
 

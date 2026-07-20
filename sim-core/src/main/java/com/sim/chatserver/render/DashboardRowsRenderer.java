@@ -292,38 +292,38 @@ public final class DashboardRowsRenderer {
 
         final XMLStreamWriter xml;
 
-        private HtmlWriter(XMLStreamWriter xml) {
+        HtmlWriter(XMLStreamWriter xml) {
             this.xml = xml;
         }
 
-        private void start(String tag, String... attrs) throws XMLStreamException {
+        void start(String tag, String... attrs) throws XMLStreamException {
             xml.writeStartElement(tag);
             for (int i = 0; i + 1 < attrs.length; i += 2) {
                 xml.writeAttribute(attrs[i], attrs[i + 1] == null ? "" : attrs[i + 1]);
             }
         }
 
-        private void end() throws XMLStreamException {
+        void end() throws XMLStreamException {
             xml.writeEndElement();
         }
 
-        private void text(String value) throws XMLStreamException {
+        void text(String value) throws XMLStreamException {
             xml.writeCharacters(value == null ? "" : value);
         }
 
-        private void element(String tag, String value) throws XMLStreamException {
+        void element(String tag, String value) throws XMLStreamException {
             start(tag);
             text(value);
             end();
         }
 
-        private void anchor(String cssClass, String href, String text) throws XMLStreamException {
+        void anchor(String cssClass, String href, String text) throws XMLStreamException {
             start("a", "class", cssClass, "href", href);
             text(text);
             end();
         }
 
-        private void span(String cssClass, String text) throws XMLStreamException {
+        void span(String cssClass, String text) throws XMLStreamException {
             start("span", "class", cssClass);
             text(text);
             end();

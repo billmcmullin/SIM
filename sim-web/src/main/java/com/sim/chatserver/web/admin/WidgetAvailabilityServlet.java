@@ -35,24 +35,47 @@ public class WidgetAvailabilityServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String user = sessionUser(req);
+        String role = sessionRole(req);
+        log.info(() -> "Widget availability endpoint invoked: user=" + user
+                + " role=" + role
+                + " remoteAddr=" + safe(req == null ? null : req.getRemoteAddr(), "unknown"));
+
         if (!isLoggedIn(req)) {
+            log.warning(() -> "Widget availability request denied: unauthenticated remoteAddr="
+                    + safe(req == null ? null : req.getRemoteAddr(), "unknown"));
             writeUnauthorized(resp);
             return;
         }
 
         try {
             WidgetAvailabilityResult result = checker.checkNow();
+            if (result == null) {
+                log.warning(() -> "Widget availability checker returned null result for user=" + user);
+                result = new WidgetAvailabilityResult(false, "DOWN", "", 0L, "Availability check returned no result");
+            }
+            final WidgetAvailabilityResult finalResult = result;
+
+            if (!finalResult.available()) {
+                log.warning(() -> "Widget availability check result DOWN for user=" + user
+                        + " details=" + safe(finalResult.details(), "")
+                        + " latencyMs=" + Math.max(0L, finalResult.latencyMs()));
+            } else {
+                log.info(() -> "Widget availability check result UP for user=" + user
+                        + " latencyMs=" + Math.max(0L, finalResult.latencyMs()));
+            }
 
             JsonObjectBuilder json = Json.createObjectBuilder()
-                    .add("available", result.available())
-                    .add("status", safe(result.status(), result.available() ? "UP" : "DOWN"))
-                    .add("checkedAt", safe(result.checkedAtIso(), ""))
-                    .add("latencyMs", Math.max(0L, result.latencyMs()))
-                    .add("details", safe(result.details(), ""));
+                    .add("available", finalResult.available())
+                    .add("status", safe(finalResult.status(), finalResult.available() ? "UP" : "DOWN"))
+                    .add("checkedAt", safe(finalResult.checkedAtIso(), ""))
+                    .add("latencyMs", Math.max(0L, finalResult.latencyMs()))
+                    .add("details", safe(finalResult.details(), ""));
 
             writeJson(resp, HttpServletResponse.SC_OK, json.build().toString());
-        } catch (Exception e) {
-            log.log(Level.WARNING, "Widget availability check failed", e);
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Widget availability check failed for user=" + user
+                    + " role=" + role, e);
 
             JsonObjectBuilder json = Json.createObjectBuilder()
                     .add("available", false)
@@ -68,6 +91,22 @@ public class WidgetAvailabilityServlet extends HttpServlet {
     private boolean isLoggedIn(HttpServletRequest req) {
         HttpSession session = req.getSession(false);
         return session != null && session.getAttribute("user") != null;
+    }
+
+    private String sessionUser(HttpServletRequest req) {
+        HttpSession session = req == null ? null : req.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
+            return "anonymous";
+        }
+        return String.valueOf(session.getAttribute("user"));
+    }
+
+    private String sessionRole(HttpServletRequest req) {
+        HttpSession session = req == null ? null : req.getSession(false);
+        if (session == null || session.getAttribute("role") == null) {
+            return "unknown";
+        }
+        return String.valueOf(session.getAttribute("role"));
     }
 
     private void writeUnauthorized(HttpServletResponse resp) throws IOException {

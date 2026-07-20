@@ -197,6 +197,20 @@ public final class EncryptedDbConfigStore {
         log.fine("saveWorkspaceName: complete");
     }
 
+    /**
+     * Encrypts a secret value using the same ENCv1 format used by server_config.
+     */
+    public static String encryptSecretForStorage(String plainValue) throws SQLException {
+        return encryptIfPresent(plainValue);
+    }
+
+    /**
+     * Decrypts an ENCv1 secret value; returns input unchanged if it is plaintext.
+     */
+    public static String decryptSecretIfNeeded(String storedValue) throws SQLException {
+        return decryptIfNeeded(storedValue);
+    }
+
     private static void ensureWorkspaceColumn(Connection conn) throws SQLException {
         ensureColumn(conn, "workspace_name", "TEXT");
     }

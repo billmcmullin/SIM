@@ -1,10 +1,9 @@
 // src/main/java/com/sim/chatserver/web/dashboard/drilldown/WidgetReviewManualMessageServlet.java
 package com.sim.chatserver.web.dashboard.drilldown;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -614,11 +613,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             String requestId
     ) throws IOException, InterruptedException {
         String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
-        String deterministicHeader = """
-                Deterministic metadata (use exactly; do not estimate):
-                - exact_total_selected: %d
-                - execution_mode: single-pass
-            """.formatted(selectedEntries.size());
+        String deterministicHeader = "Deterministic metadata (use exactly; do not estimate):\n"
+            + "- exact_total_selected: " + selectedEntries.size() + '\n'
+            + "- execution_mode: single-pass\n";
 
         String promptWithMeta = controlledPrompt + "\n\n" + deterministicHeader;
         String context = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getSinglePassContextMaxChars());
@@ -675,17 +672,20 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             WidgetReviewMapReduceOrchestrator.ProgressListener progressListener
     ) throws IOException, InterruptedException {
 
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
-        try {
-            orchestration = orchestrator.run(
-                    targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
+        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration =
+            WidgetReviewOrchestrationRunner.run(
+                orchestrator,
+                targetUrl,
+                apiKey,
+                userMessage,
+                mode,
+                sessionId,
+                requestReset,
+                attachments,
+                selectedEntries,
+                requestId,
+                progressListener
             );
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Map-reduce orchestration failed", e);
-        }
 
         List<MapBatchResult> mapBatchResults = orchestration.mapBatchResults();
         List<BatchFailure> failures = orchestration.batchFailures();
@@ -1109,6 +1109,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+            return false;
+        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -1117,18 +1121,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!isValidJsonRequest(req)) {
             throw new IOException("Invalid JSON request payload.");
         }
-        try (InputStream in = req.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            byte[] chunk = new byte[4096];
-            int read;
-            int total = 0;
-            while ((read = in.read(chunk)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size.");
-                }
-                out.write(chunk, 0, read);
+        try (var reader = req.getReader(); var out = new StringWriter()) {
+            long copied = reader.transferTo(out);
+            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
+                throw new IOException("Payload exceeds allowed size.");
             }
-            return canonicalizeForValidation(out.toString(StandardCharsets.UTF_8));
+            return canonicalizeForValidation(out.toString());
         }
     }
 
@@ -1221,7 +1219,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final WorkspaceResponse response;
         final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
 
-        MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
             this.response = response;
             this.orchestration = orchestration;
         }

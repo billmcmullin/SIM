@@ -488,14 +488,14 @@ public class DatabaseImportServlet extends HttpServlet {
                     continue;
                 }
                 String name = rawName.toLowerCase(Locale.ROOT);
-                Integer dataType = readNullableInt(rs, "DATA_TYPE");
-                if (dataType == null) {
+                int typeValue = rs.getInt("DATA_TYPE");
+                if (rs.wasNull()) {
                     continue;
                 }
-                int type = dataType.intValue();
-                type = sanitizeSqlType(type);
-                Integer nullableFlag = readNullableInt(rs, "NULLABLE");
-                boolean nullable = nullableFlag == null || nullableFlag.intValue() != ResultSetMetaData.columnNoNulls;
+                int type = sanitizeSqlType(typeValue);
+
+                int nullableValue = rs.getInt("NULLABLE");
+                boolean nullable = rs.wasNull() || nullableValue != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
         }
@@ -807,8 +807,7 @@ public class DatabaseImportServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> parameterMap = req.getParameterMap();
-        String[] values = parameterMap.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -870,8 +869,7 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String readSafeDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        Object rawValue = rs.getObject(columnName);
-        String raw = rawValue == null ? null : String.valueOf(rawValue);
+        String raw = rs.getString(columnName);
         if (raw == null) {
             return null;
         }
@@ -881,14 +879,6 @@ public class DatabaseImportServlet extends HttpServlet {
         }
         String bounded = normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
         return SAFE_DB_TEXT.matcher(bounded).matches() ? bounded : null;
-    }
-
-    private Integer readNullableInt(ResultSet rs, String columnName) throws SQLException {
-        int value = rs.getInt(columnName);
-        if (rs.wasNull()) {
-            return null;
-        }
-        return value;
     }
 
     private int sanitizeSqlType(int sqlType) {
