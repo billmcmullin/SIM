@@ -5,6 +5,7 @@
     <head>
         <meta charset="utf-8">
         <title>Dashboard</title>
+        <link rel="preload" as="style" href="${contextPath}/assets/css/app.css">
         <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
     </head>
 
@@ -25,41 +26,61 @@
         </div>
 
         <div class="container">
-            <section class="section">
+            <section id="dashboardHomeSection" class="section">
                 <h1>Welcome, ${user}</h1>
                 <div class="dashboard-admin-btn-row" style="${adminButtonStyle}">
                     <button type="button" class="ghost-btn" onclick="window.location.href='${adminHref}'">Admin</button>
                 </div>
                 ${dashboardInfoMessage}
                 <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/trends'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn active" data-home="true"
+                        onclick="window.DashboardInlineView.showDefaultSections()">
+                        Dashboard Home
+                    </button>
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/trends"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/trends', 'Entry Trends')">
                         Entry Trends
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/topics'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/topics"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/topics', 'Terms')">
                         Popular Topics
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/session-names'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/session-names"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/session-names', 'Username Catalog')">
                         Username Catalog
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/latest-chats'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/latest-chats"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/latest-chats', 'Latest Chats')">
                         Latest Chats
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/new-users'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/new-users"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/new-users', 'New Users')">
                         New Users
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/inactive-users'">
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/inactive-users"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/inactive-users', 'Inactive Users')">
                         Inactive Users
                     </button>
-                    <button type="button" class="ghost-btn"
-                        onclick="window.location.href='${contextPath}/dashboard/sessions?activity=active&activeDays=7'">
-                        Active Users
+                    <button type="button" class="ghost-btn dashboard-switch-btn"
+                        data-target="${contextPath}/dashboard/sessions?activity=active&activeDays=7"
+                        onclick="window.DashboardInlineView.openOrNavigate('${contextPath}/dashboard/sessions?activity=active&activeDays=7', 'User Sessions')">
+                        View User Sessions
                     </button>
+                </div>
+            </section>
+
+            <section id="dashboardInlineSection" class="section" style="display:none;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <h2 id="dashboardInlineTitle" style="margin:0;">Dashboard Detail</h2>
+                </div>
+                <div class="dashboard-inline-frame-wrap">
+                    <div id="dashboardInlineContent" class="dashboard-inline-frame"></div>
                 </div>
             </section>
 
@@ -190,7 +211,7 @@
                         style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                         <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
                         <a class="metric-link"
-                            href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match&mode=increaseOnly">Show
+                            href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match">Show
                             all</a>
                     </div>
                     <div class="table-scroll">
@@ -294,14 +315,6 @@
                                 <strong><a id="inactiveSessionsLink"
                                         href="${contextPath}/dashboard/sessions?activity=inactive&activeDays=7">â€”</a></strong>
                             </p>
-                        </div>
-                        <div class="button-row">
-                            <div>
-                                <button type="button" class="ghost-btn"
-                                    onclick="window.location.href='${contextPath}/dashboard/sessions'">
-                                    View all sessions
-                                </button>
-                            </div>
                         </div>
                     </div>
                     <div class="table-scroll">
@@ -418,6 +431,7 @@
 
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/core.js"></script>
+        <script src="${contextPath}/assets/js/dashboard_util/inlineView.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/metrics.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/termReview.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/charts.js"></script>

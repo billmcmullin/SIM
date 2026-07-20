@@ -356,11 +356,23 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        Long value = rs.getObject(column, Long.class);
-        if (value == null) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return 0L;
         }
-        return Math.max(0L, value);
+        if (raw instanceof Number number) {
+            return Math.max(0L, number.longValue());
+        }
+        if (raw instanceof String text) {
+            try {
+                return Math.max(0L, Long.parseLong(text.trim()));
+            } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Unable to parse numeric term id value from text", ex);
+                return 0L;
+            }
+        }
+        log.log(Level.FINE, "Unsupported numeric type for term id column: {0}", raw.getClass().getName());
+        return 0L;
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {

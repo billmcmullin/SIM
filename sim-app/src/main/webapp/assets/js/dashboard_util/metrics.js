@@ -110,7 +110,11 @@
                 a.dataset.loading = '1';
                 const href = await a.__buildHref();
                 if (href) {
-                    window.location.href = href;
+                    if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                        window.DashboardInlineView.openOrNavigate(href, 'Review Data');
+                    } else {
+                        window.location.href = href;
+                    }
                 }
             } catch (e) {
                 console.warn('Unable to open review selection:', e);
@@ -228,8 +232,16 @@
             const d = computeDelta(termVals.today, termVals.yesterday);
             const dates = core.getTodayYesterday();
 
-            setConditionalMetricLink(todayTermsEl, d.today, `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.today)}`);
-            setConditionalMetricLink(yesterdayTermsEl, d.yesterday, `${contextPath}/dashboard/sessions/drilldown/date-review?date=${encodeURIComponent(dates.yesterday)}`);
+            setConditionalMetricLink(
+                todayTermsEl,
+                d.today,
+                `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=today&scope=termEntries`
+            );
+            setConditionalMetricLink(
+                yesterdayTermsEl,
+                d.yesterday,
+                `${contextPath}/dashboard/sessions/drilldown/date-review-relative?day=yesterday&scope=termEntries`
+            );
 
             if (termsDeltaEl) {
                 const forcedDir = (window.termsProgressionDirection || d.direction || 'flat').toLowerCase();

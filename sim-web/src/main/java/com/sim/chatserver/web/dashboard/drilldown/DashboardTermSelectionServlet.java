@@ -31,6 +31,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     private static final String MODE_INCREASE_ONLY = "increaseOnly";
     private static final String MODE_YESTERDAY_ONLY = "yesterdayOnly";
+    private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
@@ -94,15 +95,32 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
             snapshots = findSnapshotsByTerm(increasedSnapshotsByTerm, normalizedTerm);
             if (snapshots.isEmpty()) {
-                log.fine(() -> "No increase snapshots for term='" + rawTerm + "' normalized='" + normalizedTerm + "'");
-                if (wantsJson(req)) {
-                    writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
+                // Backward compatibility: some UI links for Other Parasoft Match used increaseOnly while
+                // actually intending "show all" term chats.
+                if (OTHER_PARASOFT_LABEL.equalsIgnoreCase(normalizedTerm)) {
+                    snapshots = findSnapshotsByTerm(allSnapshotsByTerm, normalizedTerm);
+                    if (!snapshots.isEmpty()) {
+                        selectionLabel = rawTerm;
+                    } else {
+                        if (wantsJson(req)) {
+                            writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
+                        } else {
+                            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
+                        }
+                        return;
+                    }
                 } else {
-                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
+                    log.fine(() -> "No increase snapshots for term='" + rawTerm + "' normalized='" + normalizedTerm + "'");
+                    if (wantsJson(req)) {
+                        writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
+                    } else {
+                        resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
+                    }
+                    return;
                 }
-                return;
+            } else {
+                selectionLabel = rawTerm + " (Increase Only)";
             }
-            selectionLabel = rawTerm + " (Increase Only)";
         } else if (yesterdayOnly) {
             @SuppressWarnings("unchecked")
             Map<String, List<TermChatSnapshot>> yesterdaySnapshotsByTerm

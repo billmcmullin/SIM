@@ -83,12 +83,12 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8)
                 + "&sessionId="
                 + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
-        String redirectUrl = safeContextPath(req.getContextPath()) + redirectPath;
-        if (!isAllowedRedirect(redirectUrl)) {
+        String forwardPath = safeRedirectPath(redirectPath, "/dashboard");
+        if (!isAllowedRedirect(forwardPath)) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid redirect target.");
             return;
         }
-        resp.sendRedirect(resp.encodeRedirectURL(redirectUrl));
+        req.getRequestDispatcher(forwardPath).forward(req, resp);
     }
 
     private List<TermChatSnapshot> collectSessionEntries(String sessionId) throws SQLException {
@@ -201,6 +201,17 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
             return false;
         }
         return redirectUrl.contains("/dashboard/widgets/drilldown/review?selectionId=");
+    }
+
+    private String safeRedirectPath(String target, String fallback) {
+        if (target == null) {
+            return fallback;
+        }
+        String trimmed = target.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return fallback;
+        }
+        return trimmed;
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
