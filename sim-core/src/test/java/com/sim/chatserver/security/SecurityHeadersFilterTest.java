@@ -1,13 +1,18 @@
 package com.sim.chatserver.security;
 
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-
-import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for SecurityHeadersFilter
  *
@@ -30,10 +35,15 @@ public class SecurityHeadersFilterTest
         SecurityHeadersFilter underTest = new SecurityHeadersFilter();
 
         // When
-        ServletRequest request = mock(ServletRequest.class);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRequestURI()).thenReturn("/chat-server/dashboard");
+        when(request.getContextPath()).thenReturn("/chat-server");
         HttpServletResponse response = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
         underTest.doFilter(request, response, chain);
+
+        verify(response).setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        verify(response).setHeader("Pragma", "no-cache");
 
     }
 
@@ -55,5 +65,27 @@ public class SecurityHeadersFilterTest
         FilterChain chain = mock(FilterChain.class);
         underTest.doFilter(request, response, chain);
 
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for static asset cache behavior.
+     */
+    @Test
+    public void testDoFilter_StaticAssetCaching() throws Throwable
+    {
+        // Given
+        SecurityHeadersFilter underTest = new SecurityHeadersFilter();
+
+        // When
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRequestURI()).thenReturn("/chat-server/assets/css/app.css");
+        when(request.getContextPath()).thenReturn("/chat-server");
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        underTest.doFilter(request, response, chain);
+
+        verify(response).setHeader("Cache-Control", "public, max-age=604800, immutable");
+        verify(response).setDateHeader(eq("Expires"), anyLong());
+        verify(response, never()).setHeader("Pragma", "no-cache");
     }
 }

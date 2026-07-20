@@ -43,9 +43,8 @@ public class DashboardLatestChatsServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
-        String contextPath = safeContextPath(req.getContextPath());
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(safeRedirectPath(contextPath + "/login", "/login"));
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
@@ -54,7 +53,8 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         List<TermChatSnapshot> snapshots = collectLatestChats(limit);
         if (snapshots.isEmpty()) {
             // Keep UX smooth: redirect back to dashboard instead of 404 page.
-            resp.sendRedirect(safeRedirectPath(contextPath + "/dashboard?latestChats=empty", "/dashboard?latestChats=empty"));
+            String emptyPath = safeRedirectPath("/dashboard?latestChats=empty", "/dashboard?latestChats=empty");
+            req.getRequestDispatcher(emptyPath).forward(req, resp);
             return;
         }
 
@@ -62,7 +62,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                 session,
                 "Latest Chats",
                 snapshots,
-                contextPath + "/dashboard"
+            "/dashboard"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -70,10 +70,9 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             return;
         }
 
-        String redirectUrl = contextPath
-                + "/dashboard/widgets/drilldown/review?selectionId="
+        String reviewPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
-        resp.sendRedirect(safeRedirectPath(redirectUrl, "/dashboard"));
+        req.getRequestDispatcher(safeRedirectPath(reviewPath, "/dashboard")).forward(req, resp);
     }
 
     private List<TermChatSnapshot> collectLatestChats(int limit) {

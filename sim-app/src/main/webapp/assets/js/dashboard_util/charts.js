@@ -79,7 +79,12 @@
                     if (!Number.isFinite(value) || value <= 0) {
                         return;
                     }
-                    window.location.href = `${contextPath}/dashboard/sessions/drilldown/date-review-relative?date=${encodeURIComponent(rawDate)}`;
+                    const href = `${contextPath}/dashboard/sessions/drilldown/date-review-relative?date=${encodeURIComponent(rawDate)}`;
+                    if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                        window.DashboardInlineView.openOrNavigate(href, 'Date Review');
+                    } else {
+                        window.location.href = href;
+                    }
                 }
             }
         });
@@ -115,7 +120,11 @@
             try {
                 const href = await termReview.buildTermReviewSelectionLink(contextPath, term, increaseOnly);
                 if (href) {
-                    window.location.href = href;
+                    if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                        window.DashboardInlineView.openOrNavigate(href, 'Term Review');
+                    } else {
+                        window.location.href = href;
+                    }
                 }
             } catch (e) {
                 console.warn('Unable to open term review:', e);
@@ -245,7 +254,12 @@
                         if (!widgetId) {
                             return;
                         }
-                        window.location.href = `${contextPath}/dashboard/widgets/view?widgetId=${encodeURIComponent(widgetId)}`;
+                        const href = `${contextPath}/dashboard/widgets/view?widgetId=${encodeURIComponent(widgetId)}`;
+                        if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                            window.DashboardInlineView.openOrNavigate(href, 'Widget View');
+                        } else {
+                            window.location.href = href;
+                        }
                     }
                 }
             });
@@ -388,7 +402,11 @@
                 try {
                     const href = await termReview.buildTermReviewSelectionLink(contextPath, term, mode === 'increase');
                     if (href) {
-                        window.location.href = href;
+                        if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                            window.DashboardInlineView.openOrNavigate(href, 'Term Review');
+                        } else {
+                            window.location.href = href;
+                        }
                     }
                 } catch (e) {
                     console.warn('Unable to open term review:', e);

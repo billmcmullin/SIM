@@ -51,6 +51,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getName());
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Inject
@@ -74,6 +75,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
         String rawTerm = firstParam(req, "term");
         String requestedTerm = (rawTerm == null) ? "" : rawTerm.trim();
+        String scope = firstParam(req, "scope");
+        boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
 
         List<TermChatSnapshot> snapshots;
         try {
@@ -96,10 +99,17 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                 resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day and term.");
                 return;
             }
+        } else if (termEntriesOnly) {
+            snapshots = filterSnapshotsByKnownTerms(snapshots);
+
+            if (snapshots.isEmpty()) {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No term entry chats found for the requested day.");
+                return;
+            }
         }
 
         String selectionLabel = requestedTerm.isBlank()
-                ? ("Date " + date)
+                ? (termEntriesOnly ? ("Date " + date + " • Term Entries") : ("Date " + date))
                 : ("Date " + date + " • " + requestedTerm);
 
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
@@ -114,9 +124,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String contextPath = safeContextPath(req.getContextPath());
         StringBuilder redirect = new StringBuilder()
-            .append(contextPath)
                 .append("/dashboard/widgets/drilldown/review?selectionId=")
                 .append(URLEncoder.encode(selectionId, StandardCharsets.UTF_8))
                 .append("&date=")
@@ -127,11 +135,11 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         String redirectTarget = redirect.toString();
-        if (!isSafeRedirectTarget(redirectTarget, contextPath)) {
+        if (!isSafeRedirectTarget(redirectTarget)) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe redirect target");
             return;
         }
-        resp.sendRedirect(resp.encodeRedirectURL(redirectTarget));
+        req.getRequestDispatcher(redirectTarget).forward(req, resp);
     }
 
     private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -292,6 +300,66 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return out;
     }
 
+    private List<TermChatSnapshot> filterSnapshotsByKnownTerms(List<TermChatSnapshot> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermDefinition> allTerms;
+        try {
+            allTerms = termsStore.listAll();
+        } catch (SQLException | RuntimeException e) {
+            log.log(Level.WARNING, "Unable to load term definitions for term-entry filtering", e);
+            return List.of();
+        }
+
+        if (allTerms == null || allTerms.isEmpty()) {
+            return List.of();
+        }
+
+        List<Pattern> compiledPatterns = new ArrayList<>();
+        for (TermDefinition term : allTerms) {
+            if (term == null || term.isSystemFlag()) {
+                continue;
+            }
+
+            String name = term.getName();
+            if (name == null || name.isBlank() || OTHER_PARASOFT_LABEL.equalsIgnoreCase(name.trim())) {
+                continue;
+            }
+
+            Pattern compiled = TermMatcher.buildStrictPattern(term);
+            if (compiled != null) {
+                compiledPatterns.add(compiled);
+            }
+        }
+
+        if (compiledPatterns.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermChatSnapshot> out = new ArrayList<>();
+        for (TermChatSnapshot snap : source) {
+            String prompt = snap == null || snap.getPrompt() == null ? "" : snap.getPrompt();
+            String sanitized = TextSanitizer.sanitizeForMatching(prompt);
+
+            boolean matched = false;
+            for (Pattern p : compiledPatterns) {
+                Matcher m = p.matcher(sanitized);
+                if (m.find()) {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (matched) {
+                out.add(snap);
+            }
+        }
+
+        return out;
+    }
+
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
@@ -313,26 +381,14 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return values[0];
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
-    private boolean isSafeRedirectTarget(String target, String contextPath) {
+    private boolean isSafeRedirectTarget(String target) {
         if (target == null || target.isBlank()) {
             return false;
         }
         if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
             return false;
         }
-        String expectedPrefix = contextPath + "/dashboard/widgets/drilldown/review";
-        return target.startsWith(expectedPrefix);
+        return target.startsWith("/dashboard/widgets/drilldown/review");
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

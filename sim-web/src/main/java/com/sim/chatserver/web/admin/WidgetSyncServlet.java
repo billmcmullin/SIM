@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -41,6 +42,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.MapReduceConfig;
 import com.sim.chatserver.config.ServerConfig;
@@ -63,9 +68,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
-import jakarta.json.JsonStructure;
 import jakarta.json.JsonValue;
 import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletConfig;
@@ -85,6 +88,7 @@ public class WidgetSyncServlet extends HttpServlet {
             .connectTimeout(Duration.ofSeconds(15))
             .version(HttpClient.Version.HTTP_1_1)
             .build();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final long DEFAULT_INTERVAL_SECONDS = 300L;
     private static final long MIN_INTERVAL_SECONDS = 30L;
@@ -692,26 +696,37 @@ public class WidgetSyncServlet extends HttpServlet {
             builder.header("X-API-Key", apiKey);
         }
 
-        HttpResponse<String> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        String body = response.body();
+        HttpResponse<InputStream> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        try (InputStream bodyStream = response.body()) {
+            if (response.statusCode() >= 500) {
+                String snippet = readBodySnippet(bodyStream, 2048);
+                throw new IOException("Sync API transient server error " + response.statusCode() + ": " + truncateBody(snippet));
+            }
+            if (response.statusCode() >= 300) {
+                String snippet = readBodySnippet(bodyStream, 2048);
+                throw new IOException("Sync API returned " + response.statusCode() + ": " + truncateBody(snippet));
+            }
 
-        if (response.statusCode() >= 500) {
-            throw new IOException("Sync API transient server error " + response.statusCode() + ": " + truncateBody(body));
-        }
-        if (response.statusCode() >= 300) {
-            throw new IOException("Sync API returned " + response.statusCode() + ": " + truncateBody(body));
-        }
+            String contentType = response.headers().firstValue("Content-Type").orElse("");
+            if (!contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+                throw new IOException(String.format("Unexpected content type '%s'", contentType));
+            }
 
-        String contentType = response.headers().firstValue("Content-Type").orElse("");
-        if (!contentType.toLowerCase().contains("application/json")) {
-            throw new IOException(String.format("Unexpected content type '%s'", contentType));
+            try {
+                JsonNode root = OBJECT_MAPPER.readTree(bodyStream);
+                return normalizeResponse(root);
+            } catch (JsonProcessingException je) {
+                throw new IOException("Invalid JSON received from sync API", je);
+            }
         }
+    }
 
-        try (JsonReader reader = Json.createReader(new StringReader(body))) {
-            return normalizeResponse(reader.read());
-        } catch (JsonException je) {
-            throw new IOException("Invalid JSON received from sync API", je);
+    private String readBodySnippet(InputStream bodyStream, int maxBytes) throws IOException {
+        if (bodyStream == null || maxBytes <= 0) {
+            return "";
         }
+        byte[] bytes = bodyStream.readNBytes(maxBytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private boolean isRetryable(IOException e) {
@@ -904,7 +919,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
                 ps.setString(1, chatId);
                 ps.setString(2, getString(chat, "prompt"));
-                ps.setString(3, formatResponseText(chat));
+                String normalizedResponse = getString(chat, "response_text");
+                ps.setString(3, normalizedResponse != null ? normalizedResponse : formatResponseText(chat));
                 ps.setTimestamp(4, parseCreatedAt(chat));
                 ps.setString(5, getString(chat, "session_id"));
                 ps.setString(6, getString(chat, "username"));
@@ -979,15 +995,15 @@ public class WidgetSyncServlet extends HttpServlet {
             return raw;
         }
 
-        try (JsonReader reader = Json.createReader(new StringReader(raw))) {
-            JsonStructure structure = reader.read();
-            if (structure.getValueType() == JsonValue.ValueType.OBJECT) {
-                String text = getString(structure.asJsonObject(), "text");
-                if (text != null) {
+        try {
+            JsonNode node = OBJECT_MAPPER.readTree(raw);
+            if (node != null && node.isObject()) {
+                String text = textValue(node, "text");
+                if (text != null && !text.isBlank()) {
                     return text;
                 }
             }
-        } catch (JsonException ex) {
+        } catch (IOException ex) {
             log.log(Level.FINE, "Response text is not JSON object payload", ex);
         }
         return raw;
@@ -1044,37 +1060,100 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private List<JsonObject> normalizeResponse(JsonStructure root) {
+    private List<JsonObject> normalizeResponse(JsonNode root) {
         List<JsonObject> normalized = new ArrayList<>();
         if (root == null) {
             return normalized;
         }
 
-        if (root.getValueType() == JsonValue.ValueType.ARRAY) {
-            root.asJsonArray().forEach(v -> {
-                if (v instanceof JsonObject o) {
-                    normalized.add(o);
-                }
-            });
+        if (root.isArray()) {
+            for (JsonNode node : root) {
+                addNormalizedObject(normalized, node);
+            }
             return normalized;
         }
 
-        if (root.getValueType() == JsonValue.ValueType.OBJECT) {
-            JsonObject obj = root.asJsonObject();
+        if (root.isObject()) {
             for (String key : List.of("items", "data", "results", "chats", "entries")) {
-                JsonValue v = obj.get(key);
-                if (v != null && v.getValueType() == JsonValue.ValueType.ARRAY) {
-                    v.asJsonArray().forEach(e -> {
-                        if (e instanceof JsonObject o) {
-                            normalized.add(o);
-                        }
-                    });
+                JsonNode candidate = root.get(key);
+                if (candidate != null && candidate.isArray()) {
+                    for (JsonNode node : candidate) {
+                        addNormalizedObject(normalized, node);
+                    }
                     return normalized;
                 }
             }
-            normalized.add(obj);
+            addNormalizedObject(normalized, root);
         }
         return normalized;
+    }
+
+    private void addNormalizedObject(List<JsonObject> normalized, JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return;
+        }
+        normalized.add(toFlatSyncObject(node));
+    }
+
+    private JsonObject toFlatSyncObject(JsonNode node) {
+        String createdAt = textValue(node, "createdAt");
+        if (createdAt == null || createdAt.isBlank()) {
+            createdAt = textValue(node, "created_at");
+        }
+
+        String responseText = extractResponseText(node);
+
+        return Json.createObjectBuilder()
+                .add("id", defaultString(textValue(node, "id")))
+                .add("prompt", defaultString(textValue(node, "prompt")))
+                .add("response_text", defaultString(responseText))
+                .add("created_at", defaultString(createdAt))
+                .add("session_id", defaultString(textValue(node, "session_id")))
+                .add("username", defaultString(textValue(node, "username")))
+                .build();
+    }
+
+    private String extractResponseText(JsonNode chatNode) {
+        if (chatNode == null || !chatNode.isObject()) {
+            return null;
+        }
+
+        String text = extractText(chatNode.get("response"));
+        if (text == null || text.isBlank()) {
+            JsonNode rawChat = chatNode.get("raw_chat");
+            if (rawChat != null && rawChat.isObject()) {
+                text = extractText(rawChat.get("response"));
+            }
+        }
+        return humanize(normalizeToJsonText(text));
+    }
+
+    private String extractText(JsonNode value) {
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (value.isObject()) {
+            return textValue(value, "text");
+        }
+        if (value.isTextual()) {
+            return value.asText();
+        }
+        return value.toString();
+    }
+
+    private String textValue(JsonNode source, String key) {
+        if (source == null || key == null || key.isBlank() || !source.isObject()) {
+            return null;
+        }
+        JsonNode value = source.get(key);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        return value.isTextual() ? value.asText() : value.toString();
+    }
+
+    private String defaultString(String value) {
+        return value == null ? "" : value;
     }
 
     private String truncateBody(String body) {
