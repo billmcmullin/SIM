@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS widget_health_config (
   expect_json_field VARCHAR(100),
   expect_json_value VARCHAR(255),
   widget_id VARCHAR(255),
+  request_origin TEXT,
+  request_referer TEXT,
+  request_user_agent TEXT,
+  request_cookie TEXT,
+  api_key_header_name VARCHAR(255),
+  api_key_value TEXT,
   updated_by VARCHAR(100),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

@@ -261,12 +261,21 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = rs.getString(columnIndex);
+        Object rawObj = rs.getObject(columnIndex);
+        String raw = rawObj == null ? null : String.valueOf(rawObj);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        byte[] raw = rs.getBytes(columnIndex);
+        Object rawObj = rs.getObject(columnIndex);
+        byte[] raw;
+        if (rawObj instanceof byte[] bytes) {
+            raw = bytes;
+        } else if (rawObj == null) {
+            raw = null;
+        } else {
+            raw = String.valueOf(rawObj).getBytes(StandardCharsets.UTF_8);
+        }
         return sanitizeBinary(raw);
     }
 
@@ -386,17 +395,20 @@ public class DatabaseBackupServlet extends HttpServlet {
         String normalized = raw.trim();
         try {
             return Timestamp.from(java.time.Instant.parse(normalized));
-        } catch (DateTimeException ignored) {
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Timestamp parse via Instant failed", ex);
         }
 
         try {
             return Timestamp.from(java.time.OffsetDateTime.parse(normalized).toInstant());
-        } catch (DateTimeException ignored) {
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Timestamp parse via OffsetDateTime failed", ex);
         }
 
         try {
             return Timestamp.valueOf(normalized.replace('T', ' '));
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Timestamp parse via Timestamp.valueOf failed", ex);
             return null;
         }
     }
@@ -409,17 +421,20 @@ public class DatabaseBackupServlet extends HttpServlet {
         String normalized = raw.trim();
         try {
             return java.sql.Date.valueOf(normalized);
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Date parse via Date.valueOf failed", ex);
         }
 
         try {
             return java.sql.Date.valueOf(java.time.OffsetDateTime.parse(normalized).toLocalDate());
-        } catch (DateTimeException ignored) {
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Date parse via OffsetDateTime failed", ex);
         }
 
         try {
             return java.sql.Date.valueOf(java.time.Instant.parse(normalized).atOffset(java.time.ZoneOffset.UTC).toLocalDate());
-        } catch (DateTimeException ignored) {
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Date parse via Instant failed", ex);
             return null;
         }
     }

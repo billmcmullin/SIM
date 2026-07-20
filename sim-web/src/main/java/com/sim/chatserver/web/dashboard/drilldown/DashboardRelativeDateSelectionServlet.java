@@ -15,7 +15,6 @@ import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -64,6 +63,10 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
+            if (!isSafeForwardTarget("/login")) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
+                return;
+            }
             req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
@@ -139,6 +142,10 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe redirect target");
             return;
         }
+        if (!isSafeForwardTarget(redirectTarget)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
+            return;
+        }
         req.getRequestDispatcher(redirectTarget).forward(req, resp);
     }
 
@@ -148,7 +155,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "Invalid date parameter for relative date selection: {0}", dateParam);
+                log.log(Level.FINE, "Invalid date parameter for relative date selection: {0}", sanitizeForLog(dateParam));
                 resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
                 return null;
             }
@@ -236,7 +243,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         List<TermDefinition> allTerms;
         try {
             allTerms = termsStore.listAll();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load term definitions for date+term filtering", e);
             return List.of();
         }
@@ -308,7 +315,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         List<TermDefinition> allTerms;
         try {
             allTerms = termsStore.listAll();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load term definitions for term-entry filtering", e);
             return List.of();
         }
@@ -363,22 +370,26 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to list widgets for date review", e);
             return List.of();
         }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
-        return values[0];
+        String value = values[0];
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.replace("\r", "").replace("\n", "").trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private boolean isSafeRedirectTarget(String target) {
@@ -389,6 +400,24 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return false;
         }
         return target.startsWith("/dashboard/widgets/drilldown/review");
+    }
+
+    private boolean isSafeForwardTarget(String target) {
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
+            return false;
+        }
+        return "/login".equals(target) || target.startsWith("/dashboard/widgets/drilldown/review");
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

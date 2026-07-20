@@ -10,6 +10,10 @@
         <welcome-file>login</welcome-file>
     </welcome-file-list>
 
+    <session-config>
+        <tracking-mode>COOKIE</tracking-mode>
+    </session-config>
+
     <servlet>
         <servlet-name>AdminConfigServlet</servlet-name>
         <servlet-class>com.sim.chatserver.web.admin.AdminConfigServlet</servlet-class>
@@ -89,6 +93,15 @@
     <servlet-mapping>
         <servlet-name>WidgetHealthConfigServlet</servlet-name>
         <url-pattern>/admin/widget-health-config</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>AdminAutoEmailAlertsServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.AdminAutoEmailAlertsServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AdminAutoEmailAlertsServlet</servlet-name>
+        <url-pattern>/admin/email/alerts</url-pattern>
     </servlet-mapping>
 
 </web-app>

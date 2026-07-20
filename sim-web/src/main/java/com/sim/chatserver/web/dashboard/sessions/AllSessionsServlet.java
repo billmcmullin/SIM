@@ -2,6 +2,7 @@ package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -87,7 +88,7 @@ public class AllSessionsServlet extends HttpServlet {
             this.sessionId = sessionId;
         }
 
-        void accept(Timestamp ts, int count, String widgetId) {
+        private void accept(Timestamp ts, int count, String widgetId) {
             if (ts != null) {
                 Instant instant = ts.toInstant();
                 if (firstSeen == null || instant.isBefore(firstSeen)) {
@@ -110,7 +111,7 @@ public class AllSessionsServlet extends HttpServlet {
         final String prompt;
         final Timestamp createdAt;
 
-        ChatRow(String chatId, String prompt, Timestamp createdAt) {
+        private ChatRow(String chatId, String prompt, Timestamp createdAt) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.createdAt = createdAt;
@@ -751,8 +752,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> parameterMap = req.getParameterMap();
-        String[] values = parameterMap.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0) {
             return null;
         }
@@ -776,23 +776,17 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        StringBuilder body = new StringBuilder();
-        try (var reader = req.getReader()) {
-            char[] chunk = new char[4096];
-            int read;
-            while ((read = reader.read(chunk)) != -1) {
-                body.append(chunk, 0, read);
-                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
+        try (var reader = req.getReader(); var out = new StringWriter()) {
+            long copied = reader.transferTo(out);
+            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
+                return "";
             }
+            return out.toString().replace("\u0000", "").replace("\r", "").trim();
         }
-        return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object valueObj = rs.getObject(column);
-        String value = valueObj == null ? null : String.valueOf(valueObj);
+        String value = rs.getString(column);
         return safeDbText(value, maxLen);
     }
 

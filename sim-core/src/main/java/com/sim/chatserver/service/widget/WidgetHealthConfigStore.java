@@ -13,6 +13,8 @@ import java.util.logging.Logger;
 
 import javax.sql.DataSource;
 
+import com.sim.chatserver.config.EncryptedDbConfigStore;
+
 /**
  * Stores/retrieves widget availability health-check configuration in
  * PostgreSQL.
@@ -45,6 +47,8 @@ public class WidgetHealthConfigStore {
                 request_referer TEXT,
                 request_user_agent TEXT,
                 request_cookie TEXT,
+                api_key_header_name VARCHAR(255),
+                api_key_value TEXT,
                 updated_by VARCHAR(100),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
@@ -59,6 +63,8 @@ public class WidgetHealthConfigStore {
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_referer TEXT");
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_user_agent TEXT");
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_cookie TEXT");
+        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_header_name VARCHAR(255)");
+        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_value TEXT");
     }
 
     private void addColumnIfMissing(String sql) throws java.sql.SQLException {
@@ -75,9 +81,10 @@ public class WidgetHealthConfigStore {
             INSERT INTO widget_health_config (
                 id, healthcheck_url, method, timeout_ms, expect_json_field, expect_json_value, widget_id,
                 request_origin, request_referer, request_user_agent, request_cookie,
+                api_key_header_name, api_key_value,
                 updated_by, updated_at
             )
-            VALUES (?, ?, 'GET', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
+            VALUES (?, ?, 'GET', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
             ON CONFLICT (id) DO NOTHING
             """;
 
@@ -93,6 +100,7 @@ public class WidgetHealthConfigStore {
             SELECT id, healthcheck_url, method, timeout_ms,
                    expect_json_field, expect_json_value, widget_id,
                    request_origin, request_referer, request_user_agent, request_cookie,
+                     api_key_header_name, api_key_value,
                    updated_by, updated_at
             FROM widget_health_config
             WHERE id = ?
@@ -120,9 +128,10 @@ public class WidgetHealthConfigStore {
                 id, healthcheck_url, method, timeout_ms,
                 expect_json_field, expect_json_value, widget_id,
                 request_origin, request_referer, request_user_agent, request_cookie,
+                api_key_header_name, api_key_value,
                 updated_by, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 healthcheck_url = EXCLUDED.healthcheck_url,
                 method = EXCLUDED.method,
@@ -134,6 +143,8 @@ public class WidgetHealthConfigStore {
                 request_referer = EXCLUDED.request_referer,
                 request_user_agent = EXCLUDED.request_user_agent,
                 request_cookie = EXCLUDED.request_cookie,
+                api_key_header_name = EXCLUDED.api_key_header_name,
+                api_key_value = EXCLUDED.api_key_value,
                 updated_by = EXCLUDED.updated_by,
                 updated_at = EXCLUDED.updated_at
             """;
@@ -186,16 +197,28 @@ public class WidgetHealthConfigStore {
             if (normalized.getRequestCookie() == null) {
                 ps.setNull(11, Types.VARCHAR); 
             }else {
-                ps.setString(11, normalized.getRequestCookie());
+                ps.setString(11, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getRequestCookie()));
+            }
+
+            if (normalized.getApiKeyHeaderName() == null) {
+                ps.setNull(12, Types.VARCHAR);
+            } else {
+                ps.setString(12, normalized.getApiKeyHeaderName());
+            }
+
+            if (normalized.getApiKeyValue() == null) {
+                ps.setNull(13, Types.VARCHAR);
+            } else {
+                ps.setString(13, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getApiKeyValue()));
             }
 
             if (normalized.getUpdatedBy() == null) {
-                ps.setNull(12, Types.VARCHAR); 
+                ps.setNull(14, Types.VARCHAR); 
             }else {
-                ps.setString(12, normalized.getUpdatedBy());
+                ps.setString(14, normalized.getUpdatedBy());
             }
 
-            ps.setTimestamp(13, Timestamp.from(
+            ps.setTimestamp(15, Timestamp.from(
                     normalized.getUpdatedAt() == null ? Instant.now() : normalized.getUpdatedAt()
             ));
 
@@ -220,7 +243,9 @@ public class WidgetHealthConfigStore {
         cfg.setRequestOrigin(trimToNull(readSanitizedDbText(rs, "request_origin", 2048)));
         cfg.setRequestReferer(trimToNull(readSanitizedDbText(rs, "request_referer", 2048)));
         cfg.setRequestUserAgent(trimToNull(readSanitizedDbText(rs, "request_user_agent", 1024)));
-        cfg.setRequestCookie(trimToNull(readSanitizedDbText(rs, "request_cookie", 4096)));
+        cfg.setRequestCookie(trimToNull(readDecryptedSecret(rs, "request_cookie", 4096)));
+        cfg.setApiKeyHeaderName(trimToNull(readSanitizedDbText(rs, "api_key_header_name", 255)));
+        cfg.setApiKeyValue(trimToNull(readDecryptedSecret(rs, "api_key_value", 4096)));
         cfg.setUpdatedBy(trimToNull(readSanitizedDbText(rs, "updated_by", 100)));
 
         Timestamp ts = readSafeTimestamp(rs, "updated_at");
@@ -258,6 +283,14 @@ public class WidgetHealthConfigStore {
         out.setRequestReferer(trimToNull(in.getRequestReferer()));
         out.setRequestUserAgent(trimToNull(in.getRequestUserAgent()));
         out.setRequestCookie(trimToNull(in.getRequestCookie()));
+
+        String apiKeyValue = trimToNull(in.getApiKeyValue());
+        String apiKeyHeaderName = trimToNull(in.getApiKeyHeaderName());
+        if (apiKeyValue != null && apiKeyHeaderName == null) {
+            apiKeyHeaderName = "Authorization";
+        }
+        out.setApiKeyHeaderName(apiKeyHeaderName);
+        out.setApiKeyValue(apiKeyValue);
 
         out.setUpdatedBy(trimToNull(in.getUpdatedBy()));
         out.setUpdatedAt(in.getUpdatedAt() == null ? Instant.now() : in.getUpdatedAt());
@@ -315,6 +348,12 @@ public class WidgetHealthConfigStore {
         }
     }
 
+    private String readDecryptedSecret(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
+        String value = rs.getObject(column, String.class);
+        String decrypted = EncryptedDbConfigStore.decryptSecretIfNeeded(value);
+        return sanitizeDbText(decrypted, maxChars);
+    }
+
     private String sanitizeDbText(String s, int maxChars) {
         if (s == null) {
             return null;
@@ -344,6 +383,9 @@ public class WidgetHealthConfigStore {
         private String requestReferer;
         private String requestUserAgent;
         private String requestCookie;
+
+        private String apiKeyHeaderName;
+        private String apiKeyValue;
 
         private String updatedBy;
         private Instant updatedAt;
@@ -434,6 +476,22 @@ public class WidgetHealthConfigStore {
 
         public void setRequestCookie(String requestCookie) {
             this.requestCookie = requestCookie;
+        }
+
+        public String getApiKeyHeaderName() {
+            return apiKeyHeaderName;
+        }
+
+        public void setApiKeyHeaderName(String apiKeyHeaderName) {
+            this.apiKeyHeaderName = apiKeyHeaderName;
+        }
+
+        public String getApiKeyValue() {
+            return apiKeyValue;
+        }
+
+        public void setApiKeyValue(String apiKeyValue) {
+            this.apiKeyValue = apiKeyValue;
         }
 
         public String getUpdatedBy() {

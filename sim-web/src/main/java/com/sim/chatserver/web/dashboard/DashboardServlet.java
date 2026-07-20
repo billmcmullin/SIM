@@ -2,6 +2,8 @@ package com.sim.chatserver.web.dashboard;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -511,19 +513,46 @@ public class DashboardServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (name == null || name.isBlank()) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
+
+        String query = req.getQueryString();
+        if (query == null || query.isBlank()) {
             return null;
         }
-        String value = values[0];
+
+        for (String pair : query.split("&")) {
+            if (pair == null || pair.isBlank()) {
+                continue;
+            }
+            int idx = pair.indexOf('=');
+            String rawKey = idx >= 0 ? pair.substring(0, idx) : pair;
+            String rawValue = idx >= 0 ? pair.substring(idx + 1) : "";
+            String key = decodeQueryPart(rawKey);
+            if (!name.equals(key)) {
+                continue;
+            }
+            String value = decodeQueryPart(rawValue);
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        }
+        return null;
+    }
+
+    private String decodeQueryPart(String value) {
         if (value == null) {
             return null;
         }
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid query parameter encoding", ex);
+            return null;
+        }
     }
 
     private String sanitizeForLog(String value) {

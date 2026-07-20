@@ -101,7 +101,24 @@
 
                 <div class="form-group">
                     <label for="whcRequestCookie">Request Cookie (optional)</label>
-                    <input type="text" id="whcRequestCookie" placeholder="SESSION=...; XSRF-TOKEN=...">
+                    <input type="password" id="whcRequestCookie" placeholder="SESSION=...; XSRF-TOKEN=...">
+                    <div class="small-note">
+                        <span id="whcRequestCookieStoredNote" style="display:none;">A request cookie is already stored. Leave blank to keep it.</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="whcApiKeyHeaderName">API Key Header Name (optional)</label>
+                    <input type="text" id="whcApiKeyHeaderName" placeholder="Authorization">
+                </div>
+
+                <div class="form-group">
+                    <label for="whcApiKeyValue">API Key Value (optional)</label>
+                    <input type="password" id="whcApiKeyValue" placeholder="Enter API key value">
+                    <div class="small-note">
+                        <span>Sent as <strong>Authorization: Bearer &lt;token&gt;</strong> by default.</span><br>
+                        <span id="whcApiKeyStoredNote" style="display:none;">An API key is already stored. Leave blank to keep it.</span>
+                    </div>
                 </div>
 
                 <div class="actions">
@@ -110,6 +127,103 @@
                 </div>
 
                 <div id="widgetHealthConfigResult" class="widget-message"></div>
+            </form>
+        </section>
+
+        <section class="section">
+            <h2>Automatic Email Alerts</h2>
+            <p>Configure timed email alerts for widget healthcheck outages and term growth activity.</p>
+
+            <form id="autoEmailAlertsForm" onsubmit="return false;">
+                <h3>Healthcheck Offline Alerts</h3>
+                <div class="form-group">
+                    <label><input type="checkbox" id="aeHealthEnabled"> Enable healthcheck offline alerts</label>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="aeHealthCheckIntervalMinutes">Check Interval (minutes)</label>
+                        <input type="number" id="aeHealthCheckIntervalMinutes" min="1" step="1" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="aeHealthOfflineDelayMinutes">Offline Delay Before First Email (minutes)</label>
+                        <input type="number" id="aeHealthOfflineDelayMinutes" min="0" step="1" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="aeHealthResendIntervalMinutes">Resend Interval While Offline (minutes)</label>
+                        <input type="number" id="aeHealthResendIntervalMinutes" min="1" step="1" value="30">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="aeHealthRecipients">Recipients (comma/semicolon/newline separated)</label>
+                    <textarea id="aeHealthRecipients" rows="2" placeholder="ops@example.com, oncall@example.com"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="aeHealthSubject">Email Subject (optional)</label>
+                    <input type="text" id="aeHealthSubject" placeholder="SIM Alert: Widget Healthcheck Offline">
+                </div>
+                <div class="form-group">
+                    <label for="aeHealthMessage">Additional Message (optional)</label>
+                    <textarea id="aeHealthMessage" rows="3" placeholder="Include context or runbook instructions."></textarea>
+                </div>
+
+                <div class="small-note" style="margin-bottom:10px;">
+                    <strong>Latest health status:</strong>
+                    <span id="aeHealthLastStatus">UNKNOWN</span>
+                    &nbsp;|&nbsp;<strong>Last check:</strong>
+                    <span id="aeHealthLastCheckedAt">Never</span>
+                    &nbsp;|&nbsp;<strong>Offline since:</strong>
+                    <span id="aeHealthOfflineSince">N/A</span>
+                    &nbsp;|&nbsp;<strong>Last alert:</strong>
+                    <span id="aeHealthLastAlertAt">N/A</span>
+                </div>
+
+                <h3>Term Increase Alerts</h3>
+                <div class="form-group">
+                    <label><input type="checkbox" id="aeTermEnabled"> Enable term increase alerts</label>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="aeTermName">Term Name to Monitor</label>
+                        <input type="text" id="aeTermName" list="aeTermNameSuggestions" placeholder="Enter a term name from Terms section">
+                        <datalist id="aeTermNameSuggestions"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="aeTermCheckIntervalMinutes">Check Interval (minutes)</label>
+                        <input type="number" id="aeTermCheckIntervalMinutes" min="1" step="1" value="10">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="aeTermRecipients">Recipients (comma/semicolon/newline separated)</label>
+                    <textarea id="aeTermRecipients" rows="2" placeholder="alerts@example.com"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="aeTermSubject">Email Subject (optional)</label>
+                    <input type="text" id="aeTermSubject" placeholder="SIM Alert: Term increase detected">
+                </div>
+                <div class="form-group">
+                    <label for="aeTermMessage">Additional Message (optional)</label>
+                    <textarea id="aeTermMessage" rows="3" placeholder="Optional context for recipients."></textarea>
+                </div>
+
+                <div class="small-note" style="margin-bottom:10px;">
+                    <strong>Last term check:</strong>
+                    <span id="aeTermLastCheckedAt">Never</span>
+                    &nbsp;|&nbsp;<strong>Last known count:</strong>
+                    <span id="aeTermLastCount">0</span>
+                    &nbsp;|&nbsp;<strong>Last alert:</strong>
+                    <span id="aeTermLastAlertAt">N/A</span>
+                </div>
+
+                <div class="actions">
+                    <button type="button" id="loadAutoEmailAlertsBtn">Reload Automatic Email Alerts</button>
+                    <button type="button" id="saveAutoEmailAlertsBtn">Save Automatic Email Alerts</button>
+                </div>
+
+                <div id="autoEmailAlertsResult" class="widget-message"></div>
             </form>
         </section>
 
@@ -628,6 +742,7 @@
     <script defer src="${contextPath}/assets/js/admin_utils/salesforce.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/db_import.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/email.js"></script>
+    <script defer src="${contextPath}/assets/js/admin_utils/auto_email_alerts.js"></script>
     <script defer src="${contextPath}/assets/js/admin_page.js"></script>
 </body>
 

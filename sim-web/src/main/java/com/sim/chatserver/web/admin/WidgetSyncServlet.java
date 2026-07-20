@@ -24,7 +24,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -460,6 +459,12 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
+        if (!apiKey.isBlank() && !isHttpsUrl(canonicalTargetUrl)) {
+            summaryStore.upsertSummary(day, slot, "error", 100, "Workspace URL must be HTTPS when API key is configured.",
+                    "Unable to generate summary: API key requires HTTPS workspace URL.", "—", "—", "—", entries.size(), false, true);
+            return;
+        }
+
         TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(canonicalTargetUrl);
         if (!trust.isValid()) {
             summaryStore.upsertSummary(day, slot, "error", 100, "Workspace URL trust validation failed.",
@@ -557,11 +562,11 @@ public class WidgetSyncServlet extends HttpServlet {
                                 return out;
                             }
 
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
+                            String chatId = readDbText(rs, "widget_chat_id", 256);
+                            String prompt = readDbText(rs, "prompt", 8000);
+                            String response = readDbText(rs, "response_text", 32000);
                             Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                            String sessionId = readDbText(rs, "session_id", 256);
 
                             out.add(new SelectedEntry(
                                     chatId == null ? "" : chatId,
@@ -684,6 +689,9 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private List<JsonObject> fetchWidgetChatsOnce(ServerConfig config, String widgetId) throws IOException, InterruptedException {
         URI uri = buildSyncUri(config, widgetId);
+        if (uri == null) {
+            throw new IOException("Sync API URL is missing");
+        }
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
@@ -691,23 +699,27 @@ public class WidgetSyncServlet extends HttpServlet {
                 .GET();
 
         String apiKey = config.getApiKey();
-        if (apiKey != null && !apiKey.isBlank()) {
+        boolean apiKeyConfigured = apiKey != null && !apiKey.isBlank();
+        if (apiKeyConfigured && !isHttpsUri(uri)) {
+            throw new IOException("API key configured but sync URL is not HTTPS");
+        }
+        if (apiKeyConfigured) {
             builder.header("Authorization", "Bearer " + apiKey);
             builder.header("X-API-Key", apiKey);
         }
 
         HttpResponse<InputStream> response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
         try (InputStream bodyStream = response.body()) {
+            String contentType = response.headers().firstValue("Content-Type").orElse("");
             if (response.statusCode() >= 500) {
-                String snippet = readBodySnippet(bodyStream, 2048);
-                throw new IOException("Sync API transient server error " + response.statusCode() + ": " + truncateBody(snippet));
+                throw new IOException("Sync API transient server error " + response.statusCode()
+                        + " (contentType=" + contentType + ")");
             }
             if (response.statusCode() >= 300) {
-                String snippet = readBodySnippet(bodyStream, 2048);
-                throw new IOException("Sync API returned " + response.statusCode() + ": " + truncateBody(snippet));
+                throw new IOException("Sync API returned " + response.statusCode()
+                        + " (contentType=" + contentType + ")");
             }
 
-            String contentType = response.headers().firstValue("Content-Type").orElse("");
             if (!contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
                 throw new IOException(String.format("Unexpected content type '%s'", contentType));
             }
@@ -719,14 +731,6 @@ public class WidgetSyncServlet extends HttpServlet {
                 throw new IOException("Invalid JSON received from sync API", je);
             }
         }
-    }
-
-    private String readBodySnippet(InputStream bodyStream, int maxBytes) throws IOException {
-        if (bodyStream == null || maxBytes <= 0) {
-            return "";
-        }
-        byte[] bytes = bodyStream.readNBytes(maxBytes);
-        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private boolean isRetryable(IOException e) {
@@ -1003,7 +1007,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     return text;
                 }
             }
-        } catch (IOException ex) {
+        } catch (JsonProcessingException ex) {
             log.log(Level.FINE, "Response text is not JSON object payload", ex);
         }
         return raw;
@@ -1156,13 +1160,6 @@ public class WidgetSyncServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private String truncateBody(String body) {
-        if (body == null) {
-            return "";
-        }
-        return body.length() > 512 ? body.substring(0, 512) + "..." : body;
-    }
-
     private String getString(JsonObject source, String key) {
         if (source == null || key == null || !source.containsKey(key)) {
             return null;
@@ -1291,24 +1288,14 @@ public class WidgetSyncServlet extends HttpServlet {
             List<SelectedEntry> entries,
             String requestId
     ) throws IOException, InterruptedException {
-        try {
-            return orchestrator.run(
-                    targetUrl,
-                    apiKey,
-                    summaryPrompt,
-                    "chat",
-                    "dashboard-daily-summary",
-                    true,
-                    Json.createArrayBuilder().build(),
-                    entries,
-                    requestId
-            ).finalResponse();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Summary orchestration failed", e);
-        }
+        return SummaryOrchestrationRunner.run(
+                orchestrator,
+                targetUrl,
+                apiKey,
+                summaryPrompt,
+                entries,
+                requestId
+        );
     }
 
     private String canonicalizeHttpUrl(String rawUrl) {
@@ -1347,15 +1334,30 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
+    private boolean isHttpsUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(rawUrl.trim());
+            return isHttpsUri(uri);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private boolean isHttpsUri(URI uri) {
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme());
+    }
+
     private long readPersistedIntervalSeconds(ResultSet rs, String columnName, long fallback) throws SQLException {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return fallback;
         }
-        String raw = rs.getString(columnName);
-        if (raw == null || raw.isBlank()) {
+        String trimmed = readDbText(rs, columnName, 64).trim();
+        if (trimmed.isBlank()) {
             return fallback;
         }
-        String trimmed = raw.trim();
         if (!trimmed.matches("^\\d{1,12}$")) {
             return fallback;
         }
@@ -1371,11 +1373,10 @@ public class WidgetSyncServlet extends HttpServlet {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return null;
         }
-        String raw = rs.getString(columnName);
-        if (raw == null || raw.isBlank()) {
+        String normalized = readDbText(rs, columnName, 128).trim();
+        if (normalized.isBlank()) {
             return null;
         }
-        String normalized = raw.trim();
         try {
             return Timestamp.valueOf(normalized);
         } catch (IllegalArgumentException ex) {
@@ -1392,27 +1393,48 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
+    private String readDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return "";
+        }
+        Object value = rs.getObject(columnName);
+        if (value == null) {
+            return "";
+        }
+        String text = value.toString();
+        if (text.indexOf('\u0000') >= 0) {
+            text = text.replace('\u0000', ' ');
+        }
+        if (maxLen > 0 && text.length() > maxLen) {
+            return text.substring(0, maxLen);
+        }
+        return text;
+    }
+
     private String firstParam(HttpServletRequest req, String name) {
         return RequestParamContext.from(req).first(name);
     }
 
-    private static final class RequestParamContext {
+    static final class RequestParamContext {
 
-        private final Map<String, String[]> parameterMap;
+        private final HttpServletRequest request;
 
-        private RequestParamContext(Map<String, String[]> parameterMap) {
-            this.parameterMap = parameterMap == null ? Map.of() : parameterMap;
+        RequestParamContext(HttpServletRequest request) {
+            this.request = request;
         }
 
-        private static RequestParamContext from(HttpServletRequest req) {
-            return req == null ? new RequestParamContext(Map.of()) : new RequestParamContext(req.getParameterMap());
+        static RequestParamContext from(HttpServletRequest req) {
+            return new RequestParamContext(req);
         }
 
-        private String first(String name) {
+        String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = parameterMap.get(name);
+            if (request == null) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
             if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
@@ -1421,7 +1443,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private static final class WidgetSyncStatus {
+    static final class WidgetSyncStatus {
 
         final String widgetId;
         final String tableName;
@@ -1429,7 +1451,7 @@ public class WidgetSyncServlet extends HttpServlet {
         final boolean synced;
         final String message;
 
-        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+        WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
             this.widgetId = widgetId;
             this.tableName = tableName;
             this.tableExists = tableExists;
@@ -1437,7 +1459,7 @@ public class WidgetSyncServlet extends HttpServlet {
             this.message = message;
         }
 
-        private JsonObject toJson() {
+        JsonObject toJson() {
             return Json.createObjectBuilder()
                     .add("widgetId", widgetId == null ? "" : widgetId)
                     .add("tableName", tableName == null ? "" : tableName)
@@ -1448,12 +1470,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private static final class SyncSettings {
+    static final class SyncSettings {
 
         final long intervalSeconds;
         final Timestamp lastSynced;
 
-        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+        SyncSettings(long intervalSeconds, Timestamp lastSynced) {
             this.intervalSeconds = intervalSeconds;
             this.lastSynced = lastSynced;
         }
