@@ -18,6 +18,7 @@ import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -348,19 +349,32 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
         }
-        String value = values[0];
-        if (value == null) {
-            return null;
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\r", "").replace("\n", "").trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String sanitizeForLog(String value) {

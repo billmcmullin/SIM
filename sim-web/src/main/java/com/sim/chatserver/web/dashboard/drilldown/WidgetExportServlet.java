@@ -4,7 +4,6 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -718,12 +717,21 @@ public class WidgetExportServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (var reader = req.getReader(); var out = new StringWriter()) {
-            long copied = reader.transferTo(out);
-            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
+        try (var in = req.getInputStream(); var out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            int total = 0;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                out.write(buffer, 0, read);
+            }
+            if (out.size() > MAX_JSON_PAYLOAD_BYTES) {
                 throw new IOException("Payload exceeds allowed size.");
             }
-            return out.toString().replace("\u0000", "").replace("\r", "").trim();
+            return out.toString(StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
         }
     }
 

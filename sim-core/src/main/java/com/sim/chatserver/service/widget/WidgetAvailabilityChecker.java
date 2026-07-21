@@ -29,6 +29,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
 
@@ -56,6 +57,14 @@ public class WidgetAvailabilityChecker {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 
     public WidgetAvailabilityResult checkNow() {
         Instant start = Instant.now();
@@ -90,13 +99,13 @@ public class WidgetAvailabilityChecker {
 
                 applyApiKeyHeader(builder, cfg);
 
-            switch (cfg.method) {
-                case "HEAD" -> builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
-                case "POST" -> {
-                    builder.POST(HttpRequest.BodyPublishers.noBody());
-                    builder.header("Content-Type", "application/json");
-                }
-                default -> builder.GET();
+            if ("HEAD".equals(cfg.method)) {
+                builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
+            } else if ("POST".equals(cfg.method)) {
+                builder.POST(HttpRequest.BodyPublishers.noBody());
+                builder.header("Content-Type", "application/json");
+            } else {
+                builder.GET();
             }
 
             HttpRequest request = builder.build();
@@ -130,8 +139,8 @@ public class WidgetAvailabilityChecker {
                             + " url=" + safeUrl(cfg.url)
                             + bodySnippetSuffix(body)
                             + sourceSuffix(cfg));
-                    return down(checkedAt, latencyMs, "JSON expectation failed: "
-                            + cfg.expectField + "=" + cfg.expectValue + sourceSuffix(cfg));
+                        return down(checkedAt, latencyMs, "JSON expectation failed: "
+                            + cfg.expectField + '=' + cfg.expectValue + sourceSuffix(cfg));
                 }
             }
 
@@ -219,15 +228,16 @@ public class WidgetAvailabilityChecker {
                 + bodySnippetSuffix(body)
                 + sourceSuffix(cfg));
             return down(checkedAt, latencyMs, "Synthetic SSE probe failed: content-type is not text/event-stream"
-                    + " (actual=" + safeMsg(contentType) + ")" + sourceSuffix(cfg));
+                    + " (actual=" + safeMsg(contentType) + ')' + sourceSuffix(cfg));
         }
 
-        SseValidationResult sse = validateSseBody(body);
+        String canonicalBody = canonicalizeBodyForValidation(body, 100_000);
+        SseValidationResult sse = validateSseBody(canonicalBody);
         if (!sse.ok) {
             log.warning(() -> "Widget synthetic SSE probe validation failed reason=" + safeMsg(sse.reason)
                 + " latencyMs=" + latencyMs
                 + " url=" + safeUrl(probeUrl)
-                + bodySnippetSuffix(body)
+                + bodySnippetSuffix(canonicalBody)
                 + sourceSuffix(cfg));
             return down(checkedAt, latencyMs, "Synthetic SSE probe failed: " + sse.reason + sourceSuffix(cfg));
         }
@@ -352,7 +362,7 @@ public class WidgetAvailabilityChecker {
                     if ("textResponseChunk".equals(type) && !error && text != null && !text.trim().isEmpty()) {
                         sawGoodChunk = true;
                     }
-                } catch (RuntimeException ex) {
+                } catch (JsonException | ClassCastException | IllegalStateException ex) {
                     log.log(Level.FINE, "Ignoring malformed SSE data chunk", ex);
                 }
             }
@@ -419,7 +429,7 @@ public class WidgetAvailabilityChecker {
                     return cfg;
                 }
             }
-        } catch (java.sql.SQLException | RuntimeException e) {
+        } catch (java.sql.SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.FINE, "DB config unavailable, falling back to env/defaults", e);
         }
 
@@ -476,11 +486,11 @@ public class WidgetAvailabilityChecker {
                 return false;
             }
             String actual = obj.get(expectedField).toString();
-            if (actual.startsWith("\"") && actual.endsWith("\"") && actual.length() >= 2) {
+            if (actual.length() >= 2 && actual.charAt(0) == '"' && actual.charAt(actual.length() - 1) == '"') {
                 actual = actual.substring(1, actual.length() - 1);
             }
             return expectedValue.equalsIgnoreCase(actual.trim());
-        } catch (RuntimeException e) {
+        } catch (JsonException | ClassCastException | IllegalStateException e) {
             log.log(Level.FINE, "Failed to parse expected JSON health payload", e);
             return false;
         }
@@ -492,10 +502,10 @@ public class WidgetAvailabilityChecker {
         }
         try {
             return obj.getString(key, null);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException | IllegalStateException e) {
             log.log(Level.FINE, "stringVal fallback for key=" + key, e);
             String v = obj.get(key).toString();
-            if (v != null && v.startsWith("\"") && v.endsWith("\"") && v.length() >= 2) {
+            if (v != null && v.length() >= 2 && v.charAt(0) == '"' && v.charAt(v.length() - 1) == '"') {
                 v = v.substring(1, v.length() - 1);
             }
             return v;
@@ -508,11 +518,11 @@ public class WidgetAvailabilityChecker {
         }
         try {
             return obj.getBoolean(key);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException | IllegalStateException e) {
             log.log(Level.FINE, "boolVal parse fallback for key=" + key, e);
             try {
                 return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
-            } catch (RuntimeException ex) {
+            } catch (IllegalArgumentException | IllegalStateException ex) {
                 log.log(Level.FINE, "boolVal parse failed for key=" + key, ex);
                 return fallback;
             }
@@ -547,6 +557,15 @@ public class WidgetAvailabilityChecker {
         return normalized;
     }
 
+    private String canonicalizeBodyForValidation(String body, int maxChars) {
+        String normalized = Normalizer.normalize(body == null ? "" : body, Normalizer.Form.NFKC);
+        String withoutNul = normalized.replace('\u0000', ' ');
+        if (withoutNul.length() > maxChars) {
+            return withoutNul.substring(0, maxChars);
+        }
+        return withoutNul;
+    }
+
     private String readEnvCanonical(String key, int maxChars) {
         String raw = System.getenv(key);
         if (raw == null) {
@@ -572,7 +591,8 @@ public class WidgetAvailabilityChecker {
         try {
             URI uri = URI.create(t);
             return "https".equalsIgnoreCase(uri.getScheme());
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Unable to parse healthcheck URL for HTTPS check", e);
             return false;
         }
     }
@@ -622,7 +642,7 @@ public class WidgetAvailabilityChecker {
                 return null;
             }
             return trimToNull(config.getApiKey());
-        } catch (java.sql.SQLException | RuntimeException e) {
+        } catch (java.sql.SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.FINE, "Unable to resolve global server API key fallback", e);
             return null;
         }
@@ -630,7 +650,7 @@ public class WidgetAvailabilityChecker {
 
     private String authHeaderSuffix(String wwwAuthenticate) {
         String t = trimToNull(wwwAuthenticate);
-        return t == null ? "" : " [www-authenticate=" + t + "]";
+        return t == null ? "" : " [www-authenticate=" + t + ']';
     }
 
     private String safeUrl(String url) {
@@ -655,7 +675,8 @@ public class WidgetAvailabilityChecker {
                 sb.append(uri.getPath());
             }
             return sb.toString();
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Unable to parse URL for safe log rendering", e);
             return safeMsg(url);
         }
     }
@@ -695,7 +716,11 @@ public class WidgetAvailabilityChecker {
         if (s.length() > 300) {
             s = s.substring(0, 300) + "...";
         }
-        return " [body=\"" + s + "\"]";
+        return new StringBuilder(" [body=\"")
+                .append(s)
+                .append('"')
+                .append(']')
+                .toString();
     }
 
     private WidgetAvailabilityResult up(String checkedAt, long latencyMs, String details) {
@@ -706,7 +731,7 @@ public class WidgetAvailabilityChecker {
         return new WidgetAvailabilityResult(false, "DOWN", checkedAt, latencyMs, details);
     }
 
-    private static final class EffectiveConfig {
+    static final class EffectiveConfig {
 
         String source;
         String url;
@@ -725,21 +750,21 @@ public class WidgetAvailabilityChecker {
         String apiKeyValue;
     }
 
-    private static final class SseValidationResult {
+    static final class SseValidationResult {
 
         final boolean ok;
         final String reason;
 
-        private SseValidationResult(boolean ok, String reason) {
+        SseValidationResult(boolean ok, String reason) {
             this.ok = ok;
             this.reason = reason;
         }
 
-        private static SseValidationResult ok() {
+        static SseValidationResult ok() {
             return new SseValidationResult(true, null);
         }
 
-        private static SseValidationResult fail(String reason) {
+        static SseValidationResult fail(String reason) {
             return new SseValidationResult(false, reason);
         }
     }

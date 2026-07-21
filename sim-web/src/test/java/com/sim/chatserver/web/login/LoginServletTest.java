@@ -38,6 +38,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         RequestDispatcher getRequestDispatcherResult = mock(RequestDispatcher.class);
         when(req.getRequestDispatcher(nullable(String.class))).thenReturn(getRequestDispatcherResult);
 
@@ -64,6 +65,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -92,6 +94,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         RequestDispatcher getRequestDispatcherResult = mock(RequestDispatcher.class);
         when(req.getRequestDispatcher(nullable(String.class))).thenReturn(getRequestDispatcherResult);
 
@@ -118,6 +121,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -142,6 +146,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -171,6 +176,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -200,6 +206,7 @@ public class LoginServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 

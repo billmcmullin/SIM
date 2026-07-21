@@ -17,16 +17,16 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
-import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonReader;
 import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -46,22 +46,19 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return;
         }
 
-        JsonObject body;
         if (!isValidJsonRequest(req)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
-        try (JsonReader jr = Json.createReader(req.getInputStream())) {
-            body = jr.readObject();
-        } catch (JsonException e) {
-            log.log(Level.FINE, "Invalid trends selection payload", e);
+        JsonObject body = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
+        if (body == null || body.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -77,13 +74,13 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         try {
             targetDate = LocalDate.parse(day);
         } catch (java.time.format.DateTimeParseException ex) {
-            log.log(Level.FINE, "Invalid day format in trends selection: {0}", sanitizeForLog(day));
+            log.fine("Invalid day format in trends selection payload.");
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid day format. Use yyyy-MM-dd.");
             return;
         }
 
         List<TermChatSnapshot> snapshots = new ArrayList<>();
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = resolveDataSourceHolder().getDataSource().getConnection()) {
             List<WidgetEntry> widgets = WidgetStore.list(null);
 
             for (WidgetEntry w : widgets) {
@@ -128,7 +125,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                     }
                 }
             }
-        } catch (SQLException | RuntimeException ex) {
+        } catch (SQLException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to collect chats for day", ex);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to collect chats for day.");
             return;
@@ -165,13 +162,17 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to resolve widget table metadata", ex);
         }
         return false;
     }
@@ -197,6 +198,13 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
+    private AppDataSourceHolder resolveDataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private boolean isValidJsonRequest(HttpServletRequest req) {
         if (req == null) {
             return false;
@@ -205,7 +213,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+    private void writeError(HttpServletResponse resp, int status, String message) {
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "" : message)
@@ -213,12 +221,21 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         writeJson(resp, status, payload);
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType(JSON_UTF8);
         try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
             writer.writeObject(payload);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write trends selection response", ex);
+            try {
+                if (!resp.isCommitted()) {
+                    resp.sendError(status);
+                }
+            } catch (IOException sendErrorFailure) {
+                log.log(Level.FINE, "Unable to send fallback error response", sendErrorFailure);
+            }
         }
     }
 

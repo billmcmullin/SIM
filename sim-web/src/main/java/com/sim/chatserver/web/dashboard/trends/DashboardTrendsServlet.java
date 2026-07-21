@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -179,49 +178,27 @@ public class DashboardTrendsServlet extends HttpServlet {
         if (raw == null || raw.isBlank()) {
             return 30;
         }
-        try {
-            int d = Integer.parseInt(raw.trim());
-            return (d == 10 || d == 30 || d == 90 || d == 120 || d == 180) ? d : 30;
-        } catch (NumberFormatException e) {
+        String trimmed = raw.trim();
+        if (!trimmed.matches("^\\d{1,4}$")) {
             return 30;
         }
+        int d = Integer.parseInt(trimmed);
+        return (d == 10 || d == 30 || d == 90 || d == 120 || d == 180) ? d : 30;
     }
 
     private String firstQueryParam(HttpServletRequest req, String name) {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String[] pairs = query.split("&");
-        for (String pair : pairs) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int eq = pair.indexOf('=');
-            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
-            String key = urlDecode(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String val = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
-            return val.length() > 32 ? val.substring(0, 32) : val;
+        String val = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (val.isEmpty()) {
+            return null;
         }
-        return null;
-    }
-
-    private String urlDecode(String value) {
-        if (value == null) {
-            return "";
-        }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            return value;
-        }
+        return val.length() > 32 ? val.substring(0, 32) : val;
     }
 
     private String loadTemplate(HttpServletRequest req, String path) throws IOException {

@@ -396,6 +396,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         try {
             return LocalDate.parse(raw.trim(), DATE_FMT);
         } catch (DateTimeParseException ex) {
+            log.log(Level.FINE, "Invalid review-data date parameter", ex);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
             return LocalDate.MIN;
@@ -495,15 +496,22 @@ public class WidgetReviewDataServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
+        if (req == null || name == null || name.isBlank()) {
+            return null;
+        }
         Map<String, String[]> params = req.getParameterMap();
         if (params == null) {
             return null;
         }
         String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private String sanitizeSelectionId(String rawSelectionId) {

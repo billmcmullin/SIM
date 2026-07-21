@@ -291,14 +291,15 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterMap().get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {
@@ -332,7 +333,7 @@ public class WidgetTableServlet extends HttpServlet {
         final boolean exists;
         final String message;
 
-        TableStatus(boolean exists, String message) {
+        private TableStatus(boolean exists, String message) {
             this.exists = exists;
             this.message = message;
         }

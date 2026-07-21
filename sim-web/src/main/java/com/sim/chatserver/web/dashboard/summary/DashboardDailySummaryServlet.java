@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -88,7 +87,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         try {
             return LocalDate.parse(raw.trim(), DATE_FMT);
         } catch (DateTimeParseException e) {
-            log.log(Level.FINE, "Invalid day parameter for dashboard summary: {0}", raw);
+            log.log(Level.FINE, "Invalid day parameter for dashboard summary");
             return LocalDate.now(zone);
         }
     }
@@ -101,7 +100,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
                     return s;
                 }
             } catch (NumberFormatException e) {
-                log.log(Level.FINE, "Invalid slot parameter for dashboard summary: {0}", raw);
+                log.log(Level.FINE, "Invalid slot parameter for dashboard summary");
             }
         }
 
@@ -135,14 +134,17 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 }

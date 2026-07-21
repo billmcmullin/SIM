@@ -10,7 +10,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Enumeration;
+import java.util.Collections;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -317,18 +318,15 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
         int comma = headerVal.indexOf(',');
         String token = comma >= 0 ? headerVal.substring(0, comma) : headerVal;
-        return token.trim();
+        String trimmed = token.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String readForwardedHeader(HttpServletRequest req, String headerName) {
         if (req == null || headerName == null || headerName.isBlank()) {
             return null;
         }
-        Enumeration<String> values = req.getHeaders(headerName);
-        if (values == null || !values.hasMoreElements()) {
-            return null;
-        }
-        String raw = values.nextElement();
+        String raw = req.getHeader(headerName);
         if (raw == null) {
             return null;
         }
@@ -349,16 +347,32 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
         }
-        String value = values[0];
-        String normalized = value.replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String normalized = values[0].replace("\r", "").replace("\n", "").trim();
+            return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
+        }
     }
 
     private String normalizeScheme(String scheme) {

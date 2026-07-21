@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -46,7 +47,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final List<TermChatSnapshot> snapshots;
         public final String date; // optional YYYY-MM-DD scope
 
-        private Selection(String widgetId,
+        Selection(String widgetId,
                 String displayName,
                 String backUrl,
                 List<String> chatIds,
@@ -116,7 +117,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final String prompt;
         public final String response;
 
-        private SearchTerms(String global, String prompt, String response) {
+        SearchTerms(String global, String prompt, String response) {
             this.global = safe(global);
             this.prompt = safe(prompt);
             this.response = safe(response);
@@ -124,7 +125,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.", null);
@@ -136,7 +137,19 @@ public class WidgetReviewStartServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
-        try (var reader = Json.createReader(req.getReader())) {
+        String payloadText;
+        try {
+            payloadText = readValidatedJsonPayload(req);
+        } catch (IOException e) {
+            log.log(java.util.logging.Level.FINE, "Unable to read widget review start payload", e);
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
+            return;
+        }
+        if (payloadText == null) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
+            return;
+        }
+        try (var reader = Json.createReader(new StringReader(payloadText))) {
             payload = reader.readObject();
         } catch (JsonException e) {
             log.log(java.util.logging.Level.FINE, "Unable to parse widget review start payload", e);
@@ -278,7 +291,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return storeSelection(session, selection);
     }
 
-    private static String normalizeDate(String raw) {
+    static String normalizeDate(String raw) {
         if (raw == null) {
             return null;
         }
@@ -286,8 +299,35 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return t.isEmpty() ? null : t;
     }
 
-    private static String safe(String v) {
+    static String safe(String v) {
         return v == null ? "" : v.trim();
+    }
+
+    private String readValidatedJsonPayload(HttpServletRequest req) throws IOException {
+        StringBuilder body = new StringBuilder();
+        char[] buffer = new char[2048];
+        int read;
+        int total = 0;
+        try (var reader = req.getReader()) {
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return null;
+                }
+                for (int i = 0; i < read; i++) {
+                    char c = buffer[i];
+                    if (Character.isISOControl(c) && !Character.isWhitespace(c)) {
+                        return null;
+                    }
+                }
+                body.append(buffer, 0, read);
+            }
+        }
+        String json = body.toString().trim();
+        if (json.isEmpty() || json.charAt(0) != '{') {
+            return null;
+        }
+        return json;
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -298,7 +338,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message, String selectionId) throws IOException {
+    private void writeError(HttpServletResponse resp, int status, String message, String selectionId) {
         var b = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", safe(message));
@@ -308,12 +348,21 @@ public class WidgetReviewStartServlet extends HttpServlet {
         writeJson(resp, status, b.build());
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType(JSON_UTF8);
         try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
             writer.writeObject(payload);
+        } catch (IOException e) {
+            log.log(java.util.logging.Level.FINE, "Unable to write JSON response", e);
+            try {
+                if (!resp.isCommitted()) {
+                    resp.sendError(status);
+                }
+            } catch (IOException sendErrorFailure) {
+                log.log(java.util.logging.Level.FINE, "Unable to send fallback error response", sendErrorFailure);
+            }
         }
     }
 }

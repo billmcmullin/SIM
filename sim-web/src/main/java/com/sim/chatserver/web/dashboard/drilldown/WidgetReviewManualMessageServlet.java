@@ -2,8 +2,9 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
-import java.io.StringWriter;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -1109,10 +1110,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -1121,12 +1118,21 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!isValidJsonRequest(req)) {
             throw new IOException("Invalid JSON request payload.");
         }
-        try (var reader = req.getReader(); var out = new StringWriter()) {
-            long copied = reader.transferTo(out);
-            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
+        try (InputStream in = req.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            int total = 0;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                out.write(buffer, 0, read);
+            }
+            if (out.size() > MAX_JSON_PAYLOAD_BYTES) {
                 throw new IOException("Payload exceeds allowed size.");
             }
-            return canonicalizeForValidation(out.toString());
+            return canonicalizeForValidation(out.toString(StandardCharsets.UTF_8));
         }
     }
 

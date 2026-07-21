@@ -48,9 +48,11 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         PrintWriter getWriterResult = mock(PrintWriter.class);
         when(resp.getWriter()).thenReturn(getWriterResult);
         underTest.doPost(req, resp);
@@ -72,11 +74,13 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         PrintWriter getWriterResult = mock(PrintWriter.class);
         when(resp.getWriter()).thenReturn(getWriterResult);
         underTest.doPost(req, resp);
@@ -98,11 +102,13 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         underTest.doPost(req, resp);
 
     }
@@ -122,12 +128,14 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         HttpSession getSessionResult2 = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         underTest.doPost(req, resp);
 
     }
@@ -147,6 +155,7 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -155,6 +164,7 @@ public class WidgetExportServletTest
         when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult2);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         underTest.doPost(req, resp);
 
     }
@@ -174,6 +184,7 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -182,6 +193,7 @@ public class WidgetExportServletTest
         when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult2);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         underTest.doPost(req, resp);
 
     }
@@ -201,6 +213,7 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -209,6 +222,7 @@ public class WidgetExportServletTest
         when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult2);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
         when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
         underTest.doPost(req, resp);
@@ -242,6 +256,7 @@ public class WidgetExportServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -250,6 +265,7 @@ public class WidgetExportServletTest
         when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult2);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(mock(PrintWriter.class));
         ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
         when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
         underTest.doPost(req, resp);

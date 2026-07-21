@@ -135,7 +135,8 @@ public class TermsCsvServlet extends HttpServlet {
                             } else {
                                 updated++;
                             }
-                        } catch (Exception e) {
+                        } catch (IllegalArgumentException | SQLException e) {
+                            log.log(Level.FINE, "Skipping invalid CSV data line", e);
                             errors.add("line " + lineNum + ": " + e.getMessage());
                         }
                     }
@@ -150,7 +151,8 @@ public class TermsCsvServlet extends HttpServlet {
                     } else {
                         updated++;
                     }
-                } catch (Exception e) {
+                } catch (IllegalArgumentException | SQLException e) {
+                    log.log(Level.FINE, "Skipping invalid CSV data line", e);
                     errors.add("line " + lineNum + ": " + e.getMessage());
                 }
             }
@@ -167,7 +169,16 @@ public class TermsCsvServlet extends HttpServlet {
         if (!errors.isEmpty()) {
             msg.append("&errors=").append(URLEncoder.encode(String.join("; ", errors), StandardCharsets.UTF_8));
         }
-        resp.sendRedirect(req.getContextPath() + "/admin/terms?" + msg.toString());
+        resp.sendRedirect(safeRedirectTarget(req, msg.toString()));
+    }
+
+    private String safeRedirectTarget(HttpServletRequest req, String query) {
+        String contextPath = req == null ? "" : req.getContextPath();
+        String safeContext = (contextPath == null || contextPath.isBlank()) ? "" : contextPath.trim();
+        if (!safeContext.isEmpty() && (!safeContext.startsWith("/") || safeContext.contains("://") || safeContext.contains("\r") || safeContext.contains("\n"))) {
+            safeContext = "";
+        }
+        return safeContext + "/admin/terms?" + (query == null ? "" : query);
     }
 
     /**

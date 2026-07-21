@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.IOException;
+import java.io.StringReader;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -63,7 +65,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+        try (JsonReader reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             payload = reader.readObject();
         } catch (RuntimeException ex) {
             log.log(Level.FINE, "Invalid topics selection payload", ex);
@@ -223,12 +225,33 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+        if (req == null) {
             return false;
         }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        if (req == null) {
+            return "";
+        }
+        try (var in = req.getInputStream(); var out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                out.write(buffer, 0, read);
+            }
+            return out.toString(StandardCharsets.UTF_8)
+                    .replace("\u0000", "")
+                    .replace("\r", "")
+                    .trim();
+        }
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {

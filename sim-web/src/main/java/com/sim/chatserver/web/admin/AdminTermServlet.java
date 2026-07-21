@@ -2,6 +2,7 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
@@ -277,7 +278,7 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterMap().get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -298,20 +299,21 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        StringBuilder body = new StringBuilder();
-        try (var reader = req.getReader()) {
-            char[] chunk = new char[4096];
+        try (var in = req.getInputStream(); var body = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[4096];
             int read;
-            while ((read = reader.read(chunk)) != -1) {
-                body.append(chunk, 0, read);
-                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+            int total = 0;
+            while ((read = in.read(chunk)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
                     return "";
                 }
+                body.write(chunk, 0, read);
             }
+            return body.toString(StandardCharsets.UTF_8)
+                    .replace("\u0000", "")
+                    .replace("\r", "")
+                    .trim();
         }
-        return body.toString()
-                .replace("\u0000", "")
-                .replace("\r", "")
-                .trim();
     }
 }

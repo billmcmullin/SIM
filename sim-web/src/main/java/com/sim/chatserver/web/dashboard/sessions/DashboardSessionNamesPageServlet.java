@@ -4,8 +4,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import jakarta.servlet.ServletContext;
@@ -23,10 +23,15 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/session-names.html";
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            try {
+                req.getRequestDispatcher("/login").forward(req, resp);
+            } catch (IOException ex) {
+                log.log(Level.FINE, "Unable to forward to login", ex);
+                sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
+            }
             return;
         }
 
@@ -37,16 +42,21 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
                 .replace("${role}", escapeHtml(role));
 
-        resp.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("text/html; charset=UTF-8");
+        try {
+            resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write session names page", ex);
+            sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.warning("Session names template not found.");
+                return "";
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();
@@ -56,6 +66,9 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to load session names template", ex);
+            return "";
         }
     }
 
@@ -63,10 +76,28 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder out = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            switch (c) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&#39;");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    private void sendFallbackError(HttpServletResponse resp, int status) {
+        try {
+            if (!resp.isCommitted()) {
+                resp.sendError(status);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send fallback session names error", ex);
+        }
     }
 }

@@ -256,15 +256,18 @@ public class WidgetTableDataServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private String formatTimestampNullable(Timestamp ts) {
@@ -280,7 +283,8 @@ public class WidgetTableDataServlet extends HttpServlet {
             if (limit == 10 || limit == 20 || limit == 25 || limit == 50 || limit == 100) {
                 return limit;
             }
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid limit parameter", ex);
         }
         return 10;
     }
@@ -289,7 +293,8 @@ public class WidgetTableDataServlet extends HttpServlet {
         try {
             int page = Integer.parseInt(pageParam);
             return Math.max(1, page);
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid page parameter", ex);
         }
         return 1;
     }
@@ -369,7 +374,7 @@ public class WidgetTableDataServlet extends HttpServlet {
         final String createdAt;
         final String sessionId;
 
-        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+        private ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.response = response;

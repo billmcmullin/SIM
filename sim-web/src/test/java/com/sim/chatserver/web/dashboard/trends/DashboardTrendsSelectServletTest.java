@@ -41,6 +41,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -65,6 +66,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = null; // UTA: configured value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -91,6 +93,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -123,6 +126,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -155,6 +159,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
@@ -187,6 +192,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -222,6 +228,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -258,6 +265,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -291,6 +299,7 @@ public class DashboardTrendsSelectServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getContentLengthLong()).thenReturn(-1L);
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);

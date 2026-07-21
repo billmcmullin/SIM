@@ -37,13 +37,11 @@ public class WidgetAvailabilityServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String user = sessionUser(req);
         String role = sessionRole(req);
-        log.info(() -> "Widget availability endpoint invoked: user=" + user
-                + " role=" + role
-                + " remoteAddr=" + safe(req == null ? null : req.getRemoteAddr(), "unknown"));
+        log.info(() -> "Widget availability endpoint invoked: user=" + sanitizeForLog(user)
+            + " role=" + sanitizeForLog(role));
 
         if (!isLoggedIn(req)) {
-            log.warning(() -> "Widget availability request denied: unauthenticated remoteAddr="
-                    + safe(req == null ? null : req.getRemoteAddr(), "unknown"));
+            log.warning("Widget availability request denied: unauthenticated user");
             writeUnauthorized(resp);
             return;
         }
@@ -51,17 +49,16 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         try {
             WidgetAvailabilityResult result = checker.checkNow();
             if (result == null) {
-                log.warning(() -> "Widget availability checker returned null result for user=" + user);
+                log.warning(() -> "Widget availability checker returned null result for user=" + sanitizeForLog(user));
                 result = new WidgetAvailabilityResult(false, "DOWN", "", 0L, "Availability check returned no result");
             }
             final WidgetAvailabilityResult finalResult = result;
 
             if (!finalResult.available()) {
-                log.warning(() -> "Widget availability check result DOWN for user=" + user
-                        + " details=" + safe(finalResult.details(), "")
+                log.warning(() -> "Widget availability check result DOWN for user=" + sanitizeForLog(user)
                         + " latencyMs=" + Math.max(0L, finalResult.latencyMs()));
             } else {
-                log.info(() -> "Widget availability check result UP for user=" + user
+                log.info(() -> "Widget availability check result UP for user=" + sanitizeForLog(user)
                         + " latencyMs=" + Math.max(0L, finalResult.latencyMs()));
             }
 
@@ -73,7 +70,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                     .add("details", safe(finalResult.details(), ""));
 
             writeJson(resp, HttpServletResponse.SC_OK, json.build().toString());
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException | SecurityException e) {
             log.log(Level.WARNING, "Widget availability check failed for user=" + user
                     + " role=" + role, e);
 
@@ -89,6 +86,9 @@ public class WidgetAvailabilityServlet extends HttpServlet {
     }
 
     private boolean isLoggedIn(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
         HttpSession session = req.getSession(false);
         return session != null && session.getAttribute("user") != null;
     }
@@ -129,5 +129,13 @@ public class WidgetAvailabilityServlet extends HttpServlet {
 
     private String safe(String value, String fallback) {
         return value == null ? fallback : value;
+    }
+
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '_').replace('\n', '_');
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 }

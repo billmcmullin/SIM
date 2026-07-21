@@ -77,7 +77,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets for dashboard topics", e);
             widgets = List.of();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unexpected runtime error while listing widgets", e);
             widgets = List.of();
         }
@@ -88,7 +88,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list terms for dashboard topics", e);
             allTerms = List.of();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unexpected runtime error while listing terms", e);
             allTerms = List.of();
         }
@@ -326,7 +326,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         try {
             return Optional.of(LocalDate.parse(value.trim(), DATE_FMT));
         } catch (DateTimeParseException ex) {
-            log.log(Level.FINE, "Invalid date parameter for dashboard topics: {0}", value);
+            log.log(Level.FINE, "Invalid date parameter for dashboard topics");
             return Optional.empty();
         }
     }
@@ -351,15 +351,18 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject payload) throws IOException {

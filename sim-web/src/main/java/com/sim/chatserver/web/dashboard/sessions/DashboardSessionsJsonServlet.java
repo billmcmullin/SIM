@@ -15,6 +15,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -25,11 +26,12 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -44,27 +46,23 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int ACTIVE_DAYS = 7;
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json");
-            resp.getWriter().print("{\"status\":\"unauthorized\"}");
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    Json.createObjectBuilder().add("status", "unauthorized").build());
             return;
         }
 
         List<WidgetEntry> widgets = List.of();
         try {
             widgets = WidgetStore.list(null);
-        } catch (Exception e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load widget registry for dashboard sessions", e);
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = resolveDataSourceHolder().getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = mapWidgetDisplayNames(widgets);
@@ -138,21 +136,18 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     .add("sessions", sessionsArray)
                     .build();
 
-            resp.setContentType("application/json");
-            resp.getWriter().print(payload.toString());
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to compute top sessions for dashboard", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             JsonObject error = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Unable to load session metrics")
                     .build();
-            resp.setContentType("application/json");
-            resp.getWriter().print(error.toString());
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
         }
     }
 
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets) throws SQLException {
+    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets) {
         Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
         if (widgets == null || widgets.isEmpty()) {
             return accumulators;
@@ -179,13 +174,18 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
                     int total = rs.getInt("total");
                     acc.count += total;
-                    acc.widgetCounts.merge(widgetId, total, Integer::sum);
+
+                    Integer existingCount = acc.widgetCounts.get(widgetId);
+                    int mergedCount = (existingCount == null ? 0 : existingCount.intValue()) + total;
+                    acc.widgetCounts.put(widgetId, Integer.valueOf(mergedCount));
 
                     Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                     if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
                         acc.lastEntry = lastEntry;
                     }
                 }
+            } catch (SQLException ex) {
+                log.log(Level.FINE, "Skipping widget session aggregation due to SQL error", ex);
             }
         }
         return accumulators;
@@ -213,7 +213,8 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
         String winner = null;
         int best = -1;
         for (Map.Entry<String, Integer> entry : widgetCounts.entrySet()) {
-            int value = entry.getValue() == null ? 0 : entry.getValue();
+            Integer count = entry.getValue();
+            int value = count == null ? 0 : count.intValue();
             if (value > best) {
                 best = value;
                 winner = entry.getKey();
@@ -242,16 +243,44 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
         return normalized;
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        var meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            var meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to inspect widget table metadata", ex);
         }
         return false;
+    }
+
+    private AppDataSourceHolder resolveDataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
+        try {
+            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+                writer.writeObject(payload);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write dashboard sessions payload", ex);
+            try {
+                if (!resp.isCommitted()) {
+                    resp.sendError(status);
+                }
+            } catch (IOException sendErrorFailure) {
+                log.log(Level.FINE, "Unable to send fallback dashboard sessions error", sendErrorFailure);
+            }
+        }
     }
 
     private String quoteIdentifier(String identifier) {
@@ -267,10 +296,10 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                 .format(ENTRY_FORMATTER);
     }
 
-    private static final class SessionAccumulator {
+    static final class SessionAccumulator {
 
-        private int count = 0;
-        private Timestamp lastEntry = null;
-        private final Map<String, Integer> widgetCounts = new LinkedHashMap<>();
+        int count = 0;
+        Timestamp lastEntry = null;
+        final Map<String, Integer> widgetCounts = new LinkedHashMap<>();
     }
 }

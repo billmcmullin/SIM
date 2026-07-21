@@ -2,7 +2,6 @@ package com.sim.chatserver.web.dashboard;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -516,43 +515,16 @@ public class DashboardServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
+        Map<String, String[]> params = req.getParameterMap();
+        if (params == null) {
             return null;
         }
-
-        for (String pair : query.split("&")) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int idx = pair.indexOf('=');
-            String rawKey = idx >= 0 ? pair.substring(0, idx) : pair;
-            String rawValue = idx >= 0 ? pair.substring(idx + 1) : "";
-            String key = decodeQueryPart(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String value = decodeQueryPart(rawValue);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.trim();
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-        }
-        return null;
-    }
-
-    private String decodeQueryPart(String value) {
-        if (value == null) {
+        String[] values = params.get(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid query parameter encoding", ex);
-            return null;
-        }
+        String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String sanitizeForLog(String value) {

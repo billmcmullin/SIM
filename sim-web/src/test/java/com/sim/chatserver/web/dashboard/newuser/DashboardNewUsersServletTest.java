@@ -44,6 +44,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
         RequestDispatcher dispatcher = mock(RequestDispatcher.class);
@@ -77,6 +78,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
         RequestDispatcher dispatcher = mock(RequestDispatcher.class);
@@ -112,6 +114,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = "/data"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult);
 
@@ -139,6 +142,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = "/data"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult);
 
@@ -168,6 +172,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = "/day"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult, getServletPathResult2);
@@ -196,6 +201,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = "/day"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult, getServletPathResult2);
@@ -226,6 +232,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -259,6 +266,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = "/data"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult);
 
@@ -287,6 +295,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = "/data"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult);
 
@@ -317,6 +326,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = "/day"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult, getServletPathResult2);
@@ -346,6 +356,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getServletPathResult = ""; // UTA: configured value
         String getServletPathResult2 = "/day"; // UTA: configured value
         when(req.getServletPath()).thenReturn(getServletPathResult, getServletPathResult2);
@@ -377,6 +388,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -414,6 +426,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -451,6 +464,7 @@ public class DashboardNewUsersServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 

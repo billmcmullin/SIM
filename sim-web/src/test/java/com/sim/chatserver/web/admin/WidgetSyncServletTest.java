@@ -4,6 +4,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.List;
 
 import javax.sql.DataSource;
@@ -160,20 +162,31 @@ class WidgetSyncServletTest {
     }
 
     private static void tryInjectMockDataSourceHolder(WidgetSyncServlet servlet) throws Exception {
+        AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+        DataSource ds = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+
+        when(holder.getDataSource()).thenReturn(ds);
+        when(ds.getConnection()).thenReturn(conn);
+        when(conn.prepareStatement(anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(false);
+
         // Best-effort: if servlet has setDataSourceHolder(AppDataSourceHolder), use it.
         try {
             Method setter = servlet.getClass().getMethod("setDataSourceHolder", AppDataSourceHolder.class);
-
-            AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
-            DataSource ds = mock(DataSource.class);
-            Connection conn = mock(Connection.class);
-
-            when(holder.getDataSource()).thenReturn(ds);
-            when(ds.getConnection()).thenReturn(conn);
-
             setter.invoke(servlet, holder);
         } catch (NoSuchMethodException ignored) {
-            // servlet may not expose this setter; that's fine
+            // Fallback for legacy servlet wiring that uses a field instead of a setter.
+            try {
+                java.lang.reflect.Field field = servlet.getClass().getDeclaredField("dsHolder");
+                field.setAccessible(true);
+                field.set(servlet, holder);
+            } catch (NoSuchFieldException ignoredField) {
+                // servlet may not expose injectable holder in tests; leave as-is
+            }
         }
     }
 }

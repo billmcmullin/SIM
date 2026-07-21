@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.login;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.UserAccount;
@@ -98,28 +100,47 @@ public class LoginServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
         }
-        String value = values[0];
-        if (value == null) {
-            return null;
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private boolean isSafeForwardTarget(String target) {
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
+            return false;
+        }
+        return VIEW.equals(target) || "/dashboard".equals(target);
     }
 
     private void forwardSafe(HttpServletRequest req, HttpServletResponse resp, String target)
             throws ServletException, IOException {
-        if (target == null || target.isBlank()) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
-            return;
-        }
-        if (!VIEW.equals(target) && !"/dashboard".equals(target)) {
+        if (!isSafeForwardTarget(target)) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
             return;
         }

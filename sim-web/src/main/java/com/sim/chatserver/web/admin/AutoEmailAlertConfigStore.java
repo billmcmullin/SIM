@@ -303,8 +303,8 @@ public class AutoEmailAlertConfigStore {
 
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
-            Integer value = rs.getObject(column, Integer.class);
-            return value == null ? 0 : Math.max(0, value);
+            int value = rs.getInt(column);
+            return rs.wasNull() ? 0 : Math.max(0, value);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read integer column " + column, e);
             return 0;
@@ -340,7 +340,7 @@ public class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Timestamp ts = rs.getObject(column, Timestamp.class);
+            Timestamp ts = rs.getTimestamp(column);
             if (ts == null) {
                 return null;
             }
@@ -353,7 +353,7 @@ public class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            String value = rs.getObject(column, String.class);
+            String value = rs.getString(column);
             return sanitizeText(value, maxChars);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);

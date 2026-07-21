@@ -181,6 +181,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             int parsed = Integer.parseInt(value.trim());
             return parsed > 0 ? parsed : fallback;
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid positive integer parameter", e);
             return fallback;
         }
     }
@@ -193,20 +194,24 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             int parsed = Integer.parseInt(value.trim());
             return parsed >= 0 ? parsed : fallback;
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid non-negative integer parameter", e);
             return fallback;
         }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
     private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter)

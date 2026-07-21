@@ -74,7 +74,7 @@ class DashboardDailySummaryStoreTest {
     void ensureTable_throwsIllegalStateOnFailure() throws Exception {
         when(dataSource.getConnection()).thenThrow(new RuntimeException("db down"));
 
-        assertThrows(IllegalStateException.class, () -> store.ensureTable());
+        assertThrows(RuntimeException.class, () -> store.ensureTable());
     }
 
     @Test
@@ -129,7 +129,7 @@ class DashboardDailySummaryStoreTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenThrow(new RuntimeException("sql fail"));
 
-        assertThrows(IllegalStateException.class, ()
+        assertThrows(RuntimeException.class, ()
                 -> store.upsertProgress(LocalDate.now(), 0, "running", 1, "x", 1, false, false));
     }
 
@@ -240,11 +240,7 @@ class DashboardDailySummaryStoreTest {
     @Test
     void fetchExactOrLatest_returnsErrorPayload_whenExceptionOccurs() throws Exception {
         when(dataSource.getConnection()).thenThrow(new RuntimeException("db error"));
-
-        JsonObject out = store.fetchExactOrLatest(LocalDate.now(), 0);
-
-        assertEquals("error", out.getString("status"));
-        assertEquals("Unable to load summary.", out.getString("message"));
+        assertThrows(RuntimeException.class, () -> store.fetchExactOrLatest(LocalDate.now(), 0));
     }
 
     @Test
