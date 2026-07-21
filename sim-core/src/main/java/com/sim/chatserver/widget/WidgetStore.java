@@ -147,7 +147,7 @@ public final class WidgetStore {
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        int resolvedId = id == null ? 0 : id;
+        int resolvedId = id == null ? 0 : id.intValue();
         if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
@@ -247,20 +247,20 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        if (value == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return 0;
         }
         return Math.max(0, value);
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        Timestamp value = rs.getObject("created_at", Timestamp.class);
+        Timestamp value = rs.getTimestamp("created_at");
         return toInstantRequired(value);
     }
 
@@ -288,7 +288,7 @@ public final class WidgetStore {
 
     public static final class DuplicateWidgetIdException extends SQLException {
 
-        DuplicateWidgetIdException(String widgetId, Throwable cause) {
+        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
             super("Widget ID '" + widgetId + "' already exists.", cause);
         }
     }

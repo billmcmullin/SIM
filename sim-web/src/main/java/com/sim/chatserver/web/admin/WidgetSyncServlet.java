@@ -22,8 +22,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1341,7 +1343,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             URI uri = URI.create(rawUrl.trim());
             return isHttpsUri(uri);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             return false;
         }
     }
@@ -1397,11 +1399,10 @@ public class WidgetSyncServlet extends HttpServlet {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return "";
         }
-        Object value = rs.getObject(columnName);
-        if (value == null) {
+        String text = rs.getString(columnName);
+        if (text == null) {
             return "";
         }
-        String text = value.toString();
         if (text.indexOf('\u0000') >= 0) {
             text = text.replace('\u0000', ' ');
         }
@@ -1418,23 +1419,27 @@ public class WidgetSyncServlet extends HttpServlet {
     static final class RequestParamContext {
 
         private final HttpServletRequest request;
+        private final Map<String, String[]> parameterMap;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
+            this.parameterMap = request == null
+                    ? Collections.emptyMap()
+                    : request.getParameterMap();
         }
 
-        static RequestParamContext from(HttpServletRequest req) {
+        private static RequestParamContext from(HttpServletRequest req) {
             return new RequestParamContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
             if (request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
+            String[] values = parameterMap.get(name);
             if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
@@ -1451,7 +1456,7 @@ public class WidgetSyncServlet extends HttpServlet {
         final boolean synced;
         final String message;
 
-        WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
             this.widgetId = widgetId;
             this.tableName = tableName;
             this.tableExists = tableExists;
@@ -1459,7 +1464,7 @@ public class WidgetSyncServlet extends HttpServlet {
             this.message = message;
         }
 
-        JsonObject toJson() {
+        private JsonObject toJson() {
             return Json.createObjectBuilder()
                     .add("widgetId", widgetId == null ? "" : widgetId)
                     .add("tableName", tableName == null ? "" : tableName)
@@ -1475,7 +1480,7 @@ public class WidgetSyncServlet extends HttpServlet {
         final long intervalSeconds;
         final Timestamp lastSynced;
 
-        SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
             this.intervalSeconds = intervalSeconds;
             this.lastSynced = lastSynced;
         }

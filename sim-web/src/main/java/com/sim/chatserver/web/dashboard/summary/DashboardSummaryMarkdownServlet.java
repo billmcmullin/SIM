@@ -338,25 +338,25 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
     private static final class RequestContext {
 
-        private final Map<String, String[]> params;
+        private final HttpServletRequest request;
 
-        private RequestContext(Map<String, String[]> params) {
-            this.params = params;
+        private RequestContext(HttpServletRequest request) {
+            this.request = request;
         }
 
         private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req.getParameterMap());
+            return new RequestContext(req);
         }
 
         private String first(String name) {
-            if (name == null || name.isBlank() || params == null) {
+            if (name == null || name.isBlank() || request == null) {
                 return null;
             }
-            String[] values = params.get(name);
+            String[] values = request.getParameterValues(name);
             if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
-            String trimmed = values[0].trim();
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
         }
     }

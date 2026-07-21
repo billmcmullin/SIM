@@ -6,13 +6,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -30,16 +30,20 @@ public class ProfileServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
-    private static final int MAX_PARAM_LEN = 128;
 
     @Inject
     UserService userService;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(LOGIN_PATH);
+            try {
+                resp.sendRedirect(LOGIN_PATH);
+            } catch (IOException ex) {
+                log.log(Level.FINE, "Unable to redirect to login", ex);
+                sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
+            }
             return;
         }
 
@@ -50,13 +54,18 @@ public class ProfileServlet extends HttpServlet {
                 .replace("${contextPath}", req.getContextPath());
 
         resp.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+        try {
+            try (PrintWriter out = resp.getWriter()) {
+                out.print(rendered);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write profile page", ex);
+            sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -79,7 +88,7 @@ public class ProfileServlet extends HttpServlet {
         }
 
         try {
-            UserAccount updated = userService.updateCredentials(currentUsername, newUsername, newPassword);
+            UserAccount updated = resolveUserService().updateCredentials(currentUsername, newUsername, newPassword);
             String updatedUsername = updated == null ? null : sanitizeInput(updated.getUsername());
             if (updatedUsername == null || updatedUsername.isBlank()) {
                 writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Profile update failed.");
@@ -95,10 +104,17 @@ public class ProfileServlet extends HttpServlet {
         } catch (jakarta.persistence.PersistenceException pe) {
             log.log(Level.FINE, "Profile update conflict", pe);
             writeError(resp, HttpServletResponse.SC_CONFLICT, "Could not update profile.");
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Profile update failed", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to update profile.");
         }
+    }
+
+    private UserService resolveUserService() {
+        if (userService != null) {
+            return userService;
+        }
+        return CDI.current().select(UserService.class).get();
     }
 
     private String sanitizeInput(String value) {
@@ -108,10 +124,11 @@ public class ProfileServlet extends HttpServlet {
         return value.replace("\0", "").trim();
     }
 
-    private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {
+    private String loadTemplate(jakarta.servlet.ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.warning("Template not found for profile page.");
+                return "";
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();
@@ -121,6 +138,9 @@ public class ProfileServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to load profile template", ex);
+            return "";
         }
     }
 
@@ -128,14 +148,22 @@ public class ProfileServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder out = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            switch (c) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&#39;");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+    private void writeError(HttpServletResponse resp, int status, String message) {
         JsonObject error = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "" : message)
@@ -143,32 +171,49 @@ public class ProfileServlet extends HttpServlet {
         writeJson(resp, status, error);
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
         resp.setContentType("application/json");
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        try (JsonWriter jsonWriter = Json.createWriter(resp.getWriter())) {
-            jsonWriter.writeObject(payload);
+        try {
+            try (JsonWriter jsonWriter = Json.createWriter(resp.getWriter())) {
+                jsonWriter.writeObject(payload);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write profile servlet JSON response", ex);
+            sendFallbackError(resp, status);
+        }
+    }
+
+    private void sendFallbackError(HttpServletResponse resp, int status) {
+        try {
+            if (!resp.isCommitted()) {
+                resp.sendError(status);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send fallback profile response", ex);
         }
     }
 
     private static final class RequestContext {
 
-        private final Map<String, String[]> params;
+        private static final int MAX_PARAM_LEN = 128;
 
-        private RequestContext(Map<String, String[]> params) {
-            this.params = params;
+        private final HttpServletRequest req;
+
+        RequestContext(HttpServletRequest req) {
+            this.req = req;
         }
 
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req.getParameterMap());
+        static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req);
         }
 
-        private String first(String name) {
-            if (name == null || name.isBlank() || params == null) {
+        String first(String name) {
+            if (name == null || name.isBlank() || req == null) {
                 return null;
             }
-            String[] values = params.get(name);
+            String[] values = req.getParameterValues(name);
             if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }

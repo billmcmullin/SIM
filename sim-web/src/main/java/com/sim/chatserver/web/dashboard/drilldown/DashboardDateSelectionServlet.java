@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -48,7 +47,12 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+            String loginPath = safeRedirectPath("/login", "/login");
+            if (!isAllowedRedirect(loginPath)) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid redirect target.");
+                return;
+            }
+            req.getRequestDispatcher(loginPath).forward(req, resp);
             return;
         }
 
@@ -111,38 +115,15 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String[] pairs = query.split("&");
-        for (String pair : pairs) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int eq = pair.indexOf('=');
-            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
-            String key = urlDecode(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String value = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
-            return value.length() > 32 ? value.substring(0, 32) : value;
+        String value = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (value.isEmpty()) {
+            return null;
         }
-        return null;
-    }
-
-    private String urlDecode(String value) {
-        if (value == null) {
-            return "";
-        }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid query parameter encoding", ex);
-            return value;
-        }
+        return value.length() > 32 ? value.substring(0, 32) : value;
     }
 
     private String safeContextPath(String contextPath) {
@@ -162,6 +143,9 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         }
         if (redirectUrl.contains("://") || redirectUrl.contains("\r") || redirectUrl.contains("\n")) {
             return false;
+        }
+        if ("/login".equals(redirectUrl) || "/dashboard".equals(redirectUrl) || "/dashboard?latestChats=empty".equals(redirectUrl)) {
+            return true;
         }
         return redirectUrl.contains("/dashboard/widgets/drilldown/review?selectionId=");
     }

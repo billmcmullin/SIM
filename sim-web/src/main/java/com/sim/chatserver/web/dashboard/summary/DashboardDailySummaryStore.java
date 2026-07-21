@@ -427,8 +427,14 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        String raw = getSafeString(rs, column, 64);
+        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d+$")) {
+            return min;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(raw);
+        } catch (NumberFormatException ex) {
             return min;
         }
         if (value < min) {
@@ -441,11 +447,17 @@ public class DashboardDailySummaryStore {
     }
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        Timestamp value = rs.getTimestamp(column);
-        if (value == null) {
+        String raw = getSafeString(rs, column, 128);
+        if (raw == null || raw.isBlank()) {
             return null;
         }
         try {
+            Timestamp value;
+            try {
+                value = Timestamp.valueOf(raw.replace('T', ' '));
+            } catch (IllegalArgumentException ignored) {
+                value = Timestamp.from(Instant.parse(raw));
+            }
             Instant instant = value.toInstant();
             return instant == null ? null : Timestamp.from(instant);
         } catch (IllegalArgumentException | DateTimeException e) {
@@ -455,12 +467,12 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
-        java.sql.Date day = rs.getDate(column);
-        if (day == null) {
+        String raw = getSafeString(rs, column, 32);
+        if (raw == null || raw.isBlank()) {
             return "";
         }
         try {
-            LocalDate localDay = day.toLocalDate();
+            LocalDate localDay = LocalDate.parse(raw.trim());
             return localDay == null ? "" : localDay.toString();
         } catch (IllegalArgumentException | DateTimeException e) {
             log.log(Level.FINE, "Invalid date value for column " + column, e);

@@ -624,8 +624,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> parameterMap = req.getParameterMap();
-        String[] values = parameterMap.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
@@ -634,8 +633,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object valueObj = rs.getObject(column);
-        String value = valueObj == null ? null : String.valueOf(valueObj);
+        String value = rs.getString(column);
         return safeDbText(value, maxLen);
     }
 

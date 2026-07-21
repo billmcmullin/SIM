@@ -261,20 +261,15 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawObj = rs.getObject(columnIndex);
-        String raw = rawObj == null ? null : String.valueOf(rawObj);
+        String raw = rs.getString(columnIndex);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawObj = rs.getObject(columnIndex);
-        byte[] raw;
-        if (rawObj instanceof byte[] bytes) {
-            raw = bytes;
-        } else if (rawObj == null) {
-            raw = null;
-        } else {
-            raw = String.valueOf(rawObj).getBytes(StandardCharsets.UTF_8);
+        byte[] raw = rs.getBytes(columnIndex);
+        if (raw == null) {
+            String fallback = rs.getString(columnIndex);
+            raw = fallback == null ? null : fallback.getBytes(StandardCharsets.UTF_8);
         }
         return sanitizeBinary(raw);
     }

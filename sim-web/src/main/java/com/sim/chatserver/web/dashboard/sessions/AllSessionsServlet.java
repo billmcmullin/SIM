@@ -1,8 +1,9 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
-import java.io.StringWriter;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -749,19 +750,7 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.replace("\r", "").replace("\n", "").trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        return RequestParamContext.from(req).first(name);
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -776,12 +765,43 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (var reader = req.getReader(); var out = new StringWriter()) {
-            long copied = reader.transferTo(out);
-            if (copied > MAX_JSON_PAYLOAD_BYTES || out.getBuffer().length() > MAX_JSON_PAYLOAD_BYTES) {
-                return "";
+        try (InputStream in = req.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            int total = 0;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                out.write(buffer, 0, read);
             }
-            return out.toString().replace("\u0000", "").replace("\r", "").trim();
+            return out.toString(StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
+        }
+    }
+
+    static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\r", "").replace("\n", "").trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 

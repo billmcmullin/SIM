@@ -70,6 +70,14 @@ public class ReviewOutputValidator {
             "chats not used"
     );
 
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public ValidationResult validateMapOutput(String output) {
         return validateMapOutput(canonicalizeForValidation(output), DEFAULT_MAX_TEXT_CHARS);
     }
@@ -136,7 +144,7 @@ public class ReviewOutputValidator {
         return validateMapOutputStrict(canonicalizeForValidation(output), expectedChatIds, DEFAULT_MAX_TEXT_CHARS);
     }
 
-    public ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds, int maxChars) {
+    ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds, int maxChars) {
         String canonicalOutput = canonicalizeForValidation(output);
         ValidationResult base = validateMapOutput(canonicalOutput, maxChars);
 
@@ -294,7 +302,8 @@ public class ReviewOutputValidator {
             warnings.add("Final report contains chat headings not in expected set: " + unexpected);
         }
 
-        validateDeterministicCoverageMetadata(normalized, expected, errors);
+        String metadataText = canonicalizeForValidation(normalized);
+        validateDeterministicCoverageMetadata(metadataText, expected, errors);
 
         return new ValidationResult(
                 errors.isEmpty(),
@@ -335,8 +344,9 @@ public class ReviewOutputValidator {
             }
         }
 
-        validateDeterministicCoverageMetadata(normalized, expected, errors);
-        validateCoveragePercentageConsistency(normalized, errors, warnings);
+        String metadataText = canonicalizeForValidation(normalized);
+        validateDeterministicCoverageMetadata(metadataText, expected, errors);
+        validateCoveragePercentageConsistency(metadataText, errors, warnings);
 
         // If deterministic IDs are absent, fallback to human-readable coverage lines being present and coherent.
         boolean hasDeterministicFields = lower.contains("all_selected_chat_ids")
@@ -344,9 +354,9 @@ public class ReviewOutputValidator {
                 && lower.contains("missing_chat_ids");
 
         if (!hasDeterministicFields) {
-            OptionalInt provided = parseIntMetadata(normalized, COVERAGE_CHATS_PROVIDED);
-            OptionalInt used = parseIntMetadata(normalized, COVERAGE_CHATS_USED);
-            OptionalInt notUsed = parseIntMetadata(normalized, COVERAGE_CHATS_NOT_USED);
+            OptionalInt provided = parseIntMetadata(metadataText, COVERAGE_CHATS_PROVIDED);
+            OptionalInt used = parseIntMetadata(metadataText, COVERAGE_CHATS_USED);
+            OptionalInt notUsed = parseIntMetadata(metadataText, COVERAGE_CHATS_NOT_USED);
 
             if (provided.isEmpty() || used.isEmpty() || notUsed.isEmpty()) {
                 errors.add("Coverage metadata incomplete: expected deterministic ID fields or complete coverage count lines.");
@@ -598,10 +608,10 @@ public class ReviewOutputValidator {
         }
 
         String inner = raw;
-        if (inner.startsWith("[")) {
+        if (!inner.isEmpty() && inner.charAt(0) == '[') {
             inner = inner.substring(1);
         }
-        if (inner.endsWith("]")) {
+        if (!inner.isEmpty() && inner.charAt(inner.length() - 1) == ']') {
             inner = inner.substring(0, inner.length() - 1);
         }
 
@@ -693,7 +703,7 @@ public class ReviewOutputValidator {
             this(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, List.of());
         }
 
-        public ValidationResult(
+        ValidationResult(
                 boolean valid,
                 List<String> errors,
                 List<String> warnings,
@@ -726,7 +736,7 @@ public class ReviewOutputValidator {
             return warnings;
         }
 
-        public int getLength() {
+        int getLength() {
             return length;
         }
 

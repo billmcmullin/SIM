@@ -1,20 +1,21 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
+import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.service.UserService;
 
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
-import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -32,106 +33,105 @@ public class AdminUserServlet extends HttpServlet {
     UserService userService;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         if (!isAdmin(req, resp)) {
             return;
         }
 
-        List<UserAccount> users = userService.listAllUsers();
+        List<UserAccount> users = resolveUserService().listAllUsers();
         JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-        users.forEach(user -> arrayBuilder.add(Json.createObjectBuilder()
-                .add("id", user.getId())
-                .add("username", user.getUsername())
-                .add("role", user.getRole())
-                .build()));
+        users.forEach(user -> {
+            long userId = user.getId() == null ? -1L : user.getId().longValue();
+            String username = user.getUsername() == null ? "" : user.getUsername();
+            String role = user.getRole() == null ? "" : user.getRole();
+            arrayBuilder.add(Json.createObjectBuilder()
+                    .add("id", userId)
+                    .add("username", username)
+                    .add("role", role)
+                    .build());
+        });
 
         JsonObject response = Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("users", arrayBuilder)
                 .build();
-        resp.setContentType("application/json");
-        resp.getWriter().write(response.toString());
+        writeJson(resp, HttpServletResponse.SC_OK, response);
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         if (!isAdmin(req, resp)) {
             return;
         }
 
         if (!isValidJsonRequest(req)) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
-        JsonObject payload;
-        try (var reader = Json.createReader(req.getReader())) {
-            payload = reader.readObject();
-        } catch (JsonException | IOException e) {
-            log.log(Level.FINE, "Invalid admin user payload", e);
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+        JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
+        if (payload == null || payload.isEmpty()) {
+            log.fine("Invalid admin user payload");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
-        String username = payload.getString("username", "").trim();
-        String password = payload.getString("password", "");
-        String role = payload.getString("role", "USER").toUpperCase();
+        String username = JsonRequestParserUtil.getString(payload, "username", 128).trim();
+        String password = JsonRequestParserUtil.getString(payload, "password", 512);
+        String role = JsonRequestParserUtil.getString(payload, "role", "USER").trim().toUpperCase();
 
         if (username.isEmpty() || password.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"username and password are required.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "username and password are required.");
             return;
         }
 
         try {
-            userService.createUser(username, password, role);
-            resp.setContentType("application/json");
-            resp.getWriter().write("{\"status\":\"ok\"}");
+            resolveUserService().createUser(username, password, role);
+            writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed to create user", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create user.\"}");
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create user.");
         }
     }
 
     @Override
-    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         if (!isAdmin(req, resp)) {
             return;
         }
-        String userId = firstQueryParam(req, "userId");
+        String userId = firstParam(req, "userId", 64);
         if (userId == null || userId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Missing userId.\"}");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing userId.");
             return;
         }
 
-        boolean deleted = userService.deleteUser(userId);
+        boolean deleted = resolveUserService().deleteUser(userId);
         if (!deleted) {
-            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"User not found.\"}");
+            writeError(resp, HttpServletResponse.SC_NOT_FOUND, "User not found.");
             return;
         }
-        resp.setContentType("application/json");
-        resp.getWriter().write("{\"status\":\"ok\"}");
+        writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
     }
 
-    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
         if (!"ADMIN".equalsIgnoreCase(role)) {
-            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Admin role required.\"}");
+            writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
             return false;
         }
         return true;
+    }
+
+    private UserService resolveUserService() {
+        if (userService != null) {
+            return userService;
+        }
+        return CDI.current().select(UserService.class).get();
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -142,41 +142,47 @@ public class AdminUserServlet extends HttpServlet {
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
-    private String firstQueryParam(HttpServletRequest req, String name) {
+    private String firstParam(HttpServletRequest req, String name, int maxLen) {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String[] pairs = query.split("&");
-        for (String pair : pairs) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int eq = pair.indexOf('=');
-            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
-            String key = urlDecode(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String val = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
-            return val.length() > 64 ? val.substring(0, 64) : val;
+        String val = values[0].replace("\r", "").replace("\n", "").trim();
+        int bound = Math.max(1, maxLen);
+        if (val.length() > bound) {
+            return val.substring(0, bound);
         }
-        return null;
+        return val;
     }
 
-    private String urlDecode(String value) {
-        if (value == null) {
-            return "";
-        }
+    private void writeError(HttpServletResponse resp, int status, String message) {
+        JsonObject payload = Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", message == null ? "" : message)
+                .build();
+        writeJson(resp, status, payload);
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        resp.setStatus(status);
+        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        resp.setContentType("application/json; charset=UTF-8");
         try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid query parameter encoding", ex);
-            return value;
+            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+                writer.writeObject(payload);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write admin user response", ex);
+            try {
+                if (!resp.isCommitted()) {
+                    resp.sendError(status);
+                }
+            } catch (IOException sendErrorFailure) {
+                log.log(Level.FINE, "Unable to send fallback error response", sendErrorFailure);
+            }
         }
     }
 }

@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
@@ -188,38 +187,15 @@ public class AdminConfigServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String[] pairs = query.split("&");
-        for (String pair : pairs) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int eq = pair.indexOf('=');
-            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
-            String key = urlDecode(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String value = urlDecode(rawVal).replace("\r", "").replace("\n", "").trim();
-            return value.length() > 512 ? value.substring(0, 512) : value;
+        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
         }
-        return null;
-    }
-
-    private String urlDecode(String value) {
-        if (value == null) {
-            return "";
-        }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid admin query parameter encoding", ex);
-            return value;
-        }
+        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
     }
 
     private static String serializeTerms(List<TermDefinition> terms) {

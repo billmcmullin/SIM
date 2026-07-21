@@ -4,7 +4,12 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -34,16 +39,18 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login");
+    private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         String contextPath = safeContextPath(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             } else {
-                req.getRequestDispatcher("/login").forward(req, resp);
+                forwardSafe(req, resp, "/login", HttpServletResponse.SC_UNAUTHORIZED);
             }
             return;
         }
@@ -53,13 +60,13 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
             } else {
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
+                sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
             }
             return;
         }
 
         String normalizedTerm = normalize(rawTerm);
-    String mode = normalize(firstParam(req, "mode"));
+        String mode = normalize(firstParam(req, "mode"));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
         boolean yesterdayOnly = MODE_YESTERDAY_ONLY.equalsIgnoreCase(mode);
 
@@ -71,7 +78,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
             } else {
-                resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No term data available.");
+                sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
             }
             return;
         }
@@ -88,7 +95,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
                 } else {
-                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
+                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
                 }
                 return;
             }
@@ -105,16 +112,17 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                         if (wantsJson(req)) {
                             writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                         } else {
-                            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
+                            sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                         }
                         return;
                     }
                 } else {
-                    log.fine(() -> "No increase snapshots for term='" + rawTerm + "' normalized='" + normalizedTerm + "'");
+                    log.fine(() -> "No increase snapshots for term=" + '\'' + rawTerm + '\''
+                            + " normalized=" + '\'' + normalizedTerm + '\'');
                     if (wantsJson(req)) {
                         writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
                     } else {
-                        resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
+                        sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No increased chats found for that term today.");
                     }
                     return;
                 }
@@ -130,7 +138,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
                 } else {
-                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
+                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
                 }
                 return;
             }
@@ -140,7 +148,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
                 } else {
-                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
+                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
                 }
                 return;
             }
@@ -151,7 +159,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                 } else {
-                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
+                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                 }
                 return;
             }
@@ -169,7 +177,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create term selection.");
             } else {
-                resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create term selection.");
+                sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create term selection.");
             }
             return;
         }
@@ -187,7 +195,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        req.getRequestDispatcher(reviewPath).forward(req, resp);
+        forwardSafe(req, resp, reviewPath, HttpServletResponse.SC_BAD_REQUEST);
     }
 
     private boolean wantsJson(HttpServletRequest req) {
@@ -198,7 +206,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         return pattern != null && pattern.endsWith("/select");
     }
 
-    private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
+    private void writeJsonError(HttpServletResponse resp, int status, String message) {
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", message == null ? "" : message)
@@ -206,12 +214,17 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         writeJson(resp, status, body);
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
         resp.setStatus(status);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType(JSON_UTF8);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
+        try {
+            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+                writer.writeObject(body);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write term-selection JSON response", ex);
+            sendErrorSafe(resp, status);
         }
     }
 
@@ -238,15 +251,15 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String trimmed = values[0].trim();
+        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String safeContextPath(String contextPath) {
@@ -265,6 +278,54 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     }
 
     private String normalizeKey(String s) {
-        return normalize(s).toLowerCase();
+        return normalize(s).toLowerCase(Locale.ROOT);
+    }
+
+    private void forwardSafe(HttpServletRequest req, HttpServletResponse resp, String path, int fallbackStatus) {
+        if (!isAllowedForwardPath(path)) {
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        try {
+            req.getRequestDispatcher(path).forward(req, resp);
+        } catch (ServletException | IOException ex) {
+            log.log(Level.FINE, "Unable to forward term selection request", ex);
+            sendErrorSafe(resp, fallbackStatus);
+        }
+    }
+
+    private boolean isAllowedForwardPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.trim();
+        if (!p.startsWith("/") || p.contains("://") || p.contains("\r") || p.contains("\n")) {
+            return false;
+        }
+        if (SAFE_FORWARD_PATHS.contains(p)) {
+            return true;
+        }
+        return SAFE_TERM_PATH.matcher(p).matches();
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status) {
+        try {
+            if (!resp.isCommitted()) {
+                resp.sendError(status);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send term-selection error response", ex);
+        }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        try {
+            if (!resp.isCommitted()) {
+                resp.sendError(status, Objects.toString(message, ""));
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send term-selection error response", ex);
+            sendErrorSafe(resp, status);
+        }
     }
 }

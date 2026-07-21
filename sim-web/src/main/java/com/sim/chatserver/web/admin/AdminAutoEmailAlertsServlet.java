@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -213,7 +214,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             return false;
         }
         String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
             return false;
         }
         long len = req.getContentLengthLong();
@@ -226,10 +227,12 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         }
         try {
             return payload.getInt(key);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException e) {
+            log.log(Level.FINE, "Non-integer JSON value for key: {0}", key);
             try {
                 return Integer.parseInt(payload.get(key).toString().replace("\"", "").trim());
-            } catch (RuntimeException ex) {
+            } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Unable to parse integer value for key: {0}", key);
                 return fallback;
             }
         }
@@ -242,7 +245,8 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         try {
             String value = payload.getString(key, null);
             return normalizeText(value);
-        } catch (RuntimeException e) {
+        } catch (ClassCastException e) {
+            log.log(Level.FINE, "Non-string JSON value for key: {0}", key);
             String raw = payload.get(key).toString();
             if (raw != null && raw.startsWith("\"") && raw.endsWith("\"") && raw.length() >= 2) {
                 raw = raw.substring(1, raw.length() - 1);

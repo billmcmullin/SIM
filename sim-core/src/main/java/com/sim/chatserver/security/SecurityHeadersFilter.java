@@ -1,10 +1,13 @@
 package com.sim.chatserver.security;
 
 import java.io.IOException;
+import java.text.Normalizer;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -25,10 +28,21 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityHeadersFilter implements Filter {
 
     private static final long STATIC_CACHE_SECONDS = 604800L; // 7 days
+    private static final int MAX_HEADER_CHARS = 512;
+    private static final int MAX_URI_CHARS = 2048;
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
 
     private static final String STATIC_CACHE_CONTROL = "public, max-age=" + STATIC_CACHE_SECONDS + ", immutable";
 
     private static final String DYNAMIC_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -67,7 +81,7 @@ public class SecurityHeadersFilter implements Filter {
             if (isStaticAssetRequest(request)) {
                 // Allow browser/proxy caching for static assets to avoid FOUC on navigation.
                 httpResp.setHeader("Cache-Control", STATIC_CACHE_CONTROL);
-                httpResp.setDateHeader("Expires", System.currentTimeMillis() + (STATIC_CACHE_SECONDS * 1000L));
+                httpResp.setDateHeader("Expires", Instant.now().toEpochMilli() + (STATIC_CACHE_SECONDS * 1000L));
             } else {
                 // Keep dynamic/authenticated pages non-cacheable.
                 httpResp.setHeader("Cache-Control", DYNAMIC_CACHE_CONTROL);
@@ -172,20 +186,20 @@ public class SecurityHeadersFilter implements Filter {
             return true;
         }
 
-        String xForwardedProto = req.getHeader("X-Forwarded-Proto");
+        String xForwardedProto = readHeaderCanonical(req, "X-Forwarded-Proto", MAX_HEADER_CHARS);
         if (xForwardedProto != null) {
-            String first = xForwardedProto.split(",")[0].trim();
+            String first = firstCsvToken(xForwardedProto);
             if ("https".equalsIgnoreCase(first)) {
                 return true;
             }
         }
 
-        String xForwardedSsl = req.getHeader("X-Forwarded-Ssl");
+        String xForwardedSsl = readHeaderCanonical(req, "X-Forwarded-Ssl", MAX_HEADER_CHARS);
         if ("on".equalsIgnoreCase(xForwardedSsl)) {
             return true;
         }
 
-        String frontEndHttps = req.getHeader("Front-End-Https");
+        String frontEndHttps = readHeaderCanonical(req, "Front-End-Https", MAX_HEADER_CHARS);
         return "on".equalsIgnoreCase(frontEndHttps);
     }
 
@@ -194,7 +208,7 @@ public class SecurityHeadersFilter implements Filter {
             return false;
         }
 
-        String uri = req.getRequestURI();
+        String uri = readCanonicalRequestUri(req);
         if (uri == null || uri.isEmpty()) {
             return false;
         }
@@ -224,5 +238,42 @@ public class SecurityHeadersFilter implements Filter {
                 || lowerPath.endsWith(".woff2")
                 || lowerPath.endsWith(".ttf")
                 || lowerPath.endsWith(".map");
+    }
+
+    private String readCanonicalRequestUri(HttpServletRequest req) {
+        if (req == null) {
+            return null;
+        }
+        return canonicalizeInput(req.getRequestURI(), MAX_URI_CHARS);
+    }
+
+    private String readHeaderCanonical(HttpServletRequest req, String headerName, int maxChars) {
+        if (req == null || headerName == null || headerName.isBlank()) {
+            return null;
+        }
+        return canonicalizeInput(req.getHeader(headerName), maxChars);
+    }
+
+    private String canonicalizeInput(String value, int maxChars) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
+        if (normalized.isEmpty() || CONTROL_CHARS.matcher(normalized).find()) {
+            return null;
+        }
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
+    }
+
+    private String firstCsvToken(String value) {
+        if (value == null) {
+            return null;
+        }
+        int comma = value.indexOf(',');
+        String token = comma >= 0 ? value.substring(0, comma) : value;
+        return token.trim();
     }
 }

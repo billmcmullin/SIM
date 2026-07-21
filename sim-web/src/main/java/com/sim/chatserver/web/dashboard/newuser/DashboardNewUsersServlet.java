@@ -504,16 +504,11 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> parameterMap = req.getParameterMap();
-        String[] values = parameterMap.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String value = values[0];
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\r", "").replace("\n", "").trim();
+        String normalized = values[0].replace("\r", "").replace("\n", "").trim();
         return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 

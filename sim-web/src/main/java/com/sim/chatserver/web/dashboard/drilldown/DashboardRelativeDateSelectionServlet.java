@@ -14,7 +14,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -155,7 +157,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "Invalid date parameter for relative date selection: {0}", sanitizeForLog(dateParam));
+                log.log(Level.FINE, "Invalid date parameter for relative date selection");
                 resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
                 return null;
             }
@@ -377,19 +379,32 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
         }
-        String value = values[0];
-        if (value == null) {
-            return null;
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\r", "").replace("\n", "").trim();
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
-        String trimmed = value.replace("\r", "").replace("\n", "").trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private boolean isSafeRedirectTarget(String target) {

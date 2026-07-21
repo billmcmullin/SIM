@@ -645,8 +645,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        Map<String, String[]> params = req.getParameterMap();
-        String[] values = params == null ? null : params.get(name);
+        String[] values = req.getParameterValues(name);
         if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }

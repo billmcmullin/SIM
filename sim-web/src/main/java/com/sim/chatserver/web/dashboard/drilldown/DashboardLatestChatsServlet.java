@@ -44,7 +44,12 @@ public class DashboardLatestChatsServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+            String loginPath = safeRedirectPath("/login", "/login");
+            if (!isSafeForwardTarget(loginPath)) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
+                return;
+            }
+            req.getRequestDispatcher(loginPath).forward(req, resp);
             return;
         }
 
@@ -54,6 +59,10 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         if (snapshots.isEmpty()) {
             // Keep UX smooth: redirect back to dashboard instead of 404 page.
             String emptyPath = safeRedirectPath("/dashboard?latestChats=empty", "/dashboard?latestChats=empty");
+            if (!isSafeForwardTarget(emptyPath)) {
+                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
+                return;
+            }
             req.getRequestDispatcher(emptyPath).forward(req, resp);
             return;
         }
@@ -72,7 +81,12 @@ public class DashboardLatestChatsServlet extends HttpServlet {
 
         String reviewPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
-        req.getRequestDispatcher(safeRedirectPath(reviewPath, "/dashboard")).forward(req, resp);
+        String safeReviewPath = safeRedirectPath(reviewPath, "/dashboard");
+        if (!isSafeForwardTarget(safeReviewPath)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
+            return;
+        }
+        req.getRequestDispatcher(safeReviewPath).forward(req, resp);
     }
 
     private List<TermChatSnapshot> collectLatestChats(int limit) {
@@ -194,19 +208,14 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (trimmed.isEmpty()) {
             return null;
         }
-        String value = values[0];
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
         return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
     }
 
@@ -230,5 +239,16 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             return fallback;
         }
         return trimmed;
+    }
+
+    private boolean isSafeForwardTarget(String target) {
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        String trimmed = target.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+            return false;
+        }
+        return true;
     }
 }

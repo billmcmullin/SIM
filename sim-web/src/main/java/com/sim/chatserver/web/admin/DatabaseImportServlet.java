@@ -804,17 +804,34 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
-        }
-        return sanitizeRequestValue(values[0]);
+        return RequestParamContext.from(req).first(name);
     }
 
-    private String sanitizeRequestValue(String value) {
+    static final class RequestParamContext {
+
+        private final Map<String, String[]> parameterMap;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.parameterMap = request == null ? Collections.emptyMap() : request.getParameterMap();
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = parameterMap.get(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            return sanitizeRequestValue(values[0]);
+        }
+    }
+
+    private static String sanitizeRequestValue(String value) {
         if (value == null) {
             return null;
         }

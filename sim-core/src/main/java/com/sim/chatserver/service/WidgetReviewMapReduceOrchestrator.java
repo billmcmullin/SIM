@@ -4,6 +4,7 @@ package com.sim.chatserver.service;
 import java.io.IOException;
 import java.io.StringReader;
 import java.text.Normalizer;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -88,6 +89,14 @@ public class WidgetReviewMapReduceOrchestrator {
     private final int finalReduceMaxSummaries;
     private final int finalReduceSummaryMaxChars;
     private final int finalReduceMaxAttempts;
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 
     public interface ProgressListener {
 
@@ -299,7 +308,7 @@ public class WidgetReviewMapReduceOrchestrator {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
         return run(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, NOOP_PROGRESS_LISTENER);
     }
 
@@ -314,7 +323,7 @@ public class WidgetReviewMapReduceOrchestrator {
             List<SelectedEntry> selectedEntries,
             String requestId,
             ProgressListener progress
-    ) throws Exception {
+            ) throws IOException, InterruptedException {
 
         ProgressListener listener = progress == null ? NOOP_PROGRESS_LISTENER : progress;
         log.log(Level.INFO, "[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId={0}", requestId);
@@ -425,7 +434,7 @@ public class WidgetReviewMapReduceOrchestrator {
                                 mapOutputs.add("### Batch " + req.getBatchIndex() + '\n' + r.outputText);
                             }
                         } else {
-                            failedBatches.add(req.getBatchIndex());
+                            failedBatches.add(Integer.valueOf(req.getBatchIndex()));
                             if (r.failure != null) {
                                 allBatchFailures.add(r.failure);
                             }
@@ -442,7 +451,7 @@ public class WidgetReviewMapReduceOrchestrator {
                                 round
                         );
                     } catch (CompletionException ex) {
-                        failedBatches.add(req.getBatchIndex());
+                        failedBatches.add(Integer.valueOf(req.getBatchIndex()));
                         log.log(Level.WARNING, "[map-reduce][" + requestId + "] batch failed batchIndex=" + req.getBatchIndex(), ex);
 
                         BatchFailure failure = BatchFailure.builder()
@@ -904,7 +913,7 @@ public class WidgetReviewMapReduceOrchestrator {
     private MapBatchExecutionResult executeMapBatch(
             String apiKey, JsonArray attachments, MapBatchRequest req, String requestId
         ) throws IOException, InterruptedException {
-        long start = System.currentTimeMillis();
+        long start = Instant.now().toEpochMilli();
 
         String deterministicHeader = contextBuilderService.buildBatchDeterministicHeader(
                 req.getTotalSelected(), req.getTotalBatches(), req.getBatchIndex(), req.getEntries()
@@ -988,7 +997,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .foundChatIds(markerDetected)
                 .missingExpectedChatIds(subtract(expectedIds, markerDetected))
                 .coverageComplete(success)
-                .latencyMs(System.currentTimeMillis() - start)
+                .latencyMs(Instant.now().toEpochMilli() - start)
                 .build();
 
         if (success) {
@@ -1020,7 +1029,7 @@ public class WidgetReviewMapReduceOrchestrator {
             boolean minimalHeader
     ) throws IOException, InterruptedException {
 
-        long start = System.currentTimeMillis();
+        long start = Instant.now().toEpochMilli();
 
         List<String> allIdsNorm = normalizeIds(allSelectedChatIds);
         List<String> missingIdsNorm = normalizeIds(missingChatIds);
@@ -1032,7 +1041,7 @@ public class WidgetReviewMapReduceOrchestrator {
         } else {
             usedIdsNorm = intersect(allIdsNorm, usedIdsNorm);
         }
-        coverageComplete = missingIdsNorm.isEmpty();
+        boolean effectiveCoverageComplete = coverageComplete && missingIdsNorm.isEmpty();
 
         String deterministicReduceHeader = minimalHeader
                 ? """
@@ -1045,8 +1054,13 @@ public class WidgetReviewMapReduceOrchestrator {
                 - used_count: %d
                 - missing_count: %d
                 """.formatted(
-                    totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
-                        String.valueOf(coverageComplete), usedIdsNorm.size(), missingIdsNorm.size()
+                    Integer.valueOf(totalSelected),
+                    Integer.valueOf(totalBatches),
+                    Integer.valueOf(mapOutputs.size()),
+                    failedBatches.toString(),
+                    String.valueOf(effectiveCoverageComplete),
+                    Integer.valueOf(usedIdsNorm.size()),
+                    Integer.valueOf(missingIdsNorm.size())
                 )
                 : """
                 Deterministic metadata (use exactly; do not estimate):
@@ -1059,8 +1073,14 @@ public class WidgetReviewMapReduceOrchestrator {
                 - used_ids_count: %d
                 - missing_ids_count: %d
                 """.formatted(
-                    totalSelected, totalBatches, mapOutputs.size(), failedBatches.toString(),
-                        String.valueOf(coverageComplete), allIdsNorm.size(), usedIdsNorm.size(), missingIdsNorm.size()
+                    Integer.valueOf(totalSelected),
+                    Integer.valueOf(totalBatches),
+                    Integer.valueOf(mapOutputs.size()),
+                    failedBatches.toString(),
+                    String.valueOf(effectiveCoverageComplete),
+                    Integer.valueOf(allIdsNorm.size()),
+                    Integer.valueOf(usedIdsNorm.size()),
+                    Integer.valueOf(missingIdsNorm.size())
                 );
 
         String reducePrompt = controlledPrompt + "\n\n" + deterministicReduceHeader + "\nReduce Task:\n"
@@ -1092,7 +1112,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .allSelectedChatIds(allIdsNorm)
                 .usedChatIds(usedIdsNorm)
                 .missingChatIds(missingIdsNorm)
-                .coverageComplete(coverageComplete)
+                .coverageComplete(effectiveCoverageComplete)
                 .build();
 
         WorkspaceResponse reduceResponse = workspaceClient.sendChat(
@@ -1121,7 +1141,7 @@ public class WidgetReviewMapReduceOrchestrator {
             = reviewOutputValidator.validateFinalReportHierarchical(canonicalReduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
         boolean reduceOutputValid = validation.isValid();
 
-        boolean reduceSuccess = reduceResponse.statusCode() < 400 && reduceOutputValid && coverageComplete;
+        boolean reduceSuccess = reduceResponse.statusCode() < 400 && reduceOutputValid && effectiveCoverageComplete;
 
         String err = "";
         if (!reduceSuccess) {
@@ -1150,8 +1170,8 @@ public class WidgetReviewMapReduceOrchestrator {
                 .allSelectedChatIds(allIdsNorm)
                 .usedChatIds(usedIdsNorm)
                 .missingChatIds(missingIdsNorm)
-                .coverageComplete(coverageComplete)
-                .latencyMs(System.currentTimeMillis() - start)
+                .coverageComplete(effectiveCoverageComplete)
+                .latencyMs(Instant.now().toEpochMilli() - start)
                 .build();
 
         return new ReduceExecutionResult(reduceResponse, reduceRequest, reduceResult);
@@ -1273,8 +1293,8 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                if (i != null && i > 0) {
-                    s.add(i);
+                if (i != null && i.intValue() > 0) {
+                    s.add(Integer.valueOf(i.intValue()));
                 }
             }
         }
@@ -1358,7 +1378,7 @@ public class WidgetReviewMapReduceOrchestrator {
         final BatchFailure failure;
         final List<String> usedIdsDetected;
 
-        MapBatchExecutionResult(
+        private MapBatchExecutionResult(
             String outputText, MapBatchResult result, BatchFailure failure, List<String> usedIdsDetected
         ) {
             this.outputText = outputText;

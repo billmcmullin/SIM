@@ -41,6 +41,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -66,6 +67,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -93,6 +95,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = null; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
 
@@ -120,6 +123,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = "getParameterResult"; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
 
@@ -147,6 +151,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = "getParameterResult"; // UTA: configured value
         String getParameterResult2 = "getParameterResult2"; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
@@ -180,6 +185,7 @@ public class WidgetTableViewServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = "getParameterResult"; // UTA: configured value
         String getParameterResult2 = "getParameterResult2"; // UTA: default value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);

@@ -18,6 +18,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doReturn;
@@ -47,6 +48,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -71,6 +73,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -97,6 +100,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -125,6 +129,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -153,6 +158,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -192,6 +198,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -231,6 +238,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -270,6 +278,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -313,6 +322,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -352,6 +362,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         HttpSession getSessionResult = mock(HttpSession.class);
         Object getAttributeResult = new Object(); // UTA: default value
         Object getAttributeResult2 = new Object(); // UTA: default value
@@ -377,6 +388,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         ServletContext getServletContextResult = mock(ServletContext.class);
         InputStream getResourceAsStreamResult = mock(InputStream.class);
         when(getServletContextResult.getResourceAsStream(nullable(String.class))).thenReturn(getResourceAsStreamResult);
@@ -409,6 +421,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         ServletContext getServletContextResult = mock(ServletContext.class);
         InputStream getResourceAsStreamResult = mock(InputStream.class);
         when(getServletContextResult.getResourceAsStream(nullable(String.class))).thenReturn(getResourceAsStreamResult);
@@ -439,6 +452,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = "getParameterResult"; // UTA: default value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
 
@@ -472,6 +486,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getParameterResult = null; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
 
@@ -505,6 +520,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -512,9 +528,7 @@ public class AdminConfigServletTest
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         doThrow(IOException.class).when(resp).sendRedirect(nullable(String.class));
-        assertThrows(Exception.class, () -> {
-            underTest.doGet(req, resp);
-        });
+        assertDoesNotThrow(() -> underTest.doGet(req, resp));
 
     }
 
@@ -532,6 +546,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -541,9 +556,7 @@ public class AdminConfigServletTest
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         doThrow(IOException.class).when(resp).sendRedirect(nullable(String.class));
-        assertThrows(Exception.class, () -> {
-            underTest.doGet(req, resp);
-        });
+        assertDoesNotThrow(() -> underTest.doGet(req, resp));
 
     }
 
@@ -561,6 +574,7 @@ public class AdminConfigServletTest
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(mock(jakarta.servlet.RequestDispatcher.class));
         String getContextPathResult = "getContextPathResult"; // UTA: default value
         when(req.getContextPath()).thenReturn(getContextPathResult);
 
@@ -572,9 +586,7 @@ public class AdminConfigServletTest
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         doThrow(IOException.class).when(resp).sendRedirect(nullable(String.class));
-        assertThrows(Exception.class, () -> {
-            underTest.doGet(req, resp);
-        });
+        assertDoesNotThrow(() -> underTest.doGet(req, resp));
 
     }
 

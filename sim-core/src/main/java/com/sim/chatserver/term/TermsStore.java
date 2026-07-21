@@ -31,6 +31,14 @@ public class TermsStore {
         // proxyable no-arg constructor
     }
 
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     @Inject
     public void setDataSourceHolder(AppDataSourceHolder dsHolder) {
         this.dsHolder = dsHolder;
@@ -201,12 +209,15 @@ public class TermsStore {
     }
 
     public TermDefinition updateTerm(Long id, String name, String description, String pattern, String type) throws SQLException {
-        if (id == null || id <= 0L) {
+        if (id == null) {
             return null;
         }
-        long termId = id;
+        long termId = id.longValue();
+        if (termId <= 0L) {
+            return null;
+        }
 
-        if (isSystemTerm(id)) {
+        if (isSystemTerm(termId)) {
             return null;
         }
 
@@ -224,8 +235,7 @@ public class TermsStore {
             ps.setLong(5, termId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    Boolean systemFlag = rs.getObject("system_flag", Boolean.class);
-                    return new TermDefinition(termId, sanitizedName, sanitizedDescription, sanitizedPattern, sanitizedType, Boolean.TRUE.equals(systemFlag));
+                    return new TermDefinition(termId, sanitizedName, sanitizedDescription, sanitizedPattern, sanitizedType, rs.getBoolean("system_flag"));
                 }
             }
         } catch (SQLException e) {
@@ -243,8 +253,7 @@ public class TermsStore {
                         ps2.setLong(1, termId);
                         try (ResultSet rs = ps2.executeQuery()) {
                             if (rs.next()) {
-                                Boolean systemFlag = rs.getObject("system_flag", Boolean.class);
-                                return new TermDefinition(termId, sanitizedName, sanitizedDescription, sanitizedPattern, sanitizedType, Boolean.TRUE.equals(systemFlag));
+                                return new TermDefinition(termId, sanitizedName, sanitizedDescription, sanitizedPattern, sanitizedType, rs.getBoolean("system_flag"));
                             }
                         }
                     }
@@ -255,12 +264,15 @@ public class TermsStore {
     }
 
     public boolean deleteTerm(Long id) throws SQLException {
-        if (id == null || id <= 0L) {
+        if (id == null) {
             return false;
         }
-        long termId = id;
+        long termId = id.longValue();
+        if (termId <= 0L) {
+            return false;
+        }
 
-        if (isSystemTerm(id)) {
+        if (isSystemTerm(termId)) {
             return false;
         }
         try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement("DELETE FROM term_definition WHERE id = ?")) {
@@ -269,20 +281,17 @@ public class TermsStore {
         }
     }
 
-    protected boolean isSystemTerm(Long id) throws SQLException {
-        if (id == null || id <= 0L) {
+    boolean isSystemTerm(long id) throws SQLException {
+        if (id <= 0L) {
             return false;
         }
-        long termId = id;
-
         try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement("SELECT system_flag FROM term_definition WHERE id = ?")) {
-            ps.setLong(1, termId);
+            ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
                     return false;
                 }
-                Boolean systemFlag = rs.getObject("system_flag", Boolean.class);
-                return Boolean.TRUE.equals(systemFlag);
+                return rs.getBoolean("system_flag");
             }
         }
     }
@@ -356,27 +365,15 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        long raw = rs.getLong(column);
+        if (rs.wasNull()) {
             return 0L;
         }
-        if (raw instanceof Number number) {
-            return Math.max(0L, number.longValue());
-        }
-        if (raw instanceof String text) {
-            try {
-                return Math.max(0L, Long.parseLong(text.trim()));
-            } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Unable to parse numeric term id value from text", ex);
-                return 0L;
-            }
-        }
-        log.log(Level.FINE, "Unsupported numeric type for term id column: {0}", raw.getClass().getName());
-        return 0L;
+        return Math.max(0L, raw);
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         if (value == null) {
             return "";
         }

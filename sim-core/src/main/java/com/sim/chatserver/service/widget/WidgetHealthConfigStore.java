@@ -33,6 +33,14 @@ public class WidgetHealthConfigStore {
         this.dataSource = dataSource;
     }
 
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public void ensureTable() throws java.sql.SQLException {
         final String sql = """
             CREATE TABLE IF NOT EXISTS widget_health_config (
@@ -314,28 +322,28 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        if (value == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return 0;
         }
         return Math.max(0, value);
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        Integer value = rs.getObject(column, Integer.class);
-        if (value == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return fallback;
         }
         return value > 0 ? value : fallback;
     }
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         return sanitizeDbText(value, maxChars);
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        Timestamp value = rs.getObject(column, Timestamp.class);
+        Timestamp value = rs.getTimestamp(column);
         if (value == null) {
             return null;
         }
@@ -349,7 +357,7 @@ public class WidgetHealthConfigStore {
     }
 
     private String readDecryptedSecret(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        String value = rs.getObject(column, String.class);
+        String value = rs.getString(column);
         String decrypted = EncryptedDbConfigStore.decryptSecretIfNeeded(value);
         return sanitizeDbText(decrypted, maxChars);
     }
@@ -394,8 +402,16 @@ public class WidgetHealthConfigStore {
             return id;
         }
 
-        private void setId(int id) {
+        void setId(int id) {
             this.id = id;
+        }
+
+        private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+            throw new java.io.NotSerializableException(getClass().getName());
+        }
+
+        private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+            throw new java.io.NotSerializableException(getClass().getName());
         }
 
         public String getHealthcheckUrl() {

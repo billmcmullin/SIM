@@ -12,14 +12,17 @@ import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -37,16 +40,16 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
 
         String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
 
@@ -61,27 +64,22 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
-                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.setContentType("application/json");
-                resp.getWriter().print(Json.createObjectBuilder()
+                log.log(Level.FINE, "Invalid date format for widget id selection", ex);
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
                         .add("status", "error")
                         .add("message", "Invalid date. Expected YYYY-MM-DD.")
-                        .build()
-                        .toString());
+                        .build());
                 return;
             }
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = resolveDataSourceHolder().getDataSource().getConnection()) {
             String tableName = sanitizeWidgetTableName(widgetId);
             if (!tableExists(conn, tableName)) {
-                resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                resp.setContentType("application/json");
-                resp.getWriter().print(Json.createObjectBuilder()
+                writeJson(resp, HttpServletResponse.SC_NOT_FOUND, Json.createObjectBuilder()
                         .add("status", "error")
                         .add("message", "Widget data not found")
-                        .build()
-                        .toString());
+                        .build());
                 return;
             }
 
@@ -91,18 +89,18 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
 
             if (!search.isBlank()) {
                 conditions.add("(LOWER(widget_chat_id) LIKE ? OR LOWER(prompt) LIKE ? OR LOWER(response_text) LIKE ?)");
-                String pattern = "%" + search + "%";
+                String pattern = '%' + search + '%';
                 values.add(pattern);
                 values.add(pattern);
                 values.add(pattern);
             }
             if (!filterPrompt.isBlank()) {
                 conditions.add("LOWER(prompt) LIKE ?");
-                values.add("%" + filterPrompt + "%");
+                values.add('%' + filterPrompt + '%');
             }
             if (!filterResponse.isBlank()) {
                 conditions.add("LOWER(response_text) LIKE ?");
-                values.add("%" + filterResponse + "%");
+                values.add('%' + filterResponse + '%');
             }
 
             // NEW: date condition
@@ -146,22 +144,17 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
                 }
             }
 
-            resp.setContentType("application/json");
-            resp.getWriter().print(Json.createObjectBuilder()
+                writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("total", chatIds.size())
                     .add("chatIds", Json.createArrayBuilder(chatIds))
-                    .build()
-                    .toString());
+                    .build());
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to fetch select-all ids", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setContentType("application/json");
-            resp.getWriter().print(Json.createObjectBuilder()
+                writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Unable to fetch chat IDs")
-                    .build()
-                    .toString());
+                    .build());
         }
     }
 
@@ -170,25 +163,29 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
-        return values[0];
+        String trimmed = values[0].trim();
+        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to verify widget table existence", ex);
         }
         return false;
     }
@@ -212,5 +209,54 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
 
     private String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private AppDataSourceHolder resolveDataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status) {
+        try {
+            resp.sendError(status);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send servlet error", ex);
+            sendFallbackError(resp, status);
+        }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send servlet error with message", ex);
+            sendFallbackError(resp, status);
+        }
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        resp.setStatus(status);
+        resp.setCharacterEncoding("UTF-8");
+        resp.setContentType("application/json; charset=UTF-8");
+        try {
+            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
+                writer.writeObject(payload);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write widget id selection response", ex);
+            sendFallbackError(resp, status);
+        }
+    }
+
+    private void sendFallbackError(HttpServletResponse resp, int status) {
+        try {
+            if (!resp.isCommitted()) {
+                resp.sendError(status);
+            }
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send fallback widget id selection response", ex);
+        }
     }
 }

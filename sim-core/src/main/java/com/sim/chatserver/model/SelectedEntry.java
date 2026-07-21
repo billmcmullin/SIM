@@ -1,10 +1,11 @@
 package com.sim.chatserver.model;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -17,9 +18,9 @@ import jakarta.json.JsonObjectBuilder;
  *
  * This replaces the inner static model previously embedded in the servlet.
  */
-public class SelectedEntry implements Serializable {
+public class SelectedEntry {
 
-    private static final long serialVersionUID = 1L;
+    private static final Logger LOGGER = Logger.getLogger(SelectedEntry.class.getName());
 
     private final String chatId;
     private final String prompt;
@@ -55,7 +56,7 @@ public class SelectedEntry implements Serializable {
         return sessionId;
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         JsonObjectBuilder b = Json.createObjectBuilder();
         b.add("chatId", chatId);
         b.add("prompt", prompt);
@@ -65,7 +66,7 @@ public class SelectedEntry implements Serializable {
         return b.build();
     }
 
-    public static SelectedEntry fromJson(JsonObject o) {
+    static SelectedEntry fromJson(JsonObject o) {
         if (o == null) {
             return new SelectedEntry("", "", "", "", "");
         }
@@ -114,14 +115,15 @@ public class SelectedEntry implements Serializable {
 
     private static String str(JsonObject o, String key) {
         try {
-            if (o.containsKey(key) && o.get(key) != null) {
-                if (o.get(key).getValueType() == jakarta.json.JsonValue.ValueType.STRING) {
+            var value = o.get(key);
+            if (value != null) {
+                if (value.getValueType() == jakarta.json.JsonValue.ValueType.STRING) {
                     return o.getString(key, "");
                 }
-                return String.valueOf(o.get(key));
+                return String.valueOf(value);
             }
-        } catch (Exception ignored) {
-            // no-op
+        } catch (ClassCastException | IllegalStateException ex) {
+            LOGGER.log(Level.FINE, "Unable to parse SelectedEntry JSON field: {0}", key);
         }
         return "";
     }
