@@ -23,6 +23,8 @@ import jakarta.json.JsonObject;
  * payload.
  */
 public class DashboardDailySummaryStore {
+    // parasoft-suppress SECURITY.WSC.DSER "Store class is not serialized by application design and is used only as an in-memory DAO wrapper."
+    // parasoft-suppress SECURITY.WSC.SER "Store class is not serialized by application design and is used only as an in-memory DAO wrapper."
 
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -403,12 +405,14 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeText(value, maxLen);
     }
 
     private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeText(value, maxLen);
     }
 
@@ -428,7 +432,7 @@ public class DashboardDailySummaryStore {
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
         String raw = getSafeString(rs, column, 64);
-        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d+$")) {
+        if (raw.isBlank() || !raw.matches("^-?\\d+$")) {
             return min;
         }
         int value;
@@ -448,14 +452,15 @@ public class DashboardDailySummaryStore {
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
         String raw = getSafeString(rs, column, 128);
-        if (raw == null || raw.isBlank()) {
+        if (raw.isBlank()) {
             return null;
         }
         try {
             Timestamp value;
             try {
                 value = Timestamp.valueOf(raw.replace('T', ' '));
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException ex) {
+                log.log(Level.FINE, "Timestamp SQL parse fallback to Instant parser for column " + column, ex);
                 value = Timestamp.from(Instant.parse(raw));
             }
             Instant instant = value.toInstant();
@@ -468,12 +473,12 @@ public class DashboardDailySummaryStore {
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
         String raw = getSafeString(rs, column, 32);
-        if (raw == null || raw.isBlank()) {
+        if (raw.isBlank()) {
             return "";
         }
         try {
             LocalDate localDay = LocalDate.parse(raw.trim());
-            return localDay == null ? "" : localDay.toString();
+            return localDay.toString();
         } catch (IllegalArgumentException | DateTimeException e) {
             log.log(Level.FINE, "Invalid date value for column " + column, e);
             return "";

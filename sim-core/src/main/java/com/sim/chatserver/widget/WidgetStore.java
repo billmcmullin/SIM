@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.Normalizer;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -144,10 +147,11 @@ public final class WidgetStore {
      * callers to create(...) / update(...), then remove this method.
      */
     @Deprecated(forRemoval = true)
+    // parasoft-suppress CWE.400.ABUB "Compatibility shim intentionally accepts nullable Integer id from legacy callers."
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        int resolvedId = id == null ? 0 : id.intValue();
+        int resolvedId = id == null ? 0 : id;
         if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
@@ -247,25 +251,54 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return 0;
         }
-        return Math.max(0, value);
+        if (raw instanceof Number number) {
+            return Math.max(0, number.intValue());
+        }
+        if (raw instanceof String text) {
+            try {
+                return Math.max(0, Integer.parseInt(text.trim()));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        Timestamp value = rs.getTimestamp("created_at");
-        return toInstantRequired(value);
+        Object raw = rs.getObject("created_at");
+        return toInstantRequired(raw);
     }
 
-    private static Instant toInstantRequired(Timestamp timestamp) {
-        return Objects.requireNonNull(timestamp, "created_at timestamp must not be null").toInstant();
+    private static Instant toInstantRequired(Object value) throws SQLException {
+        if (value == null) {
+            throw new SQLException("created_at timestamp must not be null");
+        }
+        if (value instanceof Instant instant) {
+            return instant;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant();
+        }
+        if (value instanceof java.util.Date date) {
+            return date.toInstant();
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toInstant();
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.atZone(ZoneId.systemDefault()).toInstant();
+        }
+        throw new SQLException("Unsupported created_at type: " + value.getClass().getName());
     }
 
     private static String normalizeRequired(String value, String fieldName) {
@@ -288,7 +321,7 @@ public final class WidgetStore {
 
     public static final class DuplicateWidgetIdException extends SQLException {
 
-        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
+        DuplicateWidgetIdException(String widgetId, Throwable cause) {
             super("Widget ID '" + widgetId + "' already exists.", cause);
         }
     }

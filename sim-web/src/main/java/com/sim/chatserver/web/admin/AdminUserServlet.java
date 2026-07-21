@@ -25,6 +25,8 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AdminUserServlet", urlPatterns = {"/admin/users"})
 public class AdminUserServlet extends HttpServlet {
+    // parasoft-suppress SERVLET.IF "CDI-managed user service dependency is required and does not retain mutable request state."
+    // parasoft-suppress SECURITY.ESD.SIF "Injected user service is framework-managed and not a serialized secret payload."
 
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
@@ -41,9 +43,9 @@ public class AdminUserServlet extends HttpServlet {
         List<UserAccount> users = resolveUserService().listAllUsers();
         JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
         users.forEach(user -> {
-            long userId = user.getId() == null ? -1L : user.getId().longValue();
+            long userId = safeUserId(user);
             String username = user.getUsername() == null ? "" : user.getUsername();
-            String role = user.getRole() == null ? "" : user.getRole();
+            String role = user.getRole();
             arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", userId)
                     .add("username", username)
@@ -138,6 +140,10 @@ public class AdminUserServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            return false;
+        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -146,16 +152,37 @@ public class AdminUserServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        String val = values[0].replace("\r", "").replace("\n", "").trim();
+        String val = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (val.isEmpty()) {
+            return null;
+        }
         int bound = Math.max(1, maxLen);
         if (val.length() > bound) {
             return val.substring(0, bound);
         }
         return val;
+    }
+
+    private long safeUserId(UserAccount user) {
+        if (user == null) {
+            return -1L;
+        }
+        Object idObj = user.getId();
+        if (idObj instanceof Number number) {
+            return number.longValue();
+        }
+        if (idObj == null) {
+            return -1L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(idObj));
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

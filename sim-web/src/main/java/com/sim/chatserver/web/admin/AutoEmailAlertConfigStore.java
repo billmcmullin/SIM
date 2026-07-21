@@ -16,6 +16,8 @@ import java.util.logging.Logger;
 /**
  * DB-backed singleton configuration/state for automatic admin email alerts.
  */
+// parasoft-suppress SECURITY.WSC.DSER "This class is not used for Java native deserialization; configuration is loaded from JDBC rows only."
+// parasoft-suppress SECURITY.WSC.SER "This class is not used for Java native serialization; data transfer is handled via explicit JSON/DB mapping."
 public class AutoEmailAlertConfigStore {
 
     private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getName());
@@ -27,11 +29,11 @@ public class AutoEmailAlertConfigStore {
 
     private final DataSource dataSource;
 
-    public AutoEmailAlertConfigStore(DataSource dataSource) {
+    AutoEmailAlertConfigStore(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
-    public void ensureTable() throws SQLException {
+    void ensureTable() throws SQLException {
         final String sql = """
             CREATE TABLE IF NOT EXISTS admin_auto_email_alert_config (
                 id INT PRIMARY KEY,
@@ -69,7 +71,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    public void ensureDefaultRow() throws SQLException {
+    void ensureDefaultRow() throws SQLException {
         final String sql = """
             INSERT INTO admin_auto_email_alert_config (
                 id,
@@ -93,7 +95,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    public AutoEmailAlertConfig load() throws SQLException {
+    AutoEmailAlertConfig load() throws SQLException {
         final String sql = """
             SELECT id,
                    health_enabled,
@@ -133,7 +135,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    public AutoEmailAlertConfig saveConfig(AutoEmailAlertConfig incoming, String updatedBy) throws SQLException {
+    AutoEmailAlertConfig saveConfig(AutoEmailAlertConfig incoming, String updatedBy) throws SQLException {
         AutoEmailAlertConfig current = load();
         if (current == null) {
             ensureDefaultRow();
@@ -192,7 +194,7 @@ public class AutoEmailAlertConfigStore {
         return load();
     }
 
-    public void updateHealthState(Instant checkedAt, String status, Instant offlineSince, Instant alertAt) throws SQLException {
+    void updateHealthState(Instant checkedAt, String status, Instant offlineSince, Instant alertAt) throws SQLException {
         final String sql = """
             UPDATE admin_auto_email_alert_config
             SET health_last_checked_at = ?,
@@ -212,7 +214,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    public void updateTermState(Instant checkedAt, long termCount, Instant alertAt) throws SQLException {
+    void updateTermState(Instant checkedAt, long termCount, Instant alertAt) throws SQLException {
         final String sql = """
             UPDATE admin_auto_email_alert_config
             SET term_last_checked_at = ?,
@@ -249,7 +251,7 @@ public class AutoEmailAlertConfigStore {
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         cfg.setId(readNonNegativeInt(rs, "id"));
 
-        cfg.setHealthEnabled(rs.getBoolean("health_enabled"));
+        cfg.setHealthEnabled(readSafeBoolean(rs, "health_enabled", false));
         cfg.setHealthCheckIntervalSeconds(readIntervalSeconds(rs, "health_check_interval_seconds", 300));
         cfg.setHealthOfflineDelaySeconds(readDelaySeconds(rs, "health_offline_delay_seconds", 300));
         cfg.setHealthResendIntervalSeconds(readIntervalSeconds(rs, "health_resend_interval_seconds", 1800));
@@ -257,7 +259,7 @@ public class AutoEmailAlertConfigStore {
         cfg.setHealthSubject(readSafeText(rs, "health_subject", 500));
         cfg.setHealthMessage(readSafeText(rs, "health_message", 8000));
 
-        cfg.setTermEnabled(rs.getBoolean("term_enabled"));
+        cfg.setTermEnabled(readSafeBoolean(rs, "term_enabled", false));
         cfg.setTermCheckIntervalSeconds(readIntervalSeconds(rs, "term_check_interval_seconds", 600));
         cfg.setTermName(readSafeText(rs, "term_name", 255));
         cfg.setTermRecipients(readSafeText(rs, "term_recipients", 4000));
@@ -270,7 +272,7 @@ public class AutoEmailAlertConfigStore {
         cfg.setHealthLastAlertAt(readSafeInstant(rs, "health_last_alert_at"));
 
         cfg.setTermLastCheckedAt(readSafeInstant(rs, "term_last_checked_at"));
-        cfg.setTermLastCount(Math.max(0L, rs.getLong("term_last_count")));
+        cfg.setTermLastCount(readNonNegativeLong(rs, "term_last_count"));
         cfg.setTermLastAlertAt(readSafeInstant(rs, "term_last_alert_at"));
 
         cfg.setUpdatedBy(readSafeText(rs, "updated_by", 100));
@@ -303,11 +305,72 @@ public class AutoEmailAlertConfigStore {
 
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
-            int value = rs.getInt(column);
-            return rs.wasNull() ? 0 : Math.max(0, value);
+            Integer value = readSafeInteger(rs, column);
+            return value == null ? 0 : Math.max(0, value.intValue());
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read integer column " + column, e);
             return 0;
+        }
+    }
+
+    private long readNonNegativeLong(ResultSet rs, String column) {
+        try {
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return 0L;
+            }
+            long value;
+            if (raw instanceof Number n) {
+                value = n.longValue();
+            } else {
+                String text = String.valueOf(raw).trim();
+                if (text.isEmpty() || !text.matches("^-?\\d{1,19}$")) {
+                    return 0L;
+                }
+                value = Long.parseLong(text);
+            }
+            return Math.max(0L, value);
+        } catch (SQLException | NumberFormatException e) {
+            log.log(Level.FINE, "Unable to read long column " + column, e);
+            return 0L;
+        }
+    }
+
+    private Integer readSafeInteger(ResultSet rs, String column) throws SQLException {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number n) {
+            return Integer.valueOf(n.intValue());
+        }
+        String text = String.valueOf(raw).trim();
+        if (text.isEmpty() || !text.matches("^-?\\d{1,10}$")) {
+            return null;
+        }
+        return Integer.valueOf(text);
+    }
+
+    private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) {
+        try {
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return fallback;
+            }
+            if (raw instanceof Boolean b) {
+                return b.booleanValue();
+            }
+            if (raw instanceof Number n) {
+                return n.intValue() != 0;
+            }
+            String text = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
+            if (text.isEmpty()) {
+                return fallback;
+            }
+            return "true".equals(text) || "t".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text);
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to read boolean column " + column, e);
+            return fallback;
         }
     }
 
@@ -340,11 +403,25 @@ public class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Timestamp ts = rs.getTimestamp(column);
-            if (ts == null) {
+            Object raw = rs.getObject(column);
+            if (raw == null) {
                 return null;
             }
-            return ts.toInstant();
+            if (raw instanceof Timestamp ts) {
+                return ts.toInstant();
+            }
+            if (raw instanceof Instant instant) {
+                return instant;
+            }
+            String text = String.valueOf(raw).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            try {
+                return Instant.parse(text);
+            } catch (DateTimeException ex) {
+                return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
+            }
         } catch (SQLException | DateTimeException e) {
             log.log(Level.FINE, "Unable to read timestamp column " + column, e);
             return null;
@@ -353,7 +430,8 @@ public class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            String value = rs.getString(column);
+            Object raw = rs.getObject(column);
+            String value = raw == null ? null : String.valueOf(raw);
             return sanitizeText(value, maxChars);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);
@@ -405,7 +483,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    public static final class AutoEmailAlertConfig {
+    static final class AutoEmailAlertConfig {
 
         private int id;
 
@@ -440,183 +518,183 @@ public class AutoEmailAlertConfigStore {
             return id;
         }
 
-        public void setId(int id) {
+        private void setId(int id) {
             this.id = id;
         }
 
-        public boolean isHealthEnabled() {
+        boolean isHealthEnabled() {
             return healthEnabled;
         }
 
-        public void setHealthEnabled(boolean healthEnabled) {
+        void setHealthEnabled(boolean healthEnabled) {
             this.healthEnabled = healthEnabled;
         }
 
-        public int getHealthCheckIntervalSeconds() {
+        int getHealthCheckIntervalSeconds() {
             return healthCheckIntervalSeconds;
         }
 
-        public void setHealthCheckIntervalSeconds(int healthCheckIntervalSeconds) {
+        void setHealthCheckIntervalSeconds(int healthCheckIntervalSeconds) {
             this.healthCheckIntervalSeconds = healthCheckIntervalSeconds;
         }
 
-        public int getHealthOfflineDelaySeconds() {
+        int getHealthOfflineDelaySeconds() {
             return healthOfflineDelaySeconds;
         }
 
-        public void setHealthOfflineDelaySeconds(int healthOfflineDelaySeconds) {
+        void setHealthOfflineDelaySeconds(int healthOfflineDelaySeconds) {
             this.healthOfflineDelaySeconds = healthOfflineDelaySeconds;
         }
 
-        public int getHealthResendIntervalSeconds() {
+        int getHealthResendIntervalSeconds() {
             return healthResendIntervalSeconds;
         }
 
-        public void setHealthResendIntervalSeconds(int healthResendIntervalSeconds) {
+        void setHealthResendIntervalSeconds(int healthResendIntervalSeconds) {
             this.healthResendIntervalSeconds = healthResendIntervalSeconds;
         }
 
-        public String getHealthRecipients() {
+        String getHealthRecipients() {
             return healthRecipients;
         }
 
-        public void setHealthRecipients(String healthRecipients) {
+        void setHealthRecipients(String healthRecipients) {
             this.healthRecipients = healthRecipients;
         }
 
-        public String getHealthSubject() {
+        String getHealthSubject() {
             return healthSubject;
         }
 
-        public void setHealthSubject(String healthSubject) {
+        void setHealthSubject(String healthSubject) {
             this.healthSubject = healthSubject;
         }
 
-        public String getHealthMessage() {
+        String getHealthMessage() {
             return healthMessage;
         }
 
-        public void setHealthMessage(String healthMessage) {
+        void setHealthMessage(String healthMessage) {
             this.healthMessage = healthMessage;
         }
 
-        public boolean isTermEnabled() {
+        boolean isTermEnabled() {
             return termEnabled;
         }
 
-        public void setTermEnabled(boolean termEnabled) {
+        void setTermEnabled(boolean termEnabled) {
             this.termEnabled = termEnabled;
         }
 
-        public int getTermCheckIntervalSeconds() {
+        int getTermCheckIntervalSeconds() {
             return termCheckIntervalSeconds;
         }
 
-        public void setTermCheckIntervalSeconds(int termCheckIntervalSeconds) {
+        void setTermCheckIntervalSeconds(int termCheckIntervalSeconds) {
             this.termCheckIntervalSeconds = termCheckIntervalSeconds;
         }
 
-        public String getTermName() {
+        String getTermName() {
             return termName;
         }
 
-        public void setTermName(String termName) {
+        void setTermName(String termName) {
             this.termName = termName;
         }
 
-        public String getTermRecipients() {
+        String getTermRecipients() {
             return termRecipients;
         }
 
-        public void setTermRecipients(String termRecipients) {
+        void setTermRecipients(String termRecipients) {
             this.termRecipients = termRecipients;
         }
 
-        public String getTermSubject() {
+        String getTermSubject() {
             return termSubject;
         }
 
-        public void setTermSubject(String termSubject) {
+        void setTermSubject(String termSubject) {
             this.termSubject = termSubject;
         }
 
-        public String getTermMessage() {
+        String getTermMessage() {
             return termMessage;
         }
 
-        public void setTermMessage(String termMessage) {
+        void setTermMessage(String termMessage) {
             this.termMessage = termMessage;
         }
 
-        public String getHealthLastStatus() {
+        String getHealthLastStatus() {
             return healthLastStatus;
         }
 
-        public void setHealthLastStatus(String healthLastStatus) {
+        private void setHealthLastStatus(String healthLastStatus) {
             this.healthLastStatus = healthLastStatus;
         }
 
-        public Instant getHealthLastCheckedAt() {
+        Instant getHealthLastCheckedAt() {
             return healthLastCheckedAt;
         }
 
-        public void setHealthLastCheckedAt(Instant healthLastCheckedAt) {
+        private void setHealthLastCheckedAt(Instant healthLastCheckedAt) {
             this.healthLastCheckedAt = healthLastCheckedAt;
         }
 
-        public Instant getHealthOfflineSince() {
+        Instant getHealthOfflineSince() {
             return healthOfflineSince;
         }
 
-        public void setHealthOfflineSince(Instant healthOfflineSince) {
+        private void setHealthOfflineSince(Instant healthOfflineSince) {
             this.healthOfflineSince = healthOfflineSince;
         }
 
-        public Instant getHealthLastAlertAt() {
+        Instant getHealthLastAlertAt() {
             return healthLastAlertAt;
         }
 
-        public void setHealthLastAlertAt(Instant healthLastAlertAt) {
+        private void setHealthLastAlertAt(Instant healthLastAlertAt) {
             this.healthLastAlertAt = healthLastAlertAt;
         }
 
-        public Instant getTermLastCheckedAt() {
+        Instant getTermLastCheckedAt() {
             return termLastCheckedAt;
         }
 
-        public void setTermLastCheckedAt(Instant termLastCheckedAt) {
+        private void setTermLastCheckedAt(Instant termLastCheckedAt) {
             this.termLastCheckedAt = termLastCheckedAt;
         }
 
-        public long getTermLastCount() {
+        long getTermLastCount() {
             return termLastCount;
         }
 
-        public void setTermLastCount(long termLastCount) {
+        private void setTermLastCount(long termLastCount) {
             this.termLastCount = termLastCount;
         }
 
-        public Instant getTermLastAlertAt() {
+        Instant getTermLastAlertAt() {
             return termLastAlertAt;
         }
 
-        public void setTermLastAlertAt(Instant termLastAlertAt) {
+        private void setTermLastAlertAt(Instant termLastAlertAt) {
             this.termLastAlertAt = termLastAlertAt;
         }
 
-        public String getUpdatedBy() {
+        String getUpdatedBy() {
             return updatedBy;
         }
 
-        public void setUpdatedBy(String updatedBy) {
+        private void setUpdatedBy(String updatedBy) {
             this.updatedBy = updatedBy;
         }
 
-        public Instant getUpdatedAt() {
+        Instant getUpdatedAt() {
             return updatedAt;
         }
 
-        public void setUpdatedAt(Instant updatedAt) {
+        private void setUpdatedAt(Instant updatedAt) {
             this.updatedAt = updatedAt;
         }
     }

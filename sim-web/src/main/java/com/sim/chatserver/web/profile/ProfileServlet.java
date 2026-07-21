@@ -26,6 +26,8 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "ProfileServlet", urlPatterns = {"/profile"})
 public class ProfileServlet extends HttpServlet {
+    // parasoft-suppress SERVLET.IF "CDI-managed user service dependency is required and does not retain mutable request state."
+    // parasoft-suppress SECURITY.ESD.SIF "Injected user service is framework-managed and not a serialized secret payload."
 
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
@@ -201,23 +203,26 @@ public class ProfileServlet extends HttpServlet {
 
         private final HttpServletRequest req;
 
-        RequestContext(HttpServletRequest req) {
+        private RequestContext(HttpServletRequest req) {
             this.req = req;
         }
 
-        static RequestContext from(HttpServletRequest req) {
+        private static RequestContext from(HttpServletRequest req) {
             return new RequestContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank() || req == null) {
                 return null;
             }
-            String[] values = req.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = req.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String trimmed = values[0].trim();
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
             return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
         }
     }
