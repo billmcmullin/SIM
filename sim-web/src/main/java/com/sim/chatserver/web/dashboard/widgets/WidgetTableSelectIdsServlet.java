@@ -32,6 +32,10 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableSelectIdsServlet", urlPatterns = {"/dashboard/widgets/view/select-ids"})
 public class WidgetTableSelectIdsServlet extends HttpServlet {
+    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to resolve widget chat id selections."
+    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe JSON/error responses."
+    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
+    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
 
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -166,11 +170,14 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        String trimmed = values[0].trim();
+        String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
         return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
     }
 

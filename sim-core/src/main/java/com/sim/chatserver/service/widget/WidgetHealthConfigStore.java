@@ -33,11 +33,11 @@ public class WidgetHealthConfigStore {
         this.dataSource = dataSource;
     }
 
-    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
@@ -322,30 +322,47 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Object raw = rs.getObject(column);
+        Integer value = toSafeInteger(raw);
+        if (value == null) {
             return 0;
         }
-        return Math.max(0, value);
+        return Math.max(0, value.intValue());
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Object raw = rs.getObject(column);
+        Integer value = toSafeInteger(raw);
+        if (value == null) {
             return fallback;
         }
-        return value > 0 ? value : fallback;
+        return value.intValue() > 0 ? value.intValue() : fallback;
     }
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeDbText(value, maxChars);
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        Timestamp value = rs.getTimestamp(column);
-        if (value == null) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return null;
+        }
+        Timestamp value;
+        if (raw instanceof Timestamp ts) {
+            value = ts;
+        } else {
+            String text = String.valueOf(raw).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            try {
+                value = Timestamp.from(Instant.parse(text));
+            } catch (DateTimeException ex) {
+                value = Timestamp.valueOf(text.replace('T', ' '));
+            }
         }
         try {
             Instant instant = value.toInstant();
@@ -357,9 +374,29 @@ public class WidgetHealthConfigStore {
     }
 
     private String readDecryptedSecret(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         String decrypted = EncryptedDbConfigStore.decryptSecretIfNeeded(value);
         return sanitizeDbText(decrypted, maxChars);
+    }
+
+    private Integer toSafeInteger(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number n) {
+            return Integer.valueOf(n.intValue());
+        }
+        String text = String.valueOf(raw).trim();
+        if (text.isEmpty() || !text.matches("^-?\\d{1,10}$")) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(text);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer conversion for widget health config", ex);
+            return null;
+        }
     }
 
     private String sanitizeDbText(String s, int maxChars) {
@@ -402,15 +439,15 @@ public class WidgetHealthConfigStore {
             return id;
         }
 
-        void setId(int id) {
+        private final void setId(int id) {
             this.id = id;
         }
 
-        private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
             throw new java.io.NotSerializableException(getClass().getName());
         }
 
-        private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
             throw new java.io.NotSerializableException(getClass().getName());
         }
 

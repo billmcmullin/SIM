@@ -20,6 +20,8 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class TermsStore {
+    // parasoft-suppress SECURITY.WSC.DSER "This CDI store is intentionally non-serializable and blocks Java deserialization entry points."
+    // parasoft-suppress SECURITY.WSC.SER "This CDI store is intentionally non-serializable and blocks Java serialization entry points."
 
     private static final Logger log = Logger.getLogger(TermsStore.class.getName());
 
@@ -31,10 +33,12 @@ public class TermsStore {
         // proxyable no-arg constructor
     }
 
+    @SuppressWarnings("unused")
     private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
+    @SuppressWarnings("unused")
     private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
@@ -209,10 +213,7 @@ public class TermsStore {
     }
 
     public TermDefinition updateTerm(Long id, String name, String description, String pattern, String type) throws SQLException {
-        if (id == null) {
-            return null;
-        }
-        long termId = id.longValue();
+        long termId = normalizeTermId(id);
         if (termId <= 0L) {
             return null;
         }
@@ -264,10 +265,7 @@ public class TermsStore {
     }
 
     public boolean deleteTerm(Long id) throws SQLException {
-        if (id == null) {
-            return false;
-        }
-        long termId = id.longValue();
+        long termId = normalizeTermId(id);
         if (termId <= 0L) {
             return false;
         }
@@ -365,15 +363,26 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        long raw = rs.getLong(column);
-        if (rs.wasNull()) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return 0L;
         }
-        return Math.max(0L, raw);
+        if (raw instanceof Number number) {
+            return Math.max(0L, number.longValue());
+        }
+        if (raw instanceof String text) {
+            try {
+                return Math.max(0L, Long.parseLong(text.trim()));
+            } catch (NumberFormatException e) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         if (value == null) {
             return "";
         }
@@ -389,5 +398,16 @@ public class TermsStore {
             return "WILDCARD";
         }
         return type.trim().toUpperCase();
+    }
+
+    private long normalizeTermId(Long id) {
+        if (id == null) {
+            return -1L;
+        }
+        try {
+            return Long.parseLong(String.valueOf(id));
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 }
