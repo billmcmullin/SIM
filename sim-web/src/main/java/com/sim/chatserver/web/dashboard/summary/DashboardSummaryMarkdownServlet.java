@@ -13,7 +13,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
 import jakarta.servlet.ServletException;
@@ -25,27 +25,19 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardSummaryMarkdownServlet", urlPatterns = {"/dashboard/summary-markdown"})
 public class DashboardSummaryMarkdownServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed dependencies and cached store handle are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(DashboardSummaryMarkdownServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Object SUMMARY_STORE_LOCK = new Object();
+    private static volatile DashboardDailySummaryStore SUMMARY_STORE;
 
     // renamed file path
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_summary_markdown.html";
-
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    private transient DashboardDailySummaryStore summaryStore;
 
     @Override
     public void init() throws ServletException {
         super.init();
         try {
-            summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
-            summaryStore.ensureTable();
+            summaryStore();
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
             throw new ServletException("Failed to initialize dashboard summary markdown servlet", e);
@@ -66,12 +58,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         int slot = parseSlotOrCurrent(context.first("slot"), zone);
 
         try {
-            if (summaryStore == null) {
-                summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
-                summaryStore.ensureTable();
-            }
-
-            JsonObject payload = summaryStore.fetchExactOrLatest(day, slot);
+            JsonObject payload = summaryStore().fetchExactOrLatest(day, slot);
 
             String user = String.valueOf(session.getAttribute("user"));
             String markdown = buildMarkdown(payload);
@@ -121,7 +108,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
                 out.print(rendered);
             }
 
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to render summary markdown page", e);
             resp.setContentType("text/plain;charset=UTF-8");
             resp.getWriter().write("Unable to load summary markdown page.");
@@ -342,27 +329,48 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 
+    private DashboardDailySummaryStore summaryStore() {
+        DashboardDailySummaryStore store = SUMMARY_STORE;
+        if (store != null) {
+            return store;
+        }
+        synchronized (SUMMARY_STORE_LOCK) {
+            store = SUMMARY_STORE;
+            if (store == null) {
+                DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+                created.ensureTable();
+                SUMMARY_STORE = created;
+                store = created;
+            }
+        }
+        return store;
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     static final class RequestContext {
 
         private final HttpServletRequest request;
 
-        RequestContext(HttpServletRequest request) {
+        private RequestContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestContext from(HttpServletRequest req) {
+        private static RequestContext from(HttpServletRequest req) {
             return new RequestContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank() || request == null) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (trimmed.isEmpty()) {
                 return null;
             }

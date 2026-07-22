@@ -43,18 +43,31 @@
     async function testSalesforceConnection(contextPath) {
         const instanceUrl = document.getElementById('salesforceInstanceUrl')?.value.trim() || '';
         const salesforceApiKey = document.getElementById('salesforceApiKey')?.value.trim() || '';
+        const salesforceLoginUrl = document.getElementById('salesforceLoginUrl')?.value.trim() || '';
+        const salesforceUsername = document.getElementById('salesforceUsername')?.value.trim() || '';
+        const salesforcePassword = document.getElementById('salesforcePassword')?.value.trim() || '';
+        const salesforceApiToken = document.getElementById('salesforceApiToken')?.value.trim() || '';
         const resultEl = document.getElementById('salesforceTestResult');
         const btn = document.getElementById('testSalesforceConnectionBtn');
 
-        if (!instanceUrl) {
-            setResult(resultEl, 'Please provide Salesforce instance URL.', false);
-            return;
-        }
-
         const data = new URLSearchParams();
-        data.append('salesforceInstanceUrl', instanceUrl);
+        if (instanceUrl) {
+            data.append('salesforceInstanceUrl', instanceUrl);
+        }
         if (salesforceApiKey) {
             data.append('salesforceApiKey', salesforceApiKey);
+        }
+        if (salesforceLoginUrl) {
+            data.append('salesforceLoginUrl', salesforceLoginUrl);
+        }
+        if (salesforceUsername) {
+            data.append('salesforceUsername', salesforceUsername);
+        }
+        if (salesforcePassword) {
+            data.append('salesforcePassword', salesforcePassword);
+        }
+        if (salesforceApiToken) {
+            data.append('salesforceApiToken', salesforceApiToken);
         }
 
         const originalText = btn ? btn.textContent : '';
@@ -89,14 +102,12 @@
         const salesforceClientId = document.getElementById('salesforceClientId')?.value.trim() || '';
         const salesforceClientSecret = document.getElementById('salesforceClientSecret')?.value.trim() || '';
         const salesforceRefreshToken = document.getElementById('salesforceRefreshToken')?.value.trim() || '';
+        const salesforceUsername = document.getElementById('salesforceUsername')?.value.trim() || '';
+        const salesforcePassword = document.getElementById('salesforcePassword')?.value.trim() || '';
+        const salesforceApiToken = document.getElementById('salesforceApiToken')?.value.trim() || '';
 
         const resultEl = document.getElementById('salesforceTestResult');
         const btn = document.getElementById('saveSalesforceConfigBtn');
-
-        if (!instanceUrl) {
-            setResult(resultEl, 'Salesforce instance URL is required.', false);
-            return;
-        }
 
         // If user is configuring OAuth refresh, login URL + client ID are required
         const anyOauthFieldProvided =
@@ -104,6 +115,14 @@
 
         if (anyOauthFieldProvided && (!salesforceLoginUrl || !salesforceClientId)) {
             setResult(resultEl, 'Salesforce Login URL and Client ID are required for OAuth refresh setup.', false);
+            return;
+        }
+
+        // If user is configuring username/password + API token auth, require all three plus login URL.
+        const anyApiTokenFieldProvided =
+            !!salesforceUsername || !!salesforcePassword || !!salesforceApiToken;
+        if (anyApiTokenFieldProvided && (!salesforceLoginUrl || !salesforceUsername || !salesforcePassword || !salesforceApiToken)) {
+            setResult(resultEl, 'Salesforce Login URL, Username, Password, and API Token are required for token-based auth setup.', false);
             return;
         }
 
@@ -116,6 +135,9 @@
         data.append('salesforceClientId', salesforceClientId);
         data.append('salesforceClientSecret', salesforceClientSecret);
         data.append('salesforceRefreshToken', salesforceRefreshToken);
+        data.append('salesforceUsername', salesforceUsername);
+        data.append('salesforcePassword', salesforcePassword);
+        data.append('salesforceApiToken', salesforceApiToken);
 
         const originalText = btn ? btn.textContent : '';
         setButtonState(btn, true, 'Saving...');
@@ -145,6 +167,16 @@
                     refreshNote.style.display = 'block';
                 }
 
+                const passwordNote = document.getElementById('salesforcePasswordStoredNote');
+                if (passwordNote) {
+                    passwordNote.style.display = 'block';
+                }
+
+                const apiTokenNote = document.getElementById('salesforceApiTokenStoredNote');
+                if (apiTokenNote) {
+                    apiTokenNote.style.display = 'block';
+                }
+
                 // Clear sensitive fields after save
                 const keyInput = document.getElementById('salesforceApiKey');
                 if (keyInput) {
@@ -159,6 +191,16 @@
                 const refreshInput = document.getElementById('salesforceRefreshToken');
                 if (refreshInput) {
                     refreshInput.value = '';
+                }
+
+                const passwordInput = document.getElementById('salesforcePassword');
+                if (passwordInput) {
+                    passwordInput.value = '';
+                }
+
+                const tokenInput = document.getElementById('salesforceApiToken');
+                if (tokenInput) {
+                    tokenInput.value = '';
                 }
             } else {
                 setResult(resultEl, payload?.message || 'Unable to save Salesforce configuration.', false);

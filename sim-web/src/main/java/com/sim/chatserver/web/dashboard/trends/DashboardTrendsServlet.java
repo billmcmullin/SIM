@@ -17,6 +17,8 @@ import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
@@ -24,7 +26,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -37,14 +39,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTrendsServlet", urlPatterns = {"/dashboard/trends"})
 public class DashboardTrendsServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads for trend aggregation."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
+    private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_trends.html";
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
@@ -55,7 +52,8 @@ public class DashboardTrendsServlet extends HttpServlet {
             return;
         }
 
-        int days = parseDays(firstQueryParam(req, "days"));
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        int days = parseDays(requestContext.first("days"));
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
@@ -67,7 +65,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         Map<String, Map<LocalDate, Integer>> widgetDaily = new LinkedHashMap<>();
         Map<String, String> widgetNameToId = new LinkedHashMap<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<WidgetEntry> widgets = WidgetStore.list(null);
 
             for (WidgetEntry widget : widgets) {
@@ -191,23 +189,16 @@ public class DashboardTrendsServlet extends HttpServlet {
             int d = Integer.parseInt(trimmed);
             return (d == 10 || d == 30 || d == 90 || d == 120 || d == 180) ? d : 30;
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid days parameter", e);
             return 30;
         }
     }
 
-    private String firstQueryParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String val = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (val.isEmpty()) {
-            return null;
-        }
-        return val.length() > 32 ? val.substring(0, 32) : val;
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String loadTemplate(HttpServletRequest req, String path) throws IOException {
@@ -269,5 +260,45 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
         return value.replace("\\", "\\\\").replace("'", "\\'")
                 .replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value) {
+            if (value == null) {
+                return null;
+            }
+            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
+        }
     }
 }

@@ -23,10 +23,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,7 +63,7 @@ import com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonException;
@@ -82,11 +80,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync", "/admin/widgets/sync/timer"})
-// parasoft-suppress SERVLET.AJDBC "This servlet orchestrates sync operations by design; JDBC persistence is delegated to validated helper methods with prepared statements."
-// parasoft-suppress SERVLET.IF "Servlet-managed state is intentionally scoped to lifecycle-managed background sync scheduling and guarded by thread-safe primitives."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are deliberately surfaced through controlled servlet orchestration paths and converted to API-safe responses."
-// parasoft-suppress SECURITY.DRC.THR "Background workers are daemon executors used for bounded scheduled sync and are shut down in destroy()."
-// parasoft-suppress SECURITY.ESD.SIF "Instance fields hold runtime infrastructure/state only and do not expose secrets in serialized output paths."
 public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getName());
@@ -109,56 +102,53 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(90);
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    @Inject
-    AppDataSourceHolder dsHolder;
+    private static volatile DashboardDailySummaryStore summaryStore;
 
-    private transient DashboardDailySummaryStore summaryStore;
-
-    private final transient ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+    private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "widget-sync-timer");
         t.setDaemon(true);
         return t;
     });
 
-    private final transient ExecutorService syncPool = Executors.newFixedThreadPool(DEFAULT_SYNC_PARALLELISM, r -> {
+    private static final ExecutorService syncPool = Executors.newFixedThreadPool(DEFAULT_SYNC_PARALLELISM, r -> {
         Thread t = new Thread(r, "widget-sync-worker");
         t.setDaemon(true);
         return t;
     });
 
-    private final transient Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
+    private static final Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
 
-    private ScheduledFuture<?> scheduledFuture;
-    private volatile long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
-    private volatile Timestamp lastSynced;
-    private final AtomicBoolean syncRunning = new AtomicBoolean(false);
-    private final AtomicInteger runsSinceLastSyncPersist = new AtomicInteger(0);
+    private static volatile ScheduledFuture<?> scheduledFuture;
+    private static volatile long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
+    private static volatile Timestamp lastSynced;
+    private static final AtomicBoolean syncRunning = new AtomicBoolean(false);
+    private static final AtomicInteger runsSinceLastSyncPersist = new AtomicInteger(0);
 
-    private transient MapReduceConfig mrConfig;
-    private transient WorkspaceClient workspaceClient;
-    private transient WidgetReviewMapReduceOrchestrator orchestrator;
-    private transient TrustedUrlValidator trustedUrlValidator;
-    private transient ReviewOutputValidator reviewOutputValidator;
+    private static volatile MapReduceConfig mrConfig;
+    private static volatile WorkspaceClient workspaceClient;
+    private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
+    private static volatile TrustedUrlValidator trustedUrlValidator;
+    private static volatile ReviewOutputValidator reviewOutputValidator;
 
     @Override
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
 
         try {
-            this.mrConfig = MapReduceConfig.load();
-            this.workspaceClient = new WorkspaceClient(
+            mrConfig = MapReduceConfig.load();
+            workspaceClient = new WorkspaceClient(
                     HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build(),
                     mrConfig.getWorkspaceMaxRetries(),
                     mrConfig.getWorkspaceTimeout()
             );
-            this.reviewOutputValidator = new ReviewOutputValidator();
+            reviewOutputValidator = new ReviewOutputValidator();
 
             Set<String> allowedHosts = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOSTS"));
             Set<String> allowedSuffixes = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOST_SUFFIXES"));
             boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(System.getenv("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
-            this.trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+            trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
 
-            this.orchestrator = new WidgetReviewMapReduceOrchestrator(
+            orchestrator = new WidgetReviewMapReduceOrchestrator(
                     workspaceClient,
                     new ReviewContextBuilderService(),
                     new PromptTemplateService(),
@@ -188,8 +178,8 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         try {
-            this.summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
-            this.summaryStore.ensureTable();
+            summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+            summaryStore.ensureTable();
             loadSyncSettings();
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to initialize sync settings/store", e);
@@ -317,7 +307,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private synchronized void updateInterval(long newIntervalSeconds) {
-        this.syncIntervalSeconds = newIntervalSeconds;
+        syncIntervalSeconds = newIntervalSeconds;
         scheduleSyncTask();
     }
 
@@ -396,7 +386,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private WidgetSyncStatus syncSingleWidget(ServerConfig config, String widgetId) {
         String tableName = sanitizeWidgetTableName(widgetId);
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             ensureTable(conn, tableName);
 
             List<JsonObject> chats = fetchWidgetChatsWithRetry(config, widgetId);
@@ -419,7 +409,7 @@ public class WidgetSyncServlet extends HttpServlet {
     // ---------- Daily summary generation + persistence (via DashboardDailySummaryStore) ----------
     private void runDailySummaryGeneration() throws SQLException, IOException, InterruptedException {
         if (summaryStore == null) {
-            summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
+            summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
             summaryStore.ensureTable();
         }
 
@@ -545,7 +535,7 @@ public class WidgetSyncServlet extends HttpServlet {
         Timestamp start = Timestamp.valueOf(day.atStartOfDay());
         Timestamp end = Timestamp.valueOf(day.plusDays(1).atStartOfDay());
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
@@ -774,7 +764,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private synchronized void loadSyncSettings() throws SQLException {
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             ensureSyncSettingsTable(conn);
             SyncSettings settings = readSyncSettings(conn);
             if (settings.intervalSeconds > 0) {
@@ -785,7 +775,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void persistSyncSettings() {
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             ensureSyncSettingsTable(conn);
             upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
         } catch (SQLException e) {
@@ -1424,6 +1414,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private String firstParam(HttpServletRequest req, String name) {
         return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String stripControlCharacters(String input) {

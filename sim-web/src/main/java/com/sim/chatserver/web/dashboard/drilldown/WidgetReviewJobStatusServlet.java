@@ -56,7 +56,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        String jobId = safe(firstParam(req, "jobId"));
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String jobId = safe(requestContext.first("jobId", 256));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -175,7 +176,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        String jobId = safe(firstParam(req, "jobId"));
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String jobId = safe(requestContext.first("jobId", 256));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -200,24 +202,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 .toString());
     }
 
-    public static ReviewJobService jobService() {
+    static ReviewJobService jobService() {
         return JOB_SERVICE;
-    }
-
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -257,7 +243,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    b.add(v);
+                    int intValue = v;
+                    b.add(intValue);
                 }
             }
         }
@@ -322,29 +309,71 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return message;
         }
 
-        switch (p) {
-            case "QUEUED":
-                return "Queued...";
-            case "MAP":
+        return switch (p) {
+            case "QUEUED" -> "Queued...";
+            case "MAP" -> {
                 if (totalBatches > 0) {
-                    return "Analyzing chats: batch " + Math.max(0, completedBatches) + "/" + totalBatches
-                            + (failedBatches > 0 ? " (failures: " + failedBatches + ")" : "");
+                    StringBuilder activity = new StringBuilder("Analyzing chats: batch ")
+                            .append(Math.max(0, completedBatches))
+                            .append('/')
+                            .append(totalBatches);
+                    if (failedBatches > 0) {
+                        activity.append(" (failures: ").append(failedBatches).append(')');
+                    }
+                    yield activity.toString();
                 }
-                return "Analyzing chats...";
-            case "REDUCE":
-                return "Synthesizing final report...";
-            case "COMPLETED":
-                return "Completed";
-            case "FAILED":
-                return "Failed";
-            case "CANCELLED":
-                return "Cancelled";
-            default:
-                return "Processing...";
-        }
+                yield "Analyzing chats...";
+            }
+            case "REDUCE" -> "Synthesizing final report...";
+            case "COMPLETED" -> "Completed";
+            case "FAILED" -> "Failed";
+            case "CANCELLED" -> "Cancelled";
+            default -> "Processing...";
+        };
     }
 
     private String safe(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
+        }
     }
 }

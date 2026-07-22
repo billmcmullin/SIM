@@ -4,7 +4,7 @@ import com.sim.chatserver.service.widget.WidgetHealthConfigStore;
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
@@ -32,21 +32,16 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetHealthConfigServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final Object STORE_LOCK = new Object();
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    private transient WidgetHealthConfigStore store;
+    private static volatile WidgetHealthConfigStore store;
 
     @Override
     public void init() throws ServletException {
         super.init();
         try {
-            store = new WidgetHealthConfigStore(dsHolder.getDataSource());
-            store.ensureTable();
-            store.ensureDefaultRow();
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
+            ensureStoreInitialized();
+        } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize widget health config store", e);
         }
     }
@@ -58,12 +53,12 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
 
         try {
-            ensureStore();
+            WidgetHealthConfigStore currentStore = ensureStoreInitialized();
 
-            WidgetHealthConfig cfg = store.load();
+            WidgetHealthConfig cfg = currentStore.load();
             if (cfg == null) {
-                store.ensureDefaultRow();
-                cfg = store.load();
+                currentStore.ensureDefaultRow();
+                cfg = currentStore.load();
             }
 
             writeJson(resp, HttpServletResponse.SC_OK, toJson(cfg));
@@ -80,14 +75,14 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
 
         try {
-            ensureStore();
+            WidgetHealthConfigStore currentStore = ensureStoreInitialized();
 
             if (!isValidJsonRequest(req)) {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
                 return;
             }
 
-            String body = req.getReader().lines().reduce("", (a, b) -> a + b);
+            String body = readRequestBody(req);
             JsonObject in = parseJson(body);
 
             WidgetHealthConfig cfg = new WidgetHealthConfig();
@@ -108,7 +103,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             cfg.setApiKeyHeaderName(stringOrNull(in, "apiKeyHeaderName"));
             cfg.setApiKeyValue(stringOrNull(in, "apiKeyValue"));
 
-            WidgetHealthConfig existing = store.load();
+            WidgetHealthConfig existing = currentStore.load();
 
             if (cfg.getApiKeyHeaderName() == null && existing != null && existing.getApiKeyHeaderName() != null) {
                 cfg.setApiKeyHeaderName(existing.getApiKeyHeaderName());
@@ -133,7 +128,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             cfg.setUpdatedBy(updatedBy);
             cfg.setUpdatedAt(Instant.now());
 
-            WidgetHealthConfig saved = store.save(cfg);
+            WidgetHealthConfig saved = currentStore.save(cfg);
             writeJson(resp, HttpServletResponse.SC_OK, toJson(saved));
 
         } catch (SQLException | IllegalArgumentException | IllegalStateException | JsonException e) {
@@ -142,12 +137,33 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
     }
 
-    private void ensureStore() throws SQLException {
-        if (store == null) {
-            store = new WidgetHealthConfigStore(dsHolder.getDataSource());
-            store.ensureTable();
-            store.ensureDefaultRow();
+    private WidgetHealthConfigStore ensureStoreInitialized() {
+        WidgetHealthConfigStore local = store;
+        if (local != null) {
+            return local;
         }
+
+        synchronized (STORE_LOCK) {
+            local = store;
+            if (local != null) {
+                return local;
+            }
+
+            try {
+                WidgetHealthConfigStore created = new WidgetHealthConfigStore(dataSourceHolder().getDataSource());
+                created.ensureTable();
+                created.ensureDefaultRow();
+                store = created;
+                return created;
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
+                throw new IllegalStateException("Failed to initialize widget health config store", e);
+            }
+        }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -205,7 +221,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         } catch (ClassCastException e) {
             log.log(Level.FINE, "Unable to read JSON string key {0} directly; falling back to raw value", key);
             val = obj.get(key).toString();
-            if (val != null && val.startsWith("\"") && val.endsWith("\"") && val.length() >= 2) {
+            if (val != null && val.length() >= 2 && val.charAt(0) == '"' && val.charAt(val.length() - 1) == '"') {
                 val = val.substring(1, val.length() - 1);
             }
         }
@@ -242,6 +258,24 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        if (req == null) {
+            throw new IOException("Missing request");
+        }
+        StringBuilder body = new StringBuilder();
+        char[] buffer = new char[2048];
+        int total = 0;
+        int read;
+        while ((read = req.getReader().read(buffer)) != -1) {
+            total += read;
+            if (total > MAX_JSON_PAYLOAD_BYTES) {
+                throw new IOException("Payload exceeds allowed size");
+            }
+            body.append(buffer, 0, read);
+        }
+        return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {

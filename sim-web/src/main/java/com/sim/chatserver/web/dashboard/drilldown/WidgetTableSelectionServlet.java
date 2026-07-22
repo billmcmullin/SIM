@@ -16,7 +16,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -30,17 +30,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableSelectionServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/select-ids"})
 public class WidgetTableSelectionServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to resolve drilldown chat id selections."
-    // parasoft-suppress SERVLET.CETS "Checked servlet and JDBC exceptions are handled at endpoint boundaries with safe JSON/error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
-
-    @Inject
-    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -60,7 +52,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         }
 
         String tableName = sanitizeWidgetTableName(widgetId);
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
                 jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Table for widget does not exist.");
                 return;
@@ -167,18 +159,11 @@ public class WidgetTableSelectionServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String sanitizeWidgetId(String widgetId) {
@@ -238,13 +223,13 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         private final String response;
         private final String global;
 
-        FilterState(String prompt, String response, String global) {
+        private FilterState(String prompt, String response, String global) {
             this.prompt = prompt;
             this.response = response;
             this.global = global;
         }
 
-        String buildWhereClause() {
+        private String buildWhereClause() {
             List<String> pieces = new ArrayList<>();
             if (hasValue(prompt)) {
                 pieces.add("prompt ILIKE ?");
@@ -261,7 +246,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
             return " WHERE " + String.join(" AND ", pieces);
         }
 
-        List<String> params() {
+        private List<String> params() {
             List<String> params = new ArrayList<>();
             if (hasValue(prompt)) {
                 params.add(pattern(prompt));
@@ -278,12 +263,40 @@ public class WidgetTableSelectionServlet extends HttpServlet {
             return params;
         }
 
-        boolean hasValue(String val) {
+        private boolean hasValue(String val) {
             return val != null && !val.isBlank();
         }
 
-        String pattern(String input) {
+        private String pattern(String input) {
             return '%' + input.trim() + '%';
+        }
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest req) {
+            return new RequestParamContext(req);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 }

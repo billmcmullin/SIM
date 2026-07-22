@@ -1,8 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -31,7 +29,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -47,33 +45,18 @@ import jakarta.servlet.http.HttpSession;
  */
 @WebServlet(name = "DashboardRelativeDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review-relative"})
 public class DashboardRelativeDateSelectionServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to build date-based review snapshots."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed dependencies are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected collaborators are framework-managed and not serialized secret payloads."
-    // parasoft-suppress SECURITY.IBA.VRD "Forward targets are normalized and validated by isSafeRedirectTarget and isSafeForwardTarget before dispatch."
-    // parasoft-suppress OWASP2025.A1.VRD "Forward targets are normalized and validated by isSafeRedirectTarget and isSafeForwardTarget before dispatch."
-    // parasoft-suppress CWE.601.VRD "Forward targets are normalized and validated by isSafeRedirectTarget and isSafeForwardTarget before dispatch."
-
     private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getName());
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    @Inject
     AppDataSourceHolder dsHolder;
-
-    @Inject
     TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            if (!isSafeForwardTarget("/login")) {
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
-                return;
-            }
             req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
@@ -134,26 +117,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        StringBuilder redirect = new StringBuilder()
-                .append("/dashboard/widgets/drilldown/review?selectionId=")
-                .append(URLEncoder.encode(selectionId, StandardCharsets.UTF_8))
-                .append("&date=")
-                .append(URLEncoder.encode(date.toString(), StandardCharsets.UTF_8));
-
-        if (!requestedTerm.isBlank()) {
-            redirect.append("&term=").append(URLEncoder.encode(requestedTerm, StandardCharsets.UTF_8));
-        }
-
-        String redirectTarget = redirect.toString();
-        if (!isSafeRedirectTarget(redirectTarget)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe redirect target");
-            return;
-        }
-        if (!isSafeForwardTarget(redirectTarget)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe forward target");
-            return;
-        }
-        req.getRequestDispatcher(redirectTarget).forward(req, resp);
+        req.setAttribute("selectionId", selectionId);
+        req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     }
 
     private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -196,7 +161,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         Timestamp startTs = Timestamp.valueOf(date.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;
@@ -249,7 +214,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
         List<TermDefinition> allTerms;
         try {
-            allTerms = termsStore.listAll();
+            allTerms = termsStore().listAll();
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load term definitions for date+term filtering", e);
             return List.of();
@@ -321,7 +286,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
 
         List<TermDefinition> allTerms;
         try {
-            allTerms = termsStore.listAll();
+            allTerms = termsStore().listAll();
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load term definitions for term-entry filtering", e);
             return List.of();
@@ -387,52 +352,47 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private TermsStore termsStore() {
+        if (termsStore != null) {
+            return termsStore;
+        }
+        return CDI.current().select(TermsStore.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;
             }
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
-    }
-
-    private boolean isSafeRedirectTarget(String target) {
-        if (target == null || target.isBlank()) {
-            return false;
-        }
-        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
-            return false;
-        }
-        return target.startsWith("/dashboard/widgets/drilldown/review");
-    }
-
-    private boolean isSafeForwardTarget(String target) {
-        if (target == null || target.isBlank()) {
-            return false;
-        }
-        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
-            return false;
-        }
-        return "/login".equals(target) || target.startsWith("/dashboard/widgets/drilldown/review");
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

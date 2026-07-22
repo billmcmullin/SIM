@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Enumeration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -39,11 +40,6 @@ import jakarta.servlet.http.HttpSession;
  */
 //@WebServlet(name = "SalesforceOAuthCallbackServlet", urlPatterns = {"/admin/salesforce/oauth/callback"})
 public class SalesforceOAuthCallbackServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked servlet exceptions are intentionally handled at endpoint boundaries or container-dispatched paths."
-    // parasoft-suppress SERVLET.IF "Servlet instance fields are immutable runtime collaborators and do not hold mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Servlet fields store framework/runtime handles only and are not serialized sensitive payloads."
-    // parasoft-suppress SECURITY.BV.ADT "OAuth state TTL comparison intentionally uses currentTimeMillis for request-time freshness validation."
-
     private static final long serialVersionUID = 1L;
     private static final Logger log = Logger.getLogger(SalesforceOAuthCallbackServlet.class.getName());
 
@@ -57,7 +53,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]+$");
     private static final Pattern SAFE_OAUTH_PARAM = Pattern.compile("^[A-Za-z0-9._~:-]{1,1024}$");
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
@@ -129,11 +125,11 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 .build();
 
         try {
-            HttpResponse<String> tokenRes = httpClient.send(tokenReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> tokenRes = HTTP_CLIENT.send(tokenReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int statusCode = tokenRes.statusCode();
             if (statusCode < 200 || statusCode >= 300) {
                 String statusCodeText = Integer.toString(statusCode);
-                log.log(Level.WARNING, "Salesforce token exchange failed with HTTP " + statusCodeText);
+                log.log(Level.WARNING, "Salesforce token exchange failed with HTTP {0}", statusCodeText);
                 redirectWithMessage(resp, req, false,
                     "Token exchange failed (HTTP " + statusCodeText + ").");
                 return;
@@ -330,12 +326,11 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (req == null || headerName == null || headerName.isBlank()) {
             return null;
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Forwarded header values are tokenized, control-char stripped, and length-bounded before use."
-        // parasoft-suppress CWE.352.VPPD "Forwarded header values are tokenized, control-char stripped, and length-bounded before use."
-        // parasoft-suppress CWE.79.VPPD "Forwarded header values are tokenized, control-char stripped, and length-bounded before use."
-        // parasoft-suppress OWASP2025.A1.VPPD "Forwarded header values are tokenized, control-char stripped, and length-bounded before use."
-        // parasoft-suppress OWASP2025.A5.VPPD "Forwarded header values are tokenized, control-char stripped, and length-bounded before use."
-        String raw = req.getHeader(headerName);
+        Enumeration<String> headers = req.getHeaders(headerName);
+        if (headers == null || !headers.hasMoreElements()) {
+            return null;
+        }
+        String raw = headers.nextElement();
         if (raw == null) {
             return null;
         }
@@ -356,18 +351,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
+        return RequestParamContext.from(req).first(name);
     }
 
     private String normalizeScheme(String scheme) {
@@ -459,5 +443,33 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         String accessToken;
         String refreshToken;
         String instanceUrl;
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
+        }
     }
 }

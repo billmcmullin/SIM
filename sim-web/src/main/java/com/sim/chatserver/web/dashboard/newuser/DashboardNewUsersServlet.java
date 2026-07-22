@@ -35,7 +35,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -57,11 +57,6 @@ import jakarta.servlet.http.HttpSession;
         }
 )
 public class DashboardNewUsersServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to compute dashboard metrics."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries and converted to safe HTTP responses or fallbacks."
-    // parasoft-suppress SERVLET.IF "CDI-managed servlet dependencies are required and do not store mutable per-request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is a framework-managed reference, not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(DashboardNewUsersServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users.html";
     static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -74,9 +69,6 @@ public class DashboardNewUsersServlet extends HttpServlet {
     private static final String PATH_DAY = "/dashboard/new-users/day";
     private static final String PATH_DAY_DATA = "/dashboard/new-users/day-data";
     private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
-
-    @Inject
-    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -132,7 +124,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        String contextPath = safeContextPath(req.getContextPath());
         Metrics metrics = loadMetrics(start, end, contextPath);
 
         String user = String.valueOf(session.getAttribute("user"));
@@ -161,7 +153,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
         LocalDate rangeStart = rangeEnd.minusDays(days - 1);
 
-        Metrics metrics = loadMetrics(rangeStart, rangeEnd, safeContextPath(req.getServletContext().getContextPath()));
+        Metrics metrics = loadMetrics(rangeStart, rangeEnd, safeContextPath(req.getContextPath()));
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
         JsonArrayBuilder values = Json.createArrayBuilder();
@@ -232,7 +224,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     private Metrics loadMetrics(LocalDate rangeStart, LocalDate rangeEnd, String contextPath) {
         Metrics metrics = new Metrics(rangeStart, rangeEnd);
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<WidgetEntry> widgets;
             try {
                 widgets = WidgetStore.list(null);
@@ -256,7 +248,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
             Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
 
@@ -540,26 +532,31 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String normalized = value.replace("\r", "").replace("\n", "").trim();
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }

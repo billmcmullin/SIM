@@ -1059,9 +1059,9 @@ public class DatabaseImportServlet extends HttpServlet {
 
     static final class ImportException extends SQLException {
 
-        final transient String table;
-        final transient int rowNumber;
-        final transient String column;
+        private final transient String table;
+        private final transient int rowNumber;
+        private final transient String column;
 
         ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);

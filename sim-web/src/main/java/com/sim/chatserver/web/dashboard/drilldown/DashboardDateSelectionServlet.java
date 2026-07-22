@@ -1,8 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -23,7 +21,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -37,30 +35,16 @@ import jakarta.servlet.http.HttpSession;
  */
 @WebServlet(name = "DashboardDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review"})
 public class DashboardDateSelectionServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to build date-based review snapshots."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-    // parasoft-suppress SECURITY.IBA.VRD "Forward targets are normalized and validated by safeRedirectPath and isAllowedRedirect before dispatch."
-    // parasoft-suppress OWASP2025.A1.VRD "Forward targets are normalized and validated by safeRedirectPath and isAllowedRedirect before dispatch."
-    // parasoft-suppress CWE.601.VRD "Forward targets are normalized and validated by safeRedirectPath and isAllowedRedirect before dispatch."
-
     private static final Logger log = Logger.getLogger(DashboardDateSelectionServlet.class.getName());
     private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            String loginPath = safeRedirectPath("/login", "/login");
-            if (!isAllowedRedirect(loginPath)) {
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid redirect target.");
-                return;
-            }
-            req.getRequestDispatcher(loginPath).forward(req, resp);
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
@@ -105,85 +89,48 @@ public class DashboardDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String redirectPath = "/dashboard/widgets/drilldown/review?selectionId="
-                + URLEncoder.encode(selectionId, StandardCharsets.UTF_8)
-                + "&date="
-                + URLEncoder.encode(date.toString(), StandardCharsets.UTF_8);
-        String forwardPath = safeRedirectPath(redirectPath, "/dashboard");
-
-        if (!isAllowedRedirect(forwardPath)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid redirect target.");
-            return;
-        }
-
-        req.getRequestDispatcher(forwardPath).forward(req, resp);
+        req.setAttribute("selectionId", selectionId);
+        req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     }
 
     private String firstQueryParam(HttpServletRequest req, String name) {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;
             }
             return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
         }
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
-    private boolean isAllowedRedirect(String redirectUrl) {
-        if (redirectUrl == null || redirectUrl.isBlank()) {
-            return false;
-        }
-        if (redirectUrl.contains("://") || redirectUrl.contains("\r") || redirectUrl.contains("\n")) {
-            return false;
-        }
-        if ("/login".equals(redirectUrl) || "/dashboard".equals(redirectUrl) || "/dashboard?latestChats=empty".equals(redirectUrl)) {
-            return true;
-        }
-        return redirectUrl.contains("/dashboard/widgets/drilldown/review?selectionId=");
-    }
-
-    private String safeRedirectPath(String target, String fallback) {
-        if (target == null) {
-            return fallback;
-        }
-        String trimmed = target.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return fallback;
-        }
-        return trimmed;
     }
 
     private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {
@@ -196,7 +143,7 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         Timestamp startTs = Timestamp.valueOf(date.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;

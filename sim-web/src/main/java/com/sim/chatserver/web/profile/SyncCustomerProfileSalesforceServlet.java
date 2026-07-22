@@ -3,7 +3,6 @@ package com.sim.chatserver.web.profile;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.CustomerProfile;
@@ -24,10 +23,9 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "SyncCustomerProfileSalesforceServlet", urlPatterns = {"/admin/sync-customer-profile"})
 public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
-    private final SalesforceClient salesforceClient = new SalesforceClient();
+    private static final SalesforceClient SALESFORCE_CLIENT = new SalesforceClient();
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
-    private static final int MAX_PARAM_LEN = 128;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -70,7 +68,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
             SalesforceCustomerMatch match;
             try {
-                match = salesforceClient.findBestCustomerMatch(searchName);
+                match = SALESFORCE_CLIENT.findBestCustomerMatch(searchName);
             } catch (SalesforceClient.SalesforceClientException sce) {
                 logFailure("Salesforce request failed while syncing customer profile", sce);
                 writeJson(resp, sce.getStatusCode(), errorPayload("Salesforce request failed."));
@@ -79,6 +77,11 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 logFailure("Invalid Salesforce request state while syncing customer profile", ise);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     errorPayload("Invalid Salesforce request state."));
+                return;
+            } catch (Exception ex) {
+                logFailure("Unexpected Salesforce lookup failure while syncing customer profile", ex);
+                writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
+                    errorPayload("Unable to query Salesforce right now."));
                 return;
             }
 
@@ -121,7 +124,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, ok);
-        } catch (Exception e) {
+        } catch (java.sql.SQLException | IllegalArgumentException | IllegalStateException e) {
             throw new ServletException("Unable to sync customer profile from Salesforce", e);
         }
     }
@@ -160,27 +163,37 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
     }
 
     private static final class RequestContext {
+        private static final int MAX_PARAM_LEN = 128;
 
-        private final Map<String, String[]> params;
+        private final HttpServletRequest request;
 
-        private RequestContext(Map<String, String[]> params) {
-            this.params = params;
+        private RequestContext(HttpServletRequest request) {
+            this.request = request;
         }
 
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req.getParameterMap());
+        static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req);
         }
 
-        private String first(String name) {
-            if (name == null || name.isBlank() || params == null) {
+        String first(String name) {
+            if (name == null || name.isBlank() || request == null) {
                 return null;
             }
-            String[] values = params.get(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
                 return null;
             }
-            String trimmed = values[0].trim();
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            for (String value : values) {
+                if (value == null) {
+                    continue;
+                }
+                String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            }
+            return null;
         }
     }
 }

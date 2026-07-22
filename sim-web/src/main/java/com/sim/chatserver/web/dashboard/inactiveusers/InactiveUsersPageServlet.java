@@ -31,7 +31,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -47,11 +47,6 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "InactiveUsersPageServlet", urlPatterns = {"/dashboard/inactive-users"})
 public class InactiveUsersPageServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to aggregate inactive-user metrics."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback behavior."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(InactiveUsersPageServlet.class.getName());
     private static final int DEFAULT_DAYS = 7;
     private static final int TOP_N = 5;
@@ -78,9 +73,6 @@ public class InactiveUsersPageServlet extends HttpServlet {
             "TCP", "UDP", "DNS", "IP", "CPU", "GPU", "RAM", "OS", "DB", "ETL", "CI", "CD", "IDE", "LTS", "JDK", "JVM",
             "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
     );
-
-    @Inject
-    AppDataSourceHolder dsHolder;
 
     static final class InactiveRow {
 
@@ -138,7 +130,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         Map<String, List<InactiveRow>> byWidget = new LinkedHashMap<>();
         Map<String, InactiveRow> allAgg = new LinkedHashMap<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
@@ -632,34 +624,38 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String trimmed = value.replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object valueObj = rs.getObject(column);
-        String value = valueObj == null ? null : String.valueOf(valueObj);
+        String value = rs.getString(column);
         return safeDbText(value, maxLen);
     }
 

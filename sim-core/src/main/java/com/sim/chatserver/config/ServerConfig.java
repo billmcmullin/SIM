@@ -18,6 +18,11 @@ public class ServerConfig {
     private String salesforceClientSecret;
     private String salesforceRefreshToken;
 
+    // Salesforce username + password + API token login fields
+    private String salesforceUsername;
+    private String salesforcePassword;
+    private String salesforceApiToken;
+
     public ServerConfig() {
     }
 
@@ -115,5 +120,29 @@ public class ServerConfig {
 
     public void setSalesforceRefreshToken(String salesforceRefreshToken) {
         this.salesforceRefreshToken = salesforceRefreshToken;
+    }
+
+    public String getSalesforceUsername() {
+        return salesforceUsername;
+    }
+
+    public void setSalesforceUsername(String salesforceUsername) {
+        this.salesforceUsername = salesforceUsername;
+    }
+
+    public String getSalesforcePassword() {
+        return salesforcePassword;
+    }
+
+    public void setSalesforcePassword(String salesforcePassword) {
+        this.salesforcePassword = salesforcePassword;
+    }
+
+    public String getSalesforceApiToken() {
+        return salesforceApiToken;
+    }
+
+    public void setSalesforceApiToken(String salesforceApiToken) {
+        this.salesforceApiToken = salesforceApiToken;
     }
 }

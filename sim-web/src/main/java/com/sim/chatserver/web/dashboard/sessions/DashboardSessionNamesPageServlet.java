@@ -35,11 +35,12 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
             return;
         }
 
-        String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
+        String userName = session.getAttribute("user") instanceof String value ? value : "";
+        String role = session.getAttribute("role") instanceof String value ? value : "USER";
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String rendered = template
                 .replace("${contextPath}", req.getContextPath())
-                .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+            .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());

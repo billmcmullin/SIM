@@ -51,7 +51,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObjectBuilder;
@@ -64,12 +64,6 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardServlet", urlPatterns = {"/dashboard"})
 public class DashboardServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to build dashboard aggregates."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed collaborators and local caches are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected collaborators are framework-managed and not serialized secret payloads."
-    // parasoft-suppress SECURITY.DRC.THR "A bounded daemon executor is intentionally used for dashboard fan-out aggregation."
-
     private static final Logger log = Logger.getLogger(DashboardServlet.class.getName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
@@ -89,13 +83,7 @@ public class DashboardServlet extends HttpServlet {
             new DashboardThreadFactory()
     );
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    @Inject
-    TermsStore termsStore;
-
-    private final DashboardCacheRegistry cacheRegistry = new DashboardCacheRegistry();
+        private static final DashboardCacheRegistry cacheRegistry = new DashboardCacheRegistry();
 
     @Override
     public void destroy() {
@@ -146,8 +134,8 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate dayToday = rangeEndFinal;
         final LocalDate dayYesterday = dayToday.minusDays(1);
 
-        DashboardMetricsService metricsService = new DashboardMetricsService(dsHolder, termsStore, TOP_TOPIC_LIMIT);
-        DashboardTermService termService = new DashboardTermService(termsStore);
+        DashboardMetricsService metricsService = new DashboardMetricsService(dataSourceHolder(), termsStore(), TOP_TOPIC_LIMIT);
+        DashboardTermService termService = new DashboardTermService(termsStore());
         DashboardSessionService sessionService = new DashboardSessionService();
 
         CompletableFuture<List<WidgetStat>> widgetStatsFuture = CompletableFuture.supplyAsync(
@@ -387,7 +375,7 @@ public class DashboardServlet extends HttpServlet {
             LocalDate rangeStart,
             LocalDate rangeEnd
     ) {
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<TermDefinition> terms = termService.loadAllTerms();
             return termService.buildTermSummary(conn, widgets, terms, rangeStart, rangeEnd);
         } catch (SQLException e) {
@@ -403,7 +391,7 @@ public class DashboardServlet extends HttpServlet {
             LocalDate rangeEnd,
             int activeDays
     ) {
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             return sessionService.buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to compute session overview", e);
@@ -420,7 +408,7 @@ public class DashboardServlet extends HttpServlet {
             totalDaily.put(start.plusDays(i), 0);
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<WidgetEntry> widgets = WidgetStore.list(null);
 
             for (WidgetEntry widget : widgets) {
@@ -522,18 +510,44 @@ public class DashboardServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
         }
-        String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (trimmed.isEmpty()) {
-            return null;
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String value = values[0];
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
     private String sanitizeForLog(String value) {

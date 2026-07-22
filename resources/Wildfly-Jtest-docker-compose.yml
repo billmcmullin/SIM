@@ -1,7 +1,7 @@
 services:
   wildfly:
     #Wildfly server instance for the Jtest Coverage agent
-    image: quay.io/wildfly/wildfly:latest-jdk25
+    image: quay.io/wildfly/wildfly:latest
     hostname: chatserver
     container_name: chatserver
     ports:

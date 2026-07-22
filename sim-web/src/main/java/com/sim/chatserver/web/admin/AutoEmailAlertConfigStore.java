@@ -18,7 +18,7 @@ import java.util.logging.Logger;
  */
 // parasoft-suppress SECURITY.WSC.DSER "This class is not used for Java native deserialization; configuration is loaded from JDBC rows only."
 // parasoft-suppress SECURITY.WSC.SER "This class is not used for Java native serialization; data transfer is handled via explicit JSON/DB mapping."
-public class AutoEmailAlertConfigStore {
+public final class AutoEmailAlertConfigStore {
 
     private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getName());
 
@@ -33,7 +33,7 @@ public class AutoEmailAlertConfigStore {
         this.dataSource = dataSource;
     }
 
-    void ensureTable() throws SQLException {
+    final void ensureTable() throws SQLException {
         final String sql = """
             CREATE TABLE IF NOT EXISTS admin_auto_email_alert_config (
                 id INT PRIMARY KEY,
@@ -71,7 +71,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    void ensureDefaultRow() throws SQLException {
+    final void ensureDefaultRow() throws SQLException {
         final String sql = """
             INSERT INTO admin_auto_email_alert_config (
                 id,
@@ -95,7 +95,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    AutoEmailAlertConfig load() throws SQLException {
+    final AutoEmailAlertConfig load() throws SQLException {
         final String sql = """
             SELECT id,
                    health_enabled,
@@ -135,7 +135,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    AutoEmailAlertConfig saveConfig(AutoEmailAlertConfig incoming, String updatedBy) throws SQLException {
+    final AutoEmailAlertConfig saveConfig(AutoEmailAlertConfig incoming, String updatedBy) throws SQLException {
         AutoEmailAlertConfig current = load();
         if (current == null) {
             ensureDefaultRow();
@@ -194,7 +194,7 @@ public class AutoEmailAlertConfigStore {
         return load();
     }
 
-    void updateHealthState(Instant checkedAt, String status, Instant offlineSince, Instant alertAt) throws SQLException {
+    final void updateHealthState(Instant checkedAt, String status, Instant offlineSince, Instant alertAt) throws SQLException {
         final String sql = """
             UPDATE admin_auto_email_alert_config
             SET health_last_checked_at = ?,
@@ -214,7 +214,7 @@ public class AutoEmailAlertConfigStore {
         }
     }
 
-    void updateTermState(Instant checkedAt, long termCount, Instant alertAt) throws SQLException {
+    final void updateTermState(Instant checkedAt, long termCount, Instant alertAt) throws SQLException {
         final String sql = """
             UPDATE admin_auto_email_alert_config
             SET term_last_checked_at = ?,
@@ -315,55 +315,32 @@ public class AutoEmailAlertConfigStore {
 
     private long readNonNegativeLong(ResultSet rs, String column) {
         try {
-            Object raw = rs.getObject(column);
-            if (raw == null) {
+            long value = rs.getLong(column);
+            if (rs.wasNull()) {
                 return 0L;
             }
-            long value;
-            if (raw instanceof Number n) {
-                value = n.longValue();
-            } else {
-                String text = String.valueOf(raw).trim();
-                if (text.isEmpty() || !text.matches("^-?\\d{1,19}$")) {
-                    return 0L;
-                }
-                value = Long.parseLong(text);
-            }
             return Math.max(0L, value);
-        } catch (SQLException | NumberFormatException e) {
+        } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read long column " + column, e);
             return 0L;
         }
     }
 
     private Integer readSafeInteger(ResultSet rs, String column) throws SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return null;
         }
-        if (raw instanceof Number n) {
-            return Integer.valueOf(n.intValue());
-        }
-        String text = String.valueOf(raw).trim();
-        if (text.isEmpty() || !text.matches("^-?\\d{1,10}$")) {
-            return null;
-        }
-        return Integer.valueOf(text);
+        return value;
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) {
         try {
-            Object raw = rs.getObject(column);
-            if (raw == null) {
+            String text = rs.getString(column);
+            if (text == null) {
                 return fallback;
             }
-            if (raw instanceof Boolean b) {
-                return b.booleanValue();
-            }
-            if (raw instanceof Number n) {
-                return n.intValue() != 0;
-            }
-            String text = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
+            text = text.trim().toLowerCase(Locale.ROOT);
             if (text.isEmpty()) {
                 return fallback;
             }
@@ -403,23 +380,23 @@ public class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Object raw = rs.getObject(column);
-            if (raw == null) {
-                return null;
-            }
-            if (raw instanceof Timestamp ts) {
+            Timestamp ts = rs.getTimestamp(column);
+            if (ts != null) {
                 return ts.toInstant();
             }
-            if (raw instanceof Instant instant) {
-                return instant;
+
+            String text = rs.getString(column);
+            if (text == null) {
+                return null;
             }
-            String text = String.valueOf(raw).trim();
+            text = text.trim();
             if (text.isEmpty()) {
                 return null;
             }
             try {
                 return Instant.parse(text);
             } catch (DateTimeException ex) {
+                log.log(Level.FINE, "Falling back to SQL timestamp parse for column " + column, ex);
                 return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
             }
         } catch (SQLException | DateTimeException e) {
@@ -430,8 +407,7 @@ public class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            Object raw = rs.getObject(column);
-            String value = raw == null ? null : String.valueOf(raw);
+            String value = rs.getString(column);
             return sanitizeText(value, maxChars);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);

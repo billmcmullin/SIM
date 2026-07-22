@@ -3,7 +3,6 @@ package com.sim.chatserver.web.dashboard.sessions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -35,7 +34,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonException;
@@ -57,10 +56,6 @@ import jakarta.servlet.http.HttpSession;
     "/dashboard/sessions/chats",
     "/dashboard/sessions/select"
 })
-// parasoft-suppress SERVLET.AJDBC "This servlet intentionally performs session aggregation queries with validated identifiers and prepared statements."
-// parasoft-suppress SERVLET.IF "Servlet fields are framework-injected or immutable constants used for request orchestration only."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are routed to explicit HTTP JSON error responses to preserve API behavior."
-// parasoft-suppress SECURITY.ESD.SIF "Instance fields store runtime collaborators and do not expose sensitive state through serialization paths."
 public class AllSessionsServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AllSessionsServlet.class.getName());
@@ -78,8 +73,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final String PATH_CHATS = "/dashboard/sessions/chats";
     private static final String PATH_SELECT = "/dashboard/sessions/select";
 
-    @Inject
-    transient AppDataSourceHolder dsHolder;
+    AppDataSourceHolder dsHolder;
 
     private static final class SessionSummary {
 
@@ -180,7 +174,7 @@ public class AllSessionsServlet extends HttpServlet {
         Map<String, String> widgetNames = buildWidgetDisplayNameMap(widgets);
 
         if (!widgets.isEmpty()) {
-            try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
@@ -211,7 +205,7 @@ public class AllSessionsServlet extends HttpServlet {
             Map<String, SessionLabelStore.SessionLabel> allLabels = mapSessionLabels(sessionList);
             matchedSessionIds.addAll(gatherSessionIdsByLabelMatch(allLabels, search));
 
-            try (Connection conn = dsHolder.getDataSource().getConnection()) {
+            try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
@@ -346,7 +340,7 @@ public class AllSessionsServlet extends HttpServlet {
         List<ChatRow> rows = new ArrayList<>();
         String sid = sessionId;
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
@@ -459,7 +453,7 @@ public class AllSessionsServlet extends HttpServlet {
 
         List<TermChatSnapshot> snapshots = new ArrayList<>();
         List<WidgetEntry> widgets = listWidgets();
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
@@ -755,6 +749,13 @@ public class AllSessionsServlet extends HttpServlet {
 
     private String firstParam(HttpServletRequest req, String name) {
         return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {

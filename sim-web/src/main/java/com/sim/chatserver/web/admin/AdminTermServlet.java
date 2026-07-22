@@ -2,7 +2,6 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.logging.Level;
@@ -12,7 +11,7 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonException;
@@ -25,17 +24,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AdminTermServlet", urlPatterns = {"/admin/terms"})
-// parasoft-suppress SERVLET.IF "Servlet fields are framework-managed collaborators and not request-derived mutable state."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are converted into explicit JSON error responses for API stability."
-// parasoft-suppress SECURITY.ESD.SIF "Injected fields contain runtime collaborators only and are not serialized to clients."
 public class AdminTermServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AdminTermServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
 
-    @Inject
-    transient TermsStore termsStore;
+    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -44,10 +39,10 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            List<TermDefinition> terms = termsStore.listAll();
+            List<TermDefinition> terms = termsStore().listAll();
             JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
             terms.forEach(term -> arrayBuilder.add(Json.createObjectBuilder()
-                    .add("id", term.getId() == null ? 0L : term.getId().longValue())
+                    .add("id", term.getId() == null ? 0L : term.getId())
                     .add("name", term.getName())
                     .add("description", term.getDescription())
                     .add("matchPattern", term.getMatchPattern())
@@ -116,14 +111,14 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            TermDefinition term = termsStore.createTerm(name, description, pattern, type);
+            TermDefinition term = termsStore().createTerm(name, description, pattern, type);
             if (term == null) {
                 throw new SQLException("Insert failed.");
             }
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", term.getId() == null ? 0L : term.getId().longValue())
+                        .add("id", term.getId() == null ? 0L : term.getId())
                             .add("name", term.getName())
                             .add("description", term.getDescription())
                             .add("matchPattern", term.getMatchPattern())
@@ -187,10 +182,10 @@ public class AdminTermServlet extends HttpServlet {
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"id, name, and description are required.\"}");
             return;
         }
-        long id = idObj.longValue();
+        long id = idObj;
 
         try {
-            TermDefinition updated = termsStore.updateTerm(id, name, description, pattern, type);
+            TermDefinition updated = termsStore().updateTerm(id, name, description, pattern, type);
             if (updated == null) {
                 resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 resp.setCharacterEncoding("UTF-8");
@@ -201,7 +196,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", updated.getId() == null ? 0L : updated.getId().longValue())
+                        .add("id", updated.getId() == null ? 0L : updated.getId())
                             .add("name", updated.getName())
                             .add("description", updated.getDescription())
                             .add("matchPattern", updated.getMatchPattern())
@@ -237,7 +232,7 @@ public class AdminTermServlet extends HttpServlet {
 
         try {
             long id = Long.parseLong(idParam);
-            boolean deleted = termsStore.deleteTerm(id);
+            boolean deleted = termsStore().deleteTerm(id);
             if (!deleted) {
                 resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 resp.setCharacterEncoding("UTF-8");
@@ -278,26 +273,7 @@ public class AdminTermServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        // parasoft-suppress SERVLET.UCO "This helper centralizes servlet parameter extraction and normalization for bounded inputs."
-        // parasoft-suppress CWE.20.UCO "This helper centralizes servlet parameter extraction and normalization for bounded inputs."
-        // parasoft-suppress CWE.601.UCO "This helper centralizes servlet parameter extraction and normalization for bounded inputs."
-        // parasoft-suppress OWASP2025.A1.UCO "This helper centralizes servlet parameter extraction and normalization for bounded inputs."
-        // parasoft-suppress OWASP2025.A2.UCO "This helper centralizes servlet parameter extraction and normalization for bounded inputs."
-        // parasoft-suppress BD.SECURITY.VPPD "Values are length-bounded and control-char stripped before use."
-        // parasoft-suppress CWE.352.VPPD "Values are length-bounded and control-char stripped before use."
-        // parasoft-suppress CWE.79.VPPD "Values are length-bounded and control-char stripped before use."
-        // parasoft-suppress OWASP2025.A1.VPPD "Values are length-bounded and control-char stripped before use."
-        // parasoft-suppress OWASP2025.A5.VPPD "Values are length-bounded and control-char stripped before use."
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
-        }
-        String value = values[0];
-        String trimmed = value.replace("\r", "").replace("\n", "").trim();
-        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
+        return RequestParamContext.from(req).first(name);
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -312,20 +288,54 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Input is byte-limited and normalized before downstream JSON parsing."
-        // parasoft-suppress CWE.352.VPPD "Input is byte-limited and normalized before downstream JSON parsing."
-        // parasoft-suppress CWE.79.VPPD "Input is byte-limited and normalized before downstream JSON parsing."
-        // parasoft-suppress OWASP2025.A1.VPPD "Input is byte-limited and normalized before downstream JSON parsing."
-        // parasoft-suppress OWASP2025.A5.VPPD "Input is byte-limited and normalized before downstream JSON parsing."
-        try (var in = req.getInputStream()) {
-            byte[] body = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (body.length > MAX_JSON_PAYLOAD_BYTES) {
-                return "";
+        StringBuilder body = new StringBuilder(Math.min(MAX_JSON_PAYLOAD_BYTES, 4096));
+        char[] buffer = new char[2048];
+        int total = 0;
+        try (var reader = req.getReader()) {
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                body.append(buffer, 0, read);
             }
-            return new String(body, StandardCharsets.UTF_8)
-                    .replace("\u0000", "")
-                    .replace("\r", "")
-                    .trim();
+        }
+        return body.toString().replace("\u0000", "").replace("\r", "").trim();
+    }
+
+    private TermsStore termsStore() {
+        if (termsStore != null) {
+            return termsStore;
+        }
+        return CDI.current().select(TermsStore.class).get();
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
         }
     }
 }

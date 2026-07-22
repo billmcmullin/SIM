@@ -8,7 +8,7 @@ import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
 import com.sim.chatserver.email.ResolvedEmailConfig;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
@@ -28,15 +28,8 @@ import java.util.regex.Pattern;
 
 @WebServlet(name = "AdminEmailConfigServlet", urlPatterns = {"/admin/email/config"})
 public class AdminEmailConfigServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked servlet I/O paths are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed email configuration provider is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected provider is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 32 * 1024;
-
-    @Inject
-    DbEmailConfigProvider dbProvider;
 
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
@@ -46,7 +39,8 @@ public class AdminEmailConfigServlet extends HttpServlet {
             return;
         }
 
-        EmailConfigResolver resolver = new EmailConfigResolver(dbProvider);
+        DbEmailConfigProvider provider = emailConfigProvider();
+        EmailConfigResolver resolver = new EmailConfigResolver(provider);
         ResolvedEmailConfig resolved = resolver.resolve();
 
         EmailConfig effective = resolved.config();
@@ -70,7 +64,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         boolean dbConfigured = false;
         try {
-            EmailConfig db = dbProvider == null ? null : dbProvider.load();
+            EmailConfig db = provider.load();
             dbConfigured = db != null && hasText(db.host()) && db.port() > 0;
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Failed checking DB SMTP config", e);
@@ -110,7 +104,11 @@ public class AdminEmailConfigServlet extends HttpServlet {
     }
 
     private void handleSave(HttpServletRequest req, JsonObject payload, HttpServletResponse resp) {
-        if (dbProvider == null) {
+        DbEmailConfigProvider provider;
+        try {
+            provider = emailConfigProvider();
+        } catch (IllegalStateException e) {
+            log.log(Level.WARNING, "DB SMTP provider is not available", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "DB SMTP provider is not available.");
             return;
         }
@@ -138,7 +136,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         if (!hasText(finalPassword)) {
             EmailConfig existing = null;
             try {
-                existing = dbProvider.load();
+                existing = provider.load();
             } catch (IllegalArgumentException | IllegalStateException e) {
                 log.log(Level.WARNING, "Unable to load existing SMTP config.", e);
             }
@@ -156,7 +154,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                 "Saving SMTP config: host={0}, port={1}, auth={2}, starttls={3}, ssl={4}, username={5}, defaultFrom={6}, updatedBy={7}",
                 new Object[]{host, port, auth, starttls, ssl, username, defaultFrom, updatedBy});
 
-            dbProvider.save(config, updatedBy);
+            provider.save(config, updatedBy);
 
             JsonObject response = Json.createObjectBuilder()
                     .add("status", "ok")
@@ -171,6 +169,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
     private void handleTest(JsonObject payload, HttpServletResponse resp) {
         try {
+            DbEmailConfigProvider provider = emailConfigProvider();
             EmailConfig cfg;
 
             if (hasText(payload.getString("host", ""))) {
@@ -196,7 +195,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                 // FIX: fallback to DB values when payload fields are blank (especially password)
                 if (!hasText(password) || !hasText(username) || !hasText(defaultFrom)) {
                     try {
-                        EmailConfig existing = dbProvider == null ? null : dbProvider.load();
+                        EmailConfig existing = provider.load();
                         if (existing != null) {
                             if (!hasText(password)) {
                                 password = safe(existing.password());
@@ -215,7 +214,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
                 cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);
             } else {
-                EmailConfigResolver resolver = new EmailConfigResolver(dbProvider);
+                EmailConfigResolver resolver = new EmailConfigResolver(provider);
                 ResolvedEmailConfig resolved = resolver.resolve();
                 if (!resolved.valid() || resolved.config() == null) {
                     writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid effective SMTP config to test.");
@@ -306,21 +305,15 @@ public class AdminEmailConfigServlet extends HttpServlet {
             throw new IllegalArgumentException("Invalid content length");
         }
 
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
-            throw new IllegalArgumentException("Invalid content type");
-        }
-
-        // parasoft-suppress BD.SECURITY.VPPD "Input stream content is size-bounded, content-type validated, and parsed as JSON object only."
-        // parasoft-suppress CWE.352.VPPD "Input stream content is size-bounded, content-type validated, and parsed as JSON object only."
-        // parasoft-suppress CWE.79.VPPD "Input stream content is size-bounded, content-type validated, and parsed as JSON object only."
-        // parasoft-suppress OWASP2025.A1.VPPD "Input stream content is size-bounded, content-type validated, and parsed as JSON object only."
-        // parasoft-suppress OWASP2025.A5.VPPD "Input stream content is size-bounded, content-type validated, and parsed as JSON object only."
-        try (JsonReader reader = Json.createReader(req.getInputStream())) {
+        try (JsonReader reader = Json.createReader(req.getReader())) {
             return reader.readObject();
         } catch (IOException | JsonException e) {
             throw new IllegalArgumentException("Invalid JSON payload", e);
         }
+    }
+
+    private DbEmailConfigProvider emailConfigProvider() {
+        return CDI.current().select(DbEmailConfigProvider.class).get();
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

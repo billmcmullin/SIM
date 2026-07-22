@@ -38,7 +38,8 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String filter = firstParam(req, "filter");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String filter = requestContext.first("filter", 256);
         try {
             List<WidgetEntry> widgets = WidgetStore.list(filter);
             JsonArrayBuilder arr = Json.createArrayBuilder();
@@ -66,9 +67,10 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = sanitizeWidgetId(firstParam(req, "widgetId"));
-        String displayName = sanitizeDisplayName(firstParam(req, "displayName"));
-        String idValue = firstParam(req, "id");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String widgetId = sanitizeWidgetId(requestContext.first("widgetId", 256));
+        String displayName = sanitizeDisplayName(requestContext.first("displayName", 256));
+        String idValue = requestContext.first("id", 256);
 
         if (widgetId == null || displayName == null) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
@@ -131,7 +133,8 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String idsParam = firstParam(req, "ids");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String idsParam = requestContext.first("ids", 256);
 
         if (idsParam == null || idsParam.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
@@ -213,18 +216,6 @@ public class WidgetApiServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.replace("\r", "").replace("\n", "").trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-    }
-
     private String sanitizeWidgetId(String value) {
         if (value == null) {
             return null;
@@ -245,5 +236,46 @@ public class WidgetApiServlet extends HttpServlet {
             return null;
         }
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
+        }
     }
 }

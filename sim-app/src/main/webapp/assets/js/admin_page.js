@@ -10,6 +10,8 @@
     const salesforceApiKeyStored = String(config.salesforceApiKeyStored) === 'true' || config.salesforceApiKeyStored === true;
     const salesforceClientSecretStored = String(config.salesforceClientSecretStored) === 'true' || config.salesforceClientSecretStored === true;
     const salesforceRefreshTokenStored = String(config.salesforceRefreshTokenStored) === 'true' || config.salesforceRefreshTokenStored === true;
+    const salesforcePasswordStored = String(config.salesforcePasswordStored) === 'true' || config.salesforcePasswordStored === true;
+    const salesforceApiTokenStored = String(config.salesforceApiTokenStored) === 'true' || config.salesforceApiTokenStored === true;
 
     let initialWidgetList = [];
     let initialTermList = [];
@@ -38,9 +40,12 @@
         salesforceApiKeyStored,
         salesforceClientSecretStored,
         salesforceRefreshTokenStored,
+        salesforcePasswordStored,
+        salesforceApiTokenStored,
         salesforceInstanceUrl: config.salesforceInstanceUrl || '',
         salesforceLoginUrl: config.salesforceLoginUrl || '',
         salesforceClientId: config.salesforceClientId || '',
+        salesforceUsername: config.salesforceUsername || '',
         initialWidgetList,
         initialTermList,
         workspaceName: config.workspaceName
@@ -235,6 +240,20 @@
             const sfRefreshNote = document.getElementById('salesforceRefreshTokenStoredNote');
             if (sfRefreshNote) {
                 sfRefreshNote.style.display = 'block';
+            }
+        }
+
+        if (salesforcePasswordStored) {
+            const sfPasswordNote = document.getElementById('salesforcePasswordStoredNote');
+            if (sfPasswordNote) {
+                sfPasswordNote.style.display = 'block';
+            }
+        }
+
+        if (salesforceApiTokenStored) {
+            const sfApiTokenNote = document.getElementById('salesforceApiTokenStoredNote');
+            if (sfApiTokenNote) {
+                sfApiTokenNote.style.display = 'block';
             }
         }
 

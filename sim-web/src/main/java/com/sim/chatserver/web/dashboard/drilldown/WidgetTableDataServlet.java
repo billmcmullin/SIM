@@ -27,7 +27,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -54,9 +54,6 @@ public class WidgetTableDataServlet extends HttpServlet {
         "session_id"
     };
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -80,6 +77,7 @@ public class WidgetTableDataServlet extends HttpServlet {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "Invalid widget table data date parameter", ex);
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
                 return;
@@ -94,7 +92,7 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
 
         String tableName = sanitizeWidgetTableName(widgetId);
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 resp.getWriter().write("{\"status\":\"error\",\"message\":\"Table for widget does not exist.\"}");
@@ -136,7 +134,7 @@ public class WidgetTableDataServlet extends HttpServlet {
                         .append(whereClause)
                         .append(" ORDER BY ")
                         .append(sortColumn)
-                        .append(" ")
+                    .append(' ')
                         .append(sortDir)
                         .append(" LIMIT ? OFFSET ?");
 
@@ -256,18 +254,11 @@ public class WidgetTableDataServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
-        }
-        String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String formatTimestampNullable(Timestamp ts) {
@@ -374,7 +365,7 @@ public class WidgetTableDataServlet extends HttpServlet {
         final String createdAt;
         final String sessionId;
 
-        private ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.response = response;
@@ -383,21 +374,21 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
     }
 
-    private static final class FilterState {
+    static final class FilterState {
 
         private final String prompt;
         private final String response;
         private final String global;
         private final LocalDate date; // NEW
 
-        private FilterState(String prompt, String response, String global, LocalDate date) {
+        FilterState(String prompt, String response, String global, LocalDate date) {
             this.prompt = prompt;
             this.response = response;
             this.global = global;
             this.date = date;
         }
 
-        private String buildWhereClause() {
+        String buildWhereClause() {
             List<String> pieces = new ArrayList<>();
             if (hasValue(prompt)) {
                 pieces.add("prompt ILIKE ?");
@@ -418,7 +409,7 @@ public class WidgetTableDataServlet extends HttpServlet {
             return " WHERE " + String.join(" AND ", pieces);
         }
 
-        private List<Object> params() {
+        List<Object> params() {
             List<Object> params = new ArrayList<>();
             if (hasValue(prompt)) {
                 params.add(pattern(prompt));
@@ -439,12 +430,41 @@ public class WidgetTableDataServlet extends HttpServlet {
             return params;
         }
 
-        private boolean hasValue(String val) {
+        boolean hasValue(String val) {
             return val != null && !val.isBlank();
         }
 
-        private String pattern(String input) {
-            return "%" + input.trim() + "%";
+        String pattern(String input) {
+            String trimmed = input.trim();
+            return new StringBuilder(trimmed.length() + 2).append('%').append(trimmed).append('%').toString();
+        }
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
     }
 }

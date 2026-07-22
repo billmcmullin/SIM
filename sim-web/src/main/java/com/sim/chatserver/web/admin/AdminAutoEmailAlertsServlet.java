@@ -6,7 +6,7 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConfig;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
@@ -24,63 +24,65 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * GET/POST admin endpoint for automatic email alert configuration.
  */
-// parasoft-suppress SERVLET.IF "Servlet fields are framework-managed collaborators and runtime state only."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are converted to explicit JSON HTTP error responses."
-// parasoft-suppress SECURITY.ESD.SIF "Field values are not exposed through serialization paths and contain only runtime collaborators."
 public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AdminAutoEmailAlertsServlet.class.getName());
 
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final Object INIT_LOCK = new Object();
 
-    @Inject
-    transient AppDataSourceHolder dsHolder;
-
-    @Inject
-    transient WidgetAvailabilityChecker availabilityChecker;
-
-    @Inject
-    transient TermsStore termsStore;
-
-    @Inject
-    transient DbEmailConfigProvider dbEmailConfigProvider;
-
-    private transient AutoEmailAlertConfigStore store;
-    private transient AutoEmailAlertScheduler scheduler;
+    private static volatile AutoEmailAlertConfigStore store;
+    private static volatile AutoEmailAlertScheduler scheduler;
 
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            store = new AutoEmailAlertConfigStore(dsHolder.getDataSource());
-            store.ensureTable();
-            store.ensureDefaultRow();
+        synchronized (INIT_LOCK) {
+            if (store != null && scheduler != null) {
+                return;
+            }
+            try {
+                AppDataSourceHolder dsHolder = dataSourceHolder();
+                WidgetAvailabilityChecker availabilityChecker = availabilityChecker();
+                TermsStore termsStore = termsStore();
+                DbEmailConfigProvider dbEmailConfigProvider = dbEmailConfigProvider();
 
-            scheduler = new AutoEmailAlertScheduler(
-                    store,
-                    dsHolder.getDataSource(),
-                    availabilityChecker,
-                    termsStore,
-                    dbEmailConfigProvider
-            );
-            scheduler.start();
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.SEVERE, "Failed to initialize automatic email alert infrastructure.", e);
-            throw new ServletException("Unable to initialize automatic email alerts.", e);
+                AutoEmailAlertConfigStore initializedStore = new AutoEmailAlertConfigStore(dsHolder.getDataSource());
+                initializedStore.ensureTable();
+                initializedStore.ensureDefaultRow();
+
+                AutoEmailAlertScheduler initializedScheduler = new AutoEmailAlertScheduler(
+                        initializedStore,
+                        dsHolder.getDataSource(),
+                        availabilityChecker,
+                        termsStore,
+                        dbEmailConfigProvider
+                );
+                initializedScheduler.start();
+
+                store = initializedStore;
+                scheduler = initializedScheduler;
+            } catch (SQLException | IllegalStateException e) {
+                log.log(Level.SEVERE, "Failed to initialize automatic email alert infrastructure.", e);
+                throw new ServletException("Unable to initialize automatic email alerts.", e);
+            }
         }
     }
 
     @Override
     public void destroy() {
-        if (scheduler != null) {
-            scheduler.stop();
+        synchronized (INIT_LOCK) {
+            if (scheduler != null) {
+                scheduler.stop();
+                scheduler = null;
+            }
+            store = null;
         }
         super.destroy();
     }
@@ -92,11 +94,14 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         }
 
         try {
-            AutoEmailAlertConfig cfg = store.load();
+            AutoEmailAlertConfig cfg = configStore().load();
             writeJson(resp, HttpServletResponse.SC_OK, toResponseJson(cfg));
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to load automatic email alert config.", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load automatic email alert config.");
+        } catch (IllegalStateException e) {
+            log.log(Level.WARNING, "Automatic email alert config store is not initialized.", e);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
     }
 
@@ -130,11 +135,14 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         try {
             AutoEmailAlertConfig incoming = fromPayload(payload);
             String updatedBy = currentUser(req);
-            AutoEmailAlertConfig saved = store.saveConfig(incoming, updatedBy);
+            AutoEmailAlertConfig saved = configStore().saveConfig(incoming, updatedBy);
             writeJson(resp, HttpServletResponse.SC_OK, toResponseJson(saved));
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to save automatic email alert config.", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to save automatic email alert config.");
+        } catch (IllegalStateException e) {
+            log.log(Level.WARNING, "Automatic email alert config store is not initialized.", e);
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
     }
 
@@ -224,15 +232,6 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Content-Type is validated against strict JSON media-type patterns before use."
-        // parasoft-suppress CWE.352.VPPD "Content-Type is validated against strict JSON media-type patterns before use."
-        // parasoft-suppress CWE.79.VPPD "Content-Type is validated against strict JSON media-type patterns before use."
-        // parasoft-suppress OWASP2025.A1.VPPD "Content-Type is validated against strict JSON media-type patterns before use."
-        // parasoft-suppress OWASP2025.A5.VPPD "Content-Type is validated against strict JSON media-type patterns before use."
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -241,18 +240,48 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (req == null || !isValidJsonRequest(req)) {
             throw new IOException("Invalid JSON payload.");
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Body bytes are size-bounded and normalized before JSON parsing."
-        // parasoft-suppress CWE.352.VPPD "Body bytes are size-bounded and normalized before JSON parsing."
-        // parasoft-suppress CWE.79.VPPD "Body bytes are size-bounded and normalized before JSON parsing."
-        // parasoft-suppress OWASP2025.A1.VPPD "Body bytes are size-bounded and normalized before JSON parsing."
-        // parasoft-suppress OWASP2025.A5.VPPD "Body bytes are size-bounded and normalized before JSON parsing."
-        try (var in = req.getInputStream()) {
-            byte[] bytes = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
+        try (var reader = req.getReader()) {
+            char[] buffer = new char[4096];
+            StringBuilder builder = new StringBuilder();
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload too large.");
+                }
+                builder.append(buffer, 0, read);
+            }
+            String normalized = builder.toString().replace("\u0000", "").replace("\r", "").trim();
+            if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
                 throw new IOException("Payload too large.");
             }
-            return new String(bytes, StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
+            return normalized;
         }
+    }
+
+    private AutoEmailAlertConfigStore configStore() {
+        AutoEmailAlertConfigStore configuredStore = store;
+        if (configuredStore == null) {
+            throw new IllegalStateException("Automatic email alert config store is not initialized.");
+        }
+        return configuredStore;
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private WidgetAvailabilityChecker availabilityChecker() {
+        return CDI.current().select(WidgetAvailabilityChecker.class).get();
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
+    }
+
+    private DbEmailConfigProvider dbEmailConfigProvider() {
+        return CDI.current().select(DbEmailConfigProvider.class).get();
     }
 
     private int intVal(JsonObject payload, String key, int fallback) {
