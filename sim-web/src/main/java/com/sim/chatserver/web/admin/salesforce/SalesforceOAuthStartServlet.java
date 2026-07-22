@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -86,6 +87,10 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         String safeAuthorizeUrl = toSafeAuthorizeUrl(authorizeUrl);
         if (safeAuthorizeUrl == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid Salesforce authorize URL.");
+            return;
+        }
+        if (!isSafeAuthorizeUrl(safeAuthorizeUrl)) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
             return;
         }
 
@@ -180,16 +185,26 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (req == null || headerName == null || headerName.isBlank()) {
             return null;
         }
-        String raw = req.getHeader(headerName);
-        if (raw == null) {
+
+        Enumeration<String> headers = req.getHeaders(headerName);
+        if (headers == null) {
             return null;
         }
-        String token = firstToken(raw);
-        if (token == null) {
-            return null;
+
+        while (headers.hasMoreElements()) {
+            String raw = headers.nextElement();
+            String token = firstToken(raw);
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            String normalized = token.replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
-        String normalized = token.replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+
+        return null;
     }
 
     private static String generateState() {

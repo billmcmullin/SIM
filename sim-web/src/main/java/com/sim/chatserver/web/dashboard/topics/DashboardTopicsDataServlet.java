@@ -34,7 +34,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -48,20 +48,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsDataServlet", urlPatterns = {"/dashboard/topics/data"})
 public class DashboardTopicsDataServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to compute dashboard topic aggregates."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed collaborators are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected collaborators are framework-managed and not serialized secret payloads."
-
     private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getName());
     private static final String OTHER_LABEL = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    @Inject
-    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -88,7 +77,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         List<TermDefinition> allTerms;
         try {
-            allTerms = termsStore.listAll();
+            allTerms = termsStore().listAll();
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list terms for dashboard topics", e);
             allTerms = List.of();
@@ -130,7 +119,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         long totalMentions = 0L;
         Set<String> allMatchedChatIds = new LinkedHashSet<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
@@ -355,18 +344,15 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject payload) throws IOException {
@@ -422,7 +408,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         final String name;
         final Pattern pattern;
 
-        TopicPattern(String name, Pattern pattern) {
+        private TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
         }
@@ -434,10 +420,38 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         final LocalDate endExclusive;
         final String dayToken;
 
-        DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
+        private DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
             this.startInclusive = startInclusive;
             this.endExclusive = endExclusive;
             this.dayToken = dayToken;
+        }
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
     }
 }

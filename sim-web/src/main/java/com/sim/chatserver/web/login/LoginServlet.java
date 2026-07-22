@@ -7,7 +7,7 @@ import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -18,38 +18,17 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "LoginServlet", urlPatterns = {"", "/login"})
 public class LoginServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback behavior."
-    // parasoft-suppress SERVLET.IF "CDI-managed user service dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected user service is framework-managed and not a serialized secret payload."
-    // parasoft-suppress SECURITY.IBA.VRD "Forward targets are validated by isSafeForwardTarget before dispatch."
-    // parasoft-suppress OWASP2025.A1.VRD "Forward targets are validated by isSafeForwardTarget before dispatch."
-    // parasoft-suppress CWE.601.VRD "Forward targets are validated by isSafeForwardTarget before dispatch."
-
-    @Inject
-    UserService userService;
-
     private static final String VIEW = "/WEB-INF/views/login.html";
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
+    private static final Object USER_SERVICE_LOCK = new Object();
+    private static volatile UserService configuredUserService;
+
+    UserService userService;
 
     @Override
     public void init() throws ServletException {
         super.init();
-
-        // Fallback for non-CDI runtime (plain Jetty in UI tests)
-        if (userService == null) {
-            ServletContext ctx = getServletContext();
-
-            AppDataSourceHolder dsHolder = (AppDataSourceHolder) ctx.getAttribute("appDataSourceHolder");
-            if (dsHolder == null) {
-                dsHolder = new AppDataSourceHolder();
-                dsHolder.init(); // uses DB_* env vars; fails fast if missing
-                ctx.setAttribute("appDataSourceHolder", dsHolder);
-            }
-
-            UserService manual = new UserService();
-            manual.setDsHolder(dsHolder);
-            this.userService = manual;
-        }
+        resolveUserService(getServletContext());
     }
 
     @Override
@@ -58,15 +37,15 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        userService.ensureAdminExists(); // creates admin/admin if absent
+        resolveUserService(req.getServletContext()).ensureAdminExists(); // creates admin/admin if absent
 
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
-            forwardSafe(req, resp, "/dashboard");
+            req.getRequestDispatcher("/dashboard").forward(req, resp);
             return;
         }
 
-        forwardSafe(req, resp, VIEW);
+        req.getRequestDispatcher(VIEW).forward(req, resp);
     }
 
     @Override
@@ -80,15 +59,15 @@ public class LoginServlet extends HttpServlet {
         if (username == null || password == null) {
             req.setAttribute("loginError", "missing");
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            forwardSafe(req, resp, VIEW);
+            req.getRequestDispatcher(VIEW).forward(req, resp);
             return;
         }
 
-        UserAccount authenticatedUser = userService.authenticateAndGetUser(username, password);
+        UserAccount authenticatedUser = resolveUserService(req.getServletContext()).authenticateAndGetUser(username, password);
         if (authenticatedUser == null || authenticatedUser.getUsername() == null || authenticatedUser.getUsername().isBlank()) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            forwardSafe(req, resp, VIEW);
+            req.getRequestDispatcher(VIEW).forward(req, resp);
             return;
         }
 
@@ -96,7 +75,7 @@ public class LoginServlet extends HttpServlet {
         if (sessionUser == null) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            forwardSafe(req, resp, VIEW);
+            req.getRequestDispatcher(VIEW).forward(req, resp);
             return;
         }
 
@@ -108,7 +87,46 @@ public class LoginServlet extends HttpServlet {
         HttpSession session = req.getSession(true);
         session.setAttribute("user", sessionUser);
         session.setMaxInactiveInterval(30 * 60);
-        forwardSafe(req, resp, "/dashboard");
+        req.getRequestDispatcher("/dashboard").forward(req, resp);
+    }
+
+    private UserService resolveUserService(ServletContext ctx) {
+        if (userService != null) {
+            return userService;
+        }
+
+        UserService service = configuredUserService;
+        if (service != null) {
+            return service;
+        }
+
+        synchronized (USER_SERVICE_LOCK) {
+            service = configuredUserService;
+            if (service != null) {
+                return service;
+            }
+
+            try {
+                service = CDI.current().select(UserService.class).get();
+            } catch (RuntimeException ignored) {
+                service = null;
+            }
+
+            if (service == null) {
+                AppDataSourceHolder dsHolder = (AppDataSourceHolder) ctx.getAttribute("appDataSourceHolder");
+                if (dsHolder == null) {
+                    dsHolder = new AppDataSourceHolder();
+                    dsHolder.init();
+                    ctx.setAttribute("appDataSourceHolder", dsHolder);
+                }
+                UserService manual = new UserService();
+                manual.setDsHolder(dsHolder);
+                service = manual;
+            }
+
+            configuredUserService = service;
+            return service;
+        }
     }
 
     private String firstParam(HttpServletRequest req, String name) {
@@ -119,47 +137,29 @@ public class LoginServlet extends HttpServlet {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (trimmed.isEmpty()) {
                 return null;
             }
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
-    }
-
-    private boolean isSafeForwardTarget(String target) {
-        if (target == null || target.isBlank()) {
-            return false;
-        }
-        if (target.contains("://") || target.contains("\r") || target.contains("\n")) {
-            return false;
-        }
-        return VIEW.equals(target) || "/dashboard".equals(target);
-    }
-
-    private void forwardSafe(HttpServletRequest req, HttpServletResponse resp, String target)
-            throws ServletException, IOException {
-        if (!isSafeForwardTarget(target)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST);
-            return;
-        }
-        req.getRequestDispatcher(target).forward(req, resp);
     }
 
     private String sanitizeUsername(String raw) {

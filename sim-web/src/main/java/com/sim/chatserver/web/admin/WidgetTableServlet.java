@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -25,15 +25,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableServlet", urlPatterns = {"/admin/widgets/table-check"})
 public class WidgetTableServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC metadata and table-management operations for admin widget tables."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries and converted into structured error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not hold mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
@@ -98,7 +92,7 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
             String countJson = "null";
             if (status.exists) {
@@ -125,7 +119,7 @@ public class WidgetTableServlet extends HttpServlet {
         out.append("{\"status\":\"ok\",\"statuses\":[");
         boolean first = true;
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (String wid : widgetIds) {
                 if (!first) {
                     out.append(',');
@@ -196,7 +190,7 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
             if (status.exists) {
                 resp.setContentType("application/json");
@@ -299,27 +293,34 @@ public class WidgetTableServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
     }
@@ -355,7 +356,7 @@ public class WidgetTableServlet extends HttpServlet {
         final boolean exists;
         final String message;
 
-        TableStatus(boolean exists, String message) {
+        private TableStatus(boolean exists, String message) {
             this.exists = exists;
             this.message = message;
         }

@@ -45,9 +45,6 @@ import jakarta.servlet.http.HttpSession;
  * Note: This is a raw data export backup, not a full pg_dump replacement.
  */
 public class DatabaseBackupServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This servlet is a controlled backup/export endpoint that intentionally performs JDBC reads with validated identifiers."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries and mapped to HTTP responses."
-
     private static final Logger log = Logger.getLogger(DatabaseBackupServlet.class.getName());
 
     private static final String SESSION_USER = "user";
@@ -246,7 +243,6 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
 
         if (sqlType == Types.DATE) {
-            // parasoft-suppress SECURITY.BV.ADT "Date values are validated and normalized before export serialization."
             java.sql.Date sqlDate = readValidatedDate(rs, columnIndex);
             if (sqlDate == null) {
                 return "";
@@ -264,34 +260,44 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
-        String raw = rawValue == null ? null : String.valueOf(rawValue);
+        String raw = rs.getString(columnIndex);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
-        byte[] raw = rawValue instanceof byte[] bytes ? bytes : null;
-        if (raw == null) {
-            String fallback = rawValue == null ? null : String.valueOf(rawValue);
-            raw = fallback == null ? null : fallback.getBytes(StandardCharsets.UTF_8);
+        byte[] raw = rs.getBytes(columnIndex);
+        if (raw != null) {
+            return sanitizeBinary(raw);
         }
-        return sanitizeBinary(raw);
+
+        String fallback = rs.getString(columnIndex);
+        byte[] fallbackBytes = fallback == null ? null : fallback.getBytes(StandardCharsets.UTF_8);
+        return sanitizeBinary(fallbackBytes);
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = readValidatedCellText(rs, columnIndex);
+        Timestamp value = rs.getTimestamp(columnIndex);
+        if (value != null) {
+            try {
+                java.time.Instant instant = value.toInstant();
+                return instant == null ? null : Timestamp.from(instant);
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
+            }
+        }
+
+        String raw = sanitizeCellText(rs.getString(columnIndex));
         if (raw == null || raw.isBlank()) {
             return null;
         }
 
-        Timestamp value = parseTimestamp(raw);
-        if (value == null) {
+        Timestamp parsed = parseTimestamp(raw);
+        if (parsed == null) {
             return null;
         }
 
         try {
-            java.time.Instant instant = value.toInstant();
+            java.time.Instant instant = parsed.toInstant();
             return instant == null ? null : Timestamp.from(instant);
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
@@ -300,12 +306,21 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = readValidatedCellText(rs, columnIndex);
+        java.sql.Date date = rs.getDate(columnIndex);
+        if (date != null) {
+            try {
+                LocalDate localDate = date.toLocalDate();
+                return localDate == null ? null : java.sql.Date.valueOf(localDate);
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                log.log(Level.FINE, "Ignoring invalid date cell", ex);
+            }
+        }
+
+        String raw = sanitizeCellText(rs.getString(columnIndex));
         if (raw == null || raw.isBlank()) {
             return null;
         }
 
-        // parasoft-suppress SECURITY.BV.ADT "Date values are validated and normalized before export serialization."
         java.sql.Date parsedDate = parseDate(raw);
         if (parsedDate == null) {
             return null;

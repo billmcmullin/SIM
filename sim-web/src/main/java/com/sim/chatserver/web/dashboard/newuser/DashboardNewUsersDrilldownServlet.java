@@ -33,7 +33,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.servlet.ServletException;
@@ -45,18 +45,11 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardNewUsersDrilldownServlet", urlPatterns = {"/dashboard/new-users/drilldown"})
 public class DashboardNewUsersDrilldownServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to assemble new-user drilldown rows."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback behavior."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-    // parasoft-suppress CWE.400.ABUB "Boxing around map-backed count aggregation is intentional and bounded by request scope."
-
     private static final Logger log = Logger.getLogger(DashboardNewUsersDrilldownServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users_drilldown.html";
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
@@ -79,7 +72,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         List<Row> allRows = new ArrayList<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<WidgetEntry> widgets;
             try {
                 widgets = WidgetStore.list(null);
@@ -348,18 +341,14 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
+        return RequestParamContext.from(req).first(name);
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String sanitizeForLog(String value) {
@@ -392,11 +381,39 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         final int totalChats;
         final String chatEntriesUrl;
 
-        Row(String display, String firstSeen, int totalChats, String chatEntriesUrl) {
+        private Row(String display, String firstSeen, int totalChats, String chatEntriesUrl) {
             this.display = display;
             this.firstSeen = firstSeen;
             this.totalChats = totalChats;
             this.chatEntriesUrl = chatEntriesUrl;
+        }
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest req) {
+            return new RequestParamContext(req);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 }

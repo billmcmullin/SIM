@@ -45,6 +45,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        RequestParamContext requestContext = RequestParamContext.from(req);
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             if (wantsJson(req)) {
@@ -55,7 +56,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        String rawTerm = firstParam(req, "term");
+        String rawTerm = requestContext.first("term", 256);
         if (rawTerm == null || rawTerm.isBlank()) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
@@ -66,7 +67,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         String normalizedTerm = normalize(rawTerm);
-        String mode = normalize(firstParam(req, "mode"));
+        String mode = normalize(requestContext.first("mode", 64));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
         boolean yesterdayOnly = MODE_YESTERDAY_ONLY.equalsIgnoreCase(mode);
 
@@ -195,6 +196,10 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
+        if (!isAllowedForwardPath(reviewPath)) {
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
         forwardSafe(req, resp, reviewPath, HttpServletResponse.SC_BAD_REQUEST);
     }
 
@@ -250,24 +255,12 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         return List.of();
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String[] values = req.getParameterValues(name);
-        if (values == null || values.length == 0 || values[0] == null) {
-            return null;
-        }
-        String trimmed = values[0].trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-    }
-
     private String safeContextPath(String contextPath) {
         if (contextPath == null || contextPath.isBlank()) {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;
@@ -299,13 +292,54 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return false;
         }
         String p = path.trim();
-        if (!p.startsWith("/") || p.contains("://") || p.contains("\r") || p.contains("\n")) {
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains("://") || p.contains("\r") || p.contains("\n")) {
             return false;
         }
         if (SAFE_FORWARD_PATHS.contains(p)) {
             return true;
         }
         return SAFE_TERM_PATH.matcher(p).matches();
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
+        }
     }
 
     private void sendErrorSafe(HttpServletResponse resp, int status) {

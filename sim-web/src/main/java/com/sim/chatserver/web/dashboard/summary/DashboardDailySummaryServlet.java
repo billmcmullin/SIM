@@ -11,7 +11,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonWriter;
@@ -24,28 +24,16 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardDailySummaryServlet", urlPatterns = {"/dashboard/daily-summary.json"})
 public class DashboardDailySummaryServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked servlet exceptions are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency and cached store handle are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Object SUMMARY_STORE_LOCK = new Object();
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    private transient DashboardDailySummaryStore summaryStore;
+    private static volatile DashboardDailySummaryStore summaryStore;
 
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
-            summaryStore.ensureTable();
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
-            throw new ServletException("Failed to initialize daily summary store", e);
-        }
+        ensureSummaryStoreInitialized();
     }
 
     @Override
@@ -55,16 +43,14 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        LocalDate day = parseDay(firstParam(req, "day"), zone);
-        int slot = parseSlotOrCurrent(firstParam(req, "slot"), zone);
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        LocalDate day = parseDay(requestContext.first("day", 256), zone);
+        int slot = parseSlotOrCurrent(requestContext.first("slot", 32), zone);
 
         try {
-            if (summaryStore == null) {
-                summaryStore = new DashboardDailySummaryStore(dsHolder.getDataSource());
-                summaryStore.ensureTable();
-            }
+            DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
 
-            JsonObject payload = summaryStore.fetchExactOrLatest(day, slot);
+            JsonObject payload = store.fetchExactOrLatest(day, slot);
             writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload);
 
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -145,18 +131,72 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
+    private DashboardDailySummaryStore ensureSummaryStoreInitialized() throws ServletException {
+        DashboardDailySummaryStore local = summaryStore;
+        if (local != null) {
+            return local;
+        }
+
+        synchronized (SUMMARY_STORE_LOCK) {
+            local = summaryStore;
+            if (local != null) {
+                return local;
+            }
+
+            try {
+                DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+                created.ensureTable();
+                summaryStore = created;
+                return created;
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
+                throw new ServletException("Failed to initialize daily summary store", e);
+            }
+        }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
         }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 }

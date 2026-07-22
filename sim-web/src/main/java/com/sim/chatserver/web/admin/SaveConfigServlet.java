@@ -37,6 +37,11 @@ public class SaveConfigServlet extends HttpServlet {
         String salesforceClientSecretParam = firstParam(req, "salesforceClientSecret");
         String salesforceRefreshTokenParam = firstParam(req, "salesforceRefreshToken");
 
+        // Salesforce username + password + API token params
+        String salesforceUsernameParam = firstParam(req, "salesforceUsername");
+        String salesforcePasswordParam = firstParam(req, "salesforcePassword");
+        String salesforceApiTokenParam = firstParam(req, "salesforceApiToken");
+
         try {
             ServerConfig existingConfig = EncryptedDbConfigStore.load();
             if (existingConfig == null) {
@@ -111,6 +116,24 @@ public class SaveConfigServlet extends HttpServlet {
                 salesforceRefreshToken = defaultString(existingConfig.getSalesforceRefreshToken());
             }
 
+            // Preserve existing Salesforce username when blank
+            String salesforceUsername = salesforceUsernameParam;
+            if (isBlank(salesforceUsername)) {
+                salesforceUsername = defaultString(existingConfig.getSalesforceUsername());
+            }
+
+            // Preserve existing Salesforce password when blank
+            String salesforcePassword = salesforcePasswordParam;
+            if (isBlank(salesforcePassword)) {
+                salesforcePassword = defaultString(existingConfig.getSalesforcePassword());
+            }
+
+            // Preserve existing Salesforce API token when blank
+            String salesforceApiToken = salesforceApiTokenParam;
+            if (isBlank(salesforceApiToken)) {
+                salesforceApiToken = defaultString(existingConfig.getSalesforceApiToken());
+            }
+
             ServerConfig config = new ServerConfig(serverHost, serverPort, connectionInfo, apiKey, workspaceName);
             config.setSalesforceInstanceUrl(salesforceInstanceUrl);
             config.setSalesforceApiKey(salesforceApiKey);
@@ -119,6 +142,9 @@ public class SaveConfigServlet extends HttpServlet {
             config.setSalesforceClientId(salesforceClientId);
             config.setSalesforceClientSecret(salesforceClientSecret);
             config.setSalesforceRefreshToken(salesforceRefreshToken);
+            config.setSalesforceUsername(salesforceUsername);
+            config.setSalesforcePassword(salesforcePassword);
+            config.setSalesforceApiToken(salesforceApiToken);
 
             EncryptedDbConfigStore.save(config);
 

@@ -33,7 +33,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -53,11 +53,6 @@ import jakarta.servlet.http.HttpSession;
  */
 @WebServlet(name = "WidgetReviewDataServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/review-data"})
 public class WidgetReviewDataServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads for review-data retrieval."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with structured error responses."
-    // parasoft-suppress SERVLET.IF "Servlet caches and CDI reference are intentional shared state for read-mostly performance."
-    // parasoft-suppress SECURITY.ESD.SIF "Cached metadata and CDI datasource references are framework-managed, not serialized secrets."
-
     private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -74,11 +69,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
     private static final int MAX_LIMIT = 20000;
     private static final int DEFAULT_PAGE = 1;
 
-    private final Map<String, String> tableExistsCache = new ConcurrentHashMap<>();
-    private final Map<String, String> widgetNameCache = new ConcurrentHashMap<>();
-
-    @Inject
-    AppDataSourceHolder dsHolder;
+    private static final Map<String, String> tableExistsCache = new ConcurrentHashMap<>();
+    private static final Map<String, String> widgetNameCache = new ConcurrentHashMap<>();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -158,7 +150,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
         final long t1 = System.nanoTime();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if (!tableExistsCached(conn, tableName)) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 writeJson(resp, "{\"status\":\"error\",\"message\":\"Table does not exist.\"}");
@@ -481,7 +473,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
             return true;
         }
-        return parsed != null && parsed.intValue() <= 0;
+        return parsed != null && parsed <= 0;
     }
 
     private Integer parseIntegerOrNull(String value) {
@@ -497,34 +489,38 @@ public class WidgetReviewDataServlet extends HttpServlet {
     }
 
     private int valueOrDefault(Integer value, int fallback) {
-        return value == null ? fallback : value.intValue();
+        return value == null ? fallback : value;
     }
 
     private String firstParam(HttpServletRequest req, String name) {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;
             }
@@ -697,7 +693,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
 
         final String sql;
 
-        QueryParts(String sql) {
+        private QueryParts(String sql) {
             this.sql = sql;
         }
     }
@@ -708,7 +704,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         final String prompt;
         final String response;
 
-        SearchTerms(String global, String prompt, String response) {
+        private SearchTerms(String global, String prompt, String response) {
             this.global = global;
             this.prompt = prompt;
             this.response = response;
@@ -723,7 +719,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         final String createdAt;
         final String sessionId;
 
-        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+        private ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.response = response;

@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.topics;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +27,7 @@ import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonException;
@@ -43,17 +44,11 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsSelectServlet", urlPatterns = {"/dashboard/topics/select"})
 public class DashboardTopicsSelectServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to resolve selected topic chat snapshots."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe JSON error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(DashboardTopicsSelectServlet.class.getName());
     private static final int IN_CLAUSE_BATCH_SIZE = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
@@ -110,7 +105,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to load widget list for topics selection", ex);
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             List<String> idList = new ArrayList<>(requestedIds);
 
             for (Map.Entry<String, WidgetEntry> e : widgetById.entrySet()) {
@@ -232,10 +227,6 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -244,21 +235,36 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress CWE.352.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress CWE.79.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress OWASP2025.A1.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress OWASP2025.A5.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        try (var in = req.getInputStream()) {
-            byte[] data = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (data.length > MAX_JSON_PAYLOAD_BYTES) {
-                throw new IOException("Payload exceeds allowed size.");
+        try (BufferedReader reader = req.getReader()) {
+            StringBuilder body = new StringBuilder();
+            char[] buffer = new char[2048];
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                body.append(buffer, 0, read);
             }
-            return new String(data, StandardCharsets.UTF_8)
-                    .replace("\u0000", "")
-                    .replace("\r", "")
-                    .trim();
+            return sanitizePayload(body.toString());
         }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private String sanitizePayload(String payload) {
+        if (payload == null) {
+            return "";
+        }
+        return payload.replace("\u0000", "")
+                .replace("\r", "")
+                .trim();
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {

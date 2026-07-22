@@ -11,7 +11,6 @@ import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.service.UserService;
 
 import jakarta.enterprise.inject.spi.CDI;
-import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -25,13 +24,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AdminUserServlet", urlPatterns = {"/admin/users"})
 public class AdminUserServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.IF "CDI-managed user service dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected user service is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
-    @Inject
     UserService userService;
 
     @Override
@@ -43,9 +38,12 @@ public class AdminUserServlet extends HttpServlet {
         List<UserAccount> users = resolveUserService().listAllUsers();
         JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
         users.forEach(user -> {
+            if (user == null) {
+                return;
+            }
             long userId = safeUserId(user);
             String username = user.getUsername() == null ? "" : user.getUsername();
-            String role = user.getRole();
+            String role = user.getRole() == null ? "" : user.getRole();
             arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", userId)
                     .add("username", username)
@@ -140,10 +138,6 @@ public class AdminUserServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
@@ -152,10 +146,11 @@ public class AdminUserServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String value = req.getParameter(name);
-        if (value == null) {
+        String[] values = req.getParameterValues(name);
+        if (values == null || values.length == 0 || values[0] == null) {
             return null;
         }
+        String value = values[0];
         String val = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
         if (val.isEmpty()) {
             return null;
@@ -171,16 +166,14 @@ public class AdminUserServlet extends HttpServlet {
         if (user == null) {
             return -1L;
         }
-        Object idObj = user.getId();
-        if (idObj instanceof Number number) {
-            return number.longValue();
-        }
-        if (idObj == null) {
+        Long id = user.getId();
+        if (id == null) {
             return -1L;
         }
         try {
-            return Long.parseLong(String.valueOf(idObj));
+            return id;
         } catch (NumberFormatException e) {
+            log.log(Level.FINE, "Invalid user id value", e);
             return -1L;
         }
     }

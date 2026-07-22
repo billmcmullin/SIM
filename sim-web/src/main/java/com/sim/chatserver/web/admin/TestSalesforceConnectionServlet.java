@@ -7,12 +7,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.security.SalesforceAuthClient;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -43,11 +43,18 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             return;
         }
 
-        String instanceUrl = firstParam(req, "salesforceInstanceUrl");
-        String apiKey = firstParam(req, "salesforceApiKey");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+
+        String instanceUrl = requestContext.first("salesforceInstanceUrl", 512);
+        String apiKey = requestContext.first("salesforceApiKey", 4096);
+        String loginUrl = requestContext.first("salesforceLoginUrl", 512);
+        String username = requestContext.first("salesforceUsername", 256);
+        String password = requestContext.first("salesforcePassword", 4096);
+        String apiToken = requestContext.first("salesforceApiToken", 4096);
 
         // fallback to stored values
-        if (isBlank(instanceUrl) || isBlank(apiKey)) {
+        if (isBlank(instanceUrl) || isBlank(apiKey) || isBlank(loginUrl)
+                || isBlank(username) || isBlank(password) || isBlank(apiToken)) {
             try {
                 ServerConfig config = loadConfig();
                 if (isBlank(instanceUrl) && config != null) {
@@ -56,11 +63,47 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 if (isBlank(apiKey) && config != null) {
                     apiKey = config.getSalesforceApiKey();
                 }
-            } catch (SQLException | RuntimeException e) {
+                if (isBlank(loginUrl) && config != null) {
+                    loginUrl = config.getSalesforceLoginUrl();
+                }
+                if (isBlank(username) && config != null) {
+                    username = config.getSalesforceUsername();
+                }
+                if (isBlank(password) && config != null) {
+                    password = config.getSalesforcePassword();
+                }
+                if (isBlank(apiToken) && config != null) {
+                    apiToken = config.getSalesforceApiToken();
+                }
+                } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
                 log.log(Level.WARNING, "Unable to load stored Salesforce configuration", e);
                 writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                         Json.createObjectBuilder().add("status", "error")
                                 .add("message", "Unable to load stored Salesforce configuration.").build());
+                return;
+            }
+        }
+
+        // If direct access token is not available, try username/password/API-token login flow.
+        if (isBlank(apiKey)) {
+            ServerConfig authConfig = new ServerConfig();
+            authConfig.setSalesforceLoginUrl(loginUrl);
+            authConfig.setSalesforceUsername(username);
+            authConfig.setSalesforcePassword(password);
+            authConfig.setSalesforceApiToken(apiToken);
+
+            try {
+                SalesforceAuthClient.AuthResult authResult = new SalesforceAuthClient(getHttpClient())
+                        .refreshAccessToken(authConfig);
+                apiKey = authResult == null ? null : authResult.accessToken;
+                if (isBlank(instanceUrl)) {
+                    instanceUrl = authResult == null ? null : authResult.instanceUrl;
+                }
+            } catch (Exception e) {
+                log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                        Json.createObjectBuilder().add("status", "error")
+                                .add("message", "Unable to acquire Salesforce access token from configured credentials.").build());
                 return;
             }
         }
@@ -79,13 +122,16 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             return;
         }
 
-        String endpoint = buildSalesforceDataEndpoint(instanceUrl.trim());
+        String normalizedInstanceUrl = instanceUrl == null ? "" : instanceUrl.trim();
+        String normalizedApiKey = apiKey == null ? "" : apiKey.trim();
+
+        String endpoint = buildSalesforceDataEndpoint(normalizedInstanceUrl);
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(10))
-                    .header("Authorization", "Bearer " + apiKey.trim())
+                    .header("Authorization", "Bearer " + normalizedApiKey)
                     .header("Accept", "application/json")
                     .GET()
                     .build();
@@ -115,7 +161,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         }
     }
 
-    HttpClient getHttpClient() {
+    final HttpClient getHttpClient() {
         return CLIENT;
     }
 
@@ -145,15 +191,44 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         return v == null || v.isBlank();
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
-            return null;
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
         }
-        return values[0];
     }
 }

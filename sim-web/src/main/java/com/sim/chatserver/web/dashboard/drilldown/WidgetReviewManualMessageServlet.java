@@ -2,7 +2,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
@@ -42,7 +41,7 @@ import com.sim.chatserver.service.WorkspaceClient;
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonException;
@@ -57,11 +56,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetReviewManualMessageServlet", urlPatterns = {"/dashboard/drilldown/widget-review/manual-message"})
-// parasoft-suppress SERVLET.IF "Servlet fields hold request orchestration dependencies initialized in init() and are not exposed to clients."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are intentionally surfaced through controlled API error responses."
-// parasoft-suppress SECURITY.ESD.SIF "Servlet fields store runtime collaborators only; no secret serialization path is exposed."
-// parasoft-suppress SECURITY.BV.ADT "Timing calls are used only for request latency telemetry and contain no security decisions."
-// parasoft-suppress METRIC.CC "The orchestration method is intentionally linear despite high branch count to preserve traceability."
 public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetReviewManualMessageServlet.class.getName());
@@ -71,70 +65,83 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final int MAX_SESSION_ID_CHARS = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
+    private static final Object INIT_LOCK = new Object();
 
-    @Inject
-    transient AppDataSourceHolder dsHolder;
+    private static volatile HttpClient httpClient;
+    private static volatile MapReduceConfig mrConfig;
+    private static volatile WorkspaceClient workspaceClient;
+    private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
+    private static volatile PromptTemplateService promptTemplateService;
+    private static volatile ReviewContextBuilderService reviewContextBuilderService;
+    private static volatile ReviewOutputValidator reviewOutputValidator;
+    private static volatile TrustedUrlValidator trustedUrlValidator;
 
-    private transient HttpClient httpClient;
-    private transient MapReduceConfig mrConfig;
-    private transient WorkspaceClient workspaceClient;
-    private transient WidgetReviewMapReduceOrchestrator orchestrator;
-    private transient PromptTemplateService promptTemplateService;
-    private transient ReviewContextBuilderService reviewContextBuilderService;
-    private transient ReviewOutputValidator reviewOutputValidator;
-    private transient TrustedUrlValidator trustedUrlValidator;
+    AppDataSourceHolder dsHolder;
 
     @Override
     public void init() throws ServletException {
         super.init();
+        synchronized (INIT_LOCK) {
+            if (mrConfig != null && orchestrator != null && trustedUrlValidator != null && workspaceClient != null) {
+            return;
+            }
 
-        this.mrConfig = MapReduceConfig.load();
-
-        this.httpClient = HttpClient.newBuilder()
+            MapReduceConfig loadedConfig = MapReduceConfig.load();
+            HttpClient client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(20))
                 .build();
 
-        this.workspaceClient = new WorkspaceClient(
-                httpClient,
-                mrConfig.getWorkspaceMaxRetries(),
-                mrConfig.getWorkspaceTimeout()
-        );
+            WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
+                client,
+                loadedConfig.getWorkspaceMaxRetries(),
+                loadedConfig.getWorkspaceTimeout()
+            );
 
-        this.promptTemplateService = new PromptTemplateService();
-        this.reviewContextBuilderService = new ReviewContextBuilderService();
-        this.reviewOutputValidator = new ReviewOutputValidator();
+            PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
+            ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService();
+            ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
 
-        Set<String> allowedHosts = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOSTS"));
-        Set<String> allowedSuffixes = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOST_SUFFIXES"));
-        boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(System.getenv("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
-        this.trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+            Set<String> allowedHosts = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOSTS"));
+            Set<String> allowedSuffixes = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOST_SUFFIXES"));
+            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(System.getenv("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
+            TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
 
-        this.orchestrator = new WidgetReviewMapReduceOrchestrator(
-                workspaceClient,
-                reviewContextBuilderService,
-                promptTemplateService,
-                reviewOutputValidator,
-                mrConfig.getBatchSize(),
-                mrConfig.getMaxParallel(),
-                mrConfig.getMapMessageMaxChars(),
-                mrConfig.getMapContextMaxChars(),
-                mrConfig.getReduceMessageMaxChars(),
-                mrConfig.getReduceContextMaxChars(),
-                mrConfig.getRetryContextChars(),
-                mrConfig.getRetryMessageMaxChars(),
-                mrConfig.getMaxCoveragePasses(),
-                mrConfig.getMinBatchSize(),
-                mrConfig.getSegmentPromptChars(),
-                mrConfig.getSegmentResponseChars(),
-                mrConfig.getReduceInitialChunkSize(),
-                mrConfig.getReduceMinChunkSize(),
-                mrConfig.getReduceMaxLevels(),
-                mrConfig.getReduceChunkSummaryMaxChars(),
-                mrConfig.getFinalReduceMaxSummaries(),
-                mrConfig.getFinalReduceSummaryMaxChars(),
-                mrConfig.getFinalReduceMaxAttempts()
-        );
+            WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
+                configuredWorkspaceClient,
+                configuredReviewContextBuilderService,
+                configuredPromptTemplateService,
+                configuredReviewOutputValidator,
+                loadedConfig.getBatchSize(),
+                loadedConfig.getMaxParallel(),
+                loadedConfig.getMapMessageMaxChars(),
+                loadedConfig.getMapContextMaxChars(),
+                loadedConfig.getReduceMessageMaxChars(),
+                loadedConfig.getReduceContextMaxChars(),
+                loadedConfig.getRetryContextChars(),
+                loadedConfig.getRetryMessageMaxChars(),
+                loadedConfig.getMaxCoveragePasses(),
+                loadedConfig.getMinBatchSize(),
+                loadedConfig.getSegmentPromptChars(),
+                loadedConfig.getSegmentResponseChars(),
+                loadedConfig.getReduceInitialChunkSize(),
+                loadedConfig.getReduceMinChunkSize(),
+                loadedConfig.getReduceMaxLevels(),
+                loadedConfig.getReduceChunkSummaryMaxChars(),
+                loadedConfig.getFinalReduceMaxSummaries(),
+                loadedConfig.getFinalReduceSummaryMaxChars(),
+                loadedConfig.getFinalReduceMaxAttempts()
+            );
+
+            mrConfig = loadedConfig;
+            httpClient = client;
+            workspaceClient = configuredWorkspaceClient;
+            promptTemplateService = configuredPromptTemplateService;
+            reviewContextBuilderService = configuredReviewContextBuilderService;
+            reviewOutputValidator = configuredReviewOutputValidator;
+            trustedUrlValidator = configuredTrustedUrlValidator;
+            orchestrator = configuredOrchestrator;
+        }
 
         log.log(Level.INFO, "[manual-message][init] loaded config: {0}", mrConfig);
     }
@@ -189,7 +196,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         log.log(Level.INFO, "[manual-message][{0}] selectedEntriesParsed={1}", new Object[]{requestId, selectedEntries.size()});
 
-        EncryptedDbConfigStore.setAppDataSourceHolder(dsHolder);
+        EncryptedDbConfigStore.setAppDataSourceHolder(dataSourceHolder());
         ServerConfig config;
         try {
             config = EncryptedDbConfigStore.load();
@@ -1123,13 +1130,31 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!isValidJsonRequest(req)) {
             throw new IOException("Invalid JSON request payload.");
         }
-        try (InputStream in = req.getInputStream()) {
-            byte[] bodyBytes = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (bodyBytes.length > MAX_JSON_PAYLOAD_BYTES) {
+        try (var reader = req.getReader()) {
+            char[] buffer = new char[4096];
+            StringBuilder builder = new StringBuilder();
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                builder.append(buffer, 0, read);
+            }
+            String body = builder.toString();
+            if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
                 throw new IOException("Payload exceeds allowed size.");
             }
-            return canonicalizeForValidation(new String(bodyBytes, StandardCharsets.UTF_8));
+            return canonicalizeForValidation(body);
         }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private String canonicalizeForValidation(String value) {
@@ -1221,7 +1246,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final WorkspaceResponse response;
         final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
 
-        MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
+        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
             this.response = response;
             this.orchestration = orchestration;
         }

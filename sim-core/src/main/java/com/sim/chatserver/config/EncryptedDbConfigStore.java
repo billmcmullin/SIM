@@ -43,18 +43,23 @@ public final class EncryptedDbConfigStore {
             + "salesforce_login_url TEXT, "
             + "salesforce_client_id TEXT, "
             + "salesforce_client_secret TEXT, "
-            + "salesforce_refresh_token TEXT)";
+                + "salesforce_refresh_token TEXT, "
+                + "salesforce_username TEXT, "
+                + "salesforce_password TEXT, "
+                + "salesforce_api_token TEXT)";
     private static final String SELECT_SQL
             = "SELECT server_host, server_port, connection_info, api_key, workspace_name, "
             + "salesforce_instance_url, salesforce_api_key, "
-            + "salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token "
+                + "salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token, "
+                + "salesforce_username, salesforce_password, salesforce_api_token "
             + "FROM " + TABLE_NAME + " ORDER BY id DESC LIMIT 1";
     private static final String DELETE_SQL = "DELETE FROM " + TABLE_NAME;
     private static final String INSERT_SQL
             = "INSERT INTO " + TABLE_NAME
             + " (server_host, server_port, connection_info, api_key, workspace_name, "
-            + "salesforce_instance_url, salesforce_api_key, salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "salesforce_instance_url, salesforce_api_key, salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token, "
+            + "salesforce_username, salesforce_password, salesforce_api_token) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String ENC_KEY_ENV = "CONFIG_ENCRYPTION_KEY";
     private static final String ENC_SALT_ENV = "CONFIG_ENCRYPTION_SALT";
@@ -100,6 +105,9 @@ public final class EncryptedDbConfigStore {
             ensureSalesforceClientIdColumn(conn);
             ensureSalesforceClientSecretColumn(conn);
             ensureSalesforceRefreshTokenColumn(conn);
+            ensureSalesforceUsernameColumn(conn);
+            ensureSalesforcePasswordColumn(conn);
+            ensureSalesforceApiTokenColumn(conn);
             log.fine("ensureTable: column checks complete");
         } catch (SQLException e) {
             log.log(Level.SEVERE, "ensureTable: failed during column checks", e);
@@ -134,6 +142,9 @@ public final class EncryptedDbConfigStore {
                 config.setSalesforceClientId(decryptIfNeeded(rs.getString("salesforce_client_id")));
                 config.setSalesforceClientSecret(decryptIfNeeded(rs.getString("salesforce_client_secret")));
                 config.setSalesforceRefreshToken(decryptIfNeeded(rs.getString("salesforce_refresh_token")));
+                config.setSalesforceUsername(rs.getString("salesforce_username"));
+                config.setSalesforcePassword(decryptIfNeeded(rs.getString("salesforce_password")));
+                config.setSalesforceApiToken(decryptIfNeeded(rs.getString("salesforce_api_token")));
 
                 log.fine("load: config loaded successfully");
                 return config;
@@ -156,6 +167,8 @@ public final class EncryptedDbConfigStore {
         String encryptedSalesforceClientId = encryptIfPresent(config != null ? config.getSalesforceClientId() : null);
         String encryptedSalesforceClientSecret = encryptIfPresent(config != null ? config.getSalesforceClientSecret() : null);
         String encryptedSalesforceRefreshToken = encryptIfPresent(config != null ? config.getSalesforceRefreshToken() : null);
+        String encryptedSalesforcePassword = encryptIfPresent(config != null ? config.getSalesforcePassword() : null);
+        String encryptedSalesforceApiToken = encryptIfPresent(config != null ? config.getSalesforceApiToken() : null);
 
         DataSource ds = requireDataSource();
 
@@ -180,6 +193,9 @@ public final class EncryptedDbConfigStore {
             insertStmt.setString(9, encryptedSalesforceClientId);
             insertStmt.setString(10, encryptedSalesforceClientSecret);
             insertStmt.setString(11, encryptedSalesforceRefreshToken);
+            insertStmt.setString(12, config != null ? config.getSalesforceUsername() : null);
+            insertStmt.setString(13, encryptedSalesforcePassword);
+            insertStmt.setString(14, encryptedSalesforceApiToken);
 
             int inserted = insertStmt.executeUpdate();
             log.log(Level.FINE, "save: insert complete, rows={0}", inserted);
@@ -237,6 +253,18 @@ public final class EncryptedDbConfigStore {
 
     private static void ensureSalesforceRefreshTokenColumn(Connection conn) throws SQLException {
         ensureColumn(conn, "salesforce_refresh_token", "TEXT");
+    }
+
+    private static void ensureSalesforceUsernameColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "salesforce_username", "TEXT");
+    }
+
+    private static void ensureSalesforcePasswordColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "salesforce_password", "TEXT");
+    }
+
+    private static void ensureSalesforceApiTokenColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "salesforce_api_token", "TEXT");
     }
 
     private static void ensureColumn(Connection conn, String columnName, String sqlType) throws SQLException {

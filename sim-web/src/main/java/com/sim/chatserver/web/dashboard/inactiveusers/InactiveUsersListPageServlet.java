@@ -29,7 +29,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -44,11 +44,6 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "InactiveUsersListPageServlet", urlPatterns = {"/dashboard/inactive-users/list"})
 public class InactiveUsersListPageServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to assemble inactive-user metrics."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback behavior."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not hold mutable per-request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(InactiveUsersListPageServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/inactive_users_list.html";
     private static final int DEFAULT_DAYS = 7;
@@ -77,9 +72,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
     );
 
-    @Inject
-    AppDataSourceHolder dsHolder;
-
     static final class Row {
 
         String sessionId;
@@ -103,7 +95,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String contextPath = "";
+        String contextPath = req.getContextPath() == null ? "" : req.getContextPath();
         HttpSession s = req.getSession(false);
         if (s == null || s.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -157,7 +149,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
         List<Row> allRows = new ArrayList<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if ("widget".equalsIgnoreCase(scope)) {
                 if (!widgetIdFilter.isBlank() && widgetNameById.containsKey(widgetIdFilter)) {
                     String table = sanitizeWidgetTableName(widgetIdFilter);
@@ -291,9 +283,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-            // parasoft-suppress OWASP2025.A1.SENS "Rendered output is a server template with escaped dynamic placeholders and no secret context exposure."
-            // parasoft-suppress OWASP2025.A10.SENS "Rendered output is a server template with escaped dynamic placeholders and no secret context exposure."
-            // parasoft-suppress CWE.200.SENS "Rendered output is a server template with escaped dynamic placeholders and no secret context exposure."
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -657,26 +646,31 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String normalized = value.replace("\r", "").replace("\n", "").trim();
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }

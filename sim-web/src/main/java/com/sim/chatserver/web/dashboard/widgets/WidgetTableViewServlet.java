@@ -11,7 +11,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -33,7 +32,6 @@ public class WidgetTableViewServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/widget_table_view.html";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final Pattern WIDGET_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
-    private static final int MAX_PARAM_LEN = 128;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -76,7 +74,7 @@ public class WidgetTableViewServlet extends HttpServlet {
                     break;
                 }
             }
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to list widgets", e);
         }
 
@@ -91,9 +89,9 @@ public class WidgetTableViewServlet extends HttpServlet {
         } else {
             LocalDate today = LocalDate.now(ZoneId.systemDefault());
             if (selectedDate.equals(today)) {
-                selectedDateLabel = "Today (" + selectedDateText + ")";
+                selectedDateLabel = "Today (" + selectedDateText + ')';
             } else if (selectedDate.equals(today.minusDays(1))) {
-                selectedDateLabel = "Yesterday (" + selectedDateText + ")";
+                selectedDateLabel = "Yesterday (" + selectedDateText + ')';
             } else {
                 selectedDateLabel = selectedDateText;
             }
@@ -142,11 +140,19 @@ public class WidgetTableViewServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder escaped = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            switch (ch) {
+                case '&' -> escaped.append("&amp;");
+                case '<' -> escaped.append("&lt;");
+                case '>' -> escaped.append("&gt;");
+                case '"' -> escaped.append("&quot;");
+                case '\'' -> escaped.append("&#39;");
+                default -> escaped.append(ch);
+            }
+        }
+        return escaped.toString();
     }
 
     private String sanitizeForLog(String value) {
@@ -162,34 +168,44 @@ public class WidgetTableViewServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;
     }
 
     private static final class RequestContext {
+        private static final int MAX_PARAM_LEN = 128;
 
-        private final Map<String, String[]> params;
+        private final HttpServletRequest request;
 
-        private RequestContext(Map<String, String[]> params) {
-            this.params = params;
+        private RequestContext(HttpServletRequest request) {
+            this.request = request;
         }
 
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req.getParameterMap());
+        static RequestContext from(HttpServletRequest req) {
+            return new RequestContext(req);
         }
 
-        private String first(String name) {
-            if (name == null || name.isBlank() || params == null) {
+        String first(String name) {
+            if (name == null || name.isBlank() || request == null) {
                 return null;
             }
-            String[] values = params.get(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
                 return null;
             }
-            String trimmed = values[0].trim();
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            for (String value : values) {
+                if (value == null) {
+                    continue;
+                }
+                String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            }
+            return null;
         }
     }
 }

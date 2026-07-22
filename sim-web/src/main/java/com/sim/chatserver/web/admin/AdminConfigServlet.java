@@ -19,7 +19,7 @@ import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,15 +27,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 public class AdminConfigServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC-backed config reads and writes."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed collaborators are required and do not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected collaborators are framework-managed and not serialized secret payloads."
-
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
     private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getName());
 
-    @Inject
     TermsStore termsStore;
 
     @Override
@@ -46,15 +40,10 @@ public class AdminConfigServlet extends HttpServlet {
             EncryptedDbConfigStore.ensureTable();
             log.info("AdminConfigServlet.init: EncryptedDbConfigStore.ensureTable OK");
 
-            if (termsStore == null) {
-                log.severe("AdminConfigServlet.init: TermsStore injection is null");
-                throw new ServletException("TermsStore injection failed (null)");
-            }
-
-            termsStore.ensureTable();
+            termsStore().ensureTable();
             log.info("AdminConfigServlet.init: termsStore.ensureTable OK");
             log.info("AdminConfigServlet.init: initialization completed");
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.SEVERE, "AdminConfigServlet init failed", e);
             throw new ServletException("Unable to initialize configuration storage", e);
         }
@@ -92,7 +81,7 @@ public class AdminConfigServlet extends HttpServlet {
             try {
                 config = EncryptedDbConfigStore.load();
                 log.info(() -> "[RID " + rid + "] EncryptedDbConfigStore.load OK");
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | IllegalStateException e) {
                 log.log(Level.SEVERE, "[RID " + rid + "] Unable to load server configuration", e);
                 throw new ServletException("Unable to load server configuration", e);
             }
@@ -108,13 +97,10 @@ public class AdminConfigServlet extends HttpServlet {
 
             String termsListJson = "[]";
             try {
-                if (termsStore == null) {
-                    throw new IllegalStateException("termsStore is null in doGet");
-                }
-                List<TermDefinition> terms = termsStore.listAll();
+                List<TermDefinition> terms = termsStore().listAll();
                 termsListJson = serializeTerms(terms);
                 log.info(() -> "[RID " + rid + "] Loaded terms count=" + (terms == null ? 0 : terms.size()));
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | IllegalStateException e) {
                 log.log(Level.WARNING, "[RID " + rid + "] Unable to load term definitions", e);
             }
 
@@ -136,8 +122,17 @@ public class AdminConfigServlet extends HttpServlet {
                     && config.getSalesforceRefreshToken() != null
                     && !config.getSalesforceRefreshToken().isBlank();
 
+                boolean salesforcePasswordStored = config != null
+                    && config.getSalesforcePassword() != null
+                    && !config.getSalesforcePassword().isBlank();
+
+                boolean salesforceApiTokenStored = config != null
+                    && config.getSalesforceApiToken() != null
+                    && !config.getSalesforceApiToken().isBlank();
+
             String salesforceLoginUrl = config != null ? config.getSalesforceLoginUrl() : "";
             String salesforceClientId = config != null ? config.getSalesforceClientId() : "";
+                String salesforceUsername = config != null ? config.getSalesforceUsername() : "";
 
             String salesforceOAuthStatus = firstQueryParam(req, "salesforceOAuthStatus");
             String salesforceOAuthMessage = firstQueryParam(req, "salesforceOAuthMessage");
@@ -164,10 +159,15 @@ public class AdminConfigServlet extends HttpServlet {
                     .replace("${salesforceApiKeyForJs}", salesforceApiKeyForJs)
                     .replace("${salesforceLoginUrl}", escapeAttribute(salesforceLoginUrl))
                     .replace("${salesforceClientId}", escapeAttribute(salesforceClientId))
+                    .replace("${salesforceUsername}", escapeAttribute(salesforceUsername))
                     .replace("${salesforceClientSecret}", "")
                     .replace("${salesforceClientSecretStored}", Boolean.toString(salesforceClientSecretStored))
                     .replace("${salesforceRefreshToken}", "")
                     .replace("${salesforceRefreshTokenStored}", Boolean.toString(salesforceRefreshTokenStored))
+                    .replace("${salesforcePassword}", "")
+                    .replace("${salesforcePasswordStored}", Boolean.toString(salesforcePasswordStored))
+                    .replace("${salesforceApiToken}", "")
+                    .replace("${salesforceApiTokenStored}", Boolean.toString(salesforceApiTokenStored))
                     .replace("${salesforceOAuthStatus}", escapeJs(salesforceOAuthStatus))
                     .replace("${salesforceOAuthMessage}", escapeJs(salesforceOAuthMessage))
                     .replace("${widgetListJson}", widgetListJson)
@@ -181,25 +181,14 @@ public class AdminConfigServlet extends HttpServlet {
             }
 
             log.info(() -> "[RID " + rid + "] GET /admin completed successfully");
-        } catch (ServletException | IOException | RuntimeException e) {
+        } catch (ServletException | IOException e) {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
             throw e;
         }
     }
 
     private String firstQueryParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        return RequestParamContext.from(req).first(name);
     }
 
     private static String serializeTerms(List<TermDefinition> terms) {
@@ -216,9 +205,9 @@ public class AdminConfigServlet extends HttpServlet {
             sb.append("{\"id\":").append(term.getId())
                     .append(",\"name\":\"").append(escapeJson(term.getName())).append("\"")
                     .append(",\"description\":\"").append(escapeJson(term.getDescription())).append("\"")
-                    .append("}");
+                    .append('}');
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -252,9 +241,9 @@ public class AdminConfigServlet extends HttpServlet {
             sb.append("{\"id\":").append(entry.getId())
                     .append(",\"widgetId\":\"").append(escapeJson(entry.getWidgetId())).append("\"")
                     .append(",\"displayName\":\"").append(escapeJson(entry.getDisplayName())).append("\"")
-                    .append("}");
+                    .append('}');
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -283,14 +272,57 @@ public class AdminConfigServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder out = new StringBuilder(input.length() + 16);
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            switch (ch) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&#39;");
+                default -> out.append(ch);
+            }
+        }
+        return out.toString();
     }
 
     private String escapeAttribute(String input) {
         return escapeHtml(input);
+    }
+
+    private TermsStore termsStore() {
+        if (termsStore != null) {
+            return termsStore;
+        }
+        return CDI.current().select(TermsStore.class).get();
+    }
+
+    private static final class RequestParamContext {
+
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        private static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        private String first(String name) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
+                return null;
+            }
+            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        }
     }
 }

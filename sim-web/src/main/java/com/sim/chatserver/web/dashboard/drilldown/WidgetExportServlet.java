@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.openpdf.text.Document;
@@ -40,7 +41,7 @@ import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionIdFormatter;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
@@ -57,10 +58,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetExportServlet", urlPatterns = {"/dashboard/widgets/drilldown/export"})
-// parasoft-suppress SERVLET.AJDBC "This servlet intentionally performs export queries with prepared statements and bounded result shaping."
-// parasoft-suppress SERVLET.IF "Servlet field usage is limited to framework injection and immutable runtime collaborators."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are intentionally translated into HTTP error responses for export endpoints."
-// parasoft-suppress SECURITY.ESD.SIF "Servlet fields hold runtime state only and are not exposed through serialization output paths."
 public class WidgetExportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getName());
@@ -70,9 +67,9 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int DB_ID_CHUNK_SIZE = parseIntProperty("export.dbIdChunkSize", 500);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    @Inject
-    transient AppDataSourceHolder dsHolder;
+    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -244,7 +241,7 @@ public class WidgetExportServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         Map<String, OrderIndex> order = indexByOrder(selectedChatIds);
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
                 return exportRows;
             }
@@ -733,23 +730,31 @@ public class WidgetExportServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        // parasoft-suppress BD.SECURITY.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress CWE.352.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress CWE.79.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress OWASP2025.A1.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        // parasoft-suppress OWASP2025.A5.VPPD "Input stream content is size-bounded, control-char stripped, and used only as JSON payload text."
-        try (var in = req.getInputStream()) {
-            byte[] body = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (body.length > MAX_JSON_PAYLOAD_BYTES) {
+        try (var reader = req.getReader()) {
+            char[] buf = new char[4096];
+            StringBuilder body = new StringBuilder();
+            int total = 0;
+            int read;
+            while ((read = reader.read(buf)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size.");
+                }
+                body.append(buf, 0, read);
+            }
+            String normalized = body.toString().replace("\u0000", "").replace("\r", "").trim();
+            if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
                 throw new IOException("Payload exceeds allowed size.");
             }
-            return new String(body, StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
+            return normalized;
         }
     }
 
     private String readDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        Object raw = rs.getObject(columnName);
-        String value = raw == null ? "" : String.valueOf(raw);
+        String value = rs.getString(columnName);
+        if (value == null) {
+            return "";
+        }
         if (value.isEmpty()) {
             return "";
         }
@@ -758,22 +763,31 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
-        Object raw = rs.getObject(columnName);
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof Timestamp ts) {
+        Timestamp ts = rs.getTimestamp(columnName);
+        if (ts != null) {
             return ts;
         }
-        String text = String.valueOf(raw).trim();
+        String text = rs.getString(columnName);
+        if (text == null) {
+            return null;
+        }
+        text = text.trim();
         if (text.isEmpty()) {
             return null;
         }
         try {
             return Timestamp.from(Instant.parse(text));
         } catch (RuntimeException ex) {
+            log.log(Level.FINE, "Falling back to SQL timestamp parsing", ex);
             return Timestamp.valueOf(text.replace('T', ' '));
         }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -789,6 +803,9 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
@@ -825,7 +842,7 @@ public class WidgetExportServlet extends HttpServlet {
 
         final int value;
 
-        OrderIndex(int value) {
+        private OrderIndex(int value) {
             this.value = value;
         }
     }

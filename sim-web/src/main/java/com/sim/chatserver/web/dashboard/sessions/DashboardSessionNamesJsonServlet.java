@@ -25,7 +25,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -40,19 +40,11 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardSessionNamesJsonServlet", urlPatterns = {"/dashboard/session-names.json"})
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to build session catalog aggregates."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries with safe fallback responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
     private static final int DEFAULT_LIMIT = 10;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
-
-    @Inject
-    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -65,16 +57,17 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             return;
         }
 
-        String query = firstParam(req, "q");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String query = requestContext.first("q", 256);
         if (query == null || query.isBlank()) {
-            query = firstParam(req, "search");
+            query = requestContext.first("search", 256);
         }
 
-        boolean labeledOnly = "true".equalsIgnoreCase(firstParam(req, "labeledOnly"));
+        boolean labeledOnly = "true".equalsIgnoreCase(requestContext.first("labeledOnly", 16));
 
-        int limit = parsePositiveInteger(firstParam(req, "limit"), DEFAULT_LIMIT);
-        int page = parsePositiveInteger(firstParam(req, "page"), 1);
-        int offset = parseNonNegativeInteger(firstParam(req, "offset"), -1);
+        int limit = parsePositiveInteger(requestContext.first("limit", 32), DEFAULT_LIMIT);
+        int page = parsePositiveInteger(requestContext.first("page", 32), 1);
+        int offset = parseNonNegativeInteger(requestContext.first("offset", 32), -1);
 
         if (offset >= 0) {
             page = (offset / limit) + 1;
@@ -87,7 +80,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to list widgets for session catalog", e);
         }
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets, query);
 
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
@@ -203,19 +196,8 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter)
@@ -342,5 +324,46 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
         int count = 0;
         Timestamp lastEntry = null;
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
+        }
     }
 }

@@ -5,9 +5,9 @@ import com.sim.chatserver.email.EmailConfig;
 import com.sim.chatserver.security.email.EmailSecretCrypto;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import org.postgresql.ds.PGSimpleDataSource;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -15,6 +15,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Plain JDBC implementation for email_smtp_config single-row table (id=1),
@@ -41,6 +42,10 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
     private static final Logger log = Logger.getLogger(DbEmailConfigProviderImpl.class.getName());
     private static final int SINGLE_ROW_ID = 1;
+    private static final Pattern SAFE_DB_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,255}$");
+    private static final Pattern SAFE_DB_PORT = Pattern.compile("^\\d{1,5}$");
+    private static final Pattern SAFE_DB_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
+    private static final Pattern SAFE_DB_USER = Pattern.compile("^[A-Za-z0-9_.@-]{1,128}$");
 
     @Override
     public EmailConfig load() {
@@ -82,7 +87,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                         defaultFrom
                 );
             }
-        } catch (Exception e) {
+        } catch (SQLException | RuntimeException e) {
             log.log(Level.SEVERE, "Failed to load SMTP config from DB", e);
             return null;
         }
@@ -134,31 +139,77 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                 }
 
                 con.commit();
-            } catch (Exception e) {
+            } catch (SQLException e) {
+                rollbackQuietly(con);
+                throw new IllegalStateException("Failed to save SMTP config", e);
+            } catch (RuntimeException e) {
                 rollbackQuietly(con);
                 throw e;
             } finally {
                 setAutoCommitQuietly(con, true);
             }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to save SMTP config", e);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to save SMTP config", e);
         }
     }
 
     private Connection newConnection() throws SQLException {
-        String host = env("DB_HOST", "localhost");
-        String port = env("DB_PORT", "5432");
-        String db = env("DB_NAME", "chat");
-        String user = env("DB_USER", "postgres");
-        String pass = env("DB_PASSWORD", "");
+        String host = envOrDefault("DB_HOST", "localhost", SAFE_DB_HOST, 255);
+        String portRaw = envOrDefault("DB_PORT", "5432", SAFE_DB_PORT, 5);
+        String db = envOrDefault("DB_NAME", "chat", SAFE_DB_NAME, 128);
+        String user = envOrDefault("DB_USER", "postgres", SAFE_DB_USER, 128);
+        String pass = envSecretOrDefault("DB_PASSWORD", "");
 
-        String url = "jdbc:postgresql://" + host + ":" + port + "/" + db;
-        return DriverManager.getConnection(url, user, pass);
+        int port;
+        try {
+            port = Integer.parseInt(portRaw);
+        } catch (NumberFormatException ex) {
+            port = 5432;
+        }
+
+        PGSimpleDataSource dataSource = new PGSimpleDataSource();
+        dataSource.setServerNames(new String[]{host});
+        dataSource.setPortNumbers(new int[]{port});
+        dataSource.setDatabaseName(db);
+        dataSource.setUser(user);
+        dataSource.setPassword(pass);
+        return dataSource.getConnection();
     }
 
-    private String env(String key, String def) {
+    private String envOrDefault(String key, String def, Pattern allowed, int maxLen) {
         String v = System.getenv(key);
-        return (v == null || v.isBlank()) ? def : v;
+        if (v == null || v.isBlank()) {
+            return def;
+        }
+        String normalized = stripControls(v).trim();
+        if (normalized.isEmpty() || normalized.length() > maxLen) {
+            return def;
+        }
+        if (allowed != null && !allowed.matcher(normalized).matches()) {
+            return def;
+        }
+        return normalized;
+    }
+
+    private String envSecretOrDefault(String key, String def) {
+        String v = System.getenv(key);
+        if (v == null) {
+            return def;
+        }
+        String normalized = stripControls(v);
+        if (normalized.length() > 1024) {
+            return normalized.substring(0, 1024);
+        }
+        return normalized;
+    }
+
+    private String stripControls(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\u0000", "")
+                .replace("\r", "")
+                .replace("\n", "");
     }
 
     private void bindCommonForUpdate(PreparedStatement ps, EmailConfig c, String encPassword, String updatedBy, Timestamp now)
@@ -218,7 +269,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     private void rollbackQuietly(Connection con) {
         try {
             con.rollback();
-        } catch (Exception ex) {
+        } catch (SQLException ex) {
             log.log(Level.WARNING, "Rollback failed", ex);
         }
     }
@@ -226,7 +277,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     private void setAutoCommitQuietly(Connection con, boolean value) {
         try {
             con.setAutoCommit(value);
-        } catch (Exception ex) {
+        } catch (SQLException ex) {
             log.log(Level.FINE, "setAutoCommit failed", ex);
         }
     }

@@ -30,8 +30,6 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetReviewStartServlet", urlPatterns = {"/dashboard/widgets/review/start"})
 public class WidgetReviewStartServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at endpoint boundaries or converted to safe fallback responses."
-
     private static final Logger log = Logger.getLogger(WidgetReviewStartServlet.class.getName());
     private static final String SESSION_KEY = "widgetReviewSelections";
     private static final int MAX_SELECTIONS_PER_SESSION = 200;
@@ -48,9 +46,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final List<TermChatSnapshot> snapshots;
         public final String date; // optional YYYY-MM-DD scope
 
-        // parasoft-suppress OWASP2025.A1.DPAM "Package-private visibility is intentionally retained for package-scoped tests and selection helper construction."
-        // parasoft-suppress CWE.284.DPAM "Package-private visibility is intentionally retained for package-scoped tests and selection helper construction."
-        Selection(String widgetId,
+        private Selection(String widgetId,
                 String displayName,
                 String backUrl,
                 List<String> chatIds,
@@ -66,8 +62,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
             this.date = date;
         }
 
-        // parasoft-suppress OWASP2025.A1.DPAM "Factory visibility is intentionally package-scoped for focused unit-test coverage."
-        // parasoft-suppress CWE.284.DPAM "Factory visibility is intentionally package-scoped for focused unit-test coverage."
         static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
             return new Selection(
                     safe(widgetId),
@@ -84,8 +78,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
             return fromWidget(widgetId, chatIds, searchTerms, null);
         }
 
-        // parasoft-suppress OWASP2025.A1.DPAM "Factory visibility is intentionally package-scoped for focused unit-test coverage."
-        // parasoft-suppress CWE.284.DPAM "Factory visibility is intentionally package-scoped for focused unit-test coverage."
         static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
             List<String> chatIds = snapshots.stream()
                     .map(TermChatSnapshot::getChatId)
@@ -124,9 +116,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         public final String prompt;
         public final String response;
 
-        // parasoft-suppress OWASP2025.A1.DPAM "Package-private visibility is intentionally retained for package-scoped tests and selection helper construction."
-        // parasoft-suppress CWE.284.DPAM "Package-private visibility is intentionally retained for package-scoped tests and selection helper construction."
-        SearchTerms(String global, String prompt, String response) {
+        private SearchTerms(String global, String prompt, String response) {
             this.global = safe(global);
             this.prompt = safe(prompt);
             this.response = safe(response);
@@ -313,38 +303,23 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private String readValidatedJsonPayload(HttpServletRequest req) throws IOException {
-        StringBuilder body = new StringBuilder();
-        char[] buffer = new char[2048];
-        int read;
-        int total = 0;
-        // parasoft-suppress BD.SECURITY.VPPD "Reader content is size-bounded, control-char validated, and parsed strictly as JSON."
-        // parasoft-suppress CWE.352.VPPD "Reader content is size-bounded, control-char validated, and parsed strictly as JSON."
-        // parasoft-suppress CWE.79.VPPD "Reader content is size-bounded, control-char validated, and parsed strictly as JSON."
-        // parasoft-suppress OWASP2025.A1.VPPD "Reader content is size-bounded, control-char validated, and parsed strictly as JSON."
-        // parasoft-suppress OWASP2025.A5.VPPD "Reader content is size-bounded, control-char validated, and parsed strictly as JSON."
-        // parasoft-suppress BD.PB.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        // parasoft-suppress OWASP2025.A5.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        // parasoft-suppress CWE.119.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        // parasoft-suppress CWE.125.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        // parasoft-suppress CWE.20.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        // parasoft-suppress CWE.787.ARRAY "Chunk-oriented scanning avoids direct out-of-range array indexing and enforces bounds by read count."
-        try (var reader = req.getReader()) {
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return null;
-                }
-                String chunk = new String(buffer, 0, read);
-                for (int i = 0; i < chunk.length(); i++) {
-                    char c = chunk.charAt(i);
-                    if (Character.isISOControl(c) && !Character.isWhitespace(c)) {
-                        return null;
-                    }
-                }
-                body.append(chunk);
+        byte[] payload;
+        try (var in = req.getInputStream()) {
+            payload = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
+        }
+        if (payload.length > MAX_JSON_PAYLOAD_BYTES) {
+            return null;
+        }
+
+        String json = new String(payload, StandardCharsets.UTF_8);
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (Character.isISOControl(c) && !Character.isWhitespace(c)) {
+                return null;
             }
         }
-        String json = body.toString().trim();
+
+        json = json.trim();
         if (json.isEmpty() || json.charAt(0) != '{') {
             return null;
         }
@@ -353,10 +328,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
         if (req == null) {
-            return false;
-        }
-        String contentType = req.getContentType();
-        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
             return false;
         }
         long len = req.getContentLengthLong();

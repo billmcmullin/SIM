@@ -137,6 +137,18 @@ public class SalesforceClient {
             key = trimToNull(cfg.getSalesforceApiKey());
         }
 
+        // If no current access token is stored, attempt configured auth flows
+        // (OAuth refresh or username/password/API token login).
+        if (key == null) {
+            SalesforceAuthClient.AuthResult refreshed = authClient.refreshAccessToken();
+            if (refreshed != null) {
+                key = trimToNull(refreshed.accessToken);
+                if (url == null) {
+                    url = trimToNull(refreshed.instanceUrl);
+                }
+            }
+        }
+
         if (url == null || key == null) {
             return null;
         }

@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -33,7 +34,8 @@ public class WorkspaceConfigServlet extends HttpServlet {
             return;
         }
 
-        String workspaceName = req.getParameter("workspaceName");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String workspaceName = requestContext.first("workspaceName", 512);
         if (workspaceName == null) {
             workspaceName = "";
         }
@@ -43,7 +45,7 @@ public class WorkspaceConfigServlet extends HttpServlet {
             EncryptedDbConfigStore.saveWorkspaceName(workspaceName);
             resp.setContentType("application/json");
             resp.getWriter().write("{\"status\":\"ok\",\"workspaceName\":\"" + escapeJson(workspaceName) + "\"}");
-        } catch (Exception e) {
+        } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Unable to save workspace name", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to save workspace name.\"}");
@@ -58,5 +60,46 @@ public class WorkspaceConfigServlet extends HttpServlet {
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "");
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 512 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
+        }
     }
 }

@@ -37,6 +37,12 @@ public class WidgetReviewServlet extends HttpServlet {
 
         String selectionId = trimToNull(firstQueryParam(req, "selectionId"));
         if (selectionId == null) {
+            Object forwardedSelectionId = req.getAttribute("selectionId");
+            if (forwardedSelectionId instanceof String forwarded) {
+                selectionId = trimToNull(forwarded);
+            }
+        }
+        if (selectionId == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
             return;
         }

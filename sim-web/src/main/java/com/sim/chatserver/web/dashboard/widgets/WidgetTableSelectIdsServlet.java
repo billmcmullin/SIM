@@ -19,7 +19,6 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.enterprise.inject.spi.CDI;
-import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonWriter;
@@ -32,15 +31,9 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableSelectIdsServlet", urlPatterns = {"/dashboard/widgets/view/select-ids"})
 public class WidgetTableSelectIdsServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to resolve widget chat id selections."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet boundaries with safe JSON/error responses."
-    // parasoft-suppress SERVLET.IF "CDI-managed datasource dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected datasource holder is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    @Inject
     AppDataSourceHolder dsHolder;
 
     @Override
@@ -51,19 +44,21 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = firstParam(req, "widgetId");
+        RequestParamContext requestContext = RequestParamContext.from(req);
+
+        String widgetId = requestContext.first("widgetId", 128);
         if (widgetId == null || widgetId.isBlank()) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
 
-        String search = normalize(firstParam(req, "search"));
-        String filterPrompt = normalize(firstParam(req, "filterPrompt"));
-        String filterResponse = normalize(firstParam(req, "filterResponse"));
+        String search = normalize(requestContext.first("search", 128));
+        String filterPrompt = normalize(requestContext.first("filterPrompt", 128));
+        String filterResponse = normalize(requestContext.first("filterResponse", 128));
 
         // NEW: optional date filter (YYYY-MM-DD)
         LocalDate selectedDate = null;
-        String dateRaw = firstParam(req, "date");
+        String dateRaw = requestContext.first("date", 128);
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
@@ -166,21 +161,6 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         return value == null ? "" : value.trim().toLowerCase();
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
-    }
-
     private boolean tableExists(Connection conn, String tableName) {
         try {
             DatabaseMetaData meta = conn.getMetaData();
@@ -264,6 +244,47 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             }
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to send fallback widget id selection response", ex);
+        }
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 128 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
         }
     }
 }

@@ -13,7 +13,6 @@ import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 
 import jakarta.enterprise.inject.spi.CDI;
-import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonWriter;
@@ -26,14 +25,10 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "ProfileServlet", urlPatterns = {"/profile"})
 public class ProfileServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.IF "CDI-managed user service dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected user service is framework-managed and not a serialized secret payload."
-
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
 
-    @Inject
     UserService userService;
 
     @Override
@@ -207,23 +202,26 @@ public class ProfileServlet extends HttpServlet {
             this.req = req;
         }
 
-        private static RequestContext from(HttpServletRequest req) {
+        static RequestContext from(HttpServletRequest req) {
             return new RequestContext(req);
         }
 
-        private String first(String name) {
+        String first(String name) {
             if (name == null || name.isBlank() || req == null) {
                 return null;
             }
-            String value = req.getParameter(name);
-            if (value == null) {
+            String[] values = req.getParameterValues(name);
+            if (values == null || values.length == 0) {
                 return null;
             }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
+            for (String value : values) {
+                String trimmed = value == null ? null : value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+                if (trimmed == null || trimmed.isEmpty()) {
+                    continue;
+                }
+                return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
             }
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            return null;
         }
     }
 }

@@ -34,7 +34,7 @@ import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -44,23 +44,12 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsServlet", urlPatterns = {"/dashboard/topics"})
 public class DashboardTopicsServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.AJDBC "This endpoint intentionally performs bounded JDBC reads to compute dashboard topic metrics."
-    // parasoft-suppress SERVLET.CETS "Checked exceptions are handled at servlet and utility boundaries with safe fallback or HTTP error mapping."
-    // parasoft-suppress SERVLET.IF "CDI-managed servlet dependencies are required for request handling and do not hold per-request mutable state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected service references are framework-managed handles, not sensitive serializable payloads."
-
     private static final Logger log = Logger.getLogger(DashboardTopicsServlet.class.getName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
     private static final String EXCLUDED_TOPIC = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
-
-    @Inject
-    AppDataSourceHolder dsHolder;
-
-    @Inject
-    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -90,7 +79,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
         List<TermDefinition> terms;
         try {
-            terms = termsStore.listAll();
+            terms = termsStore().listAll();
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to load term definitions for topics dashboard", e);
             terms = List.of();
@@ -101,7 +90,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         Map<String, Integer> globalCounts = new LinkedHashMap<>();
         Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
 
-        try (Connection conn = dsHolder.getDataSource().getConnection()) {
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
@@ -162,9 +151,6 @@ public class DashboardTopicsServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        // parasoft-suppress OWASP2025.A1.SENS "The rendered value is a static server-side template with escaped placeholders; no secret context values are exposed."
-        // parasoft-suppress OWASP2025.A10.SENS "The rendered value is a static server-side template with escaped placeholders; no secret context values are exposed."
-        // parasoft-suppress CWE.200.SENS "The rendered value is a static server-side template with escaped placeholders; no secret context values are exposed."
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -303,29 +289,38 @@ public class DashboardTopicsServlet extends HttpServlet {
         return RequestParamContext.from(req).first(name);
     }
 
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
+    }
+
     private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
-        RequestParamContext(HttpServletRequest request) {
+        private RequestParamContext(HttpServletRequest request) {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
             if (request == null) {
                 return null;
             }
-            String value = request.getParameter(name);
-            if (value == null) {
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0 || values[0] == null) {
                 return null;
             }
+            String value = values[0];
             String trimmed = value.replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
@@ -378,7 +373,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         final String name;
         final Pattern pattern;
 
-        TopicPattern(String name, Pattern pattern) {
+        private TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
         }
@@ -389,7 +384,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         final LocalDate startInclusive;
         final LocalDate endExclusive;
 
-        DateWindow(LocalDate startInclusive, LocalDate endExclusive) {
+        private DateWindow(LocalDate startInclusive, LocalDate endExclusive) {
             this.startInclusive = startInclusive;
             this.endExclusive = endExclusive;
         }

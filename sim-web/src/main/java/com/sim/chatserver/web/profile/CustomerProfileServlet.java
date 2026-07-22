@@ -38,7 +38,6 @@ public class CustomerProfileServlet extends HttpServlet {
     private static final String LOGIN_PATH = "/login";
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
-    private final CustomerIdentityService identityService = new CustomerIdentityService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -48,8 +47,9 @@ public class CustomerProfileServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = trimToNull(firstParam(req, "sessionId"));
-        String friendlyNameParam = trimToNull(firstParam(req, "friendlyName"));
+        RequestParamContext requestContext = RequestParamContext.from(req);
+        String sessionId = trimToNull(requestContext.first("sessionId", 256));
+        String friendlyNameParam = trimToNull(requestContext.first("friendlyName", 256));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid sessionId format.");
@@ -77,9 +77,11 @@ public class CustomerProfileServlet extends HttpServlet {
             List<CustomerIdentitySessionLink> linkedSessions = List.of();
 
             if (sessionId != null) {
+                CustomerIdentityService identityService = identityService();
                 identity = identityService.resolveOrCreateBySessionId(sessionId);
-                if (identity != null && identity.getIdentityId() != null) {
-                    linkedSessions = identityService.listLinkedSessions(identity.getIdentityId());
+                Long identityId = identity == null ? null : identity.getIdentityId();
+                if (identityId != null) {
+                    linkedSessions = identityService.listLinkedSessions(identityId);
                 }
             }
 
@@ -236,11 +238,19 @@ public class CustomerProfileServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder escaped = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            switch (ch) {
+                case '&' -> escaped.append("&amp;");
+                case '<' -> escaped.append("&lt;");
+                case '>' -> escaped.append("&gt;");
+                case '"' -> escaped.append("&quot;");
+                case '\'' -> escaped.append("&#39;");
+                default -> escaped.append(ch);
+            }
+        }
+        return escaped.toString();
     }
 
     private String urlEncode(String input) {
@@ -254,34 +264,59 @@ public class CustomerProfileServlet extends HttpServlet {
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        var params = req.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return null;
-        }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
-            return null;
-        }
-        String value = values[0];
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-    }
-
     private String safeContextPath(String contextPath) {
         if (contextPath == null || contextPath.isBlank()) {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
             return "";
         }
         return trimmed;
+    }
+
+    private CustomerIdentityService identityService() {
+        return new CustomerIdentityService();
+    }
+
+    private static final class RequestParamContext {
+        private final HttpServletRequest request;
+
+        private RequestParamContext(HttpServletRequest request) {
+            this.request = request;
+        }
+
+        static RequestParamContext from(HttpServletRequest request) {
+            return new RequestParamContext(request);
+        }
+
+        String first(String name, int maxLen) {
+            if (request == null || name == null || name.isBlank()) {
+                return null;
+            }
+            String[] values = request.getParameterValues(name);
+            if (values == null || values.length == 0) {
+                return null;
+            }
+            for (String value : values) {
+                String normalized = normalize(value, maxLen);
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+            return null;
+        }
+
+        private String normalize(String value, int maxLen) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
+            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
+        }
     }
 }

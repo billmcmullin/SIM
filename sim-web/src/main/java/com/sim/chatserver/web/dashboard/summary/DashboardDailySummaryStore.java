@@ -23,9 +23,6 @@ import jakarta.json.JsonObject;
  * payload.
  */
 public class DashboardDailySummaryStore {
-    // parasoft-suppress SECURITY.WSC.DSER "Store class is not serialized by application design and is used only as an in-memory DAO wrapper."
-    // parasoft-suppress SECURITY.WSC.SER "Store class is not serialized by application design and is used only as an in-memory DAO wrapper."
-
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String PG_UNIQUE_VIOLATION = "23505";
@@ -405,14 +402,12 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = rs.getString(column);
         return sanitizeText(value, maxLen);
     }
 
     private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = rs.getString(column);
         return sanitizeText(value, maxLen);
     }
 
@@ -439,6 +434,7 @@ public class DashboardDailySummaryStore {
         try {
             value = Integer.parseInt(raw);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse integer value for column " + column, ex);
             return min;
         }
         if (value < min) {

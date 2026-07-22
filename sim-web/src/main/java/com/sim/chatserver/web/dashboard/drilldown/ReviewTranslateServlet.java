@@ -1,7 +1,7 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,8 +26,9 @@ public class ReviewTranslateServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(ReviewTranslateServlet.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final int MAX_JSON_PAYLOAD_BYTES = 16 * 1024;
 
-    private final TranslationService translationService = new DefaultTranslationService();
+    private static final TranslationService TRANSLATION_SERVICE = new DefaultTranslationService();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -45,9 +46,10 @@ public class ReviewTranslateServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        try (JsonReader jsonReader = Json.createReader(new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8))) {
+        try (JsonReader jsonReader = Json.createReader(new StringReader(readRequestBody(req)))) {
             payload = jsonReader.readObject();
-        } catch (Exception ex) {
+        } catch (jakarta.json.JsonException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid translate payload", ex);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, Json.createObjectBuilder()
                     .add("status", "error")
@@ -69,7 +71,7 @@ public class ReviewTranslateServlet extends HttpServlet {
         }
 
         try {
-            TranslationResult result = translationService.detectAndTranslate(text, targetLang);
+            TranslationResult result = TRANSLATION_SERVICE.detectAndTranslate(text, targetLang);
 
             JsonObjectBuilder out = Json.createObjectBuilder()
                     .add("status", result.isSuccess() ? "ok" : "error")
@@ -83,7 +85,7 @@ public class ReviewTranslateServlet extends HttpServlet {
             }
 
             writeJson(resp, out.build());
-        } catch (Exception ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.SEVERE, "Translate request failed", ex);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             writeJson(resp, Json.createObjectBuilder()
@@ -112,6 +114,33 @@ public class ReviewTranslateServlet extends HttpServlet {
 
     private void writeJson(HttpServletResponse resp, JsonObject obj) throws IOException {
         resp.getWriter().write(obj.toString());
+    }
+
+    private String readRequestBody(HttpServletRequest req) {
+        if (req == null) {
+            throw new IllegalArgumentException("Missing request");
+        }
+        long len = req.getContentLengthLong();
+        if (len < 0 || len > MAX_JSON_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Invalid content length");
+        }
+
+        try {
+            StringBuilder body = new StringBuilder();
+            char[] buffer = new char[2048];
+            int total = 0;
+            int read;
+            while ((read = req.getReader().read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IllegalArgumentException("Payload exceeds allowed size");
+                }
+                body.append(buffer, 0, read);
+            }
+            return body.toString().replace("\u0000", "").replace("\r", "").trim();
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Invalid JSON payload", ex);
+        }
     }
 
     private String nvl(String v) {

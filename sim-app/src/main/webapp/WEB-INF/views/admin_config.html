@@ -307,6 +307,12 @@
 
         <section class="section">
             <h2>Salesforce Configuration</h2>
+            <div class="small-note" style="margin-bottom:12px;">
+                <strong>Salesforce auth modes:</strong><br>
+                Access Token: Use when you already have a valid bearer token and need a quick connection setup.<br>
+                OAuth (Client ID/Secret + Refresh Token): Use for long-lived integrations because SIM can refresh tokens automatically.<br>
+                Username/Password/API Token: Use when your org provides a token via Reset API Token and OAuth is not configured.
+            </div>
             <form id="salesforceConfigForm">
                 <div class="form-group">
                     <label for="salesforceInstanceUrl">Salesforce Instance URL</label>
@@ -320,7 +326,7 @@
                         placeholder="Enter token to set or replace">
                     <div class="small-note">
                         <span id="salesforceApiKeyStoredNote" style="display:none;">
-                            A Salesforce API key is already stored. Leave blank to keep it.
+                            A Salesforce access token is already stored. Leave blank to keep it.
                         </span>
                     </div>
                 </div>
@@ -356,6 +362,37 @@
                     <div class="small-note">
                         <span id="salesforceRefreshTokenStoredNote" style="display:none;">
                             A refresh token is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceUsername">Salesforce Username</label>
+                    <input type="text" id="salesforceUsername" name="salesforceUsername"
+                        placeholder="user@example.com" value="${salesforceUsername}">
+                    <div class="small-note">
+                        Used with Password + API Token from Salesforce Reset API Token.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforcePassword">Salesforce Password</label>
+                    <input type="password" id="salesforcePassword" name="salesforcePassword"
+                        placeholder="Enter Salesforce password">
+                    <div class="small-note">
+                        <span id="salesforcePasswordStoredNote" style="display:none;">
+                            A Salesforce password is already stored. Leave blank to keep it.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="salesforceApiToken">Salesforce API Token (from Reset API Token)</label>
+                    <input type="password" id="salesforceApiToken" name="salesforceApiToken"
+                        placeholder="Enter Salesforce API token">
+                    <div class="small-note">
+                        <span id="salesforceApiTokenStoredNote" style="display:none;">
+                            A Salesforce API token is already stored. Leave blank to keep it.
                         </span>
                     </div>
                 </div>
@@ -662,8 +699,11 @@
             salesforceInstanceUrl: '${salesforceInstanceUrl}',
             salesforceLoginUrl: '${salesforceLoginUrl}',
             salesforceClientId: '${salesforceClientId}',
+            salesforceUsername: '${salesforceUsername}',
             salesforceClientSecretStored: '${salesforceClientSecretStored}',
             salesforceRefreshTokenStored: '${salesforceRefreshTokenStored}',
+            salesforcePasswordStored: '${salesforcePasswordStored}',
+            salesforceApiTokenStored: '${salesforceApiTokenStored}',
             salesforceOAuthStatus: '${salesforceOAuthStatus}',
             salesforceOAuthMessage: '${salesforceOAuthMessage}'
         };
