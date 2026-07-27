@@ -303,15 +303,21 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private String readValidatedJsonPayload(HttpServletRequest req) throws IOException {
-        byte[] payload;
-        try (var in = req.getInputStream()) {
-            payload = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-        }
-        if (payload.length > MAX_JSON_PAYLOAD_BYTES) {
-            return null;
+        StringBuilder payload = new StringBuilder(Math.min(MAX_JSON_PAYLOAD_BYTES, 4096));
+        char[] buffer = new char[2048];
+        int total = 0;
+        try (var reader = req.getReader()) {
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return null;
+                }
+                payload.append(buffer, 0, read);
+            }
         }
 
-        String json = new String(payload, StandardCharsets.UTF_8);
+        String json = payload.toString();
         for (int i = 0; i < json.length(); i++) {
             char c = json.charAt(i);
             if (Character.isISOControl(c) && !Character.isWhitespace(c)) {

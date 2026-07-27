@@ -15,6 +15,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
+import jakarta.persistence.PersistenceException;
 import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
@@ -60,6 +61,7 @@ public class UserService {
                     .setParameter("u", username)
                     .getSingleResult();
         } catch (NoResultException nre) {
+            log.log(Level.FINE, "User not found for username lookup");
             return null;
         } finally {
             em.close();
@@ -88,7 +90,7 @@ public class UserService {
         if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
             try {
                 return BCrypt.checkpw(password, stored) ? u : null;
-            } catch (RuntimeException e) {
+            } catch (IllegalArgumentException e) {
                 log.log(Level.WARNING, "BCrypt check failed", e);
                 return null;
             }
@@ -132,7 +134,7 @@ public class UserService {
             em.persist(u);
             em.getTransaction().commit();
             return u;
-        } catch (RuntimeException e) {
+        } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to create user: " + e.getMessage(), e);
             if (em.getTransaction().isActive()) {
                 em.getTransaction().rollback();
@@ -164,7 +166,7 @@ public class UserService {
             }
             em.getTransaction().commit();
             return user;
-        } catch (RuntimeException e) {
+        } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to update credentials: " + e.getMessage(), e);
             if (em.getTransaction().isActive()) {
                 em.getTransaction().rollback();
@@ -212,7 +214,7 @@ public class UserService {
                 em.getTransaction().rollback();
             }
             return false;
-        } catch (RuntimeException e) {
+        } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to delete user: " + e.getMessage(), e);
             if (em.getTransaction().isActive()) {
                 em.getTransaction().rollback();
@@ -232,7 +234,7 @@ public class UserService {
                 log.info("Creating default admin user (username=admin)");
                 createUser("admin", "admin", "admin");
             }
-        } catch (RuntimeException e) {
+        } catch (PersistenceException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "ensureAdminExists failed: " + e.getMessage(), e);
         }
     }
@@ -253,7 +255,7 @@ public class UserService {
             );
             q.getResultStream().findFirst().orElse(null);
             log.fine("syncUserAccountIdSequence: sequence synchronized");
-        } catch (RuntimeException e) {
+        } catch (PersistenceException | IllegalArgumentException | IllegalStateException e) {
             // Keep this non-fatal for portability (H2/tests/non-Postgres)
             log.log(Level.FINE, "syncUserAccountIdSequence: skipped/failed (non-fatal): " + e.getMessage(), e);
         }

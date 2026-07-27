@@ -99,7 +99,10 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 if (isBlank(instanceUrl)) {
                     instanceUrl = authResult == null ? null : authResult.instanceUrl;
                 }
-            } catch (Exception e) {
+            } catch (IOException | InterruptedException | SQLException | RuntimeException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
                 log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder().add("status", "error")
@@ -198,23 +201,18 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name, int maxLen) {
+        private String first(String name, int maxLen) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0) {
-                return null;
-            }
-            for (String value : values) {
-                String normalized = normalize(value, maxLen);
-                if (normalized != null) {
-                    return normalized;
-                }
+            String value = request.getParameter(name);
+            String normalized = normalize(value, maxLen);
+            if (normalized != null) {
+                return normalized;
             }
             return null;
         }

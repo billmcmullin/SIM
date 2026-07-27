@@ -1396,8 +1396,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return "";
         }
-        Object raw = rs.getObject(columnName);
-        String text = raw == null ? "" : String.valueOf(raw);
+        String text = rs.getString(columnName);
         if (text == null) {
             return "";
         }
@@ -1434,7 +1433,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return sanitized.toString();
     }
 
-    static final class RequestParamContext {
+    private static final class RequestParamContext {
 
         private final HttpServletRequest request;
 
@@ -1442,27 +1441,27 @@ public class WidgetSyncServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest req) {
+        private static RequestParamContext from(HttpServletRequest req) {
             return new RequestParamContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
             if (request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String trimmed = values[0].trim();
+            String trimmed = value.replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 
-    static final class WidgetSyncStatus {
+    private static final class WidgetSyncStatus {
 
         final String widgetId;
         final String tableName;
@@ -1470,7 +1469,7 @@ public class WidgetSyncServlet extends HttpServlet {
         final boolean synced;
         final String message;
 
-        WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
             this.widgetId = widgetId;
             this.tableName = tableName;
             this.tableExists = tableExists;
@@ -1489,12 +1488,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    static final class SyncSettings {
+    private static final class SyncSettings {
 
         final long intervalSeconds;
         final Timestamp lastSynced;
 
-        SyncSettings(long intervalSeconds, Timestamp lastSynced) {
+        private SyncSettings(long intervalSeconds, Timestamp lastSynced) {
             this.intervalSeconds = intervalSeconds;
             this.lastSynced = lastSynced;
         }

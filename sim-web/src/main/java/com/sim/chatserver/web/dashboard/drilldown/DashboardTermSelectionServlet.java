@@ -183,6 +183,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
+        String reviewForwardPath = "/dashboard/widgets/drilldown/review";
         String reviewPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
 
@@ -196,11 +197,12 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        if (!isAllowedForwardPath(reviewPath)) {
+        if (!isAllowedForwardPath(reviewForwardPath)) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST);
             return;
         }
-        forwardSafe(req, resp, reviewPath, HttpServletResponse.SC_BAD_REQUEST);
+        req.setAttribute("selectionId", selectionId);
+        forwardSafe(req, resp, reviewForwardPath, HttpServletResponse.SC_BAD_REQUEST);
     }
 
     private boolean wantsJson(HttpServletRequest req) {
@@ -308,23 +310,18 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name, int maxLen) {
+        private String first(String name, int maxLen) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0) {
-                return null;
-            }
-            for (String value : values) {
-                String normalized = normalize(value, maxLen);
-                if (normalized != null) {
-                    return normalized;
-                }
+            String value = request.getParameter(name);
+            String normalized = normalize(value, maxLen);
+            if (normalized != null) {
+                return normalized;
             }
             return null;
         }

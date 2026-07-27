@@ -365,7 +365,7 @@ public class WidgetTableDataServlet extends HttpServlet {
         final String createdAt;
         final String sessionId;
 
-        ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
+        private ChatRow(String chatId, String prompt, String response, String createdAt, String sessionId) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.response = response;
@@ -374,21 +374,21 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
     }
 
-    static final class FilterState {
+    private static final class FilterState {
 
         private final String prompt;
         private final String response;
         private final String global;
         private final LocalDate date; // NEW
 
-        FilterState(String prompt, String response, String global, LocalDate date) {
+        private FilterState(String prompt, String response, String global, LocalDate date) {
             this.prompt = prompt;
             this.response = response;
             this.global = global;
             this.date = date;
         }
 
-        String buildWhereClause() {
+        private String buildWhereClause() {
             List<String> pieces = new ArrayList<>();
             if (hasValue(prompt)) {
                 pieces.add("prompt ILIKE ?");
@@ -409,7 +409,7 @@ public class WidgetTableDataServlet extends HttpServlet {
             return " WHERE " + String.join(" AND ", pieces);
         }
 
-        List<Object> params() {
+        private List<Object> params() {
             List<Object> params = new ArrayList<>();
             if (hasValue(prompt)) {
                 params.add(pattern(prompt));
@@ -430,11 +430,11 @@ public class WidgetTableDataServlet extends HttpServlet {
             return params;
         }
 
-        boolean hasValue(String val) {
+        private boolean hasValue(String val) {
             return val != null && !val.isBlank();
         }
 
-        String pattern(String input) {
+        private String pattern(String input) {
             String trimmed = input.trim();
             return new StringBuilder(trimmed.length() + 2).append('%').append(trimmed).append('%').toString();
         }
@@ -456,11 +456,11 @@ public class WidgetTableDataServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;
             }

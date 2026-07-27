@@ -1,5 +1,6 @@
 package com.sim.chatserver.salesforce;
 
+import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -7,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.logging.Logger;
 
@@ -53,7 +55,8 @@ public class SalesforceClient {
     /**
      * Uses persisted Salesforce config and searches by friendly name.
      */
-    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName) throws Exception {
+    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName)
+            throws IOException, InterruptedException, SQLException, SalesforceClientException {
         return findBestCustomerMatch(friendlyName, null, null);
     }
 
@@ -61,7 +64,8 @@ public class SalesforceClient {
      * Search Salesforce Contact by friendly name. If instanceUrl/apiKey are
      * null/blank, falls back to persisted config.
      */
-    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey) throws Exception {
+    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey)
+            throws IOException, InterruptedException, SQLException, SalesforceClientException {
         String searchName = trimToNull(friendlyName);
         if (searchName == null) {
             return null;
@@ -103,7 +107,8 @@ public class SalesforceClient {
                 body != null ? body : ("Salesforce query failed with status " + first.statusCode()));
     }
 
-    private HttpResponse<String> executeQuery(String instanceUrl, String apiKey, String soql) throws Exception {
+        private HttpResponse<String> executeQuery(String instanceUrl, String apiKey, String soql)
+            throws IOException, InterruptedException {
         String endpoint = buildQueryEndpoint(instanceUrl, soql);
 
         HttpRequest req = HttpRequest.newBuilder()
@@ -117,7 +122,8 @@ public class SalesforceClient {
         return httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
-    private Credentials resolveCredentials(String instanceUrl, String apiKey) throws Exception {
+        private Credentials resolveCredentials(String instanceUrl, String apiKey)
+            throws IOException, InterruptedException, SQLException {
         String url = trimToNull(instanceUrl);
         String key = trimToNull(apiKey);
 

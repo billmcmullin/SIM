@@ -2,6 +2,8 @@ package com.sim.chatserver.web.login;
 
 import java.io.IOException;
 import java.util.regex.Pattern;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
@@ -18,6 +20,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "LoginServlet", urlPatterns = {"", "/login"})
 public class LoginServlet extends HttpServlet {
+    private static final Logger log = Logger.getLogger(LoginServlet.class.getName());
     private static final String VIEW = "/WEB-INF/views/login.html";
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
     private static final Object USER_SERVICE_LOCK = new Object();
@@ -108,7 +111,8 @@ public class LoginServlet extends HttpServlet {
 
             try {
                 service = CDI.current().select(UserService.class).get();
-            } catch (RuntimeException ignored) {
+            } catch (IllegalStateException ex) {
+                log.log(Level.FINE, "CDI UserService lookup unavailable; falling back to manual wiring", ex);
                 service = null;
             }
 
@@ -149,11 +153,10 @@ public class LoginServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String value = values[0];
             String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (trimmed.isEmpty()) {
                 return null;

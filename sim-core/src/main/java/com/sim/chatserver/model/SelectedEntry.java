@@ -18,7 +18,7 @@ import jakarta.json.JsonObjectBuilder;
  *
  * This replaces the inner static model previously embedded in the servlet.
  */
-public class SelectedEntry {
+public final class SelectedEntry {
 
     private static final Logger LOGGER = Logger.getLogger(SelectedEntry.class.getName());
 

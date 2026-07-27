@@ -666,11 +666,10 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String value = values[0];
             String normalized = value.replace("\r", "").replace("\n", "").trim();
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
@@ -726,24 +725,12 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         for (int i = 0; i < in.length(); i++) {
             char c = in.charAt(i);
             switch (c) {
-                case '&':
-                    escaped.append("&amp;");
-                    break;
-                case '<':
-                    escaped.append("&lt;");
-                    break;
-                case '>':
-                    escaped.append("&gt;");
-                    break;
-                case '"':
-                    escaped.append("&quot;");
-                    break;
-                case '\'':
-                    escaped.append("&#39;");
-                    break;
-                default:
-                    escaped.append(c);
-                    break;
+                case '&' -> escaped.append("&amp;");
+                case '<' -> escaped.append("&lt;");
+                case '>' -> escaped.append("&gt;");
+                case '"' -> escaped.append("&quot;");
+                case '\'' -> escaped.append("&#39;");
+                default -> escaped.append(c);
             }
         }
         return escaped.toString();

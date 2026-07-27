@@ -3,12 +3,16 @@ package com.sim.chatserver.config;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.text.Normalizer;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class Database {
 
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
     private static final Pattern HOST_PATTERN = Pattern.compile("^[a-zA-Z0-9.-]+$");
     private static final Pattern DB_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
+    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
 
     private static final String DB_HOST = requireValidHost("DB_HOST");
     private static final int DB_PORT = requireValidPort("DB_PORT");
@@ -32,11 +36,21 @@ public final class Database {
     }
 
     private static String requireEnv(String name) {
-        String value = System.getenv(name);
+        String value = ENV.get(name);
         if (value == null || value.isBlank()) {
             throw new IllegalStateException("Environment variable " + name + " is required.");
         }
-        return value.trim();
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
+        if (normalized.isBlank()) {
+            throw new IllegalStateException("Environment variable " + name + " is required.");
+        }
+        if (CONTROL_CHARS.matcher(normalized).find()) {
+            throw new IllegalStateException("Environment variable " + name + " contains invalid control characters.");
+        }
+        if (normalized.length() > 1024) {
+            throw new IllegalStateException("Environment variable " + name + " is too long.");
+        }
+        return normalized;
     }
 
     private static String requireValidHost(String name) {

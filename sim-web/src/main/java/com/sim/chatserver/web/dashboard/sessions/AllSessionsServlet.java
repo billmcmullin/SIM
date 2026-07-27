@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -87,7 +86,7 @@ public class AllSessionsServlet extends HttpServlet {
             this.sessionId = sessionId;
         }
 
-        void accept(Timestamp ts, int count, String widgetId) {
+        private void accept(Timestamp ts, int count, String widgetId) {
             if (ts != null) {
                 Instant instant = ts.toInstant();
                 if (firstSeen == null || instant.isBefore(firstSeen)) {
@@ -110,7 +109,7 @@ public class AllSessionsServlet extends HttpServlet {
         final String prompt;
         final Timestamp createdAt;
 
-        ChatRow(String chatId, String prompt, Timestamp createdAt) {
+        private ChatRow(String chatId, String prompt, Timestamp createdAt) {
             this.chatId = chatId;
             this.prompt = prompt;
             this.createdAt = createdAt;
@@ -770,12 +769,19 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (InputStream in = req.getInputStream()) {
-            byte[] bytes = in.readNBytes(MAX_JSON_PAYLOAD_BYTES + 1);
-            if (bytes.length > MAX_JSON_PAYLOAD_BYTES) {
-                return "";
+        try (var reader = req.getReader()) {
+            StringBuilder body = new StringBuilder();
+            char[] buffer = new char[1024];
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                body.append(buffer, 0, read);
             }
-            return new String(bytes, StandardCharsets.UTF_8).replace("\u0000", "").replace("\r", "").trim();
+            return body.toString().replace("\u0000", "").replace("\r", "").trim();
         }
     }
 
@@ -787,30 +793,28 @@ public class AllSessionsServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
             if (request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String trimmed = values[0].replace("\r", "").replace("\n", "").trim();
+            String trimmed = value.replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
-        return safeDbText(value, maxLen);
+        return safeDbText(rs.getString(column), maxLen);
     }
 
     private String safeDbText(String value, int maxLen) {

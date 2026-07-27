@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -48,6 +49,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     private static final int IN_CLAUSE_BATCH_SIZE = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
     AppDataSourceHolder dsHolder;
 
@@ -137,10 +139,10 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                                     continue;
                                 }
 
-                                String prompt = rs.getString("prompt");
-                                String responseText = rs.getString("response_text");
+                                String prompt = readDbText(rs, "prompt", 64000);
+                                String responseText = readDbText(rs, "response_text", 64000);
                                 Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                String sessionId = rs.getString("session_id");
+                                String sessionId = readDbText(rs, "session_id", 512);
 
                                 snapshots.add(new TermChatSnapshot(
                                         "Popular Topics",
@@ -172,7 +174,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                 session,
                 "Popular Topics",
                 snapshots,
-                req.getContextPath() + "/dashboard/topics"
+            safeContextPath(req.getContextPath()) + "/dashboard/topics"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -220,6 +222,9 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     }
 
     private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
@@ -265,6 +270,29 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return payload.replace("\u0000", "")
                 .replace("\r", "")
                 .trim();
+    }
+
+    private String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = String.valueOf(raw).replace("\u0000", "").replace("\r", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > maxChars ? normalized.substring(0, maxChars) : normalized;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String normalized = contextPath.trim().replace("\r", "").replace("\n", "");
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        return normalized.charAt(0) == '/' ? normalized : '/' + normalized;
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {

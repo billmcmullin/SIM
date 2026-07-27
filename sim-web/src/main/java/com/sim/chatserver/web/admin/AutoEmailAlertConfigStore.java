@@ -306,7 +306,7 @@ public final class AutoEmailAlertConfigStore {
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
             Integer value = readSafeInteger(rs, column);
-            return value == null ? 0 : Math.max(0, value.intValue());
+            return value == null ? 0 : Math.max(0, value);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read integer column " + column, e);
             return 0;
@@ -315,40 +315,41 @@ public final class AutoEmailAlertConfigStore {
 
     private long readNonNegativeLong(ResultSet rs, String column) {
         try {
-            long value = rs.getLong(column);
-            if (rs.wasNull()) {
+            String raw = readSafeText(rs, column, 32);
+            if (raw == null || raw.isBlank() || !raw.matches("^-?\\d{1,18}$")) {
                 return 0L;
             }
+            long value = Long.parseLong(raw);
             return Math.max(0L, value);
-        } catch (SQLException e) {
+        } catch (NumberFormatException e) {
             log.log(Level.FINE, "Unable to read long column " + column, e);
             return 0L;
         }
     }
 
     private Integer readSafeInteger(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        String raw = readSafeText(rs, column, 16);
+        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d{1,10}$")) {
             return null;
         }
-        return value;
+        try {
+            return Integer.valueOf(raw);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse integer column " + column, ex);
+            return null;
+        }
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) {
-        try {
-            String text = rs.getString(column);
-            if (text == null) {
-                return fallback;
-            }
-            text = text.trim().toLowerCase(Locale.ROOT);
-            if (text.isEmpty()) {
-                return fallback;
-            }
-            return "true".equals(text) || "t".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text);
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to read boolean column " + column, e);
+        String text = readSafeText(rs, column, 16);
+        if (text == null) {
             return fallback;
         }
+        text = text.trim().toLowerCase(Locale.ROOT);
+        if (text.isEmpty()) {
+            return fallback;
+        }
+        return "true".equals(text) || "t".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text);
     }
 
     private int readIntervalSeconds(ResultSet rs, String column, int fallback) {
@@ -380,12 +381,24 @@ public final class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Timestamp ts = rs.getTimestamp(column);
-            if (ts != null) {
+            Object raw = rs.getObject(column);
+            if (raw instanceof Timestamp ts) {
                 return ts.toInstant();
             }
 
-            String text = rs.getString(column);
+            if (raw instanceof Instant instantValue) {
+                return instantValue;
+            }
+
+            if (raw instanceof java.time.OffsetDateTime odt) {
+                return odt.toInstant();
+            }
+
+            if (raw instanceof java.util.Date dateValue) {
+                return dateValue.toInstant();
+            }
+
+            String text = sanitizeText(raw == null ? null : String.valueOf(raw), 128);
             if (text == null) {
                 return null;
             }
@@ -407,8 +420,9 @@ public final class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            String value = rs.getString(column);
-            return sanitizeText(value, maxChars);
+            Object value = rs.getObject(column);
+            String text = value == null ? null : String.valueOf(value);
+            return sanitizeText(text, maxChars);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);
             return null;

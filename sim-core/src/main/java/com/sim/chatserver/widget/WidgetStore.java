@@ -6,10 +6,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.Normalizer;
+import java.time.DateTimeException;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -251,54 +249,32 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        int value = rs.getInt(column);
+        if (rs.wasNull()) {
             return 0;
         }
-        if (raw instanceof Number number) {
-            return Math.max(0, number.intValue());
-        }
-        if (raw instanceof String text) {
-            try {
-                return Math.max(0, Integer.parseInt(text.trim()));
-            } catch (NumberFormatException e) {
-                return 0;
-            }
-        }
-        return 0;
+        return Math.max(0, value);
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = rs.getString(column);
         return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        Object raw = rs.getObject("created_at");
-        return toInstantRequired(raw);
-    }
-
-    private static Instant toInstantRequired(Object value) throws SQLException {
-        if (value == null) {
-            throw new SQLException("created_at timestamp must not be null");
-        }
-        if (value instanceof Instant instant) {
-            return instant;
-        }
-        if (value instanceof Timestamp timestamp) {
+        Timestamp timestamp = rs.getTimestamp("created_at");
+        if (timestamp != null) {
             return timestamp.toInstant();
         }
-        if (value instanceof java.util.Date date) {
-            return date.toInstant();
+        String text = rs.getString("created_at");
+        if (text != null && !text.isBlank()) {
+            try {
+                return Instant.parse(text.trim());
+            } catch (DateTimeException e) {
+                throw new SQLException("Unsupported created_at text value", e);
+            }
         }
-        if (value instanceof OffsetDateTime offsetDateTime) {
-            return offsetDateTime.toInstant();
-        }
-        if (value instanceof LocalDateTime localDateTime) {
-            return localDateTime.atZone(ZoneId.systemDefault()).toInstant();
-        }
-        throw new SQLException("Unsupported created_at type: " + value.getClass().getName());
+        throw new SQLException("created_at timestamp must not be null");
     }
 
     private static String normalizeRequired(String value, String fieldName) {
@@ -321,7 +297,7 @@ public final class WidgetStore {
 
     public static final class DuplicateWidgetIdException extends SQLException {
 
-        DuplicateWidgetIdException(String widgetId, Throwable cause) {
+        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
             super("Widget ID '" + widgetId + "' already exists.", cause);
         }
     }

@@ -2,11 +2,17 @@ package com.sim.chatserver.util;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Hash helper utilities.
  */
 public final class HashUtil {
+
+    private static final Logger LOG = Logger.getLogger(HashUtil.class.getName());
 
     private HashUtil() {
         // util
@@ -30,8 +36,9 @@ public final class HashUtil {
                 sb.append(String.format("%02x", b));
             }
             return sb.toString();
-        } catch (Exception ex) {
-            return algorithm.toLowerCase() + "_error";
+        } catch (NoSuchAlgorithmException ex) {
+            LOG.log(Level.WARNING, "Hash algorithm unavailable: " + algorithm, ex);
+            return algorithm.toLowerCase(Locale.ROOT) + "_error";
         }
     }
 }

@@ -1,7 +1,10 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.logging.Level;
@@ -291,7 +294,7 @@ public class AdminTermServlet extends HttpServlet {
         StringBuilder body = new StringBuilder(Math.min(MAX_JSON_PAYLOAD_BYTES, 4096));
         char[] buffer = new char[2048];
         int total = 0;
-        try (var reader = req.getReader()) {
+        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             int read;
             while ((read = reader.read(buffer)) != -1) {
                 total += read;
@@ -327,11 +330,11 @@ public class AdminTermServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String trimmed = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (trimmed.isEmpty()) {
                 return null;
             }

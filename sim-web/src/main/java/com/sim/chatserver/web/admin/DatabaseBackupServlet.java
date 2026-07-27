@@ -260,24 +260,25 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        String raw = rs.getString(columnIndex);
+        Object rawValue = rs.getObject(columnIndex);
+        String raw = rawValue == null ? null : String.valueOf(rawValue);
         return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        byte[] raw = rs.getBytes(columnIndex);
-        if (raw != null) {
-            return sanitizeBinary(raw);
+        Object rawValue = rs.getObject(columnIndex);
+        if (rawValue instanceof byte[] bytes) {
+            return sanitizeBinary(bytes);
         }
 
-        String fallback = rs.getString(columnIndex);
+        String fallback = rawValue == null ? null : String.valueOf(rawValue);
         byte[] fallbackBytes = fallback == null ? null : fallback.getBytes(StandardCharsets.UTF_8);
         return sanitizeBinary(fallbackBytes);
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
-        Timestamp value = rs.getTimestamp(columnIndex);
-        if (value != null) {
+        Object rawValue = rs.getObject(columnIndex);
+        if (rawValue instanceof Timestamp value) {
             try {
                 java.time.Instant instant = value.toInstant();
                 return instant == null ? null : Timestamp.from(instant);
@@ -286,7 +287,16 @@ public class DatabaseBackupServlet extends HttpServlet {
             }
         }
 
-        String raw = sanitizeCellText(rs.getString(columnIndex));
+        if (rawValue instanceof java.util.Date value) {
+            try {
+                java.time.Instant instant = value.toInstant();
+                return instant == null ? null : Timestamp.from(instant);
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
+            }
+        }
+
+        String raw = sanitizeCellText(rawValue == null ? null : String.valueOf(rawValue));
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -306,8 +316,8 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
-        java.sql.Date date = rs.getDate(columnIndex);
-        if (date != null) {
+        Object rawValue = rs.getObject(columnIndex);
+        if (rawValue instanceof java.sql.Date date) {
             try {
                 LocalDate localDate = date.toLocalDate();
                 return localDate == null ? null : java.sql.Date.valueOf(localDate);
@@ -316,7 +326,16 @@ public class DatabaseBackupServlet extends HttpServlet {
             }
         }
 
-        String raw = sanitizeCellText(rs.getString(columnIndex));
+        if (rawValue instanceof java.util.Date dateTimeValue) {
+            try {
+                LocalDate localDate = dateTimeValue.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                return localDate == null ? null : java.sql.Date.valueOf(localDate);
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                log.log(Level.FINE, "Ignoring invalid date cell", ex);
+            }
+        }
+
+        String raw = sanitizeCellText(rawValue == null ? null : String.valueOf(rawValue));
         if (raw == null || raw.isBlank()) {
             return null;
         }

@@ -3,6 +3,7 @@ package com.sim.chatserver.security.review;
 
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -15,7 +16,7 @@ import java.util.Set;
  * localhost/loopback/link-local/site-local/multicast by default - blocks
  * obvious local aliases (localhost, *.local, *.internal)
  */
-public class TrustedUrlValidator {
+public final class TrustedUrlValidator {
 
     private final Set<String> allowedHosts;     // exact lowercase hosts
     private final Set<String> allowedSuffixes;  // lowercase suffixes, e.g. ".example.com"
@@ -42,7 +43,7 @@ public class TrustedUrlValidator {
         final URI uri;
         try {
             uri = URI.create(rawUrl.trim());
-        } catch (Exception ex) {
+        } catch (IllegalArgumentException ex) {
             return ValidationResult.invalid("URL is invalid.");
         }
 
@@ -73,7 +74,7 @@ public class TrustedUrlValidator {
             if (!allowPrivateNetworks && isPrivateOrLocalAddress(address)) {
                 return ValidationResult.invalid("Private/local network address is not allowed.");
             }
-        } catch (Exception ex) {
+        } catch (UnknownHostException | SecurityException ex) {
             return ValidationResult.invalid("Host DNS resolution failed.");
         }
 
@@ -92,8 +93,12 @@ public class TrustedUrlValidator {
             if (suffix.isBlank()) {
                 continue;
             }
+            String normalizedSuffix = suffix.startsWith(".") ? suffix.substring(1) : suffix;
+            if (normalizedSuffix.isBlank()) {
+                continue;
+            }
             // Support "example.com" (exact) and ".example.com" (subdomain suffix)
-            if (host.equals(suffix) || host.endsWith(suffix.startsWith(".") ? suffix : "." + suffix)) {
+            if (host.equals(normalizedSuffix) || host.endsWith("." + normalizedSuffix)) {
                 return true;
             }
         }

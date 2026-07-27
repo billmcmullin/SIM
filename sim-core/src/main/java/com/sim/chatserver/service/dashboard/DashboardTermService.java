@@ -9,6 +9,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,6 +32,8 @@ import jakarta.json.JsonArrayBuilder;
  */
 public class DashboardTermService {
 
+    private static final Logger LOG = Logger.getLogger(DashboardTermService.class.getName());
+
     public static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
     private final TermsStore termsStore;
@@ -42,7 +46,8 @@ public class DashboardTermService {
         try {
             List<TermDefinition> terms = termsStore.listAll();
             return terms == null ? List.of() : terms;
-        } catch (Exception e) {
+        } catch (SQLException | IllegalStateException e) {
+            LOG.log(Level.FINE, "loadAllTerms fallback to empty list", e);
             return List.of();
         }
     }
@@ -154,8 +159,8 @@ public class DashboardTermService {
                                         }
                                     }
                                 }
-                            } catch (Exception ignore) {
-                                // Keep behavior resilient even if one regex fails
+                            } catch (IllegalStateException ex) {
+                                LOG.log(Level.FINE, "Term pattern evaluation failed", ex);
                             }
                         }
 

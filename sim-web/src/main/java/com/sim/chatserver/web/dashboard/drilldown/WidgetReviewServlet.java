@@ -35,11 +35,11 @@ public class WidgetReviewServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = trimToNull(firstQueryParam(req, "selectionId"));
+        String selectionId = normalizeSelectionId(firstQueryParam(req, "selectionId"));
         if (selectionId == null) {
             Object forwardedSelectionId = req.getAttribute("selectionId");
             if (forwardedSelectionId instanceof String forwarded) {
-                selectionId = trimToNull(forwarded);
+                selectionId = normalizeSelectionId(forwarded);
             }
         }
         if (selectionId == null) {
@@ -49,7 +49,7 @@ public class WidgetReviewServlet extends HttpServlet {
 
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
-            log.log(Level.INFO, "Selection not found for selectionId={0}", sanitizeForLog(selectionId));
+            log.log(Level.INFO, "Selection not found");
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
             return;
         }
@@ -171,31 +171,24 @@ public class WidgetReviewServlet extends HttpServlet {
         return t.isEmpty() ? null : t;
     }
 
+    private String normalizeSelectionId(String value) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            return null;
+        }
+        normalized = normalized.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
     private String firstQueryParam(HttpServletRequest req, String name) {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String query = req.getQueryString();
-        if (query == null || query.isBlank()) {
-            return null;
-        }
-        String[] pairs = query.split("&");
-        for (String pair : pairs) {
-            if (pair == null || pair.isBlank()) {
-                continue;
-            }
-            int eq = pair.indexOf('=');
-            String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String rawVal = eq >= 0 && eq < pair.length() - 1 ? pair.substring(eq + 1) : "";
-            String key = urlDecode(rawKey);
-            if (!name.equals(key)) {
-                continue;
-            }
-            String val = urlDecode(rawVal);
-            String normalized = val.replace("\r", "").replace("\n", "").trim();
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
-        return null;
+        String value = req.getParameter(name);
+        return normalizeSelectionId(value);
     }
 
     private String urlDecode(String value) {
@@ -219,11 +212,9 @@ public class WidgetReviewServlet extends HttpServlet {
     }
 
     private String urlEncode(String value) {
-        try {
-            return URLEncoder.encode(value, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log.log(Level.FINE, "Failed to URL-encode value", e);
-            return value;
+        if (value == null) {
+            return "";
         }
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

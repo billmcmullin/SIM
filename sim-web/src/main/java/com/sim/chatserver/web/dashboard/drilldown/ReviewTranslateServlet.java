@@ -2,6 +2,7 @@ package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -14,6 +15,7 @@ import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -113,7 +115,9 @@ public class ReviewTranslateServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject obj) throws IOException {
-        resp.getWriter().write(obj.toString());
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(obj == null ? Json.createObjectBuilder().build() : obj);
+        }
     }
 
     private String readRequestBody(HttpServletRequest req) {
@@ -130,12 +134,14 @@ public class ReviewTranslateServlet extends HttpServlet {
             char[] buffer = new char[2048];
             int total = 0;
             int read;
-            while ((read = req.getReader().read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IllegalArgumentException("Payload exceeds allowed size");
+            try (BufferedReader reader = req.getReader()) {
+                while ((read = reader.read(buffer)) != -1) {
+                    total += read;
+                    if (total > MAX_JSON_PAYLOAD_BYTES) {
+                        throw new IllegalArgumentException("Payload exceeds allowed size");
+                    }
+                    body.append(buffer, 0, read);
                 }
-                body.append(buffer, 0, read);
             }
             return body.toString().replace("\u0000", "").replace("\r", "").trim();
         } catch (IOException ex) {

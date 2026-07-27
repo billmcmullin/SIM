@@ -3,7 +3,6 @@ package com.sim.chatserver.web.dashboard.sessions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -71,7 +70,11 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
         try {
             Part part = req.getPart(name);
             if (part != null) {
-                byte[] bytes = part.getInputStream().readAllBytes();
+                final int maxBytes = 4096;
+                byte[] bytes = part.getInputStream().readNBytes(maxBytes + 1);
+                if (bytes.length > maxBytes) {
+                    return null;
+                }
                 return new String(bytes, StandardCharsets.UTF_8).trim();
             }
         } catch (IOException | ServletException e) {
@@ -102,14 +105,17 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        return values[0];
+        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
     }
 }
