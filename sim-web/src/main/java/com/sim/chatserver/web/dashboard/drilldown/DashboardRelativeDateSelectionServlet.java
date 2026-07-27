@@ -382,11 +382,10 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String value = values[0];
             String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;

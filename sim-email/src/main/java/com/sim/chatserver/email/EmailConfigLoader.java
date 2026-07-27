@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -57,18 +58,19 @@ public final class EmailConfigLoader {
         String get(String key);
     }
 
-    private static volatile EnvAccessor envAccessor = System::getenv;
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
+    private static volatile EnvAccessor envAccessor = ENV::get;
 
     private EmailConfigLoader() {
         // utility
     }
 
     static void setEnvAccessorForTests(EnvAccessor accessor) {
-        envAccessor = accessor == null ? System::getenv : accessor;
+        envAccessor = accessor == null ? ENV::get : accessor;
     }
 
     static void resetEnvAccessorForTests() {
-        envAccessor = System::getenv;
+        envAccessor = ENV::get;
     }
 
     private static String env(String key) {

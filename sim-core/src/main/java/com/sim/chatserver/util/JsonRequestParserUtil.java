@@ -1,8 +1,7 @@
 package com.sim.chatserver.util;
 
-import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -56,20 +55,14 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        String contentType = req.getContentType();
-        if (contentType != null && !contentType.toLowerCase(java.util.Locale.ROOT).contains("application/json")) {
-            log.fine(() -> "Skipping non-JSON content type: " + contentType);
-            return emptyObject();
-        }
+        try {
+            String body = readAtMost(req.getReader(), max);
 
-        try (InputStream in = new BufferedInputStream(req.getInputStream())) {
-            byte[] body = readAtMost(in, max);
-
-            if (body.length == 0) {
+            if (body.isBlank()) {
                 return emptyObject();
             }
 
-            try (JsonReader reader = Json.createReader(new java.io.ByteArrayInputStream(body))) {
+            try (JsonReader reader = Json.createReader(new StringReader(body))) {
                 JsonStructure structure = reader.read();
 
                 if (structure == null) {
@@ -198,12 +191,20 @@ public final class JsonRequestParserUtil {
         return out;
     }
 
-    private static byte[] readAtMost(InputStream in, int maxBytes) throws IOException, BodyTooLargeException {
-        byte[] payload = in.readNBytes(maxBytes + 1);
-        if (payload.length > maxBytes) {
-            throw new BodyTooLargeException("maxBytes=" + maxBytes + ", actual>" + maxBytes);
+    private static String readAtMost(java.io.Reader reader, int maxChars) throws IOException, BodyTooLargeException {
+        char[] buffer = new char[2048];
+        int total = 0;
+        StringBuilder payload = new StringBuilder(Math.min(maxChars, 4096));
+
+        int read;
+        while ((read = reader.read(buffer)) != -1) {
+            total += read;
+            if (total > maxChars) {
+                throw new BodyTooLargeException("maxChars=" + maxChars + ", actual>" + maxChars);
+            }
+            payload.append(buffer, 0, read);
         }
-        return payload;
+        return payload.toString();
     }
 
     private static JsonObject emptyObject() {

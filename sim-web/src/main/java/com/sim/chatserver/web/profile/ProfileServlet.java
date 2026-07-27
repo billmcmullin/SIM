@@ -202,26 +202,23 @@ public class ProfileServlet extends HttpServlet {
             this.req = req;
         }
 
-        static RequestContext from(HttpServletRequest req) {
+        private static RequestContext from(HttpServletRequest req) {
             return new RequestContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank() || req == null) {
                 return null;
             }
-            String[] values = req.getParameterValues(name);
-            if (values == null || values.length == 0) {
+            String value = req.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            for (String value : values) {
-                String trimmed = value == null ? null : value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-                if (trimmed == null || trimmed.isEmpty()) {
-                    continue;
-                }
-                return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
             }
-            return null;
+            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
         }
     }
 }

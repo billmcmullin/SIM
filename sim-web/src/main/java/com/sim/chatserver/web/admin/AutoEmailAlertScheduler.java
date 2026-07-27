@@ -173,7 +173,7 @@ public class AutoEmailAlertScheduler {
             store.updateHealthState(now, status, offlineSince, lastAlert);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to persist health alert state.", e);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Health alert evaluation failed.", e);
         }
     }
@@ -206,7 +206,7 @@ public class AutoEmailAlertScheduler {
             store.updateTermState(now, currentCount, lastAlert);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to evaluate or persist term alert state.", e);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Term alert evaluation failed.", e);
         }
     }
@@ -262,7 +262,7 @@ public class AutoEmailAlertScheduler {
 
             service.send(builder.build());
             return true;
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Failed sending automatic alert email.", e);
             return false;
         }

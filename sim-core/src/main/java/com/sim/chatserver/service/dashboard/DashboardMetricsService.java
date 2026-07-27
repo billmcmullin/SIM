@@ -117,7 +117,13 @@ public class DashboardMetricsService {
                 String displayName = widget.getDisplayName();
                 displayName = (displayName == null || displayName.isBlank()) ? widgetId : displayName;
 
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
+                String tableName;
+                try {
+                    tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
+                } catch (IllegalArgumentException ex) {
+                    LOG.log(Level.FINE, "Skipping widget with invalid id during stats build", ex);
+                    continue;
+                }
                 if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
                     continue;
                 }
@@ -128,7 +134,7 @@ public class DashboardMetricsService {
 
                 stats.add(new WidgetStat(widgetId, displayName, totalCount, todayCount, yesterdayCount));
             }
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             LOG.log(Level.FINE, "buildWidgetStats fallback to empty list", e);
             return List.of();
         }
@@ -202,7 +208,7 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday term load failed", e);
             return List.of();
         }
@@ -302,7 +308,7 @@ public class DashboardMetricsService {
                                             }
                                         }
                                     }
-                                } catch (RuntimeException ex) {
+                                } catch (IllegalStateException ex) {
                                     LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
                                 }
                             }
@@ -353,7 +359,7 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException e) {
             LOG.log(Level.FINE, "buildLatestOtherParasoftEntries term load failed", e);
             return List.of();
         }
@@ -413,7 +419,7 @@ public class DashboardMetricsService {
                                     matchedKnownTerm = true;
                                     break;
                                 }
-                            } catch (RuntimeException ex) {
+                            } catch (IllegalStateException ex) {
                                 LOG.log(Level.FINE, "Other Parasoft matcher evaluation failed", ex);
                             }
                         }
@@ -500,7 +506,7 @@ public class DashboardMetricsService {
         List<TermDefinition> terms;
         try {
             terms = termsStore.listAll();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             LOG.log(Level.FINE, "countTermAssignmentsForDays term load failed", e);
             return out;
         }
@@ -575,7 +581,7 @@ public class DashboardMetricsService {
                                         }
                                     }
                                 }
-                            } catch (RuntimeException ex) {
+                            } catch (IllegalStateException ex) {
                                 LOG.log(Level.FINE, "Term assignment matcher evaluation failed", ex);
                             }
                         }

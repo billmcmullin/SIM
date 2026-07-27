@@ -8,7 +8,6 @@ import java.net.http.HttpResponse;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Locale;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -175,14 +174,19 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        return values[0];
+
+        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
     }
 }

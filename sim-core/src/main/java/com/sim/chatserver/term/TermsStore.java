@@ -363,26 +363,15 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        long value = rs.getLong(column);
+        if (rs.wasNull()) {
             return 0L;
         }
-        if (raw instanceof Number number) {
-            return Math.max(0L, number.longValue());
-        }
-        if (raw instanceof String text) {
-            try {
-                return Math.max(0L, Long.parseLong(text.trim()));
-            } catch (NumberFormatException e) {
-                return 0L;
-            }
-        }
-        return 0L;
+        return Math.max(0L, value);
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = rs.getString(column);
         if (value == null) {
             return "";
         }
@@ -404,10 +393,6 @@ public class TermsStore {
         if (id == null) {
             return -1L;
         }
-        try {
-            return Long.parseLong(String.valueOf(id));
-        } catch (NumberFormatException e) {
-            return -1L;
-        }
+        return id.longValue();
     }
 }

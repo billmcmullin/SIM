@@ -2,13 +2,15 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -147,9 +149,8 @@ public class SaveConfigServlet extends HttpServlet {
             config.setSalesforceApiToken(salesforceApiToken);
 
             EncryptedDbConfigStore.save(config);
-
-            resp.setContentType("application/json");
-            resp.getWriter().write("{\"status\":\"ok\"}");
+            writeJson(resp, HttpServletResponse.SC_OK,
+                    Json.createObjectBuilder().add("status", "ok").build());
         } catch (SQLException e) {
             throw new ServletException("Unable to save server configuration", e);
         }
@@ -164,14 +165,26 @@ public class SaveConfigServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        Map<String, String[]> params = req.getParameterMap();
-        if (params == null) {
+        if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = params.get(name);
-        if (values == null || values.length == 0) {
+        String value = req.getParameter(name);
+        if (value == null) {
             return null;
         }
-        return values[0];
+        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        resp.setStatus(status);
+        resp.setCharacterEncoding("UTF-8");
+        resp.setContentType("application/json; charset=UTF-8");
+        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
+            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
+        }
     }
 }

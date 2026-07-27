@@ -552,11 +552,10 @@ public class DashboardNewUsersServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String value = values[0];
             String normalized = value.replace("\r", "").replace("\n", "").trim();
             return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
@@ -604,14 +603,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    static final class Metrics {
+    private static final class Metrics {
 
         final LocalDate start;
         final LocalDate end;
         final Map<LocalDate, Integer> byDay = new LinkedHashMap<>();
         final List<LatestRow> latest = new ArrayList<>();
 
-        Metrics(LocalDate start, LocalDate end) {
+        private Metrics(LocalDate start, LocalDate end) {
             this.start = start;
             this.end = end;
             long days = ChronoUnit.DAYS.between(start, end);
@@ -620,7 +619,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
         }
 
-        void incrementDay(LocalDate day) {
+        private void incrementDay(LocalDate day) {
             if (day == null || day.isBefore(start) || day.isAfter(end)) {
                 return;
             }
@@ -629,7 +628,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             byDay.put(day, Integer.valueOf(next));
         }
 
-        String toTrendJson() {
+        private String toTrendJson() {
             JsonArrayBuilder labels = Json.createArrayBuilder();
             JsonArrayBuilder values = Json.createArrayBuilder();
             byDay.forEach((d, c) -> {
@@ -645,16 +644,16 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    static final class DayResult {
+    private static final class DayResult {
 
         final List<LatestRow> rows;
 
-        DayResult(List<LatestRow> rows) {
+        private DayResult(List<LatestRow> rows) {
             this.rows = rows;
         }
     }
 
-    static final class LatestRow {
+    private static final class LatestRow {
 
         final String display;
         final String rawSessionId;
@@ -662,7 +661,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         final int totalChats;
         final String chatEntriesUrl;
 
-        LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
+        private LatestRow(String display, String rawSessionId, String firstSeen, int totalChats, String chatEntriesUrl) {
             this.display = display;
             this.rawSessionId = rawSessionId;
             this.firstSeen = firstSeen;

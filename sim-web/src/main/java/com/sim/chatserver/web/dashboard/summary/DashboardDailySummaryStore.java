@@ -402,12 +402,14 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeText(value, maxLen);
     }
 
     private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
-        String value = rs.getString(column);
+        Object raw = rs.getObject(column);
+        String value = raw == null ? null : String.valueOf(raw);
         return sanitizeText(value, maxLen);
     }
 
@@ -447,7 +449,18 @@ public class DashboardDailySummaryStore {
     }
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        String raw = getSafeString(rs, column, 128);
+        Object rawValue = rs.getObject(column);
+        if (rawValue == null) {
+            return null;
+        }
+        if (rawValue instanceof Timestamp ts) {
+            return ts;
+        }
+        if (rawValue instanceof java.sql.Date date) {
+            return new Timestamp(date.getTime());
+        }
+
+        String raw = sanitizeText(String.valueOf(rawValue), 128);
         if (raw.isBlank()) {
             return null;
         }

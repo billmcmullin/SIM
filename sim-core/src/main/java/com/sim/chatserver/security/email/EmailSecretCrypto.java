@@ -7,6 +7,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.text.Normalizer;
 import java.util.Base64;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -36,6 +37,7 @@ public final class EmailSecretCrypto {
     private static final int TAG_LEN_BITS = 128;
 
     private static final SecureRandom RNG = new SecureRandom();
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private EmailSecretCrypto() {
     }
@@ -163,7 +165,7 @@ public final class EmailSecretCrypto {
     }
 
     private static String readEnvCanonical(String key, int maxChars) {
-        String raw = System.getenv(key);
+        String raw = ENV.get(key);
         if (raw == null) {
             return null;
         }

@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.logging.Level;
@@ -53,6 +54,7 @@ public class DefaultTranslationService implements TranslationService {
     );
 
     private static final String DEFAULT_TRANSLATE_URL = "http://localhost:5000/translate";
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -298,7 +300,7 @@ public class DefaultTranslationService implements TranslationService {
     }
 
     private String envOrDefault(String key, String fallback) {
-        String v = sanitizeEnvValue(System.getenv(key), 4096);
+        String v = sanitizeEnvValue(ENV.get(key), 4096);
         String safeFallback = Objects.requireNonNullElse(fallback, "").trim();
         return (v == null || v.isBlank()) ? safeFallback : v;
     }

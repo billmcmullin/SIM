@@ -3,6 +3,7 @@ package com.sim.chatserver.config;
 
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Central configuration for widget-review map-reduce orchestration.
@@ -10,6 +11,8 @@ import java.util.Locale;
  * Loads from environment variables, then defaults.
  */
 public final class MapReduceConfig {
+
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     // Defaults
     private static final int D_SINGLE_PASS_MAX_SELECTED = 200;
@@ -323,7 +326,7 @@ public final class MapReduceConfig {
     }
 
     private static String valueFromEnv(String key) {
-        String env = System.getenv(key);
+        String env = ENV.get(key);
         if (env != null && !env.isBlank()) {
             return env;
         }
@@ -333,7 +336,7 @@ public final class MapReduceConfig {
     private static Integer parseInt(String s) {
         try {
             return Integer.parseInt(s.trim());
-        } catch (Exception ignored) {
+        } catch (NumberFormatException ignored) {
             return null;
         }
     }

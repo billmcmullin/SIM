@@ -374,7 +374,7 @@ public final class EncryptedDbConfigStore {
         } catch (IllegalArgumentException notBase64) {
             log.fine("getAesKeyBytes: env not Base64, deriving AES-256 key via PBKDF2 of UTF-8 string");
             return deriveAesKey(trimmed.getBytes(StandardCharsets.UTF_8), salt);
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "getAesKeyBytes: key derivation failed", e);
             throw new IllegalStateException("Unable to derive encryption key", e);
         }
@@ -423,7 +423,7 @@ public final class EncryptedDbConfigStore {
     }
 
     private static String readEnvCanonical(String envName, int maxChars) {
-        String raw = System.getenv(envName);
+        String raw = new ProcessBuilder().environment().get(envName);
         if (raw == null) {
             return null;
         }
@@ -443,7 +443,7 @@ public final class EncryptedDbConfigStore {
     private static DataSource requireDataSource() throws SQLException {
         try {
             return getDataSourceOrThrow();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "requireDataSource: datasource resolution failed", e);
             throw new SQLException("DataSource is not initialized", e);
         }
@@ -456,7 +456,7 @@ public final class EncryptedDbConfigStore {
             try {
                 holder = CDI.current().select(AppDataSourceHolder.class).get();
                 dsHolder = holder;
-            } catch (RuntimeException e) {
+            } catch (IllegalStateException | IllegalArgumentException e) {
                 throw new IllegalStateException("CDI lookup failed for AppDataSourceHolder", e);
             }
         }
@@ -468,7 +468,7 @@ public final class EncryptedDbConfigStore {
             }
             log.fine("getDataSourceOrThrow: datasource acquired");
             return ds;
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             throw new IllegalStateException("Failed to get DataSource from AppDataSourceHolder", e);
         }
     }

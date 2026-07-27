@@ -14,7 +14,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -127,8 +126,8 @@ public class DashboardTopicsServlet extends HttpServlet {
 
                             Set<String> matchedTopics = matchTopics(prompt, activeTopics);
                             for (String topic : matchedTopics) {
-                                globalCounts.merge(topic, Integer.valueOf(1), Integer::sum);
-                                widgetMap.merge(topic, Integer.valueOf(1), Integer::sum);
+                                globalCounts.merge(topic, 1, Integer::sum);
+                                widgetMap.merge(topic, 1, Integer::sum);
                             }
                         }
                     }
@@ -316,11 +315,10 @@ public class DashboardTopicsServlet extends HttpServlet {
             if (request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String value = values[0];
             String trimmed = value.replace("\r", "").replace("\n", "").trim();
             return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
@@ -334,24 +332,12 @@ public class DashboardTopicsServlet extends HttpServlet {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
             switch (c) {
-                case '&':
-                    escaped.append("&amp;");
-                    break;
-                case '<':
-                    escaped.append("&lt;");
-                    break;
-                case '>':
-                    escaped.append("&gt;");
-                    break;
-                case '"':
-                    escaped.append("&quot;");
-                    break;
-                case '\'':
-                    escaped.append("&#39;");
-                    break;
-                default:
-                    escaped.append(c);
-                    break;
+                case '&' -> escaped.append("&amp;");
+                case '<' -> escaped.append("&lt;");
+                case '>' -> escaped.append("&gt;");
+                case '"' -> escaped.append("&quot;");
+                case '\'' -> escaped.append("&#39;");
+                default -> escaped.append(c);
             }
         }
         return escaped.toString();

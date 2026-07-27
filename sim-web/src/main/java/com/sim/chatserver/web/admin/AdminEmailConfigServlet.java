@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -305,11 +306,28 @@ public class AdminEmailConfigServlet extends HttpServlet {
             throw new IllegalArgumentException("Invalid content length");
         }
 
-        try (JsonReader reader = Json.createReader(req.getReader())) {
+        try (JsonReader reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             return reader.readObject();
         } catch (IOException | JsonException e) {
             throw new IllegalArgumentException("Invalid JSON payload", e);
         }
+    }
+
+    private String readRequestBody(HttpServletRequest req) throws IOException {
+        StringBuilder body = new StringBuilder();
+        char[] buffer = new char[2048];
+        int total = 0;
+        int read;
+        try (var reader = req.getReader()) {
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size");
+                }
+                body.append(buffer, 0, read);
+            }
+        }
+        return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }
 
     private DbEmailConfigProvider emailConfigProvider() {

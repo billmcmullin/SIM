@@ -10,7 +10,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Enumeration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -326,11 +325,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (req == null || headerName == null || headerName.isBlank()) {
             return null;
         }
-        Enumeration<String> headers = req.getHeaders(headerName);
-        if (headers == null || !headers.hasMoreElements()) {
-            return null;
-        }
-        String raw = headers.nextElement();
+        String raw = req.getHeader(headerName);
         if (raw == null) {
             return null;
         }
@@ -461,11 +456,11 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            String normalized = values[0].replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
             if (normalized.isEmpty()) {
                 return null;
             }

@@ -2,7 +2,6 @@ package com.sim.chatserver.web.admin;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -195,7 +194,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, d);
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, Integer.valueOf(cnt));
+                    importedCounts.put(table, cnt);
                 }
 
                 for (Map.Entry<String, CsvTableData> e : zipTables.entrySet()) {
@@ -205,7 +204,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, e.getValue());
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, Integer.valueOf(cnt));
+                    importedCounts.put(table, cnt);
                 }
 
                 conn.commit();
@@ -494,10 +493,10 @@ public class DatabaseImportServlet extends HttpServlet {
                 if (typeValue == null) {
                     continue;
                 }
-                int type = sanitizeSqlType(typeValue.intValue());
+                int type = sanitizeSqlType(typeValue);
 
                 Integer nullableValue = readMetadataInt(rs, "NULLABLE");
-                boolean nullable = nullableValue == null || nullableValue.intValue() != ResultSetMetaData.columnNoNulls;
+                boolean nullable = nullableValue == null || nullableValue != ResultSetMetaData.columnNoNulls;
                 info.put(name, new ColumnInfo(type, nullable));
             }
         }
@@ -505,14 +504,11 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private Integer readMetadataInt(ResultSet rs, String columnName) throws SQLException {
-        Object raw = rs.getObject(columnName);
-        if (raw == null) {
+        String text = rs.getString(columnName);
+        if (text == null) {
             return null;
         }
-        if (raw instanceof Number n) {
-            return Integer.valueOf(n.intValue());
-        }
-        String text = String.valueOf(raw).trim();
+        text = stripControlChars(text).trim();
         if (text.isEmpty() || !text.matches("^-?\\d{1,10}$")) {
             return null;
         }
@@ -838,22 +834,22 @@ public class DatabaseImportServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank()) {
                 return null;
             }
             if (request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0 || values[0] == null) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            return sanitizeRequestValue(values[0]);
+            return sanitizeRequestValue(value);
         }
     }
 
@@ -912,8 +908,7 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String readSafeDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        Object dbValue = rs.getObject(columnName);
-        String raw = dbValue == null ? null : String.valueOf(dbValue);
+        String raw = rs.getString(columnName);
         if (raw == null) {
             return null;
         }
@@ -1029,7 +1024,7 @@ public class DatabaseImportServlet extends HttpServlet {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
             Integer value = e.getValue();
-            int safeValue = value == null ? 0 : value.intValue();
+            int safeValue = value == null ? 0 : value;
             b.add(e.getKey(), safeValue);
         }
         return b.build();
@@ -1040,7 +1035,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final List<String> headers;
         final List<List<String>> rows;
 
-        CsvTableData(List<String> headers, List<List<String>> rows) {
+        private CsvTableData(List<String> headers, List<List<String>> rows) {
             this.headers = headers == null ? List.of() : headers;
             this.rows = rows == null ? List.of() : rows;
         }
@@ -1051,7 +1046,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int sqlType;
         final boolean nullable;
 
-        ColumnInfo(int sqlType, boolean nullable) {
+        private ColumnInfo(int sqlType, boolean nullable) {
             this.sqlType = sqlType;
             this.nullable = nullable;
         }
@@ -1063,7 +1058,7 @@ public class DatabaseImportServlet extends HttpServlet {
         private final transient int rowNumber;
         private final transient String column;
 
-        ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
+        private ImportException(String message, String table, int rowNumber, String column, Throwable cause) {
             super(message, cause);
             this.table = table;
             this.rowNumber = rowNumber;
@@ -1078,7 +1073,7 @@ public class DatabaseImportServlet extends HttpServlet {
         final int statusCode;
         final String message;
 
-        PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
+        private PostImportSyncResult(boolean triggered, boolean ok, int statusCode, String message) {
             this.triggered = triggered;
             this.ok = ok;
             this.statusCode = statusCode;

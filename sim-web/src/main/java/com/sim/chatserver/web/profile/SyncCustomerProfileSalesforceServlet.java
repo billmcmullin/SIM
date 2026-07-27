@@ -78,7 +78,15 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     errorPayload("Invalid Salesforce request state."));
                 return;
-            } catch (Exception ex) {
+            } catch (IOException | InterruptedException | java.sql.SQLException ex) {
+                if (ex instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                logFailure("Salesforce lookup transport or persistence failure", ex);
+                writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
+                    errorPayload("Unable to query Salesforce right now."));
+                return;
+            } catch (RuntimeException ex) {
                 logFailure("Unexpected Salesforce lookup failure while syncing customer profile", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));
@@ -171,29 +179,23 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestContext from(HttpServletRequest req) {
+        private static RequestContext from(HttpServletRequest req) {
             return new RequestContext(req);
         }
 
-        String first(String name) {
+        private String first(String name) {
             if (name == null || name.isBlank() || request == null) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0) {
+            String value = request.getParameter(name);
+            if (value == null) {
                 return null;
             }
-            for (String value : values) {
-                if (value == null) {
-                    continue;
-                }
-                String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-                if (trimmed.isEmpty()) {
-                    continue;
-                }
-                return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
+            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+            if (trimmed.isEmpty()) {
+                return null;
             }
-            return null;
+            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
         }
     }
 }

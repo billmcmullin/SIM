@@ -13,6 +13,7 @@ import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -31,6 +32,7 @@ import jakarta.enterprise.inject.spi.CDI;
 public final class CustomerProfileStore {
 
     private static final Logger LOG = Logger.getLogger(CustomerProfileStore.class.getName());
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final String TABLE_NAME = "customer_profile_cache";
 
@@ -126,17 +128,17 @@ public final class CustomerProfileStore {
                 }
 
                 CustomerProfile p = new CustomerProfile();
-                p.setSessionId(rs.getString("session_id"));
-                p.setFriendlyName(rs.getString("friendly_name"));
-                p.setSalesforceContactId(rs.getString("salesforce_contact_id"));
-                p.setSalesforceAccountId(rs.getString("salesforce_account_id"));
-                p.setEmail(decryptIfNeeded(rs.getString("email_enc")));
-                p.setPhone(decryptIfNeeded(rs.getString("phone_enc")));
-                p.setTitle(decryptIfNeeded(rs.getString("title_enc")));
-                p.setDepartment(decryptIfNeeded(rs.getString("department_enc")));
-                p.setRawJson(decryptIfNeeded(rs.getString("raw_json_enc")));
+                p.setSessionId(readDbText(rs, "session_id", 256));
+                p.setFriendlyName(readDbText(rs, "friendly_name", 512));
+                p.setSalesforceContactId(readDbText(rs, "salesforce_contact_id", 256));
+                p.setSalesforceAccountId(readDbText(rs, "salesforce_account_id", 256));
+                p.setEmail(decryptIfNeeded(readDbRawText(rs, "email_enc")));
+                p.setPhone(decryptIfNeeded(readDbRawText(rs, "phone_enc")));
+                p.setTitle(decryptIfNeeded(readDbRawText(rs, "title_enc")));
+                p.setDepartment(decryptIfNeeded(readDbRawText(rs, "department_enc")));
+                p.setRawJson(decryptIfNeeded(readDbRawText(rs, "raw_json_enc")));
 
-                Timestamp ts = rs.getTimestamp("last_synced_at");
+                Timestamp ts = readDbTimestamp(rs, "last_synced_at");
                 if (ts != null) {
                     p.setLastSyncedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
                 }
@@ -303,7 +305,7 @@ public final class CustomerProfileStore {
     }
 
     private static String readEnvCanonical(String envName, int maxChars) {
-        String raw = System.getenv(envName);
+        String raw = ENV.get(envName);
         if (raw == null) {
             return null;
         }
@@ -318,6 +320,42 @@ public final class CustomerProfileStore {
             throw new IllegalStateException("Environment variable contains invalid control characters: " + envName);
         }
         return normalized;
+    }
+
+    private static String readDbRawText(ResultSet rs, String column) throws SQLException {
+        Object raw = rs.getObject(column);
+        return raw == null ? null : String.valueOf(raw);
+    }
+
+    private static String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        String raw = readDbRawText(rs, column);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC).trim();
+        if (normalized.length() <= maxChars) {
+            return normalized;
+        }
+        return normalized.substring(0, maxChars);
+    }
+
+    private static Timestamp readDbTimestamp(ResultSet rs, String column) throws SQLException {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Timestamp ts) {
+            return ts;
+        }
+        if (raw instanceof java.sql.Date date) {
+            return new Timestamp(date.getTime());
+        }
+        try {
+            return Timestamp.valueOf(String.valueOf(raw).trim().replace('T', ' '));
+        } catch (IllegalArgumentException ex) {
+            LOG.log(Level.FINE, "Unable to parse timestamp for customer profile column " + column, ex);
+            return null;
+        }
     }
 
     private static String buildDefaultCipherTransformation() {

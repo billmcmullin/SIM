@@ -6,6 +6,7 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.text.Normalizer;
+import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -203,7 +204,7 @@ public final class SecurityValidationService {
         }
 
         // Only fall back to forwarding headers when remote address is unavailable.
-        String xff = canonicalizeInput(req.getHeader("X-Forwarded-For"), 512);
+        String xff = readForwardedHeaderToken(req, "X-Forwarded-For", 512);
         if (!xff.isBlank()) {
             String first = canonicalizeInput(xff.split(",")[0], 64);
             if (isParseableAddress(first)) {
@@ -211,7 +212,7 @@ public final class SecurityValidationService {
             }
         }
 
-        String xri = canonicalizeInput(req.getHeader("X-Real-IP"), 64);
+        String xri = readForwardedHeaderToken(req, "X-Real-IP", 64);
         if (isParseableAddress(xri)) {
             return xri;
         }
@@ -357,6 +358,29 @@ public final class SecurityValidationService {
 
     private String canonicalizeUrlInput(String value) {
         return canonicalizeInput(value, 2048);
+    }
+
+    private String readForwardedHeaderToken(HttpServletRequest req, String headerName, int maxLen) {
+        if (req == null || headerName == null || headerName.isBlank()) {
+            return "";
+        }
+        Enumeration<String> headers = req.getHeaders(headerName);
+        if (headers == null) {
+            return "";
+        }
+        while (headers.hasMoreElements()) {
+            String raw = headers.nextElement();
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            int comma = raw.indexOf(',');
+            String token = comma >= 0 ? raw.substring(0, comma) : raw;
+            String normalized = canonicalizeInput(token, maxLen);
+            if (!normalized.isBlank()) {
+                return normalized;
+            }
+        }
+        return "";
     }
 
     private String canonicalizeInput(String value, int maxLen) {

@@ -90,7 +90,7 @@ public class AppDataSourceHolder {
             this.emf = newEmf;
 
             log.info("EntityManagerFactory initialized (PostgreSQL only)");
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to initialize PostgreSQL datasource/EMF", e);
             throw new IllegalStateException("Failed to initialize PostgreSQL datasource/EMF", e);
         }
@@ -114,7 +114,7 @@ public class AppDataSourceHolder {
                 this.ds = new HikariDataSource(cfg);
             }
             log.info("DataSource set on AppDataSourceHolder");
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Failed to set DataSource on AppDataSourceHolder: " + e.getMessage(), e);
         }
     }
@@ -137,7 +137,7 @@ public class AppDataSourceHolder {
         if (localDs != null) {
             try {
                 return localDs.getJdbcUrl();
-            } catch (RuntimeException ex) {
+            } catch (IllegalStateException | IllegalArgumentException ex) {
                 log.log(Level.FINE, "Unable to read active JDBC URL from datasource", ex);
             }
         }
@@ -201,14 +201,14 @@ public class AppDataSourceHolder {
             closeQuietly(oldDs);
 
             callback.accept("switchToExternalAndPersist: success; datasource and EMF updated.");
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             // If partially created, clean up new resources on failure.
             closeQuietly(newEmf);
             closeQuietly(newDs);
 
             log.log(Level.SEVERE, "switchToExternalAndPersist failed: " + e.getMessage(), e);
             callback.accept("switchToExternalAndPersist failed: " + e.getMessage());
-            throw new RuntimeException(e);
+            throw new IllegalStateException("switchToExternalAndPersist failed", e);
         }
     }
 
@@ -264,7 +264,7 @@ public class AppDataSourceHolder {
         if (factory != null) {
             try {
                 factory.close();
-            } catch (RuntimeException ex) {
+            } catch (IllegalStateException | IllegalArgumentException ex) {
                 log.log(Level.FINE, "Failed closing EntityManagerFactory", ex);
             }
         }
@@ -274,14 +274,14 @@ public class AppDataSourceHolder {
         if (dataSource != null) {
             try {
                 dataSource.close();
-            } catch (RuntimeException ex) {
+            } catch (IllegalStateException | IllegalArgumentException ex) {
                 log.log(Level.FINE, "Failed closing HikariDataSource", ex);
             }
         }
     }
 
     private static String readEnv(String key) {
-        String raw = System.getenv(key);
+        String raw = new ProcessBuilder().environment().get(key);
         if (raw == null) {
             return null;
         }

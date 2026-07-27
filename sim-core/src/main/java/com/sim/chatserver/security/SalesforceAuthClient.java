@@ -1,17 +1,24 @@
 package com.sim.chatserver.security;
 
+import java.io.IOException;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
@@ -24,6 +31,10 @@ public class SalesforceAuthClient {
 
     private static final Logger log = Logger.getLogger(SalesforceAuthClient.class.getName());
     private static final Pattern XML_TAG_PATTERN = Pattern.compile("<(?:\\w+:)?%s>(.*?)</(?:\\w+:)?%s>", Pattern.DOTALL);
+    private static final String SOAP_ENV_NS = "http://schemas.xmlsoap.org/soap/envelope/";
+    private static final String SOAP_PARTNER_NS = "urn:partner.soap.sforce.com";
+    private static final String XML_SCHEMA_NS = "http://www.w3.org/2001/XMLSchema";
+    private static final String XML_SCHEMA_INSTANCE_NS = "http://www.w3.org/2001/XMLSchema-instance";
 
     private final HttpClient httpClient;
 
@@ -38,7 +49,7 @@ public class SalesforceAuthClient {
         this.httpClient = httpClient;
     }
 
-    public AuthResult refreshAccessToken() throws Exception {
+    public AuthResult refreshAccessToken() throws IOException, InterruptedException, SQLException {
         ServerConfig cfg = EncryptedDbConfigStore.load();
         if (cfg == null) {
             throw new IllegalStateException("ServerConfig not found.");
@@ -46,11 +57,12 @@ public class SalesforceAuthClient {
         return refreshAccessToken(cfg, true);
     }
 
-    public AuthResult refreshAccessToken(ServerConfig cfg) throws Exception {
+    public AuthResult refreshAccessToken(ServerConfig cfg) throws IOException, InterruptedException, SQLException {
         return refreshAccessToken(cfg, false);
     }
 
-    private AuthResult refreshAccessToken(ServerConfig cfg, boolean persistResult) throws Exception {
+        private AuthResult refreshAccessToken(ServerConfig cfg, boolean persistResult)
+            throws IOException, InterruptedException, SQLException {
         if (cfg == null) {
             throw new IllegalStateException("ServerConfig not found.");
         }
@@ -61,12 +73,15 @@ public class SalesforceAuthClient {
         if (hasRefreshFlow) {
             try {
                 return refreshAccessTokenWithRefreshToken(cfg, persistResult);
-            } catch (Exception e) {
+            } catch (IOException | SQLException | IllegalStateException e) {
                 if (!hasApiTokenFlow) {
                     throw e;
                 }
                 log.log(Level.WARNING,
-                        "Salesforce refresh-token flow failed; attempting username/password/API-token fallback.", e);
+                        "Primary Salesforce auth flow failed; attempting configured fallback flow.", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw e;
             }
         }
 
@@ -77,7 +92,8 @@ public class SalesforceAuthClient {
         throw new IllegalStateException("Missing Salesforce auth configuration. Configure OAuth refresh or username/password/API token.");
     }
 
-    private AuthResult refreshAccessTokenWithRefreshToken(ServerConfig cfg, boolean persistResult) throws Exception {
+        private AuthResult refreshAccessTokenWithRefreshToken(ServerConfig cfg, boolean persistResult)
+                throws IOException, InterruptedException, SQLException {
 
         String loginUrl = trimToNull(cfg.getSalesforceLoginUrl());
         String clientId = trimToNull(cfg.getSalesforceClientId());
@@ -123,26 +139,20 @@ public class SalesforceAuthClient {
         return result;
     }
 
-    private AuthResult loginWithApiToken(ServerConfig cfg, boolean persistResult) throws Exception {
+        private AuthResult loginWithApiToken(ServerConfig cfg, boolean persistResult)
+            throws IOException, InterruptedException, SQLException {
         String loginUrl = trimToNull(cfg.getSalesforceLoginUrl());
         String username = trimToNull(cfg.getSalesforceUsername());
         String password = trimToNull(cfg.getSalesforcePassword());
         String apiToken = trimToNull(cfg.getSalesforceApiToken());
 
         if (loginUrl == null || username == null || password == null || apiToken == null) {
-            throw new IllegalStateException("Missing Salesforce username/password/API token configuration.");
+            throw new IllegalStateException("Missing Salesforce API-token login configuration.");
         }
 
         String endpoint = normalizeBaseUrl(loginUrl) + "/services/Soap/u/61.0";
         String combinedPassword = password + apiToken;
-        String body = "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
-                + "<env:Envelope xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" "
-                + "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
-                + "xmlns:env=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-                + "<env:Body><n1:login xmlns:n1=\"urn:partner.soap.sforce.com\">"
-                + "<n1:username>" + xmlEscape(username) + "</n1:username>"
-                + "<n1:password>" + xmlEscape(combinedPassword) + "</n1:password>"
-                + "</n1:login></env:Body></env:Envelope>";
+        String body = buildSoapLoginBody(username, combinedPassword);
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
@@ -246,15 +256,43 @@ public class SalesforceAuthClient {
         return matcher.group(1);
     }
 
-    private String xmlEscape(String input) {
-        if (input == null) {
-            return "";
+    private String buildSoapLoginBody(String username, String combinedPassword) {
+        try {
+            StringWriter writer = new StringWriter(512);
+            XMLOutputFactory factory = XMLOutputFactory.newFactory();
+            XMLStreamWriter xml = factory.createXMLStreamWriter(writer);
+
+            xml.writeStartDocument(StandardCharsets.UTF_8.name(), "1.0");
+            xml.setPrefix("env", SOAP_ENV_NS);
+            xml.setPrefix("xsd", XML_SCHEMA_NS);
+            xml.setPrefix("xsi", XML_SCHEMA_INSTANCE_NS);
+
+            xml.writeStartElement("env", "Envelope", SOAP_ENV_NS);
+            xml.writeNamespace("env", SOAP_ENV_NS);
+            xml.writeNamespace("xsd", XML_SCHEMA_NS);
+            xml.writeNamespace("xsi", XML_SCHEMA_INSTANCE_NS);
+
+            xml.writeStartElement("env", "Body", SOAP_ENV_NS);
+            xml.writeStartElement("n1", "login", SOAP_PARTNER_NS);
+            xml.writeNamespace("n1", SOAP_PARTNER_NS);
+
+            xml.writeStartElement("n1", "username", SOAP_PARTNER_NS);
+            xml.writeCharacters(username);
+            xml.writeEndElement();
+
+            xml.writeStartElement("n1", "password", SOAP_PARTNER_NS);
+            xml.writeCharacters(combinedPassword);
+            xml.writeEndElement();
+
+            xml.writeEndElement();
+            xml.writeEndElement();
+            xml.writeEndElement();
+            xml.writeEndDocument();
+            xml.close();
+            return writer.toString();
+        } catch (XMLStreamException ex) {
+            throw new IllegalStateException("Unable to build Salesforce SOAP payload.", ex);
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;");
     }
 
     private String normalizeBaseUrl(String url) {

@@ -286,23 +286,18 @@ public class CustomerProfileServlet extends HttpServlet {
             this.request = request;
         }
 
-        static RequestParamContext from(HttpServletRequest request) {
+        private static RequestParamContext from(HttpServletRequest request) {
             return new RequestParamContext(request);
         }
 
-        String first(String name, int maxLen) {
+        private String first(String name, int maxLen) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String[] values = request.getParameterValues(name);
-            if (values == null || values.length == 0) {
-                return null;
-            }
-            for (String value : values) {
-                String normalized = normalize(value, maxLen);
-                if (normalized != null) {
-                    return normalized;
-                }
+            String value = request.getParameter(name);
+            String normalized = normalize(value, maxLen);
+            if (normalized != null) {
+                return normalized;
             }
             return null;
         }

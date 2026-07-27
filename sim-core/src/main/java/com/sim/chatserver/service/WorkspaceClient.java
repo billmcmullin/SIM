@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 
 /**
@@ -74,6 +75,7 @@ public class WorkspaceClient {
         final String safeMessage = message == null ? "" : message;
         final String safeMode = (mode == null || mode.isBlank()) ? "chat" : mode;
         final JsonArray safeAttachments = attachments == null ? Json.createArrayBuilder().build() : attachments;
+        final URI targetUri = toSafeHttpUri(targetUrl);
 
         JsonObject payload = buildPayload(safeMessage, safeMode, sessionId, reset, safeAttachments);
         String body = payload.toString();
@@ -83,7 +85,7 @@ public class WorkspaceClient {
             attempt++;
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(targetUrl))
+                    .uri(targetUri)
                     .timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
@@ -234,8 +236,25 @@ public class WorkspaceClient {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             return reader.readObject();
-        } catch (Exception ignored) {
+        } catch (JsonException | ClassCastException | IllegalStateException ignored) {
             return null;
+        }
+    }
+
+    private URI toSafeHttpUri(String targetUrl) throws IOException {
+        if (targetUrl == null || targetUrl.isBlank()) {
+            throw new IOException("Workspace target URL is required.");
+        }
+        try {
+            URI uri = URI.create(targetUrl.trim()).normalize();
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost();
+            if ((!"http".equals(scheme) && !"https".equals(scheme)) || host == null || host.isBlank()) {
+                throw new IOException("Workspace target URL must be http/https with a host.");
+            }
+            return uri;
+        } catch (IllegalArgumentException ex) {
+            throw new IOException("Workspace target URL is invalid.", ex);
         }
     }
 
@@ -274,7 +293,7 @@ public class WorkspaceClient {
             String host = u.getHost() == null ? "" : u.getHost();
             String path = u.getPath() == null ? "" : u.getPath();
             return host + path;
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             return "(invalid-target)";
         }
     }

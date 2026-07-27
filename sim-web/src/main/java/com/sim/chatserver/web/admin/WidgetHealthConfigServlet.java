@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -268,12 +269,14 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         char[] buffer = new char[2048];
         int total = 0;
         int read;
-        while ((read = req.getReader().read(buffer)) != -1) {
-            total += read;
-            if (total > MAX_JSON_PAYLOAD_BYTES) {
-                throw new IOException("Payload exceeds allowed size");
+        try (BufferedReader reader = req.getReader()) {
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IOException("Payload exceeds allowed size");
+                }
+                body.append(buffer, 0, read);
             }
-            body.append(buffer, 0, read);
         }
         return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }

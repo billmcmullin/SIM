@@ -82,18 +82,27 @@ public final class SessionLabelStore {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String id = sanitizeDbText(rs.getString("session_id"), 256);
+                    String id = readDbText(rs, "session_id", 256);
                     if (id.isBlank()) {
                         continue;
                     }
                     map.put(id,
                             new SessionLabel(
-                                    sanitizeDbText(rs.getString("display_name"), 256),
-                                    sanitizeDbText(rs.getString("contact_email"), 256)));
+                                    readDbText(rs, "display_name", 256),
+                                    readDbText(rs, "contact_email", 256)));
                 }
             }
         }
         return map;
+    }
+
+    private static String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        if (rs == null || column == null || column.isBlank()) {
+            return "";
+        }
+        Object raw = rs.getObject(column);
+        String value = raw == null ? "" : String.valueOf(raw);
+        return sanitizeDbText(value, maxChars);
     }
 
     private static String sanitizeDbText(String value, int maxChars) {

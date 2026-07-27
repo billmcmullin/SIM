@@ -302,11 +302,11 @@ public final class CustomerIdentityStore {
                     link.setDisplayNameSnapshot(readSanitizedDbText(rs, "display_name_snapshot", 512));
                     link.setContactEmailSnapshot(readSanitizedDbText(rs, "contact_email_snapshot", 512));
 
-                    Timestamp linkedAt = rs.getTimestamp("linked_at");
+                    Timestamp linkedAt = readSafeTimestamp(rs, "linked_at");
                     if (linkedAt != null) {
                         link.setLinkedAt(linkedAt.toInstant().atOffset(ZoneOffset.UTC));
                     }
-                    Timestamp updatedAt = rs.getTimestamp("updated_at");
+                    Timestamp updatedAt = readSafeTimestamp(rs, "updated_at");
                     if (updatedAt != null) {
                         link.setUpdatedAt(updatedAt.toInstant().atOffset(ZoneOffset.UTC));
                     }
@@ -332,15 +332,15 @@ public final class CustomerIdentityStore {
         x.setRawJson(readSanitizedDbText(rs, "raw_json_enc", 20000));
         x.setConfidence(readSanitizedDbText(rs, "confidence", 32));
 
-        Timestamp created = rs.getTimestamp("created_at");
+        Timestamp created = readSafeTimestamp(rs, "created_at");
         if (created != null) {
             x.setCreatedAt(created.toInstant().atOffset(ZoneOffset.UTC));
         }
-        Timestamp updated = rs.getTimestamp("updated_at");
+        Timestamp updated = readSafeTimestamp(rs, "updated_at");
         if (updated != null) {
             x.setUpdatedAt(updated.toInstant().atOffset(ZoneOffset.UTC));
         }
-        Timestamp synced = rs.getTimestamp("last_synced_at");
+        Timestamp synced = readSafeTimestamp(rs, "last_synced_at");
         if (synced != null) {
             x.setLastSyncedAt(synced.toInstant().atOffset(ZoneOffset.UTC));
         }
@@ -477,16 +477,57 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String raw = rs.getObject(column, String.class);
+        Object rawValue = rs.getObject(column);
+        String raw = rawValue == null ? null : String.valueOf(rawValue);
         return sanitizeDbText(raw, maxChars);
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        Long value = rs.getObject(column, Long.class);
-        if (value == null || value.compareTo(0L) < 0) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return 0L;
         }
-        return value;
+
+        long value;
+        if (raw instanceof Number n) {
+            value = n.longValue();
+        } else {
+            String text = String.valueOf(raw).trim();
+            if (text.isEmpty()) {
+                return 0L;
+            }
+            try {
+                value = Long.parseLong(text);
+            } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
+                return 0L;
+            }
+        }
+        return value < 0L ? 0L : value;
+    }
+
+    private static Timestamp readSafeTimestamp(ResultSet rs, String column) throws SQLException {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Timestamp ts) {
+            return ts;
+        }
+        if (raw instanceof java.sql.Date date) {
+            return new Timestamp(date.getTime());
+        }
+
+        String text = String.valueOf(raw).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Timestamp.valueOf(text.replace('T', ' '));
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Unable to parse timestamp for column " + column, ex);
+            return null;
+        }
     }
 
     private static String sanitizeDbText(String value, int maxChars) {

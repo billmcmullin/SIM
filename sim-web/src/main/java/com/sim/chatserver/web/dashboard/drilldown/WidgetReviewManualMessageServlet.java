@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,6 +67,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
     private static final Object INIT_LOCK = new Object();
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static volatile HttpClient httpClient;
     private static volatile MapReduceConfig mrConfig;
@@ -102,9 +104,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService();
             ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
 
-            Set<String> allowedHosts = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOSTS"));
-            Set<String> allowedSuffixes = parseCsvToSet(System.getenv("REVIEW_TRUSTED_HOST_SUFFIXES"));
-            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(System.getenv("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
+            Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
+            Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
+            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
             TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
 
             WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(

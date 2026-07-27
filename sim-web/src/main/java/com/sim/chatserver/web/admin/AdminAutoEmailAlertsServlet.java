@@ -24,6 +24,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -230,6 +231,19 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
         if (req == null) {
+            return false;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            return false;
+        }
+        String mediaType = contentType;
+        int semicolon = mediaType.indexOf(';');
+        if (semicolon >= 0) {
+            mediaType = mediaType.substring(0, semicolon);
+        }
+        mediaType = mediaType.trim().toLowerCase(Locale.ROOT);
+        if (!"application/json".equals(mediaType)) {
             return false;
         }
         long len = req.getContentLengthLong();

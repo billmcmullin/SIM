@@ -3,6 +3,8 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -730,8 +733,8 @@ public class WidgetExportServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (var reader = req.getReader()) {
-            char[] buf = new char[4096];
+        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+            char[] buf = new char[2048];
             StringBuilder body = new StringBuilder();
             int total = 0;
             int read;
@@ -751,7 +754,8 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private String readDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        String value = rs.getString(columnName);
+        Object raw = rs.getObject(columnName);
+        String value = raw == null ? null : String.valueOf(raw);
         if (value == null) {
             return "";
         }
@@ -767,7 +771,8 @@ public class WidgetExportServlet extends HttpServlet {
         if (ts != null) {
             return ts;
         }
-        String text = rs.getString(columnName);
+        Object raw = rs.getObject(columnName);
+        String text = raw == null ? null : String.valueOf(raw);
         if (text == null) {
             return null;
         }
@@ -777,7 +782,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
         try {
             return Timestamp.from(Instant.parse(text));
-        } catch (RuntimeException ex) {
+        } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Falling back to SQL timestamp parsing", ex);
             return Timestamp.valueOf(text.replace('T', ' '));
         }

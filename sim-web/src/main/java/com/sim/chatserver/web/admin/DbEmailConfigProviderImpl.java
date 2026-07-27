@@ -87,7 +87,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                         defaultFrom
                 );
             }
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to load SMTP config from DB", e);
             return null;
         }
@@ -142,9 +142,9 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
             } catch (SQLException e) {
                 rollbackQuietly(con);
                 throw new IllegalStateException("Failed to save SMTP config", e);
-            } catch (RuntimeException e) {
+            } catch (IllegalStateException | IllegalArgumentException e) {
                 rollbackQuietly(con);
-                throw e;
+                throw new IllegalStateException("Failed to save SMTP config", e);
             } finally {
                 setAutoCommitQuietly(con, true);
             }
@@ -164,6 +164,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         try {
             port = Integer.parseInt(portRaw);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid DB_PORT value; using fallback", ex);
             port = 5432;
         }
 
@@ -177,7 +178,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     }
 
     private String envOrDefault(String key, String def, Pattern allowed, int maxLen) {
-        String v = System.getenv(key);
+        String v = readEnv(key);
         if (v == null || v.isBlank()) {
             return def;
         }
@@ -192,7 +193,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     }
 
     private String envSecretOrDefault(String key, String def) {
-        String v = System.getenv(key);
+        String v = readEnv(key);
         if (v == null) {
             return def;
         }
@@ -210,6 +211,13 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         return value.replace("\u0000", "")
                 .replace("\r", "")
                 .replace("\n", "");
+    }
+
+    private String readEnv(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return new ProcessBuilder().environment().get(key);
     }
 
     private void bindCommonForUpdate(PreparedStatement ps, EmailConfig c, String encPassword, String updatedBy, Timestamp now)

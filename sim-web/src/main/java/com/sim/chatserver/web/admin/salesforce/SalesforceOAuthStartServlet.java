@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin.salesforce;
 
 import java.io.IOException;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -68,6 +69,12 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             return;
         }
 
+        URI baseUri = normalizeBaseUri(loginUrl);
+        if (baseUri == null) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid Salesforce login URL configuration.");
+            return;
+        }
+
         String redirectUri = buildExternalRedirectUri(req);
 
         String state = generateState();
@@ -75,7 +82,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         session.setAttribute(OAUTH_STATE_KEY, state);
         session.setAttribute(OAUTH_STATE_TS_KEY, String.valueOf(System.currentTimeMillis()));
 
-        String authorizeUrl = normalizeBaseUrl(loginUrl)
+        String authorizeUrl = baseUri.toString()
                 + "/services/oauth2/authorize"
                 + "?response_type=code"
                 + "&client_id=" + enc(clientId)
@@ -168,7 +175,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (port > 0 && !defaultPort) {
             sb.append(':').append(port);
         }
-        sb.append(req.getContextPath()).append("/admin/salesforce/oauth/callback");
+        sb.append(safeContextPath(req.getContextPath())).append("/admin/salesforce/oauth/callback");
         return sb.toString();
     }
 
@@ -213,12 +220,29 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private String normalizeBaseUrl(String url) {
-        String x = url.trim();
+    private URI normalizeBaseUri(String url) {
+        String x = url == null ? "" : url.trim();
         if (!x.startsWith("http://") && !x.startsWith("https://")) {
             x = "https://" + x;
         }
-        return x.replaceAll("/+$", "");
+        x = x.replaceAll("/+$", "");
+        try {
+            URI parsed = URI.create(x).normalize();
+            String scheme = sanitizeScheme(parsed.getScheme());
+            String host = sanitizeHost(parsed.getHost());
+            if (isBlank(scheme) || isBlank(host)) {
+                return null;
+            }
+            StringBuilder b = new StringBuilder();
+            b.append(scheme).append("://").append(host);
+            if (parsed.getPort() > 0) {
+                b.append(':').append(parsed.getPort());
+            }
+            return URI.create(b.toString());
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid Salesforce base URL", ex);
+            return null;
+        }
     }
 
     private boolean isSafeAuthorizeUrl(String url) {
@@ -260,7 +284,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (host == null || host.isBlank()) {
             return null;
         }
-        String normalized = host.trim().toLowerCase();
+        String normalized = host.trim().toLowerCase(java.util.Locale.ROOT);
         return SAFE_HOST.matcher(normalized).matches() ? normalized : null;
     }
 
@@ -268,11 +292,22 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (scheme == null || scheme.isBlank()) {
             return null;
         }
-        String normalized = scheme.trim().toLowerCase();
+        String normalized = scheme.trim().toLowerCase(java.util.Locale.ROOT);
         if ("http".equals(normalized) || "https".equals(normalized)) {
             return normalized;
         }
         return null;
+    }
+
+    private String safeContextPath(String contextPath) {
+        if (contextPath == null || contextPath.isBlank()) {
+            return "";
+        }
+        String trimmed = contextPath.trim().replace("\r", "").replace("\n", "");
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        return trimmed.charAt(0) == '/' ? trimmed : '/' + trimmed;
     }
 
     private String enc(String v) {
