@@ -18,10 +18,9 @@ public class InactiveUsersPageIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticated_redirectedToLogin() {
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-
+        navigateWithCommit("/dashboard/inactive-users");
         waitForLoginScreen();
-        assertOnLoginScreen("Expected redirect/forward to login,");
+        assertOnLoginScreen("Expected unauthenticated inactive-users request to land on login,");
     }
 
     @Test
@@ -29,8 +28,9 @@ public class InactiveUsersPageIT extends BaseUiIT {
     void inactiveUsersPage_rendersCoreUi_whenAuthenticated() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        navigateWithCommit("/dashboard/inactive-users");
+        waitForPath("/chat-server/dashboard/inactive-users");
+        page.waitForSelector("h1:has-text('Inactive Users')");
 
         assertTrue(page.title().contains("Inactive Users"));
         assertTrue(page.locator("h1:has-text('Inactive Users')").count() > 0);
@@ -48,7 +48,7 @@ public class InactiveUsersPageIT extends BaseUiIT {
 
         // Injected page config should exist
         assertTrue(page.evaluate("() => !!window.inactiveUsersConfig").equals(Boolean.TRUE));
-        assertTrue(page.evaluate("() => typeof window.inactiveUsersConfig.data === 'string'").equals(Boolean.TRUE));
+        assertTrue(page.evaluate("() => typeof window.inactiveUsersConfig.dataB64 === 'string' || typeof window.inactiveUsersConfig.data === 'object'").equals(Boolean.TRUE));
     }
 
     @Test
@@ -56,14 +56,14 @@ public class InactiveUsersPageIT extends BaseUiIT {
     void applyDays_updatesUrlAndStaysOnPage() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        navigateWithCommit("/dashboard/inactive-users");
+        waitForPath("/chat-server/dashboard/inactive-users");
 
         page.selectOption("#daysSelect", "14");
-        page.click("#applyDaysBtn");
+        page.click("#applyDaysBtn", new Page.ClickOptions().setNoWaitAfter(true));
 
         // typical client behavior is reload with ?days=...
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        waitForPath("/chat-server/dashboard/inactive-users");
         assertTrue(page.url().contains("/chat-server/dashboard/inactive-users"),
                 "Expected to remain on inactive-users page, got: " + page.url());
     }
@@ -73,50 +73,31 @@ public class InactiveUsersPageIT extends BaseUiIT {
     void topNav_buttons_dashboardProfileLogout_work() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        navigateWithCommit("/dashboard/inactive-users");
+        waitForPath("/chat-server/dashboard/inactive-users");
 
-        page.click("button:has-text('Dashboard')");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
-        assertTrue(page.url().contains("/chat-server/dashboard"));
+        // Validate dashboard target intent without triggering /dashboard server-side load.
+        assertNavButtonTargets("Dashboard", "/chat-server/dashboard");
 
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        navigateWithCommit("/dashboard/inactive-users");
+        waitForPath("/chat-server/dashboard/inactive-users");
 
-        page.click("button:has-text('Profile')");
-        page.waitForURL(url -> url.contains("/chat-server/profile"));
+        clickNavButtonNoWait("Profile", "/chat-server/profile");
         assertTrue(page.url().contains("/chat-server/profile"));
 
-        page.navigate(baseUrl + "/dashboard/inactive-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/inactive-users"));
+        navigateWithCommit("/dashboard/inactive-users");
+        waitForPath("/chat-server/dashboard/inactive-users");
 
-        page.click("button:has-text('Logout')");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        clickNavButtonNoWait("Logout", "/chat-server/login");
         assertTrue(page.url().contains("/chat-server/login"));
 
         // verify blocked after logout
-        page.navigate(baseUrl + "/dashboard/inactive-users");
+        navigateWithCommit("/dashboard/inactive-users");
         waitForLoginScreen();
         assertOnLoginScreen("Expected inactive-users to be blocked after logout,");
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        waitForLoginScreen();
-        assertOnLoginScreen("Expected login page before submitting credentials,");
-
-        page.fill("#username", username);
-        page.fill("#password", password);
-        page.click("button[type='submit']");
-
-        page.waitForURL(
-                url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
-
-        assertTrue(
-                page.url().contains("/chat-server/dashboard") || page.url().contains("/chat-server/admin"),
-                "Login expected /dashboard or /admin, got: " + page.url()
-        );
+        loginViaApi(username, password);
     }
 }

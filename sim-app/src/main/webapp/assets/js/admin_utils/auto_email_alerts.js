@@ -10,10 +10,11 @@
 
             this.loadBtn = document.getElementById('loadAutoEmailAlertsBtn');
             this.saveBtn = document.getElementById('saveAutoEmailAlertsBtn');
+            this.sendHealthTestBtn = document.getElementById('sendAutoEmailHealthTestBtn');
             this.resultEl = document.getElementById('autoEmailAlertsResult');
             this.termSuggestionsEl = document.getElementById('aeTermNameSuggestions');
 
-            if (!this.loadBtn || !this.saveBtn) {
+            if (!this.loadBtn || !this.saveBtn || !this.sendHealthTestBtn) {
                 return;
             }
 
@@ -25,6 +26,7 @@
         bindEvents() {
             this.loadBtn.addEventListener('click', () => this.loadConfig());
             this.saveBtn.addEventListener('click', () => this.saveConfig());
+            this.sendHealthTestBtn.addEventListener('click', () => this.sendHealthTestEmail());
         },
 
         renderTermSuggestions() {
@@ -79,6 +81,25 @@
             }
         },
 
+        async sendHealthTestEmail() {
+            const payload = {
+                ...this.readForm(),
+                sendTestEmail: true
+            };
+
+            this.setMessage('Sending health test email...', false);
+            try {
+                const result = await window.AdminPage.Api.postJson(`${this.contextPath}/admin/email/alerts`, payload);
+                const msg = result.payload?.message || `Request failed (${result.status}).`;
+                if (!result.ok || result.payload?.status !== 'ok') {
+                    throw new Error(msg);
+                }
+                this.setMessage(msg, false);
+            } catch (err) {
+                this.setMessage(`Failed to send health test email: ${err.message}`, true);
+            }
+        },
+
         readForm() {
             return {
                 healthEnabled: checked('aeHealthEnabled'),
@@ -88,6 +109,8 @@
                 healthRecipients: value('aeHealthRecipients'),
                 healthSubject: value('aeHealthSubject'),
                 healthMessage: value('aeHealthMessage'),
+                healthRunbookUrl: value('aeHealthRunbookUrl'),
+                healthRunbookAttachmentPath: value('aeHealthRunbookAttachmentPath'),
 
                 termEnabled: checked('aeTermEnabled'),
                 termCheckIntervalMinutes: intVal('aeTermCheckIntervalMinutes', 10),
@@ -106,6 +129,8 @@
             setValue('aeHealthRecipients', data.healthRecipients || '');
             setValue('aeHealthSubject', data.healthSubject || '');
             setValue('aeHealthMessage', data.healthMessage || '');
+            setValue('aeHealthRunbookUrl', data.healthRunbookUrl || '');
+            setValue('aeHealthRunbookAttachmentPath', data.healthRunbookAttachmentPath || '');
 
             setChecked('aeTermEnabled', !!data.termEnabled);
             setValue('aeTermCheckIntervalMinutes', safeNumber(data.termCheckIntervalMinutes, 10));

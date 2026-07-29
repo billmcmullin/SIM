@@ -6,6 +6,10 @@ services:
     container_name: chatserver
     ports:
       - 8080:8080
+    command:
+      - /bin/bash
+      - -lc
+      - /opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0 -Djboss.tx.node.id="$$JBOSS_TX_NODE_ID"
     volumes:
       # Shared volume that contains Jtest Coverage Agent jars and properties file.
       - type: volume
@@ -13,6 +17,7 @@ services:
         target: /opt/jboss/wildfly/shared
       # Have a copy of the standalone.conf on the host machine before using the below.
       - ./conf/standalone.conf:/opt/jboss/wildfly/bin/standalone.conf:ro
+      - ./conf/standalone.xml:/opt/jboss/wildfly/standalone/configuration/standalone.xml:ro
       - ../sim-app/target/chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war:ro
     environment:
       DB_HOST: postgres
@@ -20,6 +25,7 @@ services:
       DB_NAME: chat
       DB_USER: postgres
       DB_PASSWORD: root
+      JBOSS_TX_NODE_ID: chatserver-01
       SIM_TRANSLATE_URL: http://libretranslate:5000/translate
       # Generic Key, made by randomkeygen.com
       CONFIG_ENCRYPTION_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=

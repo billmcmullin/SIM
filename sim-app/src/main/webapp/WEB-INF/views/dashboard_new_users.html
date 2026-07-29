@@ -4,6 +4,14 @@
 <head>
     <meta charset="utf-8">
     <title>New Session ID / User Metrics</title>
+    <script>
+        (function () {
+            document.documentElement.classList.add('page-boot-loading');
+            window.setTimeout(function () {
+                document.documentElement.classList.remove('page-boot-loading');
+            }, 10000);
+        })();
+    </script>
     <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
 </head>
 
@@ -118,6 +126,7 @@
             selectedDays: '${selectedDays}'
         };
     </script>
+    <script src="${contextPath}/assets/js/page_boot_loading.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="${contextPath}/assets/js/dashboard_new_users.js"></script>
 </body>

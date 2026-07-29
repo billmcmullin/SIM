@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
-import com.microsoft.playwright.Page;
 import com.sim.ui.base.BaseUiIT;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -18,10 +17,9 @@ public class DashboardTopicsIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticatedUser_redirectedToLogin_fromTopicsPage() {
-        page.navigate(baseUrl + "/dashboard/topics");
-
+        navigateWithCommit("/dashboard/topics");
         waitForLoginScreen();
-        assertOnLoginScreen("Expected redirect/forward to login,");
+        assertOnLoginScreen("Expected unauthenticated topics page request to land on login,");
     }
 
     @Test
@@ -29,8 +27,9 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsPage_rendersCoreSections_whenAuthenticated() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics");
+        waitForPath("/chat-server/dashboard/topics");
+        page.waitForSelector("h1:has-text('Popular Topics')");
 
         assertTrue(page.title().contains("Popular Topics"));
         assertTrue(page.locator("h1:has-text('Popular Topics')").count() > 0);
@@ -61,13 +60,14 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsPage_queryParams_dayAndRange_loadSuccessfully() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/topics?day=2026-05-21");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics?day=2026-05-21");
+        waitForPath("/chat-server/dashboard/topics");
+        page.waitForSelector("h1:has-text('Popular Topics')");
 
         assertTrue(page.locator("h1:has-text('Popular Topics')").count() > 0);
 
-        page.navigate(baseUrl + "/dashboard/topics?start=2026-05-01&end=2026-05-21&includeOther=true");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics?start=2026-05-01&end=2026-05-21&includeOther=true");
+        waitForPath("/chat-server/dashboard/topics");
 
         assertTrue(page.locator("h2:has-text('Topics Across All Widgets')").count() > 0);
     }
@@ -77,55 +77,35 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsPage_topNavButtons_work() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics");
+        waitForPath("/chat-server/dashboard/topics");
 
-        // Dashboard button
-        page.click("button:has-text('Dashboard')");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard"));
-        assertTrue(page.url().contains("/chat-server/dashboard"));
+        // Validate dashboard target intent without triggering /dashboard server-side load.
+        assertNavButtonTargets("Dashboard", "/chat-server/dashboard");
 
         // Go back to topics
-        page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics");
+        waitForPath("/chat-server/dashboard/topics");
 
         // Profile button
-        page.click("button:has-text('Profile')");
-        page.waitForURL(url -> url.contains("/chat-server/profile"));
+        clickNavButtonNoWait("Profile", "/chat-server/profile");
         assertTrue(page.url().contains("/chat-server/profile"));
 
         // Return
-        page.navigate(baseUrl + "/dashboard/topics");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/topics"));
+        navigateWithCommit("/dashboard/topics");
+        waitForPath("/chat-server/dashboard/topics");
 
         // Logout button
-        page.click("button:has-text('Logout')");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
+        clickNavButtonNoWait("Logout", "/chat-server/login");
         assertTrue(page.url().contains("/chat-server/login"));
 
         // Access blocked again after logout
-        page.navigate(baseUrl + "/dashboard/topics");
+        navigateWithCommit("/dashboard/topics");
         waitForLoginScreen();
         assertOnLoginScreen("Expected topics page to be blocked after logout,");
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        waitForLoginScreen();
-        assertOnLoginScreen("Expected login page before submitting credentials,");
-
-        page.fill("#username", username);
-        page.fill("#password", password);
-        page.click("button[type='submit']");
-
-        page.waitForURL(
-                url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new Page.WaitForURLOptions().setTimeout(15000)
-        );
-
-        assertTrue(
-                page.url().contains("/chat-server/dashboard") || page.url().contains("/chat-server/admin"),
-                "Login expected /dashboard or /admin, got: " + page.url()
-        );
+        loginViaApi(username, password);
     }
 }

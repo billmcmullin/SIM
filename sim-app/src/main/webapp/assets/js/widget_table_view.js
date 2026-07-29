@@ -26,6 +26,13 @@
     let prevBtn, nextBtn, pageInfo;
     let reviewBtn, selectedInfo, selectAllPageCheckbox, selectAllMatchesBtn, deselectAllMatchesBtn;
 
+    const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.begin === 'function')
+        ? window.PageBootLoading.begin({
+            title: 'Loading widget chats...',
+            subtitle: 'Preparing formatted chat entries.'
+        })
+        : null;
+
     const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
     const fmtDate = v => {
         if (!v) {
@@ -472,7 +479,7 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         tableBody = document.getElementById('widgetTableBody');
         globalSearchInput = document.getElementById('globalSearchInput');
         filterPrompt = document.getElementById('filterPrompt');
@@ -487,6 +494,12 @@
         selectedInfo = document.getElementById('selectedInfo');
 
         bindControls();
-        loadTable();
+        try {
+            await loadTable();
+        } finally {
+            if (bootLoading && typeof bootLoading.finish === 'function') {
+                bootLoading.finish();
+            }
+        }
     });
 })();

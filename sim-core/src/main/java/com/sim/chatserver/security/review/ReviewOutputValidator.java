@@ -47,13 +47,20 @@ public class ReviewOutputValidator {
     private static final Pattern COVERAGE_CHATS_NOT_USED = Pattern.compile("(?im)^\\s*[-*]\\s*chats\\s+not\\s+used\\s*:\\s*(\\d+)\\s*$");
     private static final Pattern COVERAGE_PERCENTAGE = Pattern.compile("(?im)^\\s*[-*]\\s*coverage\\s+percentage\\s*:\\s*([0-9]{1,3})\\s*%?\\s*$");
 
-    private static final List<String> REQUIRED_MAP_SECTIONS = List.of(
-            "## executive summary",
-            "## per-chat analysis",
-            "## cross-conversation findings",
-            "## recommended actions",
-            "## coverage and carry-forward"
-    );
+        private static final List<String> REQUIRED_MAP_SECTIONS_LEGACY = List.of(
+            "executive summary",
+            "cross-conversation findings",
+            "recommended actions",
+            "coverage and carry-forward"
+        );
+
+        private static final List<String> REQUIRED_MAP_SECTIONS_MANAGER = List.of(
+            "executive chat analysis",
+            "key metrics",
+            "risks and opportunities",
+            "recommendations",
+            "coverage and methodology"
+        );
 
     // New manager style required sections
     private static final List<String> REQUIRED_MANAGER_FINAL_SECTIONS = List.of(
@@ -104,10 +111,12 @@ public class ReviewOutputValidator {
             errors.add("Output appears to be JSON; markdown report expected.");
         }
 
-        for (String section : REQUIRED_MAP_SECTIONS) {
-            if (!lower.contains(section)) {
-                errors.add("Missing required section: " + section);
-            }
+        boolean hasLegacyShape = containsAllTokens(lower, REQUIRED_MAP_SECTIONS_LEGACY);
+        boolean hasManagerShape = containsAllTokens(lower, REQUIRED_MAP_SECTIONS_MANAGER);
+        if (!hasLegacyShape && !hasManagerShape) {
+            List<String> missingLegacy = missingTokens(lower, REQUIRED_MAP_SECTIONS_LEGACY);
+            List<String> missingManager = missingTokens(lower, REQUIRED_MAP_SECTIONS_MANAGER);
+            errors.add("Missing required map sections. Legacy missing=" + missingLegacy + "; manager missing=" + missingManager);
         }
 
         List<String> foundChatIds = parseChatIds(normalized);
@@ -518,6 +527,26 @@ public class ReviewOutputValidator {
 
     private int positiveOrDefault(int value, int fallback) {
         return value > 0 ? value : fallback;
+    }
+
+    private boolean containsAllTokens(String textLower, List<String> tokens) {
+        return missingTokens(textLower, tokens).isEmpty();
+    }
+
+    private List<String> missingTokens(String textLower, List<String> tokens) {
+        if (textLower == null || textLower.isBlank() || tokens == null || tokens.isEmpty()) {
+            return List.of();
+        }
+        List<String> missing = new ArrayList<>();
+        for (String token : tokens) {
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            if (!textLower.contains(token)) {
+                missing.add(token);
+            }
+        }
+        return missing;
     }
 
     private List<String> parseChatIds(String text) {

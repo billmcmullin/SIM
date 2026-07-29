@@ -3,6 +3,7 @@ package com.sim.chatserver.web.admin;
 import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.email.EmailConfigResolver;
 import com.sim.chatserver.email.EmailConfigSource;
+import com.sim.chatserver.email.EmailAttachment;
 import com.sim.chatserver.email.EmailFactory;
 import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
@@ -18,6 +19,8 @@ import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.net.URI;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -36,6 +39,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
 /**
@@ -47,6 +54,7 @@ public class AutoEmailAlertScheduler {
 
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final int TICK_SECONDS = 30;
+    private static final long MAX_HEALTH_ATTACHMENT_BYTES = 5L * 1024L * 1024L;
 
     private final AutoEmailAlertConfigStore store;
     private final DataSource dataSource;
@@ -96,6 +104,39 @@ public class AutoEmailAlertScheduler {
         }
         scheduler.shutdownNow();
         log.info("Automatic email alert scheduler stopped.");
+    }
+
+    TestEmailResult sendHealthTestEmail(AutoEmailAlertConfig cfg) {
+        if (cfg == null) {
+            return new TestEmailResult(false, "Health test email was not sent: no configuration provided.");
+        }
+
+        List<String> recipients = parseRecipients(cfg.getHealthRecipients());
+        if (recipients.isEmpty()) {
+            return new TestEmailResult(false, "Health test email was not sent: no valid recipients configured.");
+        }
+
+        Instant now = Instant.now();
+        WidgetAvailabilityResult result = null;
+        try {
+            result = availabilityChecker.checkNow();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.FINE, "Health test email proceeding without live checker details.", e);
+        }
+
+        String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Test Alert: Widget Healthcheck Offline");
+        String textBody = buildHealthBody(cfg, result, now, now)
+                + "\n\n[TEST EMAIL] This is a manual healthcheck alert preview.";
+        String htmlBody = buildHealthHtmlBody(cfg, result, now, now)
+                .replace("</body></html>", "<p><em>[TEST EMAIL] This is a manual healthcheck alert preview.</em></p></body></html>");
+        List<EmailAttachment> attachments = resolveHealthAttachments(cfg);
+
+        boolean sent = sendEmail(recipients, subject, textBody, htmlBody, attachments);
+        if (!sent) {
+            return new TestEmailResult(false, "Health test email failed to send. Verify email configuration and check server logs.");
+        }
+
+        return new TestEmailResult(true, "Health test email sent to " + recipients.size() + " recipient(s).");
     }
 
     private void runTickSafely() {
@@ -161,8 +202,10 @@ public class AutoEmailAlertScheduler {
                     List<String> recipients = parseRecipients(cfg.getHealthRecipients());
                     if (!recipients.isEmpty()) {
                         String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Alert: Widget Healthcheck Offline");
-                        String body = buildHealthBody(cfg, result, now, offlineSince);
-                        if (sendEmail(recipients, subject, body)) {
+                        String textBody = buildHealthBody(cfg, result, now, offlineSince);
+                        String htmlBody = buildHealthHtmlBody(cfg, result, now, offlineSince);
+                        List<EmailAttachment> attachments = resolveHealthAttachments(cfg);
+                        if (sendEmail(recipients, subject, textBody, htmlBody, attachments)) {
                             lastAlert = now;
                         }
                     }
@@ -197,7 +240,7 @@ public class AutoEmailAlertScheduler {
                     String defaultSubject = "SIM Alert: Term increase detected - " + cfg.getTermName();
                     String subject = defaultIfBlank(cfg.getTermSubject(), defaultSubject);
                     String body = buildTermBody(cfg, now, previousCount, currentCount, delta);
-                    if (sendEmail(recipients, subject, body)) {
+                    if (sendEmail(recipients, subject, body, null, List.of())) {
                         lastAlert = now;
                     }
                 }
@@ -243,19 +286,31 @@ public class AutoEmailAlertScheduler {
         return 0L;
     }
 
-    private boolean sendEmail(List<String> recipients, String subject, String textBody) {
+    private boolean sendEmail(
+            List<String> recipients,
+            String subject,
+            String textBody,
+            String htmlBody,
+            List<EmailAttachment> attachments
+    ) {
         try {
             EmailConfigResolver resolver = new EmailConfigResolver(dbEmailConfigProvider);
             ResolvedEmailConfig resolved = resolver.resolve();
-            if (!resolved.valid() || resolved.config() == null || resolved.source() == EmailConfigSource.NONE) {
-                log.warning("Automatic alert email skipped: no valid SMTP configuration available.");
+            if (!resolved.valid() || resolved.source() == EmailConfigSource.NONE) {
+                log.warning("Automatic alert email skipped: no valid email configuration available.");
                 return false;
             }
 
-            EmailService service = EmailFactory.smtp(resolved.config());
+            EmailService service = EmailFactory.forProvider(resolved);
             EmailMessage.Builder builder = EmailMessage.builder()
                     .subject(subject)
                     .textBody(textBody);
+            if (hasText(htmlBody)) {
+                builder.htmlBody(htmlBody);
+            }
+            if (attachments != null && !attachments.isEmpty()) {
+                builder.attachments(attachments);
+            }
             for (String recipient : recipients) {
                 builder.to(recipient);
             }
@@ -289,8 +344,126 @@ public class AutoEmailAlertScheduler {
             sb.append("\n").append(cfg.getHealthMessage()).append("\n");
         }
 
+        String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
+        if (hasText(runbookUrl)) {
+            sb.append("\nRunbook URL: ").append(runbookUrl).append("\n");
+        }
+
+        String runbookAttachmentPath = cfg.getHealthRunbookAttachmentPath();
+        if (hasText(runbookAttachmentPath)) {
+            sb.append("Runbook attachment path: ").append(runbookAttachmentPath).append("\n");
+        }
+
         sb.append("\nThis alert will resend based on the configured resend timer until healthcheck succeeds.");
         return sb.toString();
+    }
+
+    private String buildHealthHtmlBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<html><body>");
+        sb.append("<h2>SIM healthcheck alert</h2>");
+        sb.append("<p><strong>Status:</strong> OFFLINE</p>");
+        sb.append("<p><strong>Detected at:</strong> ").append(escapeHtml(formatInstant(now))).append("</p>");
+        if (offlineSince != null) {
+            sb.append("<p><strong>Offline since:</strong> ").append(escapeHtml(formatInstant(offlineSince))).append("</p>");
+        }
+        if (result != null) {
+            sb.append("<p><strong>Checker status:</strong> ").append(escapeHtml(defaultIfBlank(result.status(), "DOWN"))).append("</p>");
+            sb.append("<p><strong>Checker timestamp:</strong> ")
+                    .append(escapeHtml(defaultIfBlank(result.checkedAtIso(), formatInstant(now))))
+                    .append("</p>");
+            sb.append("<p><strong>Latency ms:</strong> ").append(Math.max(0L, result.latencyMs())).append("</p>");
+            if (hasText(result.details())) {
+                sb.append("<p><strong>Details:</strong> ").append(escapeHtml(result.details())).append("</p>");
+            }
+        }
+
+        if (hasText(cfg.getHealthMessage())) {
+            sb.append("<p>").append(escapeHtml(cfg.getHealthMessage())).append("</p>");
+        }
+
+        String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
+        if (hasText(runbookUrl)) {
+            sb.append("<p><strong>Runbook:</strong> ")
+                    .append("<a href=\"").append(escapeHtml(runbookUrl)).append("\">")
+                    .append(escapeHtml(runbookUrl))
+                    .append("</a></p>");
+        }
+
+        if (hasText(cfg.getHealthRunbookAttachmentPath())) {
+            sb.append("<p><strong>Runbook attachment path:</strong> ")
+                    .append(escapeHtml(cfg.getHealthRunbookAttachmentPath()))
+                    .append("</p>");
+        }
+
+        sb.append("<p>This alert will resend based on the configured resend timer until healthcheck succeeds.</p>");
+        sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    private List<EmailAttachment> resolveHealthAttachments(AutoEmailAlertConfig cfg) {
+        String rawPath = cfg.getHealthRunbookAttachmentPath();
+        if (!hasText(rawPath)) {
+            return List.of();
+        }
+
+        try {
+            Path path = Paths.get(rawPath.trim()).normalize();
+            if (!Files.isRegularFile(path)) {
+                log.warning(() -> "Health alert runbook attachment skipped: file not found at " + path);
+                return List.of();
+            }
+
+            long fileSize = Files.size(path);
+            if (fileSize <= 0L || fileSize > MAX_HEALTH_ATTACHMENT_BYTES) {
+                log.warning(() -> "Health alert runbook attachment skipped: file size out of bounds (bytes=" + fileSize + ") at " + path);
+                return List.of();
+            }
+
+            byte[] content = Files.readAllBytes(path);
+            String fileName = path.getFileName() == null ? "runbook.bin" : path.getFileName().toString();
+            String contentType = Files.probeContentType(path);
+            if (!hasText(contentType)) {
+                contentType = "application/octet-stream";
+            }
+            return List.of(new EmailAttachment(fileName, contentType, content));
+        } catch (IOException | InvalidPathException e) {
+            log.log(Level.WARNING, "Health alert runbook attachment skipped due to read/parse error.", e);
+            return List.of();
+        }
+    }
+
+    private String normalizeRunbookUrl(String raw) {
+        if (!hasText(raw)) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(raw.trim());
+            String scheme = uri.getScheme();
+            if (scheme == null) {
+                return null;
+            }
+            String normalizedScheme = scheme.toLowerCase();
+            if (!"http".equals(normalizedScheme) && !"https".equals(normalizedScheme)) {
+                return null;
+            }
+            return uri.toString();
+        } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Ignoring invalid runbook URL.", e);
+            return null;
+        }
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private String buildTermBody(AutoEmailAlertConfig cfg, Instant now, long previousCount, long currentCount, long delta) {
@@ -375,5 +548,8 @@ public class AutoEmailAlertScheduler {
             return "";
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC).format(value);
+    }
+
+    public record TestEmailResult(boolean sent, String message) {
     }
 }

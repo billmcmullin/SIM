@@ -15,6 +15,13 @@
     const dayResultsTitle = document.getElementById('dayResultsTitle');
     const chartCanvas = document.getElementById('newUsersTrendChart');
 
+    const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.begin === 'function')
+        ? window.PageBootLoading.begin({
+            title: 'Loading new users...',
+            subtitle: 'Preparing trend and latest user data.'
+        })
+        : null;
+
     let trendChart = null;
 
     function esc(v) {
@@ -255,7 +262,7 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         const initialTrend = parseInitialTrendData();
         if (Array.isArray(initialTrend.labels) && Array.isArray(initialTrend.values)) {
             renderTrend(initialTrend.labels, initialTrend.values);
@@ -268,6 +275,12 @@
         daysSelect?.addEventListener('change', loadData);
         applyBtn?.addEventListener('click', loadData);
 
-        loadData();
+        try {
+            await loadData();
+        } finally {
+            if (bootLoading && typeof bootLoading.finish === 'function') {
+                bootLoading.finish();
+            }
+        }
     });
 })();

@@ -167,6 +167,14 @@
                     <label for="aeHealthMessage">Additional Message (optional)</label>
                     <textarea id="aeHealthMessage" rows="3" placeholder="Include context or runbook instructions."></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="aeHealthRunbookUrl">Runbook URL (optional hyperlink)</label>
+                    <input type="url" id="aeHealthRunbookUrl" placeholder="https://docs.example.com/sim-recovery-runbook">
+                </div>
+                <div class="form-group">
+                    <label for="aeHealthRunbookAttachmentPath">Runbook Attachment File Path (optional)</label>
+                    <input type="text" id="aeHealthRunbookAttachmentPath" placeholder="D:/SIM/docs/recovery/SIM-Recovery-Runbook.pdf">
+                </div>
 
                 <div class="small-note" style="margin-bottom:10px;">
                     <strong>Latest health status:</strong>
@@ -221,6 +229,7 @@
                 <div class="actions">
                     <button type="button" id="loadAutoEmailAlertsBtn">Reload Automatic Email Alerts</button>
                     <button type="button" id="saveAutoEmailAlertsBtn">Save Automatic Email Alerts</button>
+                    <button type="button" id="sendAutoEmailHealthTestBtn">Send Health Test Email</button>
                 </div>
 
                 <div id="autoEmailAlertsResult" class="widget-message"></div>

@@ -44,6 +44,8 @@ public final class AutoEmailAlertConfigStore {
                 health_recipients TEXT,
                 health_subject TEXT,
                 health_message TEXT,
+                health_runbook_url TEXT,
+                health_runbook_attachment_path TEXT,
 
                 term_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 term_check_interval_seconds INT NOT NULL DEFAULT 600,
@@ -68,6 +70,27 @@ public final class AutoEmailAlertConfigStore {
 
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.execute();
+        }
+
+        ensureOptionalColumns();
+    }
+
+    private void ensureOptionalColumns() throws SQLException {
+        final String addRunbookUrl = """
+            ALTER TABLE admin_auto_email_alert_config
+            ADD COLUMN IF NOT EXISTS health_runbook_url TEXT
+            """;
+
+        final String addRunbookAttachmentPath = """
+            ALTER TABLE admin_auto_email_alert_config
+            ADD COLUMN IF NOT EXISTS health_runbook_attachment_path TEXT
+            """;
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement psUrl = c.prepareStatement(addRunbookUrl);
+             PreparedStatement psPath = c.prepareStatement(addRunbookAttachmentPath)) {
+            psUrl.execute();
+            psPath.execute();
         }
     }
 
@@ -105,6 +128,8 @@ public final class AutoEmailAlertConfigStore {
                    health_recipients,
                    health_subject,
                    health_message,
+                   health_runbook_url,
+                   health_runbook_attachment_path,
                    term_enabled,
                    term_check_interval_seconds,
                    term_name,
@@ -154,6 +179,8 @@ public final class AutoEmailAlertConfigStore {
                 health_recipients = ?,
                 health_subject = ?,
                 health_message = ?,
+                health_runbook_url = ?,
+                health_runbook_attachment_path = ?,
                 term_enabled = ?,
                 term_check_interval_seconds = ?,
                 term_name = ?,
@@ -173,17 +200,19 @@ public final class AutoEmailAlertConfigStore {
             setNullableString(ps, 5, normalized.getHealthRecipients());
             setNullableString(ps, 6, normalized.getHealthSubject());
             setNullableString(ps, 7, normalized.getHealthMessage());
+            setNullableString(ps, 8, normalized.getHealthRunbookUrl());
+            setNullableString(ps, 9, normalized.getHealthRunbookAttachmentPath());
 
-            ps.setBoolean(8, normalized.isTermEnabled());
-            ps.setInt(9, normalized.getTermCheckIntervalSeconds());
-            setNullableString(ps, 10, normalized.getTermName());
-            setNullableString(ps, 11, normalized.getTermRecipients());
-            setNullableString(ps, 12, normalized.getTermSubject());
-            setNullableString(ps, 13, normalized.getTermMessage());
+            ps.setBoolean(10, normalized.isTermEnabled());
+            ps.setInt(11, normalized.getTermCheckIntervalSeconds());
+            setNullableString(ps, 12, normalized.getTermName());
+            setNullableString(ps, 13, normalized.getTermRecipients());
+            setNullableString(ps, 14, normalized.getTermSubject());
+            setNullableString(ps, 15, normalized.getTermMessage());
 
-            setNullableString(ps, 14, sanitizeText(updatedBy, 100));
-            ps.setTimestamp(15, Timestamp.from(Instant.now()));
-            ps.setInt(16, SINGLETON_ID);
+            setNullableString(ps, 16, sanitizeText(updatedBy, 100));
+            ps.setTimestamp(17, Timestamp.from(Instant.now()));
+            ps.setInt(18, SINGLETON_ID);
             ps.executeUpdate();
         }
 
@@ -258,6 +287,8 @@ public final class AutoEmailAlertConfigStore {
         cfg.setHealthRecipients(readSafeText(rs, "health_recipients", 4000));
         cfg.setHealthSubject(readSafeText(rs, "health_subject", 500));
         cfg.setHealthMessage(readSafeText(rs, "health_message", 8000));
+        cfg.setHealthRunbookUrl(readSafeText(rs, "health_runbook_url", 2000));
+        cfg.setHealthRunbookAttachmentPath(readSafeText(rs, "health_runbook_attachment_path", 1024));
 
         cfg.setTermEnabled(readSafeBoolean(rs, "term_enabled", false));
         cfg.setTermCheckIntervalSeconds(readIntervalSeconds(rs, "term_check_interval_seconds", 600));
@@ -292,6 +323,8 @@ public final class AutoEmailAlertConfigStore {
         out.setHealthRecipients(sanitizeText(in == null ? null : in.getHealthRecipients(), 4000));
         out.setHealthSubject(sanitizeText(in == null ? null : in.getHealthSubject(), 500));
         out.setHealthMessage(sanitizeText(in == null ? null : in.getHealthMessage(), 8000));
+        out.setHealthRunbookUrl(sanitizeText(in == null ? null : in.getHealthRunbookUrl(), 2000));
+        out.setHealthRunbookAttachmentPath(sanitizeText(in == null ? null : in.getHealthRunbookAttachmentPath(), 1024));
 
         out.setTermEnabled(in != null && in.isTermEnabled());
         out.setTermCheckIntervalSeconds(clampIntervalSeconds(in == null ? 600 : in.getTermCheckIntervalSeconds(), 600));
@@ -484,6 +517,8 @@ public final class AutoEmailAlertConfigStore {
         private String healthRecipients;
         private String healthSubject;
         private String healthMessage;
+        private String healthRunbookUrl;
+        private String healthRunbookAttachmentPath;
 
         private boolean termEnabled;
         private int termCheckIntervalSeconds;
@@ -566,6 +601,22 @@ public final class AutoEmailAlertConfigStore {
 
         void setHealthMessage(String healthMessage) {
             this.healthMessage = healthMessage;
+        }
+
+        String getHealthRunbookUrl() {
+            return healthRunbookUrl;
+        }
+
+        void setHealthRunbookUrl(String healthRunbookUrl) {
+            this.healthRunbookUrl = healthRunbookUrl;
+        }
+
+        String getHealthRunbookAttachmentPath() {
+            return healthRunbookAttachmentPath;
+        }
+
+        void setHealthRunbookAttachmentPath(String healthRunbookAttachmentPath) {
+            this.healthRunbookAttachmentPath = healthRunbookAttachmentPath;
         }
 
         boolean isTermEnabled() {

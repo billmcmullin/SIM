@@ -6,14 +6,20 @@ services:
     container_name: chatserver
     ports:
       - 8080:8080
+    command:
+      - /bin/bash
+      - -lc
+      - /opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0 -Djboss.tx.node.id="$$JBOSS_TX_NODE_ID"
     volumes:
       - ..\sim-app\target\chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war
+      - ./conf/standalone.xml:/opt/jboss/wildfly/standalone/configuration/standalone.xml:ro
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: chat
       DB_USER: postgres
       DB_PASSWORD: root
+      JBOSS_TX_NODE_ID: chatserver-01
       SIM_TRANSLATE_URL: http://libretranslate:5000/translate
       # Generic Key, made by randomkeygen.com
       CONFIG_ENCRYPTION_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
@@ -25,6 +31,11 @@ services:
     image: postgres:latest
     hostname: postgres
     container_name: postgres
+    command:
+      - /opt/jboss/wildfly/bin/standalone.sh
+      - -b
+      - 0.0.0.0
+      - -Djboss.tx.node.id=chatserver-01
     ports:
       - 5432:5432
     volumes:

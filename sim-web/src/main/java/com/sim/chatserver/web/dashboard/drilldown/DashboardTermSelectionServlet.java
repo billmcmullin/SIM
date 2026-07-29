@@ -37,9 +37,10 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     private static final String MODE_INCREASE_ONLY = "increaseOnly";
     private static final String MODE_YESTERDAY_ONLY = "yesterdayOnly";
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final String REVIEW_FORWARD_PATH = "/dashboard/widgets/drilldown/review";
 
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
-    private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login");
+    private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login", REVIEW_FORWARD_PATH);
     private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
 
     @Override
@@ -183,7 +184,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        String reviewForwardPath = "/dashboard/widgets/drilldown/review";
+        String reviewForwardPath = REVIEW_FORWARD_PATH;
         String reviewPath = "/dashboard/widgets/drilldown/review?selectionId="
                 + URLEncoder.encode(selectionId, StandardCharsets.UTF_8);
 

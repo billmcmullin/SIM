@@ -25,6 +25,13 @@
 
     const palette = ['#1d4ed8', '#047857', '#c0392b', '#d97706', '#0f172a', '#6366f1', '#af7b1b', '#0ea5e9', '#16a34a', '#be185d'];
 
+    const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.begin === 'function')
+        ? window.PageBootLoading.begin({
+            title: 'Loading popular topics...',
+            subtitle: 'Preparing formatted topic analytics.'
+        })
+        : null;
+
     let globalPieChart = null;
     const widgetPieCharts = new Map();
 
@@ -447,7 +454,7 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         hydrateControlsFromUrl();
         ensureDefaultDateInputs();
 
@@ -502,6 +509,12 @@
         });
 
         applyIncludeOtherBtnState();
-        loadTopics();
+        try {
+            await loadTopics();
+        } finally {
+            if (bootLoading && typeof bootLoading.finish === 'function') {
+                bootLoading.finish();
+            }
+        }
     });
 })();

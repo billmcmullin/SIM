@@ -34,6 +34,7 @@ import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
 import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
 import com.sim.chatserver.model.DashboardViewModels.SessionStat;
 import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.DashboardViewModels.TopTopic;
 import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
 import com.sim.chatserver.render.DashboardRowsRenderer;
 import com.sim.chatserver.service.dashboard.DashboardCacheRegistry;
@@ -141,49 +142,54 @@ public class DashboardServlet extends HttpServlet {
         CompletableFuture<List<WidgetStat>> widgetStatsFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getWidgetStats(() -> metricsService.buildWidgetStats(widgetsFinal)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(List.of(), 1200, TimeUnit.MILLISECONDS);
 
         CompletableFuture<ProgressStat> chatProgressionFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getChatProgression(() -> metricsService.buildChatProgression(widgetsFinal)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(new ProgressStat(0, 0), 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<DashboardProgressMetrics> dashboardProgressFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getDashboardProgressMetrics(
                         () -> metricsService.buildDashboardProgressMetrics(widgetsFinal)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(new DashboardProgressMetrics(0, 0, 0, 0), 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<ProgressStat> newUserProgressionFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getNewUserProgression(() -> metricsService.buildNewUserProgression(widgetsFinal)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(new ProgressStat(0, 0), 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<List<OtherParasoftEntry>> otherParasoftFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getOtherParasoftLatest(
                         () -> metricsService.buildLatestOtherParasoftEntries(widgetsFinal, OTHER_PARASOFT_LATEST_LIMIT)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(List.of(), 800, TimeUnit.MILLISECONDS);
+
+        CompletableFuture<List<TopTopic>> topTopicsFuture = CompletableFuture.supplyAsync(
+            () -> cacheRegistry.getTopTopics(() -> metricsService.buildTopTopicsTodayVsYesterday(widgetsFinal)),
+            DASHBOARD_EXECUTOR
+        ).completeOnTimeout(List.of(), 800, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
                 () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(null, 1100, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> yesterdayTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
                 () -> loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout(null, 550, TimeUnit.MILLISECONDS);
 
         CompletableFuture<SessionOverview> sessionOverviewFuture = CompletableFuture.supplyAsync(
                 () -> {
@@ -198,12 +204,12 @@ public class DashboardServlet extends HttpServlet {
                             () -> loadSessionOverview(sessionService, widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays));
                 },
                 DASHBOARD_EXECUTOR
-        );
+                    ).completeOnTimeout(null, 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<String> lastFiveDaysTrendFuture = CompletableFuture.supplyAsync(
-                this::buildLastFiveDaysTrendJson,
+            () -> buildLastFiveDaysTrendJson(widgetsFinal),
                 DASHBOARD_EXECUTOR
-        );
+        ).completeOnTimeout("{\"labels\":[],\"values\":[],\"days\":5}", 700, TimeUnit.MILLISECONDS);
 
         List<WidgetStat> widgetStats = safeJoin(widgetStatsFuture, List.of(), "widget stats");
         ProgressStat fallbackChatProgression = safeJoin(chatProgressionFuture, new ProgressStat(0, 0), "chat progression");
@@ -214,6 +220,7 @@ public class DashboardServlet extends HttpServlet {
         );
         ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
         List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
+        List<TopTopic> dailyTopTopics = safeJoin(topTopicsFuture, List.of(), "top topics today vs yesterday");
         TermSummary termSummary = safeJoin(termSummaryFuture, null, "term summary");
         TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
         TermSummary yesterdayTermSummary = safeJoin(yesterdayTermSummaryFuture, null, "yesterday term summary");
@@ -238,7 +245,7 @@ public class DashboardServlet extends HttpServlet {
 
         String widgetStatsRows = DashboardRowsRenderer.renderWidgetStatsRows(widgetStats, req.getContextPath());
         String dailyTopTermsRows = DashboardRowsRenderer.renderDailyTopTermsRows(
-                metricsService.buildTopTopicsTodayVsYesterday(widgetsFinal),
+            dailyTopTopics,
                 req.getContextPath()
         );
         String otherParasoftLatestRows = DashboardRowsRenderer.renderOtherParasoftLatestRows(otherParasoftLatest, req.getContextPath());
@@ -399,7 +406,7 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    private String buildLastFiveDaysTrendJson() {
+    private String buildLastFiveDaysTrendJson(List<WidgetEntry> widgets) {
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(4);
 
@@ -409,9 +416,9 @@ public class DashboardServlet extends HttpServlet {
         }
 
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            List<WidgetEntry> widgets = WidgetStore.list(null);
+            List<WidgetEntry> sourceWidgets = widgets == null ? List.of() : widgets;
 
-            for (WidgetEntry widget : widgets) {
+            for (WidgetEntry widget : sourceWidgets) {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
                 }
