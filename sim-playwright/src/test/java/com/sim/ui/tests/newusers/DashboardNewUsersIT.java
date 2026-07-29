@@ -10,7 +10,6 @@ import org.junit.jupiter.api.TestMethodOrder;
 import com.microsoft.playwright.APIRequest;
 import com.microsoft.playwright.APIRequestContext;
 import com.microsoft.playwright.APIResponse;
-import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
@@ -23,7 +22,7 @@ public class DashboardNewUsersIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticated_pageRedirectsToLogin() {
-        page.navigate(baseUrl + "/dashboard/new-users");
+        navigateWithCommit("/dashboard/new-users");
 
         waitForLoginScreen();
         assertOnLoginScreen("Expected redirect/forward to login,");
@@ -34,8 +33,9 @@ public class DashboardNewUsersIT extends BaseUiIT {
     void page_rendersCoreSections_whenAuthenticated() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/new-users");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/new-users"));
+        navigateWithCommit("/dashboard/new-users");
+        waitForPath("/chat-server/dashboard/new-users");
+        page.waitForSelector("h1:has-text('New Session ID / User Metrics')");
 
         assertTrue(page.title().contains("New Session ID / User Metrics"));
         assertTrue(page.locator("h1:has-text('New Session ID / User Metrics')").count() > 0);
@@ -107,22 +107,6 @@ public class DashboardNewUsersIT extends BaseUiIT {
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        waitForLoginScreen();
-        assertOnLoginScreen("Expected login page before submitting credentials,");
-
-        page.fill("#username", username);
-        page.fill("#password", password);
-        page.click("button[type='submit']");
-
-        page.waitForURL(
-                url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
-
-        assertTrue(
-                page.url().contains("/chat-server/dashboard") || page.url().contains("/chat-server/admin"),
-                "Login expected /dashboard or /admin, got: " + page.url()
-        );
+        loginViaApi(username, password);
     }
 }

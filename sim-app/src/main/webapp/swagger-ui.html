@@ -7,15 +7,143 @@
     <title>SIM API Swagger UI</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
     <style>
+        :root {
+            color-scheme: light dark;
+            --sim-bg: #f8fafc;
+            --sim-text: #0f172a;
+            --sim-muted: #334155;
+            --sim-summary: #1f2937;
+            --sim-panel: #ffffff;
+            --sim-border: #d7dee8;
+            --sim-path: #0f172a;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --sim-bg: #0b1220;
+                --sim-text: #e7edf7;
+                --sim-muted: #c3cee2;
+                --sim-summary: #e8f1ff;
+                --sim-panel: #111a2e;
+                --sim-border: #2b3854;
+                --sim-path: #f8fbff;
+                --sim-panel-soft: #17233c;
+                --sim-code-bg: #0f1a2e;
+                --sim-code-text: #dbe7ff;
+                --sim-accent: #9ec5ff;
+            }
+        }
+
         html,
         body {
             margin: 0;
             height: 100%;
-            background: #f8fafc;
+            background: var(--sim-bg);
         }
 
         #swagger-ui {
             height: 100%;
+            background: var(--sim-bg);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .swagger-ui {
+                color: var(--sim-text);
+            }
+
+            .swagger-ui .info .title,
+            .swagger-ui .info p,
+            .swagger-ui .info li,
+            .swagger-ui .opblock-tag,
+            .swagger-ui .responses-inner h4,
+            .swagger-ui .responses-inner h5,
+            .swagger-ui .response-col_links,
+            .swagger-ui .response-col_status,
+            .swagger-ui .parameter__name,
+            .swagger-ui .parameter__type,
+            .swagger-ui .tab li,
+            .swagger-ui .model-title,
+            .swagger-ui .model,
+            .swagger-ui .prop-type {
+                color: var(--sim-text);
+            }
+
+            .swagger-ui .opblock-description-wrapper p,
+            .swagger-ui .opblock-external-docs-wrapper p,
+            .swagger-ui .renderedMarkdown p,
+            .swagger-ui .response-col_description {
+                color: var(--sim-muted);
+            }
+
+            .swagger-ui .opblock-summary-description,
+            .swagger-ui .opblock-summary-description * {
+                color: var(--sim-summary) !important;
+                opacity: 1;
+            }
+
+            .swagger-ui .opblock-summary-path,
+            .swagger-ui .opblock-summary-path a,
+            .swagger-ui .info .base-url {
+                color: var(--sim-path) !important;
+            }
+
+            .swagger-ui .scheme-container,
+            .swagger-ui .model-box,
+            .swagger-ui .responses-inner,
+            .swagger-ui .opblock-tag {
+                background: var(--sim-panel);
+                border-color: var(--sim-border);
+            }
+
+            .swagger-ui .opblock-section-header,
+            .swagger-ui table thead tr th {
+                background: var(--sim-panel-soft);
+                border-color: var(--sim-border);
+            }
+
+            .swagger-ui .opblock-section-header h4,
+            .swagger-ui .opblock-section-header label,
+            .swagger-ui table thead tr th,
+            .swagger-ui .parameters-col_description,
+            .swagger-ui .parameters-col_name {
+                color: var(--sim-text);
+            }
+
+            .swagger-ui .opblock-section-header .btn,
+            .swagger-ui .btn.execute,
+            .swagger-ui select {
+                border-color: var(--sim-border);
+            }
+
+            .swagger-ui .examples-select,
+            .swagger-ui .examples-select-value,
+            .swagger-ui .example,
+            .swagger-ui pre,
+            .swagger-ui pre.microlight,
+            .swagger-ui .highlight-code,
+            .swagger-ui .model-example {
+                background: var(--sim-code-bg) !important;
+                color: var(--sim-code-text) !important;
+                border-color: var(--sim-border);
+            }
+
+            .swagger-ui .example span,
+            .swagger-ui pre span,
+            .swagger-ui .microlight span,
+            .swagger-ui .highlight-code span {
+                color: var(--sim-code-text) !important;
+            }
+
+            .swagger-ui .tab li,
+            .swagger-ui .tab li button {
+                color: var(--sim-muted);
+            }
+
+            .swagger-ui .tab li.active,
+            .swagger-ui .tab li.active button {
+                color: var(--sim-text);
+                border-color: var(--sim-accent);
+            }
         }
     </style>
 </head>

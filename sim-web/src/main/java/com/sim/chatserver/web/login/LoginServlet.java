@@ -7,10 +7,8 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
-import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.enterprise.inject.spi.CDI;
-import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -31,7 +29,7 @@ public class LoginServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        resolveUserService(getServletContext());
+        resolveUserService();
     }
 
     @Override
@@ -40,7 +38,7 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        resolveUserService(req.getServletContext()).ensureAdminExists(); // creates admin/admin if absent
+        resolveUserService().ensureAdminExists(); // creates admin/admin if absent
 
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
@@ -66,7 +64,7 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        UserAccount authenticatedUser = resolveUserService(req.getServletContext()).authenticateAndGetUser(username, password);
+        UserAccount authenticatedUser = resolveUserService().authenticateAndGetUser(username, password);
         if (authenticatedUser == null || authenticatedUser.getUsername() == null || authenticatedUser.getUsername().isBlank()) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -90,10 +88,14 @@ public class LoginServlet extends HttpServlet {
         HttpSession session = req.getSession(true);
         session.setAttribute("user", sessionUser);
         session.setMaxInactiveInterval(30 * 60);
-        req.getRequestDispatcher("/dashboard").forward(req, resp);
+        String contextPath = req.getContextPath();
+        if (contextPath == null) {
+            contextPath = "";
+        }
+        resp.sendRedirect(contextPath + "/dashboard");
     }
 
-    private UserService resolveUserService(ServletContext ctx) {
+    private UserService resolveUserService() {
         if (userService != null) {
             return userService;
         }
@@ -111,21 +113,11 @@ public class LoginServlet extends HttpServlet {
 
             try {
                 service = CDI.current().select(UserService.class).get();
-            } catch (IllegalStateException ex) {
-                log.log(Level.FINE, "CDI UserService lookup unavailable; falling back to manual wiring", ex);
-                service = null;
-            }
-
-            if (service == null) {
-                AppDataSourceHolder dsHolder = (AppDataSourceHolder) ctx.getAttribute("appDataSourceHolder");
-                if (dsHolder == null) {
-                    dsHolder = new AppDataSourceHolder();
-                    dsHolder.init();
-                    ctx.setAttribute("appDataSourceHolder", dsHolder);
-                }
-                UserService manual = new UserService();
-                manual.setDsHolder(dsHolder);
-                service = manual;
+            } catch (RuntimeException ex) {
+                log.log(Level.SEVERE, "CDI UserService lookup failed", ex);
+                throw new IllegalStateException(
+                        "UserService is unavailable. WildFly-managed datasource/JPA model requires CDI wiring.",
+                        ex);
             }
 
             configuredUserService = service;

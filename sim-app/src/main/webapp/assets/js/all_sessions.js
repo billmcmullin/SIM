@@ -54,6 +54,13 @@
     let showActiveUsersBtn = null;
     let toggleLabeledOnlyBtn = null;
 
+    const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.begin === 'function')
+        ? window.PageBootLoading.begin({
+            title: 'Loading sessions...',
+            subtitle: 'Preparing formatted session activity.'
+        })
+        : null;
+
     const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
 
@@ -776,7 +783,7 @@
         paginationEl.appendChild(controls);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         sessionsTableBody = document.getElementById('sessionsBody');
         sessionsContainerDiv = document.getElementById('sessions') || document.getElementById('sessionsContainer') || null;
         summaryEl = document.getElementById('summary');
@@ -817,6 +824,9 @@
 
         if (!sessionsTableBody && !sessionsContainerDiv) {
             console.warn('all_sessions.js: no sessions container found in DOM');
+            if (bootLoading && typeof bootLoading.finish === 'function') {
+                bootLoading.finish();
+            }
             return;
         }
 
@@ -888,7 +898,13 @@
 
         syncFiltersToUrl();
         refreshActivityUi();
-        loadSessions(page, '');
+        try {
+            await loadSessions(page, '');
+        } finally {
+            if (bootLoading && typeof bootLoading.finish === 'function') {
+                bootLoading.finish();
+            }
+        }
     });
 
 })();

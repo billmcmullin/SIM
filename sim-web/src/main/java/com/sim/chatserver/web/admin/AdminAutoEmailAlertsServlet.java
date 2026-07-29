@@ -135,6 +135,17 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
         try {
             AutoEmailAlertConfig incoming = fromPayload(payload);
+            if (payload.getBoolean("sendTestEmail", false)) {
+                AutoEmailAlertScheduler.TestEmailResult result = scheduler().sendHealthTestEmail(incoming);
+                int status = result.sent() ? HttpServletResponse.SC_OK : HttpServletResponse.SC_BAD_REQUEST;
+                JsonObject body = Json.createObjectBuilder()
+                        .add("status", result.sent() ? "ok" : "error")
+                        .add("message", safe(result.message()))
+                        .build();
+                writeJson(resp, status, body);
+                return;
+            }
+
             String updatedBy = currentUser(req);
             AutoEmailAlertConfig saved = configStore().saveConfig(incoming, updatedBy);
             writeJson(resp, HttpServletResponse.SC_OK, toResponseJson(saved));
@@ -157,6 +168,8 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         cfg.setHealthRecipients(stringVal(payload, "healthRecipients"));
         cfg.setHealthSubject(stringVal(payload, "healthSubject"));
         cfg.setHealthMessage(stringVal(payload, "healthMessage"));
+        cfg.setHealthRunbookUrl(stringVal(payload, "healthRunbookUrl"));
+        cfg.setHealthRunbookAttachmentPath(stringVal(payload, "healthRunbookAttachmentPath"));
 
         cfg.setTermEnabled(payload.getBoolean("termEnabled", false));
         cfg.setTermCheckIntervalSeconds(minutesToSeconds(intVal(payload, "termCheckIntervalMinutes", 10)));
@@ -184,6 +197,8 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
                 .add("healthRecipients", safe(cfg.getHealthRecipients()))
                 .add("healthSubject", safe(cfg.getHealthSubject()))
                 .add("healthMessage", safe(cfg.getHealthMessage()))
+                .add("healthRunbookUrl", safe(cfg.getHealthRunbookUrl()))
+                .add("healthRunbookAttachmentPath", safe(cfg.getHealthRunbookAttachmentPath()))
 
                 .add("termEnabled", cfg.isTermEnabled())
                 .add("termCheckIntervalMinutes", secondsToMinutes(cfg.getTermCheckIntervalSeconds()))
@@ -280,6 +295,14 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             throw new IllegalStateException("Automatic email alert config store is not initialized.");
         }
         return configuredStore;
+    }
+
+    private AutoEmailAlertScheduler scheduler() {
+        AutoEmailAlertScheduler configuredScheduler = scheduler;
+        if (configuredScheduler == null) {
+            throw new IllegalStateException("Automatic email alert scheduler is not initialized.");
+        }
+        return configuredScheduler;
     }
 
     private AppDataSourceHolder dataSourceHolder() {

@@ -5,11 +5,26 @@
     <head>
         <meta charset="utf-8">
         <title>Dashboard</title>
+        <script>
+            (function () {
+                document.documentElement.classList.add('dashboard-loading');
+                window.setTimeout(function () {
+                    document.documentElement.classList.remove('dashboard-loading');
+                }, 10000);
+            })();
+        </script>
         <link rel="preload" as="style" href="${contextPath}/assets/css/app.css">
         <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
     </head>
 
     <body>
+        <div id="dashboardBootOverlay" class="dashboard-boot-overlay" role="status" aria-live="polite">
+            <div class="dashboard-boot-card">
+                <div class="dashboard-boot-spinner" aria-hidden="true"></div>
+                <p class="dashboard-boot-title">Loading dashboard...</p>
+                <p class="dashboard-boot-subtitle">Preparing your latest metrics and session view.</p>
+            </div>
+        </div>
         <div class="top-bar" data-role="${role}">
             <div class="top-bar-inner">
                 <div class="brand"><strong>SIM</strong></div>
@@ -348,7 +363,10 @@
             window.termTotalMapJson = '${termTotalMapJson}';
             window.termLegendDefaultMode = '${termLegendDefaultMode}';
             window.lastFiveDaysTrendData = '${lastFiveDaysTrendData}';
-            window.dashboardConfig = { contextPath: '${contextPath}' };
+            window.dashboardConfig = {
+                contextPath: '${contextPath}',
+                chartJsUrl: 'https://cdn.jsdelivr.net/npm/chart.js'
+            };
             window.chatProgressionDirection = '${chatProgressionDirection}';
             window.newUsersProgressionDirection = '${newUsersProgressionDirection}';
             window.termsProgressionDirection = '${termsProgressionDirection}';
@@ -429,7 +447,6 @@
             })();
         </script>
 
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/core.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/inlineView.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/metrics.js"></script>

@@ -1,6 +1,7 @@
 target/
 .idea/
 .project
+.parasoft
 .settings/
 sim-app/.project
 sim-app/.classpath

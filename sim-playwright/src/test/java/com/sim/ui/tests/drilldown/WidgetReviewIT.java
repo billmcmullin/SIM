@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import com.microsoft.playwright.APIResponse;
-import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
@@ -26,11 +25,11 @@ public class WidgetReviewIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticated_redirectsToLogin() {
-        page.navigate(baseUrl + "/dashboard/widgets/drilldown/review?selectionId=test");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
-
-        assertTrue(page.url().contains("/chat-server/login"),
-                "Expected redirect to /chat-server/login, got: " + page.url());
+        APIResponse res = page.request().get(baseUrl + "/dashboard/widgets/drilldown/review?selectionId=test");
+        assertTrue(res.status() == 200 || res.status() == 401,
+            "Expected login forward/unauthorized response, got status=" + res.status());
+        assertTrue(res.text().contains("id=\"loginForm\""),
+            "Expected login form markup in unauthenticated response.");
     }
 
     @Test
@@ -70,8 +69,9 @@ public class WidgetReviewIT extends BaseUiIT {
         assumeTrue(selectionId != null && !selectionId.isBlank(),
                 "Skipping: unable to create selection from discovered chat IDs.");
 
-        page.navigate(baseUrl + "/dashboard/widgets/drilldown/review?selectionId=" + urlEncode(selectionId));
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/widgets/drilldown/review"));
+        navigateWithCommit("/dashboard/widgets/drilldown/review?selectionId=" + urlEncode(selectionId));
+        waitForPath("/chat-server/dashboard/widgets/drilldown/review");
+        page.waitForSelector("h1:has-text('Review Selected Chats')");
 
         assertTrue(page.title().contains("Review Selected Chats"));
         assertTrue(page.locator("h1:has-text('Review Selected Chats')").count() > 0);
@@ -188,21 +188,6 @@ public class WidgetReviewIT extends BaseUiIT {
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
-
-        page.fill("#username", username);
-        page.fill("#password", password);
-        page.click("button[type='submit']");
-
-        page.waitForURL(
-                url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
-
-        assertTrue(
-                page.url().contains("/chat-server/dashboard") || page.url().contains("/chat-server/admin"),
-                "Login expected /dashboard or /admin, got: " + page.url()
-        );
+        loginViaApi(username, password);
     }
 }

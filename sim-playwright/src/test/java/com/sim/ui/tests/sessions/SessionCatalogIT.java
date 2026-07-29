@@ -10,7 +10,6 @@ import org.junit.jupiter.api.TestMethodOrder;
 import com.microsoft.playwright.APIRequest;
 import com.microsoft.playwright.APIRequestContext;
 import com.microsoft.playwright.APIResponse;
-import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
@@ -25,8 +24,9 @@ public class SessionCatalogIT extends BaseUiIT {
     void pageRenders_coreUi_afterLogin() {
         login(adminUsername, adminPassword);
 
-        page.navigate(baseUrl + "/dashboard/session-names");
-        page.waitForURL(url -> url.contains("/chat-server/dashboard/session-names"));
+        navigateWithCommit("/dashboard/session-names");
+        waitForPath("/chat-server/dashboard/session-names");
+        page.waitForSelector("h1:has-text('Username Catalog')");
 
         assertTrue(page.title().contains("Session Catalog"));
         assertTrue(page.locator("h1:has-text('Username Catalog')").count() > 0);
@@ -80,21 +80,6 @@ public class SessionCatalogIT extends BaseUiIT {
     }
 
     private void login(String username, String password) {
-        page.navigate(baseUrl + "/login");
-        page.waitForURL(url -> url.contains("/chat-server/login"));
-
-        page.fill("#username", username);
-        page.fill("#password", password);
-        page.click("button[type='submit']");
-
-        page.waitForURL(
-                url -> url.contains("/chat-server/dashboard") || url.contains("/chat-server/admin"),
-                new Page.WaitForURLOptions().setTimeout(30000)
-        );
-
-        assertTrue(
-                page.url().contains("/chat-server/dashboard") || page.url().contains("/chat-server/admin"),
-                "Login expected /dashboard or /admin, got: " + page.url()
-        );
+        loginViaApi(username, password);
     }
 }

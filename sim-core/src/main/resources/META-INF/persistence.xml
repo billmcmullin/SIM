@@ -4,12 +4,10 @@
   xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_0.xsd"
   version="3.0">
 
-  <persistence-unit name="ChatsPU-Local" transaction-type="RESOURCE_LOCAL">
+  <persistence-unit name="ChatsPU-Local" transaction-type="JTA">
     <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+    <jta-data-source>java:jboss/datasources/ExampleDS</jta-data-source>
     <class>com.sim.chatserver.model.UserAccount</class>
-    <properties>
-      <property name="jakarta.persistence.jdbc.driver" value="org.postgresql.Driver" />
-    </properties>
   </persistence-unit>
 
 </persistence>

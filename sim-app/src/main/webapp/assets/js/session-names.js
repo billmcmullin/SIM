@@ -19,6 +19,13 @@ let pageSize = 10;
 let totalSessions = 0;
 let totalPages = 1;
 
+const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.begin === 'function')
+    ? window.PageBootLoading.begin({
+        title: 'Loading username catalog...',
+        subtitle: 'Preparing formatted session labels.'
+    })
+    : null;
+
 // New toggle filter state
 let labeledOnly = false;
 
@@ -364,5 +371,9 @@ try {
 
 refreshLabeledOnlyUi();
 syncLabeledOnlyToUrl();
-loadSessions('');
+loadSessions('').finally(() => {
+    if (bootLoading && typeof bootLoading.finish === 'function') {
+        bootLoading.finish();
+    }
+});
 })();

@@ -56,12 +56,18 @@ public class AuthResource {
                     .build();
         }
 
+        HttpSession existing = servletRequest.getSession(false);
+        if (existing != null) {
+            existing.invalidate();
+        }
+
         HttpSession session = servletRequest.getSession(true);
         String resolvedUsername = user.getUsername();
         String role = normalizeRole(user.getRole());
 
         session.setAttribute("user", resolvedUsername);
         session.setAttribute("role", role);
+        session.setMaxInactiveInterval(30 * 60);
 
         if (log.isLoggable(Level.INFO)) {
             log.log(Level.INFO, "User ''{0}'' logged in with role ''{1}''",

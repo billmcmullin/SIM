@@ -34,8 +34,8 @@ You can launch Swagger UI locally and test endpoints from a browser.
 
 1. Import OpenAPI: `sim-api-soatest-openapi.yaml`.
 2. Set environment base URL to your deployed host/context.
-3. Create an authentication test using one of these endpoints: `POST /api/auth/login` with JSON body `{ "username": "...", "password": "..." }` or `POST /login` with `application/x-www-form-urlencoded` fields `username` and `password`.
-4. Capture `Set-Cookie` (`JSESSIONID`) from the login response and apply it to protected endpoint tests.
+3. Create an authentication test using `POST /api/auth/login` with JSON body `{ "username": "...", "password": "..." }`.
+4. If your environment uses session auth, capture the login cookie and apply it to protected endpoint tests.
 5. Refine endpoint request bodies and response assertions incrementally as you validate real payloads.
 
 ## Next Refinement Pass (Recommended)

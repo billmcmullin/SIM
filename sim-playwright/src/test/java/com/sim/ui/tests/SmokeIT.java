@@ -1,16 +1,16 @@
 package com.sim.ui.tests;
 
-import com.sim.ui.base.BaseUiIT;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+
+import com.sim.ui.base.BaseUiIT;
 
 public class SmokeIT extends BaseUiIT {
 
     @Test
     void homePageLoads() {
-        page.navigate(baseUrl);
+        navigateWithCommit(baseUrl);
 
         String title = page.title();
         assertFalse(title == null || title.isBlank(), "Page title should not be blank");
@@ -22,7 +22,7 @@ public class SmokeIT extends BaseUiIT {
 
     @Test
     void htmlIsReturned() {
-        page.navigate(baseUrl);
+        navigateWithCommit(baseUrl);
 
         String content = page.content();
         assertTrue(content.toLowerCase().contains("<html"), "Expected HTML content in response");

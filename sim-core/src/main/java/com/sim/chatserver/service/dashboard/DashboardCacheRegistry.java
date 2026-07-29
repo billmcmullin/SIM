@@ -5,6 +5,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -25,6 +29,12 @@ import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardPro
 public class DashboardCacheRegistry {
 
     private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getName());
+    private static final AtomicInteger REFRESH_THREAD_INDEX = new AtomicInteger(1);
+    private static final ExecutorService CACHE_REFRESH_EXECUTOR = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "dashboard-cache-refresh-" + REFRESH_THREAD_INDEX.getAndIncrement());
+        t.setDaemon(true);
+        return t;
+    });
 
     // TTLs (shorter for day-sensitive metrics)
     private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
@@ -317,7 +327,7 @@ public class DashboardCacheRegistry {
             long ttlMillis,
             Supplier<T> loader
     ) {
-        Thread t = new Thread(() -> {
+        submitRefreshTask(() -> {
             T fresh = safeLoad(loader, null);
             long now = System.currentTimeMillis();
 
@@ -336,13 +346,11 @@ public class DashboardCacheRegistry {
                     current.refreshing = false;
                 }
             }
-        }, "dashboard-cache-refresh-single");
-        t.setDaemon(true);
-        t.start();
+        });
     }
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
-        Thread t = new Thread(() -> {
+        submitRefreshTask(() -> {
             SessionOverview fresh = safeLoad(loader, null);
             long now = System.currentTimeMillis();
 
@@ -362,9 +370,16 @@ public class DashboardCacheRegistry {
                     current.refreshing = false;
                 }
             }
-        }, "dashboard-cache-refresh-session");
-        t.setDaemon(true);
-        t.start();
+        });
+    }
+
+    private static void submitRefreshTask(Runnable task) {
+        try {
+            CACHE_REFRESH_EXECUTOR.execute(task);
+        } catch (RejectedExecutionException ex) {
+            log.log(Level.FINE, "Dashboard cache refresh executor saturated; running task inline", ex);
+            task.run();
+        }
     }
 
     private static boolean isFresh(Entry<?> e, long now) {

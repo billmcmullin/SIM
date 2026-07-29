@@ -11,10 +11,9 @@ import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
+import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.PersistenceException;
 import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
@@ -25,46 +24,44 @@ public class UserService {
 
     private static final Logger log = Logger.getLogger(UserService.class.getName());
 
-    @Inject
+    @PersistenceContext(unitName = "ChatsPU-Local")
+    EntityManager em;
+
+    // Legacy test seam retained for generated tests that assign this field.
+    @Deprecated
     AppDataSourceHolder dsHolder;
 
     /**
-     * Setter for non-CDI fallback wiring (e.g., local Jetty UI test runtime).
+     * Legacy compatibility setter retained for older tests.
+     * Runtime wiring is now container-managed through @PersistenceContext.
      */
+    @Deprecated
     public void setDsHolder(AppDataSourceHolder dsHolder) {
         this.dsHolder = dsHolder;
     }
 
     /**
-     * Internal guard to fail fast with clear message when datasource is not
-     * wired.
+     * Internal guard to fail fast when container-managed EntityManager is absent.
      */
-    private EntityManagerFactory requireEmf() {
-        if (dsHolder == null) {
-            throw new IllegalStateException("AppDataSourceHolder is not initialized in UserService");
+    private EntityManager requireEntityManager() {
+        if (em == null) {
+            throw new IllegalStateException("Container-managed EntityManager is not initialized in UserService");
         }
-        EntityManagerFactory emf = dsHolder.getEmf();
-        if (emf == null) {
-            throw new IllegalStateException("EntityManagerFactory is null in AppDataSourceHolder");
-        }
-        return emf;
+        return em;
     }
 
     /**
      * Find a user by username or return null.
      */
     public UserAccount findByUsername(String username) {
-        EntityManagerFactory emf = requireEmf();
-        EntityManager em = emf.createEntityManager();
+        EntityManager entityManager = requireEntityManager();
         try {
-            return em.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
+            return entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
                     .setParameter("u", username)
                     .getSingleResult();
         } catch (NoResultException nre) {
             log.log(Level.FINE, "User not found for username lookup");
             return null;
-        } finally {
-            em.close();
         }
     }
 
@@ -116,13 +113,10 @@ public class UserService {
      */
     @Transactional
     public UserAccount createUser(String username, String password, String role) {
-        EntityManagerFactory emf = requireEmf();
-        EntityManager em = emf.createEntityManager();
+        EntityManager entityManager = requireEntityManager();
         try {
-            em.getTransaction().begin();
-
             // Optional safety guard for sequence drift (PostgreSQL)
-            syncUserAccountIdSequence(em);
+            syncUserAccountIdSequence(entityManager);
 
             UserAccount u = new UserAccount();
             u.setUsername(username.trim());
@@ -131,17 +125,11 @@ public class UserService {
             u.setRole(role);
             u.setCreatedAt(Instant.now());
 
-            em.persist(u);
-            em.getTransaction().commit();
+            entityManager.persist(u);
             return u;
         } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to create user: " + e.getMessage(), e);
-            if (em.getTransaction().isActive()) {
-                em.getTransaction().rollback();
-            }
             throw e;
-        } finally {
-            em.close();
         }
     }
 
@@ -150,11 +138,9 @@ public class UserService {
      */
     @Transactional
     public UserAccount updateCredentials(String currentUsername, String newUsername, String newPassword) {
-        EntityManagerFactory emf = requireEmf();
-        EntityManager em = emf.createEntityManager();
+        EntityManager entityManager = requireEntityManager();
         try {
-            em.getTransaction().begin();
-            UserAccount user = em.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
+            UserAccount user = entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
                     .setParameter("u", currentUsername)
                     .getSingleResult();
 
@@ -164,16 +150,10 @@ public class UserService {
                 String hashed = BCrypt.hashpw(newPassword, BCrypt.gensalt(10));
                 user.setPassword(hashed);
             }
-            em.getTransaction().commit();
             return user;
         } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to update credentials: " + e.getMessage(), e);
-            if (em.getTransaction().isActive()) {
-                em.getTransaction().rollback();
-            }
             throw e;
-        } finally {
-            em.close();
         }
     }
 
@@ -181,15 +161,10 @@ public class UserService {
      * List all users.
      */
     public List<UserAccount> listAllUsers() {
-        EntityManagerFactory emf = requireEmf();
-        EntityManager em = emf.createEntityManager();
-        try {
-            TypedQuery<UserAccount> query
-                    = em.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
-            return query.getResultList();
-        } finally {
-            em.close();
-        }
+        EntityManager entityManager = requireEntityManager();
+        TypedQuery<UserAccount> query
+                = entityManager.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
+        return query.getResultList();
     }
 
     /**
@@ -197,31 +172,19 @@ public class UserService {
      */
     @Transactional
     public boolean deleteUser(String userId) {
-        EntityManagerFactory emf = requireEmf();
-        EntityManager em = emf.createEntityManager();
+        EntityManager entityManager = requireEntityManager();
         try {
-            em.getTransaction().begin();
-            UserAccount user = em.find(UserAccount.class, Long.valueOf(userId));
+            UserAccount user = entityManager.find(UserAccount.class, Long.valueOf(userId));
             if (user == null) {
-                em.getTransaction().rollback();
                 return false;
             }
-            em.remove(user);
-            em.getTransaction().commit();
+            entityManager.remove(user);
             return true;
         } catch (NumberFormatException nfe) {
-            if (em.getTransaction().isActive()) {
-                em.getTransaction().rollback();
-            }
             return false;
         } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to delete user: " + e.getMessage(), e);
-            if (em.getTransaction().isActive()) {
-                em.getTransaction().rollback();
-            }
             return false;
-        } finally {
-            em.close();
         }
     }
 

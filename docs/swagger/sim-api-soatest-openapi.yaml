@@ -13,7 +13,6 @@ tags:
   - name: auth
   - name: admin
   - name: dashboard
-  - name: profile
 paths:
   /api/auth/login:
     post:
@@ -35,11 +34,6 @@ paths:
       responses:
         '200':
           description: Authenticated
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-              description: Session cookie (JSESSIONID)
           content:
             application/json:
               schema:
@@ -56,31 +50,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginUnauthorized'
-      security: []
-
-  /login:
-    post:
-      tags: [auth]
-      summary: User login (form)
-      operationId: postFormLogin
-      description: |
-        Authenticates using form fields and creates an HTTP session.
-        This endpoint is convenient for SOAtest username/password login flows.
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '302':
-          description: Login redirect (success -> /dashboard, failure -> /login?error=...)
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-              description: Session cookie (JSESSIONID)
-      security: []
 
   /admin/widgets:
     get:
@@ -90,8 +59,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Create/update widget (admin)
@@ -101,8 +68,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     delete:
       tags: [admin]
       summary: Delete widget (admin)
@@ -110,8 +75,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/save-config:
     post:
@@ -123,8 +86,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/test-connection:
     post:
@@ -136,8 +97,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/test-salesforce-connection:
     post:
@@ -149,19 +108,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-
-  /admin/widget-availability.json:
-    get:
-      tags: [admin]
-      summary: Get widget availability status
-      operationId: getAdminWidgetAvailability
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/widget-health-config:
     get:
@@ -171,8 +117,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Update widget health configuration
@@ -182,8 +126,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/db/backup:
     get:
@@ -193,8 +135,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/db/import:
     post:
@@ -206,8 +146,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/salesforce/oauth/start:
     get:
@@ -217,8 +155,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/salesforce/oauth/callback:
     get:
@@ -228,8 +164,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/widgets/sync:
     get:
@@ -239,8 +173,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Trigger widget sync
@@ -250,8 +182,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/widgets/sync/timer:
     get:
@@ -261,8 +191,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Update widget sync timer
@@ -272,8 +200,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/email/config:
     get:
@@ -283,8 +209,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Update email configuration
@@ -294,8 +218,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/email/send:
     post:
@@ -307,8 +229,103 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
+
+  /admin/email/alerts:
+    get:
+      tags: [admin]
+      summary: Get automatic email alert configuration
+      operationId: getAdminEmailAlerts
+      responses:
+        '200':
+          description: Automatic email alert configuration and runtime state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoEmailAlertsResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '500':
+          description: Configuration store not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+    post:
+      tags: [admin]
+      summary: Save automatic email alert configuration or send a health test email
+      operationId: postAdminEmailAlerts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoEmailAlertsRequest'
+            examples:
+              saveConfig:
+                summary: Save alert configuration
+                value:
+                  healthEnabled: true
+                  healthCheckIntervalMinutes: 5
+                  healthOfflineDelayMinutes: 5
+                  healthResendIntervalMinutes: 30
+                  healthRecipients: ops@example.com
+                  healthSubject: "SIM Alert: Widget Healthcheck Offline"
+                  healthMessage: Follow the runbook if this remains down.
+                  healthRunbookUrl: https://docs.example.com/sim/recovery
+                  healthRunbookAttachmentPath: D:/SIM/docs/recovery/SIM-Recovery-Runbook.pdf
+                  termEnabled: false
+              sendHealthTest:
+                summary: Send health-style test email
+                value:
+                  sendTestEmail: true
+                  healthRecipients: ops@example.com
+                  healthSubject: "SIM Test Alert: Widget Healthcheck Offline"
+                  healthMessage: This is a test alert.
+                  healthRunbookUrl: https://docs.example.com/sim/recovery
+                  healthRunbookAttachmentPath: D:/SIM/docs/recovery/SIM-Recovery-Runbook.pdf
+      responses:
+        '200':
+          description: Saved config or sent test email successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AutoEmailAlertsResponse'
+                  - $ref: '#/components/schemas/StatusMessageResponse'
+        '400':
+          description: Invalid payload or test email send failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '500':
+          description: Configuration store not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
 
   /admin/sync-customer-profile:
     post:
@@ -320,8 +337,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/terms:
     get:
@@ -331,8 +346,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Create term
@@ -342,8 +355,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     put:
       tags: [admin]
       summary: Update term
@@ -353,8 +364,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     delete:
       tags: [admin]
       summary: Delete term
@@ -362,8 +371,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/terms/export:
     get:
@@ -373,8 +380,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/terms/import:
     post:
@@ -386,8 +391,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/users:
     get:
@@ -397,8 +400,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [admin]
       summary: Create user
@@ -408,8 +409,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     delete:
       tags: [admin]
       summary: Delete user
@@ -417,8 +416,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /admin/workspace:
     post:
@@ -430,41 +427,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-
-  /dashboard/daily-summary.json:
-    get:
-      tags: [dashboard]
-      summary: Daily summary data
-      operationId: getDashboardDailySummaryJson
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-
-  /dashboard/sessions.json:
-    get:
-      tags: [dashboard]
-      summary: Sessions list data
-      operationId: getDashboardSessionsJson
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-
-  /dashboard/session-names.json:
-    get:
-      tags: [dashboard]
-      summary: Session names data
-      operationId: getDashboardSessionNamesJson
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/sessions/data:
     get:
@@ -474,8 +436,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [dashboard]
       summary: Session data (payload)
@@ -485,8 +445,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/sessions/chats:
     get:
@@ -496,8 +454,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [dashboard]
       summary: Session chat list (payload)
@@ -507,8 +463,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/sessions/select:
     get:
@@ -518,8 +472,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [dashboard]
       summary: Session select values (payload)
@@ -529,8 +481,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/topics/data:
     get:
@@ -540,8 +490,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/topics/select:
     post:
@@ -553,8 +501,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/trends/select:
     post:
@@ -566,8 +512,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/widgets:
     get:
@@ -577,8 +521,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [dashboard]
       summary: Create dashboard widget
@@ -588,8 +530,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     delete:
       tags: [dashboard]
       summary: Delete dashboard widget
@@ -597,8 +537,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/widgets/review/start:
     post:
@@ -610,8 +548,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/widgets/drilldown/view/data:
     get:
@@ -621,8 +557,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/widgets/drilldown/view/review-data:
     get:
@@ -632,8 +566,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/widgets/drilldown/review/translate:
     get:
@@ -643,8 +575,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     post:
       tags: [dashboard]
       summary: Translate review text (payload)
@@ -654,8 +584,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
   /dashboard/drilldown/widget-review/job-status:
     get:
@@ -665,8 +593,6 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
     delete:
       tags: [dashboard]
       summary: Delete widget review job status
@@ -674,38 +600,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-
-  /profile:
-    get:
-      tags: [profile]
-      summary: Get profile
-      operationId: getProfile
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
-    post:
-      tags: [profile]
-      summary: Update profile
-      operationId: postProfile
-      requestBody:
-        $ref: '#/components/requestBodies/GenericJsonOrForm'
-      responses:
-        '200':
-          $ref: '#/components/responses/GenericSuccess'
-      security:
-        - sessionCookie: []
 
 components:
-  securitySchemes:
-    sessionCookie:
-      type: apiKey
-      in: cookie
-      name: JSESSIONID
-
   requestBodies:
     GenericJsonOrForm:
       required: false
@@ -771,3 +667,126 @@ components:
         authenticated:
           type: boolean
           example: false
+
+    StatusMessageResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: ok for success, error for failure
+          example: ok
+        message:
+          type: string
+          example: Health test email sent to 1 recipient(s).
+
+    AutoEmailAlertsRequest:
+      type: object
+      description: |
+        Payload for automatic email alerts. If sendTestEmail is true, the endpoint sends a
+        health-style test email using the provided health fields and does not persist config.
+      properties:
+        sendTestEmail:
+          type: boolean
+          default: false
+          description: Send a health-style test email instead of saving configuration.
+
+        healthEnabled:
+          type: boolean
+        healthCheckIntervalMinutes:
+          type: integer
+          minimum: 1
+        healthOfflineDelayMinutes:
+          type: integer
+          minimum: 0
+        healthResendIntervalMinutes:
+          type: integer
+          minimum: 1
+        healthRecipients:
+          type: string
+          description: Comma, semicolon, or newline separated email addresses.
+        healthSubject:
+          type: string
+        healthMessage:
+          type: string
+        healthRunbookUrl:
+          type: string
+          format: uri
+          description: Optional runbook hyperlink included in health alert emails.
+        healthRunbookAttachmentPath:
+          type: string
+          description: Optional server-local file path for runbook attachment.
+
+        termEnabled:
+          type: boolean
+        termCheckIntervalMinutes:
+          type: integer
+          minimum: 1
+        termName:
+          type: string
+        termRecipients:
+          type: string
+          description: Comma, semicolon, or newline separated email addresses.
+        termSubject:
+          type: string
+        termMessage:
+          type: string
+
+    AutoEmailAlertsResponse:
+      allOf:
+        - $ref: '#/components/schemas/StatusMessageResponse'
+        - type: object
+          properties:
+            healthEnabled:
+              type: boolean
+            healthCheckIntervalMinutes:
+              type: integer
+            healthOfflineDelayMinutes:
+              type: integer
+            healthResendIntervalMinutes:
+              type: integer
+            healthRecipients:
+              type: string
+            healthSubject:
+              type: string
+            healthMessage:
+              type: string
+            healthRunbookUrl:
+              type: string
+              format: uri
+            healthRunbookAttachmentPath:
+              type: string
+
+            termEnabled:
+              type: boolean
+            termCheckIntervalMinutes:
+              type: integer
+            termName:
+              type: string
+            termRecipients:
+              type: string
+            termSubject:
+              type: string
+            termMessage:
+              type: string
+
+            healthLastStatus:
+              type: string
+            healthLastCheckedAt:
+              type: string
+            healthOfflineSince:
+              type: string
+            healthLastAlertAt:
+              type: string
+
+            termLastCheckedAt:
+              type: string
+            termLastCount:
+              type: integer
+              format: int64
+            termLastAlertAt:
+              type: string
+
+            updatedBy:
+              type: string
+            updatedAt:
+              type: string
