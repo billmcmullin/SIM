@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -47,14 +48,18 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         }
 
         try {
-            WidgetAvailabilityResult result = checker.checkNow();
+            boolean forceRefresh = isTruthy(req == null ? null : req.getParameter("force"));
+            boolean runWhenDisabled = isTruthy(req == null ? null : req.getParameter("runWhenDisabled"));
+            WidgetAvailabilityResult result = checker.checkNow(forceRefresh, runWhenDisabled);
             if (result == null) {
                 log.warning(() -> "Widget availability checker returned null result for user=" + sanitizeForLog(user));
                 result = new WidgetAvailabilityResult(false, "DOWN", "", 0L, "Availability check returned no result");
             }
             final WidgetAvailabilityResult finalResult = result;
 
-            if (!finalResult.available()) {
+            if ("DISABLED".equalsIgnoreCase(finalResult.status())) {
+                log.info(() -> "Widget availability checks disabled by config for user=" + sanitizeForLog(user));
+            } else if (!finalResult.available()) {
                 log.warning(() -> "Widget availability check result DOWN for user=" + sanitizeForLog(user)
                         + " latencyMs=" + Math.max(0L, finalResult.latencyMs()));
             } else {
@@ -137,5 +142,17 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         }
         String normalized = value.replace('\r', '_').replace('\n', '_');
         return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(normalized)
+                || "1".equals(normalized)
+                || "yes".equals(normalized)
+                || "on".equals(normalized)
+                || "y".equals(normalized);
     }
 }

@@ -88,6 +88,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
             WidgetHealthConfig cfg = new WidgetHealthConfig();
             cfg.setHealthcheckUrl(stringOrNull(in, "healthcheckUrl"));
+            cfg.setHealthcheckEnabled(boolOrDefault(in, "healthcheckEnabled", true));
+            cfg.setCheckIntervalSeconds(minutesToSeconds(intOrDefault(in, "checkIntervalMinutes", 5), 5));
             cfg.setMethod(stringOrNull(in, "method"));
             cfg.setTimeoutMs(intOrDefault(in, "timeoutMs", 8000));
             cfg.setExpectJsonField(stringOrNull(in, "expectJsonField"));
@@ -185,6 +187,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         JsonObjectBuilder b = Json.createObjectBuilder()
                 .add("id", cfg == null ? 1 : cfg.getId())
                 .add("healthcheckUrl", safe(cfg == null ? null : cfg.getHealthcheckUrl()))
+            .add("healthcheckEnabled", cfg == null || cfg.isHealthcheckEnabled())
+            .add("checkIntervalMinutes", secondsToMinutes(cfg == null ? 300 : cfg.getCheckIntervalSeconds()))
                 .add("method", safe(cfg == null ? null : cfg.getMethod()))
                 .add("timeoutMs", cfg == null ? 8000 : Math.max(1, cfg.getTimeoutMs()))
                 .add("expectJsonField", safe(cfg == null ? null : cfg.getExpectJsonField()))
@@ -248,6 +252,42 @@ public class WidgetHealthConfigServlet extends HttpServlet {
                 return fallback;
             }
         }
+    }
+
+    private boolean boolOrDefault(JsonObject obj, String key, boolean fallback) {
+        if (obj == null || key == null || !obj.containsKey(key) || obj.isNull(key)) {
+            return fallback;
+        }
+        try {
+            return obj.getBoolean(key);
+        } catch (ClassCastException e) {
+            log.log(Level.FINE, "Unable to read JSON boolean key {0} directly; trying parse fallback", key);
+            String raw = String.valueOf(obj.get(key)).replace("\"", "").trim();
+            if ("true".equalsIgnoreCase(raw) || "1".equals(raw) || "yes".equalsIgnoreCase(raw)
+                    || "on".equalsIgnoreCase(raw) || "y".equalsIgnoreCase(raw)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(raw) || "0".equals(raw) || "no".equalsIgnoreCase(raw)
+                    || "off".equalsIgnoreCase(raw) || "n".equalsIgnoreCase(raw)) {
+                return false;
+            }
+            return fallback;
+        }
+    }
+
+    private int minutesToSeconds(int minutes, int fallbackMinutes) {
+        int safeMinutes = minutes <= 0 ? fallbackMinutes : minutes;
+        long seconds = (long) safeMinutes * 60L;
+        if (seconds > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) seconds;
+    }
+
+    private int secondsToMinutes(int seconds) {
+        int safeSeconds = Math.max(0, seconds);
+        int minutes = safeSeconds / 60;
+        return Math.max(1, minutes);
     }
 
     private JsonObject errorJson(String message) {

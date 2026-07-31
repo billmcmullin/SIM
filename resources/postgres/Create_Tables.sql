@@ -4,9 +4,15 @@ CREATE TABLE IF NOT EXISTS user_account (
   username VARCHAR(255) UNIQUE NOT NULL,
   password VARCHAR(255),
   email VARCHAR(255),
+  full_name VARCHAR(255),
   role VARCHAR(50) NOT NULL DEFAULT 'USER',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Ensure older databases created before full_name was introduced are aligned.
+ALTER TABLE IF EXISTS user_account
+  ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);
+
 -- create Admin User
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 INSERT INTO user_account (username, password, role, created_at)
@@ -37,6 +43,8 @@ CREATE TABLE IF NOT EXISTS email_smtp_config (
 CREATE TABLE IF NOT EXISTS widget_health_config (
   id INT PRIMARY KEY,
   healthcheck_url TEXT NOT NULL,
+  healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  check_interval_seconds INT NOT NULL DEFAULT 300,
   method VARCHAR(10) NOT NULL DEFAULT 'GET',
   timeout_ms INT NOT NULL DEFAULT 8000,
   expect_json_field VARCHAR(100),

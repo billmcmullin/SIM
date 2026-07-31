@@ -2,6 +2,93 @@
     'use strict';
 
     const core = window.DashboardCore;
+    const MANUAL_SUMMARY_RETRY_ENDPOINT = '/admin/widgets/summary/retry';
+    let manualSummaryRetryInFlight = false;
+
+    function isAdminUser() {
+        const topBar = document.querySelector('.top-bar');
+        const role = topBar?.dataset?.role || '';
+        return String(role).toUpperCase() === 'ADMIN';
+    }
+
+    function setManualSummaryRetryStatus(message) {
+        const statusEl = document.getElementById('manualSummaryRetryStatus');
+        if (!statusEl) {
+            return;
+        }
+        statusEl.textContent = message || '';
+    }
+
+    function setManualSummaryRetryVisibility(show, inProgress) {
+        const buttonEl = document.getElementById('manualSummaryRetryBtn');
+        if (!buttonEl) {
+            return;
+        }
+
+        if (!isAdminUser() || !show) {
+            buttonEl.style.display = 'none';
+            if (!manualSummaryRetryInFlight) {
+                setManualSummaryRetryStatus('');
+            }
+            return;
+        }
+
+        buttonEl.style.display = '';
+        buttonEl.disabled = manualSummaryRetryInFlight || !!inProgress;
+    }
+
+    function wireManualSummaryRetryButton(contextPath) {
+        const buttonEl = document.getElementById('manualSummaryRetryBtn');
+        if (!buttonEl || buttonEl.dataset.wired === '1') {
+            return;
+        }
+
+        buttonEl.dataset.wired = '1';
+        buttonEl.addEventListener('click', async () => {
+            if (manualSummaryRetryInFlight) {
+                return;
+            }
+
+            manualSummaryRetryInFlight = true;
+            buttonEl.disabled = true;
+            setManualSummaryRetryStatus('Running manual summary retry...');
+
+            try {
+                const response = await fetch(`${contextPath}${MANUAL_SUMMARY_RETRY_ENDPOINT}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' }
+                });
+
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch {
+                    payload = null;
+                }
+
+                if (response.ok && payload?.status === 'ok') {
+                    setManualSummaryRetryStatus(payload?.message || 'Manual summary retry succeeded.');
+                    await loadDailySummary(contextPath);
+                    return;
+                }
+
+                const errorMessage = payload?.message || `Manual summary retry failed (HTTP ${response.status}).`;
+                setManualSummaryRetryStatus(errorMessage);
+                setManualSummaryRetryVisibility(true, false);
+            } catch (error) {
+                console.warn('Manual summary retry failed:', error);
+                setManualSummaryRetryStatus('Manual summary retry request failed.');
+                setManualSummaryRetryVisibility(true, false);
+            } finally {
+                manualSummaryRetryInFlight = false;
+                const shouldEnable = document.getElementById('manualSummaryRetryBtn')?.style.display !== 'none';
+                if (buttonEl) {
+                    buttonEl.disabled = !shouldEnable;
+                }
+            }
+        });
+    }
 
     function ensureSummaryProgressUi() {
         const bodyEl = document.getElementById('dailySummaryBody');
@@ -171,6 +258,7 @@
             return;
         }
 
+        wireManualSummaryRetryButton(contextPath);
         ensureSummaryProgressUi();
         bodyEl.innerHTML = '<p style="margin:0;">Loading latest summary…</p>';
         if (metaEl) {
@@ -196,6 +284,7 @@
                     if (metaEl) {
                         metaEl.textContent = `Status: ${resp.status}`;
                     }
+                    setManualSummaryRetryVisibility(false, false);
                     setSummaryProgress(0, 'error');
                     hideSummaryProgressIfDone(false);
                     return;
@@ -208,6 +297,7 @@
                 if (metaEl) {
                     metaEl.textContent = 'Request failed.';
                 }
+                setManualSummaryRetryVisibility(false, false);
                 setSummaryProgress(0, 'request failed');
                 hideSummaryProgressIfDone(false);
                 return;
@@ -218,6 +308,7 @@
                 if (metaEl) {
                     metaEl.textContent = 'No summary returned.';
                 }
+                setManualSummaryRetryVisibility(false, false);
                 setSummaryProgress(0, 'not ready');
                 hideSummaryProgressIfDone(false);
                 return;
@@ -226,8 +317,14 @@
             const s = data.summary || {};
             const m = data.meta || {};
             const inProgress = !!m.inProgress;
+            const isError = String(m.statusText || '').toLowerCase() === 'error';
             const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
             const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
+
+            setManualSummaryRetryVisibility(isError && !inProgress, inProgress);
+            if (isError && m.message) {
+                setManualSummaryRetryStatus(String(m.message));
+            }
 
             setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
 

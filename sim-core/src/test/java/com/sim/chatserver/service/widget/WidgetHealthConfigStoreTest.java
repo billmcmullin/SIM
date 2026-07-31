@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -46,8 +47,8 @@ class WidgetHealthConfigStoreTest {
     void ensureTable_executesCreateAndMigrations() throws Exception {
         underTest.ensureTable();
 
-        verify(connection, times(7)).prepareStatement(anyString());
-        verify(statement, times(7)).execute();
+        verify(connection, times(9)).prepareStatement(anyString());
+        verify(statement, times(9)).execute();
     }
 
     @Test
@@ -55,7 +56,7 @@ class WidgetHealthConfigStoreTest {
         underTest.ensureDefaultRow();
 
         verify(statement).setInt(1, WidgetHealthConfigStore.SINGLETON_ID);
-        verify(statement).setString(2, "http://anythingllm:3001/api/health");
+        verify(statement).setString(2, "http://anythingllm:3001/api/v1/system");
         verify(statement).executeUpdate();
     }
 
@@ -82,10 +83,26 @@ class WidgetHealthConfigStoreTest {
         when(loadPs.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(true);
 
+        when(rs.getInt("id")).thenReturn(1);
+        when(rs.getString("healthcheck_url")).thenReturn("  http://example.com/health  ");
+        when(rs.getString("method")).thenReturn("patch");
+        when(rs.getInt("timeout_ms")).thenReturn(200_000);
         when(rs.getObject("id", Integer.class)).thenReturn(1);
         when(rs.getObject("healthcheck_url", String.class)).thenReturn("  http://example.com/health  ");
         when(rs.getObject("method", String.class)).thenReturn("patch");
         when(rs.getObject("timeout_ms", Integer.class)).thenReturn(200_000);
+        when(rs.getBoolean("healthcheck_enabled")).thenReturn(true);
+        when(rs.getInt("check_interval_seconds")).thenReturn(600);
+        when(rs.getString("expect_json_field")).thenReturn("  status ");
+        when(rs.getString("expect_json_value")).thenReturn(" up ");
+        when(rs.getString("widget_id")).thenReturn(" wid-1 ");
+        when(rs.getString("request_origin")).thenReturn(" https://origin.local ");
+        when(rs.getString("request_referer")).thenReturn(" https://origin.local/r ");
+        when(rs.getString("request_user_agent")).thenReturn(" test-agent ");
+        when(rs.getString("request_cookie")).thenReturn(" session=abc ");
+        when(rs.getString("api_key_header_name")).thenReturn(null);
+        when(rs.getString("api_key_value")).thenReturn(" token ");
+        when(rs.getString("updated_by")).thenReturn(" tester ");
         when(rs.getObject("expect_json_field", String.class)).thenReturn("  status ");
         when(rs.getObject("expect_json_value", String.class)).thenReturn(" up ");
         when(rs.getObject("widget_id", String.class)).thenReturn(" wid-1 ");
@@ -103,6 +120,8 @@ class WidgetHealthConfigStoreTest {
         assertNotNull(out);
         assertEquals(WidgetHealthConfigStore.SINGLETON_ID, out.getId());
         assertEquals("http://example.com/health", out.getHealthcheckUrl());
+        assertTrue(out.isHealthcheckEnabled());
+        assertEquals(600, out.getCheckIntervalSeconds());
         assertEquals("GET", out.getMethod());
         assertEquals(120_000, out.getTimeoutMs());
         assertEquals("status", out.getExpectJsonField());
@@ -143,8 +162,26 @@ class WidgetHealthConfigStoreTest {
         when(loadPs.executeQuery()).thenReturn(loadRs);
         when(loadRs.next()).thenReturn(true);
 
+        when(loadRs.getInt("id")).thenReturn(1);
+        when(loadRs.getString("healthcheck_url")).thenReturn("http://anythingllm:3001/api/v1/system");
+        when(loadRs.getBoolean("healthcheck_enabled")).thenReturn(true);
+        when(loadRs.getInt("check_interval_seconds")).thenReturn(300);
+        when(loadRs.getString("method")).thenReturn("GET");
+        when(loadRs.getInt("timeout_ms")).thenReturn(8000);
+        when(loadRs.getString("expect_json_field")).thenReturn(null);
+        when(loadRs.getString("expect_json_value")).thenReturn(null);
+        when(loadRs.getString("widget_id")).thenReturn(null);
+        when(loadRs.getString("request_origin")).thenReturn(null);
+        when(loadRs.getString("request_referer")).thenReturn(null);
+        when(loadRs.getString("request_user_agent")).thenReturn(null);
+        when(loadRs.getString("request_cookie")).thenReturn(null);
+        when(loadRs.getString("api_key_header_name")).thenReturn(null);
+        when(loadRs.getString("api_key_value")).thenReturn(null);
+        when(loadRs.getString("updated_by")).thenReturn("tester");
         when(loadRs.getObject("id", Integer.class)).thenReturn(1);
-        when(loadRs.getObject("healthcheck_url", String.class)).thenReturn("http://anythingllm:3001/api/health");
+        when(loadRs.getObject("healthcheck_url", String.class)).thenReturn("http://anythingllm:3001/api/v1/system");
+        when(loadRs.getBoolean("healthcheck_enabled")).thenReturn(true);
+        when(loadRs.getInt("check_interval_seconds")).thenReturn(300);
         when(loadRs.getObject("method", String.class)).thenReturn("GET");
         when(loadRs.getObject("timeout_ms", Integer.class)).thenReturn(8000);
         when(loadRs.getObject("expect_json_field", String.class)).thenReturn(null);
@@ -161,6 +198,8 @@ class WidgetHealthConfigStoreTest {
 
         WidgetHealthConfigStore.WidgetHealthConfig in = new WidgetHealthConfigStore.WidgetHealthConfig();
         in.setHealthcheckUrl("   ");
+        in.setHealthcheckEnabled(true);
+        in.setCheckIntervalSeconds(0);
         in.setMethod("patch");
         in.setTimeoutMs(-1);
         in.setExpectJsonField("  ");
@@ -177,12 +216,16 @@ class WidgetHealthConfigStoreTest {
 
         WidgetHealthConfigStore.WidgetHealthConfig out = underTest.save(in);
 
-        verify(savePs).setString(2, "http://anythingllm:3001/api/health");
+        verify(savePs).setString(2, "http://anythingllm:3001/api/v1/system");
         verify(savePs).setString(3, "GET");
         verify(savePs).setInt(4, 8000);
-        verify(savePs).setNull(5, Types.VARCHAR);
-        verify(savePs).setNull(6, Types.VARCHAR);
+        verify(savePs).setBoolean(5, true);
+        verify(savePs).setInt(6, 300);
+        verify(savePs).setNull(7, Types.VARCHAR);
+        verify(savePs).setNull(8, Types.VARCHAR);
         assertNotNull(out);
+        assertTrue(out.isHealthcheckEnabled());
+        assertEquals(300, out.getCheckIntervalSeconds());
         assertEquals("GET", out.getMethod());
         assertEquals(8000, out.getTimeoutMs());
     }

@@ -14,8 +14,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -72,6 +75,7 @@ public class DefaultTranslationService implements TranslationService {
 
     @Override
     public TranslationResult detectAndTranslate(String text, String targetLang) {
+        String requestId = UUID.randomUUID().toString();
         try {
             String safeText = text == null ? "" : text.trim();
             if (safeText.isBlank()) {
@@ -81,29 +85,53 @@ public class DefaultTranslationService implements TranslationService {
             safeText = fixCommonMojibake(safeText);
 
             String target = normalizeLang(targetLang);
+                ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "translation-start",
+                    "targetLang=" + target
+                        + "\ntextChars=" + safeText.length()
+                        + "\ntext=" + safeText
+                );
 
             // Heuristic fallback
             String heuristic = detectLanguageHeuristic(safeText);
 
             // Provider detection preferred
-            String providerDetected = detectLanguageWithProvider(safeText);
+                String providerDetected = detectLanguageWithProvider(safeText, requestId);
             String source = (providerDetected == null || providerDetected.isBlank()) ? heuristic : providerDetected;
 
             // IMPORTANT:
             // Always attempt translation call (even if source==target), because
             // detection can be wrong and provider may still produce corrected translation.
-            String translated = translateWithLibreTranslate(safeText, source, target);
+            String translated = translateWithLibreTranslate(safeText, source, target, requestId);
             if (translated == null || translated.isBlank()) {
                 return TranslationResult.fail("Translation service returned empty text.");
             }
 
             translated = fixCommonMojibake(translated);
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "translation-success",
+                    "sourceLang=" + source
+                            + "\ntargetLang=" + target
+                            + "\ntranslatedChars=" + translated.length()
+                            + "\ntranslated=" + translated
+            );
             return TranslationResult.ok(source, target, translated);
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             log.log(Level.WARNING, "Translation failed", ex);
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "translation-error",
+                    "message=" + safe(ex.getMessage()),
+                    ex
+            );
             return TranslationResult.fail("Unable to translate at this time.");
         }
     }
@@ -175,13 +203,21 @@ public class DefaultTranslationService implements TranslationService {
         return score;
     }
 
-    private String detectLanguageWithProvider(String text) {
+    private String detectLanguageWithProvider(String text, String requestId) {
         try {
             StringBuilder form = new StringBuilder();
             form.append("q=").append(urlEncode(text));
             if (apiKey != null && !apiKey.isBlank()) {
                 form.append("&api_key=").append(urlEncode(apiKey));
             }
+
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "detect-request",
+                    "method=POST\nurl=" + detectUrl
+                        + "\nbody=" + redactApiKey(form.toString())
+            );
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(detectUrl))
@@ -192,12 +228,20 @@ public class DefaultTranslationService implements TranslationService {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            String responseBody = response.body() == null ? "" : response.body();
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "detect-response",
+                    "status=" + response.statusCode()
+                            + "\nbody=" + responseBody
+            );
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.fine(() -> "Provider detect returned HTTP " + response.statusCode());
                 return "";
             }
 
-            String body = response.body() == null ? "" : response.body().trim();
+            String body = responseBody.trim();
             if (body.isEmpty()) {
                 return "";
             }
@@ -218,11 +262,18 @@ public class DefaultTranslationService implements TranslationService {
                 Thread.currentThread().interrupt();
             }
             log.log(Level.FINE, "Provider language detect failed, using heuristic fallback", e);
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "detect-error",
+                    "message=" + safe(e.getMessage()),
+                    e
+            );
             return "";
         }
     }
 
-    private String translateWithLibreTranslate(String text, String sourceLang, String targetLang)
+    private String translateWithLibreTranslate(String text, String sourceLang, String targetLang, String requestId)
             throws IOException, InterruptedException {
 
         String source = (sourceLang == null || sourceLang.isBlank()) ? "auto" : sourceLang;
@@ -236,6 +287,16 @@ public class DefaultTranslationService implements TranslationService {
             form.append("&api_key=").append(urlEncode(apiKey));
         }
 
+        ServerDiagnosticsLog.write(
+            "translation-service",
+            requestId,
+            "translate-request",
+            "method=POST\nurl=" + translateUrl
+                + "\nsource=" + source
+                + "\ntarget=" + targetLang
+                + "\nbody=" + redactApiKey(form.toString())
+        );
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(translateUrl))
                 .timeout(Duration.ofSeconds(20))
@@ -247,6 +308,14 @@ public class DefaultTranslationService implements TranslationService {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         int status = response.statusCode();
         String body = response.body() == null ? "" : response.body();
+
+        ServerDiagnosticsLog.write(
+            "translation-service",
+            requestId,
+            "translate-response",
+            "status=" + status
+                + "\nbody=" + body
+        );
 
         if (status < 200 || status >= 300) {
             throw new IOException("Translation HTTP " + status + ": " + body);
@@ -303,6 +372,17 @@ public class DefaultTranslationService implements TranslationService {
         String v = sanitizeEnvValue(ENV.get(key), 4096);
         String safeFallback = Objects.requireNonNullElse(fallback, "").trim();
         return (v == null || v.isBlank()) ? safeFallback : v;
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String redactApiKey(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.replaceAll("(?i)(api_key=)[^&\\s]+", "$1[REDACTED]");
     }
 
     private String sanitizeEnvValue(String value, int maxChars) {

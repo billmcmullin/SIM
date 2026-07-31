@@ -295,6 +295,7 @@
         const host = document.getElementById('serverHost')?.value.trim() || '';
         const port = document.getElementById('serverPort')?.value.trim() || '';
         const apiKey = document.getElementById('apiKey')?.value.trim() || '';
+        const workspaceName = document.getElementById('workspaceNameInput')?.value.trim() || '';
         const resultEl = document.getElementById('testResult');
 
         if (!host || !port) {
@@ -310,6 +311,9 @@
         const data = new URLSearchParams();
         data.append('serverHost', host);
         data.append('serverPort', port);
+        if (workspaceName) {
+            data.append('workspaceName', workspaceName);
+        }
         if (apiKey) {
             data.append('apiKey', apiKey);
         }
@@ -329,7 +333,9 @@
                 lastTestSuccess = true;
             } else {
                 if (resultEl) {
-                    resultEl.textContent = payload?.message || `Connection failed (${status}).`;
+                    const probe = payload?.probe ? ` [${payload.probe}]` : '';
+                    const upstream = Number.isInteger(payload?.upstreamStatus) ? ` (upstream ${payload.upstreamStatus})` : '';
+                    resultEl.textContent = (payload?.message || `Connection failed (${status}).`) + probe + upstream;
                     resultEl.style.color = '#b91c1c';
                 }
                 lastTestSuccess = false;

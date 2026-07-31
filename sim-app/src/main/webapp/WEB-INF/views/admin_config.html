@@ -48,8 +48,17 @@
 
             <form id="widgetHealthConfigForm" onsubmit="return false;">
                 <div class="form-group">
+                    <label><input type="checkbox" id="whcEnabled" checked> Enable Widget Healthcheck Service</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="whcCheckIntervalMinutes">Healthcheck Interval (minutes)</label>
+                    <input type="number" id="whcCheckIntervalMinutes" min="1" max="1440" step="1" placeholder="5" value="5">
+                </div>
+
+                <div class="form-group">
                     <label for="whcHealthcheckUrl">Healthcheck URL</label>
-                    <input type="text" id="whcHealthcheckUrl" placeholder="http://anythingllm:3001/api/health" required>
+                    <input type="text" id="whcHealthcheckUrl" placeholder="http://anythingllm:3001/api/v1/system">
                 </div>
 
                 <div class="form-group">
@@ -745,6 +754,18 @@
                 }
             }
 
+                function showDisabledBanner(text) {
+                    banner.style.display = 'block';
+                    banner.style.padding = '10px 12px';
+                    banner.style.borderRadius = '6px';
+                    banner.style.marginBottom = '12px';
+                    banner.style.fontWeight = '600';
+                    banner.style.background = '#f3f4f6';
+                    banner.style.border = '1px solid #d1d5db';
+                    banner.style.color = '#374151';
+                    banner.textContent = text || 'Chat Widget Healthcheck is disabled in Admin settings';
+                }
+
             async function pollWidgetAvailability() {
                 try {
                     const res = await fetch(endpoint, {
@@ -759,6 +780,11 @@
                     }
 
                     const data = await res.json();
+                    const status = String(data && data.status ? data.status : '').toUpperCase();
+                    if (status === 'DISABLED') {
+                        showDisabledBanner('Chat Widget Healthcheck is disabled in Admin settings');
+                        return;
+                    }
                     const ok = !!data.available;
                     const details = data && data.details ? ` (${data.details})` : '';
 

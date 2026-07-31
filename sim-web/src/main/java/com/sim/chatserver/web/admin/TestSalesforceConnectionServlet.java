@@ -7,12 +7,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.security.SalesforceAuthClient;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -129,8 +131,16 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         String normalizedApiKey = apiKey == null ? "" : apiKey.trim();
 
         String endpoint = buildSalesforceDataEndpoint(normalizedInstanceUrl);
+        String requestId = UUID.randomUUID().toString();
 
         try {
+            ServerDiagnosticsLog.write(
+                "test-salesforce-connection-servlet",
+                requestId,
+                "http-request",
+                "method=GET\nurl=" + endpoint
+            );
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(10))
@@ -140,6 +150,12 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                     .build();
 
             HttpResponse<String> response = getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            ServerDiagnosticsLog.write(
+                "test-salesforce-connection-servlet",
+                requestId,
+                "http-response",
+                "status=" + response.statusCode() + "\nbody=" + truncate(response.body())
+            );
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 writeJson(resp, HttpServletResponse.SC_OK,
@@ -158,6 +174,13 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
             }
             log.log(Level.WARNING, "Salesforce connection test failed", e);
+            ServerDiagnosticsLog.write(
+                    "test-salesforce-connection-servlet",
+                    requestId,
+                    "http-error",
+                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     Json.createObjectBuilder().add("status", "error")
                             .add("message", "Salesforce connection test failed.").build());
@@ -192,6 +215,17 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
 
     private boolean isBlank(String v) {
         return v == null || v.isBlank();
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() > 512 ? value.substring(0, 512) + "..." : value;
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private static final class RequestParamContext {
