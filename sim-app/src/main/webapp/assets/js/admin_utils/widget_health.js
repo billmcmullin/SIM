@@ -1,6 +1,8 @@
 (function () {
     'use strict';
 
+    let currentConfig = null;
+
     function $(id) {
         return document.getElementById(id);
     }
@@ -49,10 +51,13 @@
     }
 
     function readForm() {
-        const timeoutRaw = $('whcTimeoutMs')?.value;
-        const intervalRaw = $('whcCheckIntervalMinutes')?.value;
-        let timeoutMs = Number.parseInt(timeoutRaw, 10);
-        let checkIntervalMinutes = Number.parseInt(intervalRaw, 10);
+        const base = currentConfig && typeof currentConfig === 'object' ? currentConfig : {};
+        const hasHealthcheckUrlField = !!$('whcHealthcheckUrl');
+        const healthcheckUrl = hasHealthcheckUrlField
+            ? toNullIfBlank($('whcHealthcheckUrl')?.value)
+            : toNullIfBlank(base.healthcheckUrl);
+        let timeoutMs = Number.parseInt(base.timeoutMs, 10);
+        let checkIntervalMinutes = Number.parseInt(base.checkIntervalMinutes, 10);
         if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
             timeoutMs = 8000;
         }
@@ -67,21 +72,20 @@
         }
 
         const payload = {
-            healthcheckUrl: toNullIfBlank($('whcHealthcheckUrl')?.value),
-            healthcheckEnabled: !!$('whcEnabled')?.checked,
+            healthcheckUrl: healthcheckUrl,
+            healthcheckEnabled: typeof base.healthcheckEnabled === 'boolean' ? base.healthcheckEnabled : true,
             checkIntervalMinutes: checkIntervalMinutes,
-            method: (($('whcMethod')?.value || 'GET').trim().toUpperCase()),
+            method: String(base.method || 'GET').trim().toUpperCase(),
             timeoutMs: timeoutMs,
-            expectJsonField: toNullIfBlank($('whcExpectJsonField')?.value),
-            expectJsonValue: toNullIfBlank($('whcExpectJsonValue')?.value),
-            widgetId: toNullIfBlank($('whcWidgetId')?.value),
+            expectJsonField: toNullIfBlank(base.expectJsonField),
+            expectJsonValue: toNullIfBlank(base.expectJsonValue),
+            widgetId: toNullIfBlank(base.widgetId),
 
             // New optional request-shaping fields
-            requestOrigin: toNullIfBlank($('whcRequestOrigin')?.value),
-            requestReferer: toNullIfBlank($('whcRequestReferer')?.value),
-            requestUserAgent: toNullIfBlank($('whcRequestUserAgent')?.value),
-            requestCookie: toNullIfBlank($('whcRequestCookie')?.value),
-            apiKeyHeaderName: toNullIfBlank($('whcApiKeyHeaderName')?.value),
+            requestOrigin: toNullIfBlank(base.requestOrigin),
+            requestReferer: toNullIfBlank(base.requestReferer),
+            requestUserAgent: toNullIfBlank(base.requestUserAgent),
+            apiKeyHeaderName: toNullIfBlank(base.apiKeyHeaderName || 'Authorization'),
             apiKeyValue: toNullIfBlank($('whcApiKeyValue')?.value)
         };
 
@@ -100,6 +104,8 @@
         if (!cfg || typeof cfg !== 'object') {
             return;
         }
+
+        currentConfig = cfg;
 
         if ($('whcHealthcheckUrl')) {
             $('whcHealthcheckUrl').value = cfg.healthcheckUrl || '';

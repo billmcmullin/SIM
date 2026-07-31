@@ -97,6 +97,27 @@
         return { today: toYmd(today), yesterday: toYmd(yesterday) };
     }
 
+    function formatHumanReadableTimestamp(value, fallback = '—') {
+        if (!value) {
+            return fallback;
+        }
+
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return String(value);
+        }
+
+        const formatted = date.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+        return formatted.endsWith('.') ? formatted : `${formatted}.`;
+    }
+
     window.DashboardCore = {
         parseSlices,
         parseObject,
@@ -104,6 +125,7 @@
         buildSeries,
         esc,
         toYmd,
-        getTodayYesterday
+        getTodayYesterday,
+        formatHumanReadableTimestamp
     };
 })();

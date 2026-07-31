@@ -50,7 +50,23 @@
         if (!ts) {
             return '—';
         }
-        try { return new Date(ts).toLocaleString(); } catch { return ts; }
+        try {
+            const d = new Date(ts);
+            if (Number.isNaN(d.getTime())) {
+                return ts;
+            }
+            const formatted = d.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            return formatted.endsWith('.') ? formatted : `${formatted}.`;
+        } catch {
+            return ts;
+        }
     }
 
     function reviewUrl(sessionId) {

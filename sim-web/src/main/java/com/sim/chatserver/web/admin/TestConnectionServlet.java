@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -26,6 +27,7 @@ import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
+import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
@@ -115,9 +117,8 @@ public class TestConnectionServlet extends HttpServlet {
             workspaceName = storedConfig.getWorkspaceName();
         }
 
-        ApiAuthResolver.ResolvedApiAuth resolvedAuth = ApiAuthResolver.resolveForOutbound(apiKey);
-        ApiAuthResolver.ResolvedApiAuth fallbackAuth = ApiAuthResolver.resolveForOutbound(null);
-        List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(resolvedAuth, fallbackAuth);
+        ApiAuthResolver.ResolvedApiAuth resolvedAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
+        List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(resolvedAuth, null);
         if (authCandidates.isEmpty()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
                     .add("status", "error")
@@ -169,9 +170,16 @@ public class TestConnectionServlet extends HttpServlet {
             );
 
             if (systemResponse.status < 200 || systemResponse.status >= 300) {
+                String failureMessage = buildProbeFailureMessage(
+                    ProbeKind.SYSTEM,
+                    systemResponse.status,
+                    systemResponse.body,
+                    workspaceSlug,
+                    systemEndpoint
+                );
                 writeJson(resp, systemResponse.status, Json.createObjectBuilder()
                         .add("status", "error")
-                        .add("message", "System endpoint probe failed with upstream status.")
+                    .add("message", failureMessage)
                         .add("probe", "system")
                         .add("upstreamStatus", systemResponse.status)
                         .add("authMode", systemResponse.mode.name())
@@ -216,9 +224,16 @@ public class TestConnectionServlet extends HttpServlet {
                     .add("authSource", safe(chatResponse.authSource))
                         .build());
             } else {
+                String failureMessage = buildProbeFailureMessage(
+                    ProbeKind.CHAT,
+                    chatResponse.status,
+                    chatResponse.body,
+                    workspaceSlug,
+                    chatEndpoint
+                );
                 writeJson(resp, chatResponse.status, Json.createObjectBuilder()
                         .add("status", "error")
-                        .add("message", "Chat endpoint probe failed with upstream status.")
+                    .add("message", failureMessage)
                         .add("probe", "chat")
                         .add("upstreamStatus", chatResponse.status)
                         .add("authMode", chatResponse.mode.name())
@@ -230,12 +245,15 @@ public class TestConnectionServlet extends HttpServlet {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            log.log(Level.WARNING, "Connection test failed", e);
+            String errorRef = UUID.randomUUID().toString();
+            log.log(Level.WARNING,
+                "Connection test failed. errorRef={0} requestId={1}. See server diagnostics log for stack trace.",
+                new Object[]{errorRef, requestId});
             ServerDiagnosticsLog.write(
                     "test-connection-servlet",
                     requestId,
                     "http-error",
-                    "url=" + safe(systemEndpoint) + "\nmessage=" + safe(e.getMessage()),
+                    "errorRef=" + errorRef + "\nurl=" + safe(systemEndpoint) + "\nmessage=" + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
@@ -435,6 +453,86 @@ public class TestConnectionServlet extends HttpServlet {
         String body = response.body == null ? "" : response.body;
         String normalized = body.toLowerCase(Locale.ROOT);
         return normalized.contains("cannot read properties of null") && normalized.contains("reading 'id'");
+    }
+
+    private String buildProbeFailureMessage(
+            ProbeKind probeKind,
+            int status,
+            String responseBody,
+            String workspaceSlug,
+            String endpoint
+    ) {
+        String reason = extractUpstreamReason(responseBody);
+        String lower = reason.toLowerCase(Locale.ROOT);
+        String safeWorkspace = safe(workspaceSlug);
+
+        if (status == HttpServletResponse.SC_UNAUTHORIZED || status == HttpServletResponse.SC_FORBIDDEN
+                || lower.contains("no valid api key")
+                || lower.contains("unauthorized")
+                || lower.contains("forbidden")) {
+            return "Authentication failed for " + probeLabel(probeKind)
+                    + " endpoint. Verify the API key in Server and Workspace configuration.";
+        }
+
+        if (lower.contains("not a valid workspace") || lower.contains("workspace") && lower.contains("invalid")) {
+            return "Workspace is invalid for this server: '" + defaultIfBlank(safeWorkspace, "(blank)")
+                    + "'. Update workspace name in Server and Workspace settings.";
+        }
+
+        if (status == HttpServletResponse.SC_BAD_REQUEST) {
+            return "Upstream rejected the " + probeLabel(probeKind)
+                    + " request (HTTP 400). Verify server URL/path, workspace name, and proxy rules."
+                    + suffixFromReason(reason);
+        }
+
+        return probeLabel(probeKind) + " endpoint failed with upstream HTTP " + status + suffixFromReason(reason)
+                + ". endpoint=" + safe(endpoint);
+    }
+
+    private String probeLabel(ProbeKind probeKind) {
+        return probeKind == ProbeKind.CHAT ? "chat" : "system";
+    }
+
+    private String extractUpstreamReason(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+
+        try (var reader = Json.createReader(new StringReader(body))) {
+            JsonObject object = reader.readObject();
+            String error = object.getString("error", "");
+            if (!error.isBlank()) {
+                return error;
+            }
+            String message = object.getString("message", "");
+            if (!message.isBlank()) {
+                return message;
+            }
+            String textResponse = object.getString("textResponse", "");
+            if (!textResponse.isBlank()) {
+                return textResponse;
+            }
+        } catch (JsonException | ClassCastException ignored) {
+            // Fall back to raw body below.
+        }
+
+        String trimmed = body.trim();
+        return trimmed.length() > 300 ? trimmed.substring(0, 300) : trimmed;
+    }
+
+    private String suffixFromReason(String reason) {
+        String value = safe(reason).trim();
+        if (value.isBlank()) {
+            return "";
+        }
+        return " Reason: " + value;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return value;
     }
 
     private String buildBaseUrl(String host, String port) {

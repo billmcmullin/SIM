@@ -24,6 +24,28 @@ public final class ApiAuthResolver {
     private ApiAuthResolver() {
     }
 
+    /**
+     * Resolve outbound auth for Server/Workspace features only.
+     *
+     * This path intentionally ignores Widget Health overrides so connection
+     * tests and summary generation use the exact same credential source.
+     */
+    public static ResolvedApiAuth resolveForServerConfigOutbound(String requestedApiKey) {
+        String requestedRaw = trimToNull(requestedApiKey);
+        String requestedToken = normalizeApiKeyToken(requestedRaw);
+        if (requestedToken != null) {
+            return new ResolvedApiAuth(requestedRaw, requestedToken, "Authorization", "REQUEST");
+        }
+
+        String globalRaw = loadGlobalServerApiKey();
+        String globalToken = normalizeApiKeyToken(globalRaw);
+        if (globalToken != null) {
+            return new ResolvedApiAuth(globalRaw, globalToken, "Authorization", "SERVER_CONFIG");
+        }
+
+        return ResolvedApiAuth.empty();
+    }
+
     public static ResolvedApiAuth resolveForOutbound(String requestedApiKey) {
         String requestedRaw = trimToNull(requestedApiKey);
         String requestedToken = normalizeApiKeyToken(requestedRaw);

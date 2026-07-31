@@ -171,7 +171,7 @@
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                             <h3 style="margin:0;">Summary</h3>
-                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <div id="dailySummaryActions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                                 <button id="manualSummaryRetryBtn" type="button" class="ghost-btn" style="display:none;">
                                     Retry Summary Now
                                 </button>
@@ -184,6 +184,7 @@
 
                         <p id="dailySummaryMeta" class="helper-note" style="margin:8px 0 0 0;">Loading latest summary...
                         </p>
+                        <p id="dailySummaryAutoStatus" class="helper-note" style="margin:6px 0 0 0; color:#b45309; display:none;"></p>
 
                         <div id="dailySummaryProgressWrap" style="margin-top:10px; margin-bottom:10px;">
                             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">

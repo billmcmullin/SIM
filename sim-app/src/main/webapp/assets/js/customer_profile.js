@@ -26,6 +26,10 @@
         if (friendlyEl && friendlyName) {
             friendlyEl.textContent = friendlyName;
         }
+
+        // Normalize server-rendered timestamps to browser local time.
+        setText('cpLastSyncedAt', document.getElementById('cpLastSyncedAt')?.textContent, true);
+        normalizeLinkedSessionUpdatedAt();
     }
 
     function bindSyncButton() {
@@ -80,15 +84,64 @@
         setText('cpDepartment', profile.department);
         setText('cpSalesforceContactId', profile.salesforceContactId);
         setText('cpSalesforceAccountId', profile.salesforceAccountId);
-        setText('cpLastSyncedAt', profile.lastSyncedAt);
+        setText('cpLastSyncedAt', profile.lastSyncedAt, true);
+        normalizeLinkedSessionUpdatedAt();
     }
 
-    function setText(id, value) {
+    function setText(id, value, isDateTime = false) {
         const el = document.getElementById(id);
         if (!el) {
             return;
         }
-        el.textContent = (value === null || value === undefined || value === '') ? '—' : String(value);
+        if (value === null || value === undefined || value === '') {
+            el.textContent = '—';
+            return;
+        }
+        if (isDateTime) {
+            el.textContent = formatDateTime(value, '—');
+            return;
+        }
+        el.textContent = String(value);
+    }
+
+    function formatDateTime(value, fallback = '—') {
+        if (value === null || value === undefined || value === '') {
+            return fallback;
+        }
+
+        const raw = String(value).trim();
+        if (!raw || raw === '—' || raw.toLowerCase() === 'never') {
+            return raw || fallback;
+        }
+
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) {
+            return raw;
+        }
+
+        const formatted = d.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+        return formatted.endsWith('.') ? formatted : `${formatted}.`;
+    }
+
+    function normalizeLinkedSessionUpdatedAt() {
+        const table = document.querySelector('.customer-profile-linked-table');
+        if (!table) {
+            return;
+        }
+        const rows = table.querySelectorAll('tbody tr td:nth-child(4)');
+        rows.forEach((cell) => {
+            if (!cell) {
+                return;
+            }
+            cell.textContent = formatDateTime(cell.textContent, '—');
+        });
     }
 
     function setStatus(message, success) {

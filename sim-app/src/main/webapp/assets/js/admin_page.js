@@ -1,5 +1,5 @@
 // File: src/main/webapp/assets/js/admin_page.js
-// admin_page.js (bootstrap + tabbed sections with merged groups)
+// admin_page.js (bootstrap + tabbed sections)
 (function () {
     'use strict';
     window.AdminPage = window.AdminPage || {};
@@ -70,7 +70,13 @@
             return;
         }
 
-        const sections = Array.from(container.querySelectorAll(':scope > section.section'));
+        // Use resilient section discovery: some runtimes can fail on :scope selectors,
+        // which would prevent tabs from rendering and leave all sections visible.
+        let sections = Array.from(container.children || [])
+            .filter((el) => el && el.matches && el.matches('section.section'));
+        if (!sections.length) {
+            sections = Array.from(container.querySelectorAll('section.section'));
+        }
         if (!sections.length) {
             return;
         }
@@ -78,99 +84,102 @@
         tabsHost.innerHTML = '';
         tabsHost.setAttribute('role', 'tablist');
 
-        // Map by h2 title
-        const byTitle = new Map();
-        sections.forEach((section) => {
+        const sectionEntries = sections.map((section, idx) => {
             const h2 = section.querySelector('h2');
-            if (!h2) {
-                return;
-            }
-            byTitle.set(h2.textContent.trim(), section);
+            const title = h2 ? (h2.textContent || '').trim() : '';
+            return { section, idx, title };
+        }).filter((entry) => !!entry.title);
+
+        const byTitle = new Map();
+        sectionEntries.forEach((entry) => {
+            byTitle.set(entry.title, entry.section);
         });
 
-        // Merged + single tabs
-        const tabGroups = [
+        const groupedSpecs = [
             {
-                panelId: 'tab-widget-health',
-                label: 'Widget Health',
-                sectionTitles: ['Widget Availability Health Check']
+                key: 'database-import-export',
+                label: 'Database',
+                titles: ['Database Data Export', 'Database Data Import']
             },
             {
-                panelId: 'tab-database',
-                label: 'Database Import / Export',
-                sectionTitles: ['Database Data Export', 'Database Data Import']
-            },
-            {
-                panelId: 'tab-server-workspace',
+                key: 'server-workspace',
                 label: 'Server & Workspace',
-                sectionTitles: ['Server Configuration', 'Workspace Management']
+                titles: ['Server Configuration', 'Workspace Management']
             },
             {
-                panelId: 'tab-salesforce',
-                label: 'Salesforce',
-                sectionTitles: ['Salesforce Configuration']
+                key: 'widget-registry-explorer',
+                label: 'Widgets',
+                titles: ['Widget Registry', 'Widget Table Explorer']
             },
             {
-                panelId: 'tab-widgets',
-                label: 'Widgets & Explorer',
-                sectionTitles: ['Widget Registry', 'Widget Table Explorer']
-            },
-            {
-                panelId: 'tab-terms',
-                label: 'Terms',
-                sectionTitles: ['Term Definitions']
-            },
-            {
-                panelId: 'tab-users',
-                label: 'Users',
-                sectionTitles: ['Create User']
-            },
-            {
-                panelId: 'tab-smtp',
-                label: 'SMTP',
-                sectionTitles: ['SMTP Configuration']
-            },
-            {
-                panelId: 'tab-email',
-                label: 'Manual Email',
-                sectionTitles: ['Automatic Email Alerts', 'Manual Email (Admin)']
+                key: 'create-user-term-definitions',
+                label: 'Users & Terms',
+                titles: ['Create User', 'Term Definitions']
             }
         ];
 
+        const groupedByTitle = new Map();
+        groupedSpecs.forEach((spec) => {
+            spec.titles.forEach((title) => groupedByTitle.set(title, spec));
+        });
+
         const tabs = [];
+        const processedSections = new Set();
 
-        tabGroups.forEach((group) => {
-            const groupedSections = group.sectionTitles
-                .map((title) => byTitle.get(title))
-                .filter(Boolean);
+        function toPanelId(raw, fallback) {
+            const slug = String(raw || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)/g, '');
+            return `tab-${slug || fallback}`;
+        }
 
-            if (!groupedSections.length) {
+        function createTab(label, panelKey, panelSections) {
+            const validSections = (panelSections || []).filter(Boolean);
+            if (!validSections.length) {
                 return;
             }
 
-            groupedSections.forEach((section, idx) => {
+            const panelId = toPanelId(panelKey || label, `section-${tabs.length}`);
+
+            validSections.forEach((section, index) => {
                 section.classList.add('tab-panel');
                 section.setAttribute('role', 'tabpanel');
-                section.setAttribute('aria-labelledby', `${group.panelId}-tab`);
-                section.setAttribute('data-tab-group', group.panelId);
-
-                // make first section of group hash-targetable
-                if (idx === 0) {
-                    section.id = group.panelId;
-                }
+                section.setAttribute('aria-labelledby', `${panelId}-tab`);
+                section.id = index === 0 ? panelId : `${panelId}-part-${index + 1}`;
             });
 
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'admin-tab-btn';
-            btn.id = `${group.panelId}-tab`;
+            btn.id = `${panelId}-tab`;
             btn.setAttribute('role', 'tab');
-            btn.setAttribute('aria-controls', group.panelId);
+            btn.setAttribute('aria-controls', panelId);
             btn.setAttribute('aria-selected', 'false');
-            btn.textContent = group.label;
+            btn.textContent = label;
 
             tabsHost.appendChild(btn);
-            tabs.push({ panelId: group.panelId, button: btn, sections: groupedSections });
+            tabs.push({ panelId, button: btn, sections: validSections });
+            validSections.forEach((section) => processedSections.add(section));
+        }
+
+        sectionEntries.forEach((entry) => {
+            if (processedSections.has(entry.section)) {
+                return;
+            }
+
+            const groupSpec = groupedByTitle.get(entry.title);
+            if (groupSpec) {
+                const groupedSections = groupSpec.titles
+                    .map((title) => byTitle.get(title))
+                    .filter(Boolean)
+                    .filter((section) => !processedSections.has(section));
+
+                createTab(groupSpec.label, groupSpec.key, groupedSections);
+                return;
+            }
+
+            createTab(entry.title, entry.title, [entry.section]);
         });
 
         if (!tabs.length) {
@@ -355,6 +364,7 @@
         const host = document.getElementById('serverHost')?.value.trim() || '';
         const port = document.getElementById('serverPort')?.value.trim() || '';
         const apiKey = document.getElementById('apiKey')?.value.trim() || '';
+        const workspaceName = document.getElementById('workspaceNameInput')?.value.trim() || '';
         const resultEl = document.getElementById('testResult');
 
         if (!lastTestSuccess) {
@@ -369,6 +379,9 @@
         data.append('serverHost', host);
         data.append('serverPort', port);
         data.append('apiKey', apiKey);
+        if (workspaceName) {
+            data.append('workspaceName', workspaceName);
+        }
 
         try {
             const { payload, ok } = await window.AdminPage.Api.postUrlEncoded(`${contextPath}/admin/save-config`, data);

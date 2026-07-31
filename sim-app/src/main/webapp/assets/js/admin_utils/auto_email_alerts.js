@@ -217,7 +217,15 @@
         if (Number.isNaN(d.getTime())) {
             return fallback;
         }
-        return d.toLocaleString();
+        const formatted = d.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+        return formatted.endsWith('.') ? formatted : `${formatted}.`;
     }
 
     function escapeHtml(input) {

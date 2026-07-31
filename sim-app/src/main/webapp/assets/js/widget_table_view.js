@@ -38,7 +38,23 @@
         if (!v) {
             return '';
         }
-        try { return new Date(v).toLocaleString(); } catch { return v; }
+        try {
+            const d = new Date(v);
+            if (Number.isNaN(d.getTime())) {
+                return v;
+            }
+            const formatted = d.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            return formatted.endsWith('.') ? formatted : `${formatted}.`;
+        } catch {
+            return v;
+        }
     };
     const truncateResponse = (text) => {
         if (!text) {

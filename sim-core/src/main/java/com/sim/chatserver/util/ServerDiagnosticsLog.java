@@ -73,6 +73,13 @@ public final class ServerDiagnosticsLog {
                 }
 
                 if (error != null) {
+                    entry.append("Error:")
+                        .append(lineSep)
+                        .append(error.getClass().getName())
+                        .append(": ")
+                        .append(safeErrorMessage(error))
+                        .append(lineSep);
+
                     StringWriter sw = new StringWriter();
                     error.printStackTrace(new PrintWriter(sw));
                     entry.append("Stack Trace:")
@@ -168,5 +175,16 @@ public final class ServerDiagnosticsLog {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String safeErrorMessage(Throwable error) {
+        if (error == null) {
+            return "";
+        }
+        String msg = error.getMessage();
+        if (msg == null) {
+            return "";
+        }
+        return msg.replace('\r', ' ').replace('\n', ' ').trim();
     }
 }
