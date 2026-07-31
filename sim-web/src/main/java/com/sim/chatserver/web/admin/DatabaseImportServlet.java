@@ -36,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -47,6 +48,7 @@ import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
 import com.sim.chatserver.config.Database;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -253,6 +255,8 @@ public class DatabaseImportServlet extends HttpServlet {
             return new PostImportSyncResult(false, true, 0, "Widget sync skipped.");
         }
 
+        String requestId = UUID.randomUUID().toString();
+
         URI endpointUri;
         try {
             endpointUri = URI.create(POST_IMPORT_SYNC_URL);
@@ -267,6 +271,13 @@ public class DatabaseImportServlet extends HttpServlet {
         }
 
         try {
+            ServerDiagnosticsLog.write(
+                "database-import-servlet",
+                requestId,
+                "post-import-sync-request",
+                "method=POST\nurl=" + endpointUri
+            );
+
             HttpRequest httpReq = HttpRequest.newBuilder(endpointUri)
                     .timeout(Duration.ofSeconds(120))
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -276,6 +287,13 @@ public class DatabaseImportServlet extends HttpServlet {
             HttpResponse<String> response = HTTP.send(httpReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int code = response.statusCode();
             boolean ok = code >= 200 && code < 300;
+
+            ServerDiagnosticsLog.write(
+                "database-import-servlet",
+                requestId,
+                "post-import-sync-response",
+                "status=" + code + "\nbody=" + truncate(response.body())
+            );
 
             if (!ok) {
                 log.log(Level.WARNING, "Post-import widget sync returned HTTP {0}: {1}",
@@ -287,10 +305,24 @@ public class DatabaseImportServlet extends HttpServlet {
                     : "Widget sync call failed with HTTP " + code);
         } catch (IOException e) {
             log.log(Level.WARNING, "Post-import widget sync trigger failed", e);
+            ServerDiagnosticsLog.write(
+                    "database-import-servlet",
+                    requestId,
+                    "post-import-sync-error",
+                    "url=" + endpointUri + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
             return new PostImportSyncResult(true, false, 0, "Widget sync trigger failed.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.log(Level.WARNING, "Post-import widget sync trigger interrupted", e);
+            ServerDiagnosticsLog.write(
+                    "database-import-servlet",
+                    requestId,
+                    "post-import-sync-error",
+                    "url=" + endpointUri + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
             return new PostImportSyncResult(true, false, 0, "Widget sync trigger interrupted.");
         }
     }

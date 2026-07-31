@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -22,6 +23,7 @@ import javax.xml.stream.XMLStreamWriter;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -110,6 +112,7 @@ public class SalesforceAuthClient {
                 + "&client_id=" + enc(clientId)
                 + "&client_secret=" + enc(clientSecret)
                 + "&refresh_token=" + enc(refreshToken);
+        String requestId = UUID.randomUUID().toString();
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(tokenUrl))
@@ -119,12 +122,29 @@ public class SalesforceAuthClient {
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();
 
+        ServerDiagnosticsLog.write(
+            "salesforce-auth-client",
+            requestId,
+            "token-request",
+            "method=POST\nurl=" + tokenUrl
+        );
+
         HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        String responseBody = res.body() == null ? "" : res.body();
+
+        ServerDiagnosticsLog.write(
+            "salesforce-auth-client",
+            requestId,
+            "token-response",
+            "status=" + res.statusCode() + "\nbody=" + redactOauthPayload(responseBody)
+        );
+
         if (res.statusCode() < 200 || res.statusCode() >= 300) {
-            throw new IllegalStateException("Salesforce token refresh failed: HTTP " + res.statusCode() + " body=" + res.body());
+            throw new IllegalStateException("Salesforce token refresh failed: HTTP " + res.statusCode()
+                    + " body=" + redactOauthPayload(responseBody));
         }
 
-        AuthResult result = parseAuthResult(res.body());
+        AuthResult result = parseAuthResult(responseBody);
         if (result == null || isBlank(result.accessToken) || isBlank(result.instanceUrl)) {
             throw new IllegalStateException("Salesforce token refresh returned incomplete payload.");
         }
@@ -301,6 +321,13 @@ public class SalesforceAuthClient {
             x = "https://" + x;
         }
         return x.replaceAll("/+$", "");
+    }
+
+    private String redactOauthPayload(String payload) {
+        String text = payload == null ? "" : payload;
+        text = text.replaceAll("\"access_token\"\\s*:\\s*\"[^\"]*\"", "\"access_token\":\"[REDACTED]\"");
+        text = text.replaceAll("\"refresh_token\"\\s*:\\s*\"[^\"]*\"", "\"refresh_token\":\"[REDACTED]\"");
+        return text.length() > 1024 ? text.substring(0, 1024) + "..." : text;
     }
 
     private String trimToNull(String v) {

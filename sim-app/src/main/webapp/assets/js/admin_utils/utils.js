@@ -15,18 +15,24 @@
                 .replace(/'/g, '&#39;');
         },
 
-        formatHumanReadableTimestamp(value) {
+        formatHumanReadableTimestamp(value, fallback = 'never') {
             if (!value) {
-                return 'never';
+                return fallback;
             }
-            const date = new Date(value);
+            const date = value instanceof Date ? value : new Date(value);
             if (Number.isNaN(date.getTime())) {
-                return value;
+                return String(value);
             }
-            return date.toLocaleString(undefined, {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
+
+            const formatted = date.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
             });
+            return formatted.endsWith('.') ? formatted : `${formatted}.`;
         },
 
         parseContentDispositionFilename(cd) {

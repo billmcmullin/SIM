@@ -29,10 +29,16 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     private static final Object SUMMARY_STORE_LOCK = new Object();
 
     private static volatile DashboardDailySummaryStore summaryStore;
+    private AppDataSourceHolder dsHolder;
 
     @Override
     public void init() throws ServletException {
         super.init();
+        if (dsHolder != null) {
+            synchronized (SUMMARY_STORE_LOCK) {
+                summaryStore = null;
+            }
+        }
         ensureSummaryStoreInitialized();
     }
 
@@ -53,7 +59,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             JsonObject payload = store.fetchExactOrLatest(day, slot);
             writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (IllegalStateException | IllegalArgumentException e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
             writeJson(resp, errorJson("Unable to load summary."));
         }
@@ -148,7 +154,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
                 created.ensureTable();
                 summaryStore = created;
                 return created;
-            } catch (IllegalStateException | IllegalArgumentException e) {
+            } catch (RuntimeException e) {
                 log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
                 throw new ServletException("Failed to initialize daily summary store", e);
             }
@@ -156,7 +162,14 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    void setDataSourceHolder(AppDataSourceHolder dsHolder) {
+        this.dsHolder = dsHolder;
     }
 
     private static final class RequestParamContext {
@@ -174,8 +187,20 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
+            String[] values = request.getParameterValues(name);
+            if ((values == null || values.length == 0) && request.getParameterMap() != null) {
+                values = request.getParameterMap().get(name);
+            }
+            if (values != null) {
+                for (String value : values) {
+                    String normalized = normalize(value, maxLen);
+                    if (normalized != null) {
+                        return normalized;
+                    }
+                }
+            }
+
+            String normalized = normalize(request.getParameter(name), maxLen);
             if (normalized != null) {
                 return normalized;
             }

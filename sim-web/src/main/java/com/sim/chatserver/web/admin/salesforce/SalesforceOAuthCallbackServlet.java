@@ -10,12 +10,14 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonException;
@@ -123,9 +125,27 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();
 
+        String requestId = UUID.randomUUID().toString();
+
         try {
+            ServerDiagnosticsLog.write(
+                "salesforce-oauth-callback",
+                requestId,
+                "token-request",
+                "method=POST\nurl=" + tokenUrl
+            );
+
             HttpResponse<String> tokenRes = HTTP_CLIENT.send(tokenReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int statusCode = tokenRes.statusCode();
+            String body = tokenRes.body() == null ? "" : tokenRes.body();
+
+            ServerDiagnosticsLog.write(
+                "salesforce-oauth-callback",
+                requestId,
+                "token-response",
+                "status=" + statusCode + "\nbody=" + redactOauthPayload(body)
+            );
+
             if (statusCode < 200 || statusCode >= 300) {
                 String statusCodeText = Integer.toString(statusCode);
                 log.log(Level.WARNING, "Salesforce token exchange failed with HTTP {0}", statusCodeText);
@@ -134,7 +154,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 return;
             }
 
-            TokenPayload payload = parseTokenPayload(tokenRes.body());
+            TokenPayload payload = parseTokenPayload(body);
             if (payload == null || isBlank(payload.accessToken) || isBlank(payload.instanceUrl) || isBlank(payload.refreshToken)) {
                 redirectWithMessage(resp, req, false,
                         "Token exchange returned incomplete payload (missing refresh token).");
@@ -154,6 +174,13 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
             }
             log.log(Level.WARNING, "Salesforce OAuth callback failed", e);
+            ServerDiagnosticsLog.write(
+                    "salesforce-oauth-callback",
+                    requestId,
+                    "token-error",
+                    "url=" + tokenUrl + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
             redirectWithMessage(resp, req, false, "Salesforce OAuth callback failed.");
         }
     }
@@ -401,6 +428,13 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
 
     private String enc(String v) {
         return URLEncoder.encode(v, StandardCharsets.UTF_8);
+    }
+
+    private String redactOauthPayload(String payload) {
+        String text = payload == null ? "" : payload;
+        text = text.replaceAll("\"access_token\"\\s*:\\s*\"[^\"]*\"", "\"access_token\":\"[REDACTED]\"");
+        text = text.replaceAll("\"refresh_token\"\\s*:\\s*\"[^\"]*\"", "\"refresh_token\":\"[REDACTED]\"");
+        return text.length() > 1024 ? text.substring(0, 1024) + "..." : text;
     }
 
     private String trimToNull(String v) {

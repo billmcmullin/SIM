@@ -2,39 +2,54 @@
 
 ## Overview
 
-`chat-server` is a Maven WAR application for Jakarta EE servers.
-Inteded to read the Chat Server's messages and provide reported analysis on them. 
+`chat-server` is a multi-module Maven project that produces a Jakarta EE WAR for deployment to WildFly-compatible application servers.
 
-- Packaging: `war`
-- Group/Artifact: `com.sim.chatserver:chat-server`
-- Java: project currently compiles with Maven `release 21` (see `pom.xml`)
+Primary responsibilities:
+
+- Connect to an upstream chat/workspace service
+- Sync widget chat data into PostgreSQL
+- Provide admin endpoints and UI for configuration, health checks, and sync operations
+- Generate dashboard and summary/reporting data from synchronized chat content
+
+Technical summary:
+
+- Parent artifact: `com.sim.chatserver:chat-server-parent`
+- Runtime packaging: `war` (from `sim-app`)
+- Java: Maven `release 21` (see `pom.xml`)
 - REST base path: `/api` (via `SIMApplication`)
-- Web module includes servlet-based admin endpoints
-- Database stack:
-  - PostgreSQL (primary, via env vars)
-- Entities include:
-  - `UserAccount`
-  - `Chat Review`
-  - `AdminSettings`
-  - `Playwright Tests`
-- Contains SQL scripts for initializing the Database and Default admin user
-  - See [resources/postgres](resources/postgres) directory for scripts
+- Primary database: PostgreSQL
+
+Project modules:
+
+- `sim-core`: core services, models, persistence helpers, and integration logic
+- `sim-web`: servlet layer for admin and dashboard endpoints
+- `sim-app`: WAR assembly and web assets
+- `sim-email`: email-related integrations and utilities
+- `sim-playwright`: browser-based integration/end-to-end tests
+
+Database bootstrap and SQL utilities are available in [resources/postgres](resources/postgres).
 
 ## Build & Deploy
 
-See [resources/BUILD.MD](resources/BUILD.MD) file for information
+See [resources/BUILD.MD](resources/BUILD.MD) for build, packaging, and deployment workflows.
 
 ## Configuration
 
 ### Environment variables
 
-- `DB_HOST` (default: `localhost`)
-- `DB_PORT` (default: `5432`)
-- `DB_NAME` (default: `chat`)
-- `DB_USER` (default: `postgres`)
-- `DB_PASSWORD` (default: `password`)
-- `CONFIG_ENCRYPTION_KEY` (required) Base64 encryption key. (Can generate your own)
-- `SIM_TRANSLATE_URL` (example: `http://localhost:5000/translate`)
+- `DB_HOST`: PostgreSQL host
+- `DB_PORT`: PostgreSQL port
+- `DB_NAME`: PostgreSQL database name
+- `DB_USER`: PostgreSQL user
+- `DB_PASSWORD`: PostgreSQL password
+- `CONFIG_ENCRYPTION_KEY`: required Base64 key used to protect stored secrets
+- `SIM_TRANSLATE_URL`: optional translation service endpoint (for translation-enabled flows)
+- `WIDGET_HEALTHCHECK_DEBUG_FAILURES`: enables verbose healthcheck failure diagnostics when `true`
+- `WIDGET_HEALTHCHECK_REQUIRE_HTTPS_WITH_AUTH`: when `true`, healthcheck enforces HTTPS if auth material is configured
+- `WIDGET_SYNC_REQUIRE_HTTPS_WITH_AUTH`: when `true`, widget sync and daily summary enforce HTTPS if API key auth is configured
+- `SIM_SERVER_DIAGNOSTIC_LOG_ENABLED`: enables file-based diagnostics logging
+- `SIM_SERVER_DIAGNOSTIC_LOG_DIR`: diagnostics output directory when diagnostics logging is enabled
+- `SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG`: adds upstream request/response snippets to WildFly logs when `true`
 
 ### Translation Support (LibreTranslate)
 

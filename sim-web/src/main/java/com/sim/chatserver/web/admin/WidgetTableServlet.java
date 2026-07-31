@@ -27,6 +27,8 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final int DEFAULT_PARAM_MAX_LEN = 256;
+    private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
 
     AppDataSourceHolder dsHolder;
 
@@ -36,7 +38,7 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         // support either single widgetId or bulk ids (comma-separated widgetIds)
-        String idsParam = firstParam(req, "ids");
+        String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
         String widgetId = firstParam(req, "widgetId");
 
         if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
@@ -99,7 +101,8 @@ public class WidgetTableServlet extends HttpServlet {
                 try {
                     countJson = Long.toString(countRows(conn, tableName));
                 } catch (SQLException e) {
-                    log.warning("Unable to count rows for table " + tableName + ": " + e.getMessage());
+                    log.log(Level.WARNING, "Unable to count rows for table {0}: {1}",
+                            new Object[]{tableName, e.getMessage()});
                     // continue and return exists=true but count=null
                 }
             }
@@ -147,13 +150,15 @@ public class WidgetTableServlet extends HttpServlet {
                         try {
                             countJson = Long.toString(countRows(conn, tableName));
                         } catch (SQLException sqle) {
-                            message = "Unable to count rows: " + escapeJson(sqle.getMessage());
-                            log.warning("Count rows error for table " + tableName + ": " + sqle.getMessage());
+                            message = "Unable to count rows: " + sqle.getMessage();
+                            log.log(Level.WARNING, "Count rows error for table {0}: {1}",
+                                    new Object[]{tableName, sqle.getMessage()});
                         }
                     }
                 } catch (SQLException e) {
-                    message = "Error checking table: " + escapeJson(e.getMessage());
-                    log.warning("Table check error for " + tableName + ": " + e.getMessage());
+                    message = "Error checking table: " + e.getMessage();
+                    log.log(Level.WARNING, "Table check error for {0}: {1}",
+                            new Object[]{tableName, e.getMessage()});
                 }
 
                 out.append('{');
@@ -221,7 +226,8 @@ public class WidgetTableServlet extends HttpServlet {
         try {
             return countRows(conn, tableName);
         } catch (SQLException e) {
-            log.warning("countRowsSafe failed for " + tableName + ": " + e.getMessage());
+            log.log(Level.WARNING, "countRowsSafe failed for {0}: {1}",
+                    new Object[]{tableName, e.getMessage()});
             return 0L;
         }
     }
@@ -234,6 +240,13 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
+        if (tableExistsByMetadata(conn, tableName)) {
+            return true;
+        }
+        return tableExistsByProbe(conn, tableName);
+    }
+
+    private boolean tableExistsByMetadata(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
@@ -243,6 +256,24 @@ public class WidgetTableServlet extends HttpServlet {
             }
         }
         return false;
+    }
+
+    private boolean tableExistsByProbe(Connection conn, String tableName) throws SQLException {
+        String sql = "SELECT 1 FROM " + quoteIdentifier(tableName) + " WHERE 1 = 0";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.execute();
+            return true;
+        } catch (SQLException ex) {
+            if (isMissingRelationSqlState(ex)) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private boolean isMissingRelationSqlState(SQLException ex) {
+        String sqlState = ex.getSQLState();
+        return "42P01".equals(sqlState) || "42S02".equals(sqlState);
     }
 
     private long countRows(Connection conn, String tableName) throws SQLException {
@@ -290,7 +321,11 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
+        return firstParam(req, name, DEFAULT_PARAM_MAX_LEN);
+    }
+
+    private String firstParam(HttpServletRequest req, String name, int maxLen) {
+        return RequestParamContext.from(req).first(name, maxLen);
     }
 
     private AppDataSourceHolder dataSourceHolder() {
@@ -312,7 +347,7 @@ public class WidgetTableServlet extends HttpServlet {
             return new RequestParamContext(request);
         }
 
-        private String first(String name) {
+        private String first(String name, int maxLen) {
             if (request == null || name == null || name.isBlank()) {
                 return null;
             }
@@ -321,7 +356,8 @@ public class WidgetTableServlet extends HttpServlet {
                 return null;
             }
             String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+            int effectiveMax = maxLen > 0 ? maxLen : DEFAULT_PARAM_MAX_LEN;
+            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
         }
     }
 

@@ -10,11 +10,13 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.security.SalesforceAuthClient;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -77,9 +79,10 @@ public class SalesforceClient {
         }
 
         String soql = buildContactByNameSoql(searchName);
+        String requestId = UUID.randomUUID().toString();
 
         // Attempt #1
-        HttpResponse<String> first = executeQuery(creds.instanceUrl, creds.apiKey, soql);
+        HttpResponse<String> first = executeQuery(creds.instanceUrl, creds.apiKey, soql, requestId);
         if (isSuccess(first.statusCode())) {
             return parseFirstRecord(first.body());
         }
@@ -90,7 +93,7 @@ public class SalesforceClient {
             SalesforceAuthClient.AuthResult refreshed = authClient.refreshAccessToken();
             log.info("Salesforce access token refreshed successfully.");
 
-            HttpResponse<String> second = executeQuery(refreshed.instanceUrl, refreshed.accessToken, soql);
+            HttpResponse<String> second = executeQuery(refreshed.instanceUrl, refreshed.accessToken, soql, requestId);
             if (isSuccess(second.statusCode())) {
                 return parseFirstRecord(second.body());
             }
@@ -107,9 +110,16 @@ public class SalesforceClient {
                 body != null ? body : ("Salesforce query failed with status " + first.statusCode()));
     }
 
-        private HttpResponse<String> executeQuery(String instanceUrl, String apiKey, String soql)
+    private HttpResponse<String> executeQuery(String instanceUrl, String apiKey, String soql, String requestId)
             throws IOException, InterruptedException {
         String endpoint = buildQueryEndpoint(instanceUrl, soql);
+
+        ServerDiagnosticsLog.write(
+                "salesforce-client",
+                requestId,
+                "query-request",
+                "method=GET\nurl=" + endpoint + "\nsoql=" + soql
+        );
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
@@ -119,7 +129,28 @@ public class SalesforceClient {
                 .GET()
                 .build();
 
-        return httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        try {
+            HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            ServerDiagnosticsLog.write(
+                    "salesforce-client",
+                    requestId,
+                    "query-response",
+                    "status=" + response.statusCode() + "\nbody=" + safeErrorBody(response.body())
+            );
+            return response;
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            ServerDiagnosticsLog.write(
+                    "salesforce-client",
+                    requestId,
+                    "query-error",
+                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
+            throw e;
+        }
     }
 
         private Credentials resolveCredentials(String instanceUrl, String apiKey)
@@ -258,6 +289,10 @@ public class SalesforceClient {
         }
         String v = value.trim();
         return v.isEmpty() ? null : v;
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private static final class Credentials {

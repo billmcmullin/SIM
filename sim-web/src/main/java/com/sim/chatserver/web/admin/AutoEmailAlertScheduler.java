@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -183,10 +184,22 @@ public class AutoEmailAlertScheduler {
             WidgetAvailabilityResult result = availabilityChecker.checkNow();
             boolean up = result != null && result.available();
 
+            String previousStatus = cfg.getHealthLastStatus();
+            boolean wasDown = previousStatus != null && "DOWN".equalsIgnoreCase(previousStatus.trim());
             Instant offlineSince = cfg.getHealthOfflineSince();
             Instant lastAlert = cfg.getHealthLastAlertAt();
+            boolean offlineAlertWasSent = lastAlert != null;
 
             if (up) {
+                if (wasDown && offlineAlertWasSent) {
+                    List<String> recipients = parseRecipients(cfg.getHealthRecipients());
+                    if (!recipients.isEmpty()) {
+                        String subject = buildHealthRecoverySubject(cfg);
+                        String textBody = buildHealthRecoveryBody(cfg, result, now, offlineSince);
+                        String htmlBody = buildHealthRecoveryHtmlBody(cfg, result, now, offlineSince);
+                        sendEmail(recipients, subject, textBody, htmlBody, List.of());
+                    }
+                }
                 offlineSince = null;
                 lastAlert = null;
             } else {
@@ -358,6 +371,44 @@ public class AutoEmailAlertScheduler {
         return sb.toString();
     }
 
+    private String buildHealthRecoverySubject(AutoEmailAlertConfig cfg) {
+        String configured = defaultIfBlank(cfg.getHealthSubject(), "SIM Alert: Widget Healthcheck Offline");
+        if (configured.toLowerCase(Locale.ROOT).contains("offline")) {
+            return configured.replaceAll("(?i)offline", "Back Online");
+        }
+        return configured + " - Back Online";
+    }
+
+    private String buildHealthRecoveryBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("SIM healthcheck recovery notification\n\n");
+        sb.append("Status: ONLINE\n");
+        sb.append("Recovered at: ").append(formatInstant(now)).append("\n");
+        if (offlineSince != null) {
+            sb.append("Offline since: ").append(formatInstant(offlineSince)).append("\n");
+            sb.append("Estimated outage duration: ").append(formatDuration(now, offlineSince)).append("\n");
+        }
+        if (result != null) {
+            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "UP")).append("\n");
+            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append("\n");
+            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append("\n");
+            if (hasText(result.details())) {
+                sb.append("Details: ").append(result.details()).append("\n");
+            }
+        }
+
+        if (hasText(cfg.getHealthMessage())) {
+            sb.append("\n").append(cfg.getHealthMessage()).append("\n");
+        }
+
+        String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
+        if (hasText(runbookUrl)) {
+            sb.append("\nRunbook URL: ").append(runbookUrl).append("\n");
+        }
+
+        return sb.toString();
+    }
+
     private String buildHealthHtmlBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
         StringBuilder sb = new StringBuilder();
         sb.append("<html><body>");
@@ -397,6 +448,45 @@ public class AutoEmailAlertScheduler {
         }
 
         sb.append("<p>This alert will resend based on the configured resend timer until healthcheck succeeds.</p>");
+        sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    private String buildHealthRecoveryHtmlBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<html><body>");
+        sb.append("<h2>SIM healthcheck recovery notification</h2>");
+        sb.append("<p><strong>Status:</strong> ONLINE</p>");
+        sb.append("<p><strong>Recovered at:</strong> ").append(escapeHtml(formatInstant(now))).append("</p>");
+        if (offlineSince != null) {
+            sb.append("<p><strong>Offline since:</strong> ").append(escapeHtml(formatInstant(offlineSince))).append("</p>");
+            sb.append("<p><strong>Estimated outage duration:</strong> ")
+                    .append(escapeHtml(formatDuration(now, offlineSince)))
+                    .append("</p>");
+        }
+        if (result != null) {
+            sb.append("<p><strong>Checker status:</strong> ").append(escapeHtml(defaultIfBlank(result.status(), "UP"))).append("</p>");
+            sb.append("<p><strong>Checker timestamp:</strong> ")
+                    .append(escapeHtml(defaultIfBlank(result.checkedAtIso(), formatInstant(now))))
+                    .append("</p>");
+            sb.append("<p><strong>Latency ms:</strong> ").append(Math.max(0L, result.latencyMs())).append("</p>");
+            if (hasText(result.details())) {
+                sb.append("<p><strong>Details:</strong> ").append(escapeHtml(result.details())).append("</p>");
+            }
+        }
+
+        if (hasText(cfg.getHealthMessage())) {
+            sb.append("<p>").append(escapeHtml(cfg.getHealthMessage())).append("</p>");
+        }
+
+        String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
+        if (hasText(runbookUrl)) {
+            sb.append("<p><strong>Runbook:</strong> ")
+                    .append("<a href=\"").append(escapeHtml(runbookUrl)).append("\">")
+                    .append(escapeHtml(runbookUrl))
+                    .append("</a></p>");
+        }
+
         sb.append("</body></html>");
         return sb.toString();
     }
@@ -522,6 +612,14 @@ public class AutoEmailAlertScheduler {
             return Long.MAX_VALUE;
         }
         return Math.max(0L, Duration.between(from, to).getSeconds());
+    }
+
+    private String formatDuration(Instant end, Instant start) {
+        long seconds = Math.max(0L, secondsBetween(start, end));
+        long hours = seconds / 3600L;
+        long minutes = (seconds % 3600L) / 60L;
+        long secs = seconds % 60L;
+        return String.format(Locale.ROOT, "%02dh %02dm %02ds", hours, minutes, secs);
     }
 
     private String normalizeTermName(String value) {

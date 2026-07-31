@@ -110,11 +110,12 @@
                 if (ok && payload?.status === 'ok' && Array.isArray(payload.statuses)) {
                     payload.statuses.forEach(s => {
                         const id = s.widgetId;
+                        const prev = this.widgetSyncStatuses[id] || {};
                         this.widgetSyncStatuses[id] = {
                             tableExists: Boolean(s.tableExists),
                             count: (typeof s.count === 'number') ? s.count : (s.tableExists ? 0 : null),
-                            synced: Boolean(s.synced || false),
-                            lastSynced: s.lastSynced || null,
+                            synced: (typeof s.synced === 'boolean') ? s.synced : Boolean(prev.synced),
+                            lastSynced: s.lastSynced || prev.lastSynced || null,
                             message: s.message || ''
                         };
                     });
@@ -140,22 +141,24 @@
                     if (ok && payload?.status === 'ok') {
                         // payload: {status:"ok", widgetId, tableName, tableExists, count, ...}
                         const s = payload;
+                        const prev = this.widgetSyncStatuses[wid] || {};
                         this.widgetSyncStatuses[wid] = {
                             tableExists: Boolean(s.tableExists),
                             count: (typeof s.count === 'number') ? s.count : (s.tableExists ? 0 : null),
-                            synced: false,
-                            lastSynced: s.lastSynced || null,
+                            synced: (typeof s.synced === 'boolean') ? s.synced : Boolean(prev.synced),
+                            lastSynced: s.lastSynced || prev.lastSynced || null,
                             message: s.message || ''
                         };
                         anyStatusFetched = true;
                     } else {
-                        // mark unknown/missing
+                        // Keep previous status on endpoint errors to avoid false negatives.
+                        const prev = this.widgetSyncStatuses[wid] || {};
                         this.widgetSyncStatuses[wid] = {
-                            tableExists: false,
-                            count: null,
-                            synced: false,
-                            lastSynced: null,
-                            message: ''
+                            tableExists: prev.tableExists,
+                            count: prev.count ?? null,
+                            synced: Boolean(prev.synced),
+                            lastSynced: prev.lastSynced || null,
+                            message: prev.message || ''
                         };
                         if (status === 404) {
                             console.warn('Per-widget status endpoint returned 404 for', wid);
@@ -163,12 +166,13 @@
                     }
                 } catch (err) {
                     console.warn('Per-widget status fetch failed for', wid, err);
+                    const prev = this.widgetSyncStatuses[wid] || {};
                     this.widgetSyncStatuses[wid] = {
-                        tableExists: false,
-                        count: null,
-                        synced: false,
-                        lastSynced: null,
-                        message: ''
+                        tableExists: prev.tableExists,
+                        count: prev.count ?? null,
+                        synced: Boolean(prev.synced),
+                        lastSynced: prev.lastSynced || null,
+                        message: prev.message || ''
                     };
                 }
             }
@@ -197,13 +201,43 @@
             (this.widgetState.widgets || []).forEach(entry => {
                 const prev = this.widgetSyncStatuses[entry.widgetId] || {};
                 this.widgetSyncStatuses[entry.widgetId] = {
-                    tableExists: prev.tableExists || false,
+                    tableExists: (typeof prev.tableExists === 'boolean') ? prev.tableExists : undefined,
                     count: prev.count ?? null,
                     synced: false,
                     lastSynced: prev.lastSynced || null,
                     message: 'Syncing…'
                 };
             });
+            this.renderWidgetTableExplorer();
+        },
+
+        applySyncStatuses(syncStatuses, options = {}) {
+            if (!Array.isArray(syncStatuses) || !syncStatuses.length) {
+                return;
+            }
+
+            const lastSynced = options.lastSynced || null;
+            syncStatuses.forEach((status) => {
+                const wid = status?.widgetId;
+                if (!wid) {
+                    return;
+                }
+                const prev = this.widgetSyncStatuses[wid] || {};
+                const tableExists = (typeof status.tableExists === 'boolean') ? status.tableExists : prev.tableExists;
+                const message = status.message || '';
+                const synced = (typeof status.synced === 'boolean')
+                    ? status.synced
+                    : (tableExists === true && message.toLowerCase().indexOf('failed') === -1);
+
+                this.widgetSyncStatuses[wid] = {
+                    tableExists,
+                    count: prev.count ?? null,
+                    synced,
+                    lastSynced: status.lastSynced || lastSynced || prev.lastSynced || null,
+                    message
+                };
+            });
+
             this.renderWidgetTableExplorer();
         },
 
@@ -221,7 +255,9 @@
             }
             (this.widgetState.widgets || []).forEach(entry => {
                 const s = this.widgetSyncStatuses[entry.widgetId] || {};
-                s.synced = true;
+                if (typeof s.synced !== 'boolean') {
+                    s.synced = Boolean(s.tableExists);
+                }
                 s.lastSynced = lastSynced || s.lastSynced || null;
                 if (s.message === 'Syncing…') {
                     s.message = '';

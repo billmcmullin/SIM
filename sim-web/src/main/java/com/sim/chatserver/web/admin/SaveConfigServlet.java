@@ -28,6 +28,7 @@ public class SaveConfigServlet extends HttpServlet {
         String serverPortValue = firstParam(req, "serverPort");
         String connectionInfoParam = firstParam(req, "connectionInfo");
         String apiKeyParam = firstParam(req, "apiKey");
+        String workspaceNameParam = firstParam(req, "workspaceName");
 
         // Salesforce params
         String salesforceInstanceUrlParam = firstParam(req, "salesforceInstanceUrl");
@@ -79,8 +80,11 @@ public class SaveConfigServlet extends HttpServlet {
                 apiKey = defaultString(existingConfig.getApiKey());
             }
 
-            // Preserve workspace name
-            String workspaceName = defaultString(existingConfig.getWorkspaceName());
+            // Preserve workspace name when omitted.
+            String workspaceName = workspaceNameParam;
+            if (isBlank(workspaceName)) {
+                workspaceName = defaultString(existingConfig.getWorkspaceName());
+            }
 
             // Preserve existing Salesforce instance URL when blank
             String salesforceInstanceUrl = salesforceInstanceUrlParam;

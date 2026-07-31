@@ -24,6 +24,8 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 public class WidgetHealthConfigStore {
 
     private static final Logger log = Logger.getLogger(WidgetHealthConfigStore.class.getName());
+    private static final String DEFAULT_HEALTHCHECK_URL = "http://anythingllm:3001/api/v1/system";
+    private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
 
     public static final int SINGLETON_ID = 1;
 
@@ -46,6 +48,8 @@ public class WidgetHealthConfigStore {
             CREATE TABLE IF NOT EXISTS widget_health_config (
                 id INT PRIMARY KEY,
                 healthcheck_url TEXT NOT NULL,
+                healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                check_interval_seconds INT NOT NULL DEFAULT 300,
                 method VARCHAR(10) NOT NULL DEFAULT 'GET',
                 timeout_ms INT NOT NULL DEFAULT 8000,
                 expect_json_field VARCHAR(100),
@@ -73,6 +77,8 @@ public class WidgetHealthConfigStore {
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_cookie TEXT");
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_header_name VARCHAR(255)");
         addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_value TEXT");
+        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE");
+        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS check_interval_seconds INT NOT NULL DEFAULT 300");
     }
 
     private void addColumnIfMissing(String sql) throws java.sql.SQLException {
@@ -87,18 +93,18 @@ public class WidgetHealthConfigStore {
     public void ensureDefaultRow() throws java.sql.SQLException {
         final String sql = """
             INSERT INTO widget_health_config (
-                id, healthcheck_url, method, timeout_ms, expect_json_field, expect_json_value, widget_id,
+                id, healthcheck_url, healthcheck_enabled, check_interval_seconds, method, timeout_ms, expect_json_field, expect_json_value, widget_id,
                 request_origin, request_referer, request_user_agent, request_cookie,
                 api_key_header_name, api_key_value,
                 updated_by, updated_at
             )
-            VALUES (?, ?, 'GET', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
+            VALUES (?, ?, TRUE, 300, 'GET', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
             ON CONFLICT (id) DO NOTHING
             """;
 
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, SINGLETON_ID);
-            ps.setString(2, "http://anythingllm:3001/api/health");
+            ps.setString(2, DEFAULT_HEALTHCHECK_URL);
             ps.executeUpdate();
         }
     }
@@ -106,6 +112,7 @@ public class WidgetHealthConfigStore {
     public WidgetHealthConfig load() throws java.sql.SQLException {
         final String sql = """
             SELECT id, healthcheck_url, method, timeout_ms,
+                     healthcheck_enabled, check_interval_seconds,
                    expect_json_field, expect_json_value, widget_id,
                    request_origin, request_referer, request_user_agent, request_cookie,
                      api_key_header_name, api_key_value,
@@ -134,16 +141,19 @@ public class WidgetHealthConfigStore {
         final String sql = """
             INSERT INTO widget_health_config (
                 id, healthcheck_url, method, timeout_ms,
+                healthcheck_enabled, check_interval_seconds,
                 expect_json_field, expect_json_value, widget_id,
                 request_origin, request_referer, request_user_agent, request_cookie,
                 api_key_header_name, api_key_value,
                 updated_by, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 healthcheck_url = EXCLUDED.healthcheck_url,
                 method = EXCLUDED.method,
                 timeout_ms = EXCLUDED.timeout_ms,
+                healthcheck_enabled = EXCLUDED.healthcheck_enabled,
+                check_interval_seconds = EXCLUDED.check_interval_seconds,
                 expect_json_field = EXCLUDED.expect_json_field,
                 expect_json_value = EXCLUDED.expect_json_value,
                 widget_id = EXCLUDED.widget_id,
@@ -165,68 +175,70 @@ public class WidgetHealthConfigStore {
             ps.setString(2, normalized.getHealthcheckUrl());
             ps.setString(3, normalized.getMethod());
             ps.setInt(4, normalized.getTimeoutMs());
+            ps.setBoolean(5, normalized.isHealthcheckEnabled());
+            ps.setInt(6, normalized.getCheckIntervalSeconds());
 
             if (normalized.getExpectJsonField() == null) {
-                ps.setNull(5, Types.VARCHAR); 
+                ps.setNull(7, Types.VARCHAR); 
             }else {
-                ps.setString(5, normalized.getExpectJsonField());
+                ps.setString(7, normalized.getExpectJsonField());
             }
 
             if (normalized.getExpectJsonValue() == null) {
-                ps.setNull(6, Types.VARCHAR); 
+                ps.setNull(8, Types.VARCHAR); 
             }else {
-                ps.setString(6, normalized.getExpectJsonValue());
+                ps.setString(8, normalized.getExpectJsonValue());
             }
 
             if (normalized.getWidgetId() == null) {
-                ps.setNull(7, Types.VARCHAR); 
+                ps.setNull(9, Types.VARCHAR); 
             }else {
-                ps.setString(7, normalized.getWidgetId());
+                ps.setString(9, normalized.getWidgetId());
             }
 
             if (normalized.getRequestOrigin() == null) {
-                ps.setNull(8, Types.VARCHAR); 
+                ps.setNull(10, Types.VARCHAR); 
             }else {
-                ps.setString(8, normalized.getRequestOrigin());
+                ps.setString(10, normalized.getRequestOrigin());
             }
 
             if (normalized.getRequestReferer() == null) {
-                ps.setNull(9, Types.VARCHAR); 
+                ps.setNull(11, Types.VARCHAR); 
             }else {
-                ps.setString(9, normalized.getRequestReferer());
+                ps.setString(11, normalized.getRequestReferer());
             }
 
             if (normalized.getRequestUserAgent() == null) {
-                ps.setNull(10, Types.VARCHAR); 
+                ps.setNull(12, Types.VARCHAR); 
             }else {
-                ps.setString(10, normalized.getRequestUserAgent());
+                ps.setString(12, normalized.getRequestUserAgent());
             }
 
             if (normalized.getRequestCookie() == null) {
-                ps.setNull(11, Types.VARCHAR); 
+                ps.setNull(13, Types.VARCHAR); 
             }else {
-                ps.setString(11, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getRequestCookie()));
+                ps.setString(13, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getRequestCookie()));
             }
 
             if (normalized.getApiKeyHeaderName() == null) {
-                ps.setNull(12, Types.VARCHAR);
+                ps.setNull(14, Types.VARCHAR);
             } else {
-                ps.setString(12, normalized.getApiKeyHeaderName());
+                ps.setString(14, normalized.getApiKeyHeaderName());
             }
 
             if (normalized.getApiKeyValue() == null) {
-                ps.setNull(13, Types.VARCHAR);
+                ps.setNull(15, Types.VARCHAR);
             } else {
-                ps.setString(13, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getApiKeyValue()));
+                ps.setString(15, EncryptedDbConfigStore.encryptSecretForStorage(normalized.getApiKeyValue()));
             }
 
             if (normalized.getUpdatedBy() == null) {
-                ps.setNull(14, Types.VARCHAR); 
+                ps.setNull(16, Types.VARCHAR); 
             }else {
-                ps.setString(14, normalized.getUpdatedBy());
+                ps.setString(16, normalized.getUpdatedBy());
             }
 
-            ps.setTimestamp(15, Timestamp.from(
+            ps.setTimestamp(17, Timestamp.from(
                     normalized.getUpdatedAt() == null ? Instant.now() : normalized.getUpdatedAt()
             ));
 
@@ -243,6 +255,8 @@ public class WidgetHealthConfigStore {
         WidgetHealthConfig cfg = new WidgetHealthConfig();
         cfg.setId(readNonNegativeInt(rs, "id"));
         cfg.setHealthcheckUrl(trimToNull(readSanitizedDbText(rs, "healthcheck_url", 2048)));
+        cfg.setHealthcheckEnabled(readSafeBoolean(rs, "healthcheck_enabled", true));
+        cfg.setCheckIntervalSeconds(readPositiveInt(rs, "check_interval_seconds", DEFAULT_CHECK_INTERVAL_SECONDS));
         cfg.setMethod(defaultIfBlank(readSanitizedDbText(rs, "method", 16), "GET"));
         cfg.setTimeoutMs(readPositiveInt(rs, "timeout_ms", 1));
         cfg.setExpectJsonField(trimToNull(readSanitizedDbText(rs, "expect_json_field", 100)));
@@ -268,7 +282,20 @@ public class WidgetHealthConfigStore {
         out.setId(SINGLETON_ID);
 
         String url = trimToNull(in.getHealthcheckUrl());
-        out.setHealthcheckUrl(url == null ? "http://anythingllm:3001/api/health" : url);
+        out.setHealthcheckUrl(url == null ? DEFAULT_HEALTHCHECK_URL : url);
+
+        out.setHealthcheckEnabled(in.isHealthcheckEnabled());
+
+        int intervalSeconds = in.getCheckIntervalSeconds() <= 0
+                ? DEFAULT_CHECK_INTERVAL_SECONDS
+                : in.getCheckIntervalSeconds();
+        if (intervalSeconds < 30) {
+            intervalSeconds = 30;
+        }
+        if (intervalSeconds > 86_400) {
+            intervalSeconds = 86_400;
+        }
+        out.setCheckIntervalSeconds(intervalSeconds);
 
         String method = defaultIfBlank(in.getMethod(), "GET").trim().toUpperCase();
         if (!"GET".equals(method) && !"HEAD".equals(method) && !"POST".equals(method)) {
@@ -337,6 +364,14 @@ public class WidgetHealthConfigStore {
         return value > 0 ? value : fallback;
     }
 
+    private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
+        boolean value = rs.getBoolean(column);
+        if (rs.wasNull()) {
+            return fallback;
+        }
+        return value;
+    }
+
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
         String value = rs.getString(column);
         return sanitizeDbText(value, maxChars);
@@ -394,6 +429,8 @@ public class WidgetHealthConfigStore {
 
         private int id;
         private String healthcheckUrl;
+        private boolean healthcheckEnabled = true;
+        private int checkIntervalSeconds = DEFAULT_CHECK_INTERVAL_SECONDS;
         private String method;
         private int timeoutMs;
         private String expectJsonField;
@@ -434,6 +471,22 @@ public class WidgetHealthConfigStore {
 
         public void setHealthcheckUrl(String healthcheckUrl) {
             this.healthcheckUrl = healthcheckUrl;
+        }
+
+        public boolean isHealthcheckEnabled() {
+            return healthcheckEnabled;
+        }
+
+        public void setHealthcheckEnabled(boolean healthcheckEnabled) {
+            this.healthcheckEnabled = healthcheckEnabled;
+        }
+
+        public int getCheckIntervalSeconds() {
+            return checkIntervalSeconds;
+        }
+
+        public void setCheckIntervalSeconds(int checkIntervalSeconds) {
+            this.checkIntervalSeconds = checkIntervalSeconds;
         }
 
         public String getMethod() {

@@ -1,6 +1,8 @@
 (function () {
     'use strict';
 
+    let currentConfig = null;
+
     function $(id) {
         return document.getElementById(id);
     }
@@ -49,29 +51,41 @@
     }
 
     function readForm() {
-        const timeoutRaw = $('whcTimeoutMs')?.value;
-        let timeoutMs = Number.parseInt(timeoutRaw, 10);
+        const base = currentConfig && typeof currentConfig === 'object' ? currentConfig : {};
+        const hasHealthcheckUrlField = !!$('whcHealthcheckUrl');
+        const healthcheckUrl = hasHealthcheckUrlField
+            ? toNullIfBlank($('whcHealthcheckUrl')?.value)
+            : toNullIfBlank(base.healthcheckUrl);
+        let timeoutMs = Number.parseInt(base.timeoutMs, 10);
+        let checkIntervalMinutes = Number.parseInt(base.checkIntervalMinutes, 10);
         if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
             timeoutMs = 8000;
         }
         if (timeoutMs > 120000) {
             timeoutMs = 120000;
         }
+        if (!Number.isFinite(checkIntervalMinutes) || checkIntervalMinutes <= 0) {
+            checkIntervalMinutes = 5;
+        }
+        if (checkIntervalMinutes > 1440) {
+            checkIntervalMinutes = 1440;
+        }
 
         const payload = {
-            healthcheckUrl: ($('whcHealthcheckUrl')?.value || '').trim(),
-            method: (($('whcMethod')?.value || 'GET').trim().toUpperCase()),
+            healthcheckUrl: healthcheckUrl,
+            healthcheckEnabled: typeof base.healthcheckEnabled === 'boolean' ? base.healthcheckEnabled : true,
+            checkIntervalMinutes: checkIntervalMinutes,
+            method: String(base.method || 'GET').trim().toUpperCase(),
             timeoutMs: timeoutMs,
-            expectJsonField: toNullIfBlank($('whcExpectJsonField')?.value),
-            expectJsonValue: toNullIfBlank($('whcExpectJsonValue')?.value),
-            widgetId: toNullIfBlank($('whcWidgetId')?.value),
+            expectJsonField: toNullIfBlank(base.expectJsonField),
+            expectJsonValue: toNullIfBlank(base.expectJsonValue),
+            widgetId: toNullIfBlank(base.widgetId),
 
             // New optional request-shaping fields
-            requestOrigin: toNullIfBlank($('whcRequestOrigin')?.value),
-            requestReferer: toNullIfBlank($('whcRequestReferer')?.value),
-            requestUserAgent: toNullIfBlank($('whcRequestUserAgent')?.value),
-            requestCookie: toNullIfBlank($('whcRequestCookie')?.value),
-            apiKeyHeaderName: toNullIfBlank($('whcApiKeyHeaderName')?.value),
+            requestOrigin: toNullIfBlank(base.requestOrigin),
+            requestReferer: toNullIfBlank(base.requestReferer),
+            requestUserAgent: toNullIfBlank(base.requestUserAgent),
+            apiKeyHeaderName: toNullIfBlank(base.apiKeyHeaderName || 'Authorization'),
             apiKeyValue: toNullIfBlank($('whcApiKeyValue')?.value)
         };
 
@@ -91,8 +105,16 @@
             return;
         }
 
+        currentConfig = cfg;
+
         if ($('whcHealthcheckUrl')) {
             $('whcHealthcheckUrl').value = cfg.healthcheckUrl || '';
+        }
+        if ($('whcEnabled')) {
+            $('whcEnabled').checked = cfg.healthcheckEnabled !== false;
+        }
+        if ($('whcCheckIntervalMinutes')) {
+            $('whcCheckIntervalMinutes').value = String(cfg.checkIntervalMinutes || 5);
         }
         if ($('whcMethod')) {
             $('whcMethod').value = (cfg.method || 'GET').toUpperCase();
@@ -172,11 +194,6 @@
     async function saveWidgetHealthConfig() {
         const payload = readForm();
 
-        if (!payload.healthcheckUrl) {
-            setMessage('Healthcheck URL is required.', true);
-            return;
-        }
-
         setMessage('Saving widget health config...', false);
 
         try {
@@ -224,10 +241,10 @@
         setMessage('Running availability test...', false);
         try {
             logHealthDebug('info', 'Starting availability test request', {
-                endpoint: endpoint('/admin/widget-availability.json')
+                endpoint: endpoint('/admin/widget-availability.json?force=true&runWhenDisabled=true')
             });
 
-            const res = await fetch(endpoint('/admin/widget-availability.json'), {
+            const res = await fetch(endpoint('/admin/widget-availability.json?force=true&runWhenDisabled=true'), {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' }
@@ -257,11 +274,14 @@
             const data = await res.json();
             logHealthDebug('info', 'Availability test payload', data);
             const ok = !!data.available;
+            const status = String(data && data.status ? data.status : '').toUpperCase();
             const detail = data && data.details ? ` Details: ${data.details}` : '';
             const latency = (data && typeof data.latencyMs !== 'undefined') ? ` Latency: ${data.latencyMs}ms.` : '';
             const checked = data && data.checkedAt ? ` Checked: ${data.checkedAt}.` : '';
 
-            if (ok) {
+            if (status === 'DISABLED') {
+                setMessage('Availability test was not executed because healthcheck service is disabled.' + checked + detail, true);
+            } else if (ok) {
                 setMessage('Availability test passed.' + latency + checked + detail, false);
             } else {
                 setMessage('Availability test failed.' + latency + checked + detail, true);

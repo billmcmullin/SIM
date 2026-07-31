@@ -373,12 +373,16 @@ public class WidgetReviewMapReduceOrchestrator {
                 break;
             }
 
+            boolean roundAnySuccess = false;
+            boolean roundAllAuthFailures = true;
+
             listener.onMapRoundStarted(requestId, round, maxRetryRounds, remainingMissing.size(), roundEntries.size());
 
             List<List<SelectedEntry>> batches = contextBuilderService.splitForMapAdaptive(
                     roundEntries, FIXED_BATCH_SIZE, Math.min(FIXED_BATCH_SIZE, minBatchSize)
             );
             int totalBatchesThisRound = batches.size();
+                int roundBatchUpperBound = cumulativeBatchCounter + totalBatchesThisRound;
 
             ExecutorService executor = Executors.newFixedThreadPool(mapMaxParallel);
             try {
@@ -389,18 +393,19 @@ public class WidgetReviewMapReduceOrchestrator {
                     int batchIndex = ++cumulativeBatchCounter;
                     List<SelectedEntry> batch = batches.get(i);
                     List<String> expectedBatchIds = extractUniqueChatIds(batch);
+                    boolean statelessSummaryFlow = isDailySummarySession(sessionId);
 
                     MapBatchRequest req = MapBatchRequest.builder()
                             .requestId(requestId)
                             .totalSelected(totalSelected)
-                            .totalBatches(totalBatchesThisRound)
+                            .totalBatches(roundBatchUpperBound)
                             .batchIndex(batchIndex)
                             .batchId("round-" + round + "-batch-" + (i + 1))
                             .entries(batch)
                             .targetUrl(targetUrl)
                             .mode(mode)
                             .sessionId(sessionId)
-                            .reset(requestReset && round == 1 && i == 0)
+                            .reset(statelessSummaryFlow || (requestReset && round == 1 && i == 0))
                             .controlledPrompt(controlledPrompt)
                             .expectedChatIds(expectedBatchIds)
                             .authoritativeAllSelectedChatIds(authoritativeAllIds)
@@ -427,8 +432,10 @@ public class WidgetReviewMapReduceOrchestrator {
                         MapBatchExecutionResult r = futures.get(i).join();
                         allMapBatchResults.add(r.result);
                         boolean mapBatchSuccess = r.result.isSuccess();
+                        int httpStatus = r.result.getHttpStatus();
 
                         if (mapBatchSuccess) {
+                            roundAnySuccess = true;
                             usedByProcessing.addAll(expectedForReq);
                             if (r.outputText != null && !r.outputText.isBlank()) {
                                 mapOutputs.add("### Batch " + req.getBatchIndex() + '\n' + r.outputText);
@@ -438,6 +445,10 @@ public class WidgetReviewMapReduceOrchestrator {
                             if (r.failure != null) {
                                 allBatchFailures.add(r.failure);
                             }
+                        }
+
+                        if (httpStatus != 401 && httpStatus != 403) {
+                            roundAllAuthFailures = false;
                         }
 
                         int missingSoFar = Math.max(0, authoritativeAllIds.size() - usedByProcessing.size());
@@ -455,7 +466,7 @@ public class WidgetReviewMapReduceOrchestrator {
                         log.log(Level.WARNING, "[map-reduce][" + requestId + "] batch failed batchIndex=" + req.getBatchIndex(), ex);
 
                         BatchFailure failure = BatchFailure.builder()
-                                .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(totalBatchesThisRound)
+                                .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(req.getTotalBatches())
                                 .batchId(req.getBatchId()).reasonCode("batch_processing_failure")
                                 .message("Unhandled map batch failure").httpStatus(0)
                                 .retryAttempted(true).retrySucceeded(false).contextTooLargeDetected(false)
@@ -463,13 +474,15 @@ public class WidgetReviewMapReduceOrchestrator {
                         allBatchFailures.add(failure);
 
                         allMapBatchResults.add(MapBatchResult.builder()
-                                .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(totalBatchesThisRound)
+                                .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(req.getTotalBatches())
                                 .batchId(req.getBatchId()).httpStatus(0).success(false).retryUsed(true)
                                 .contextTooLargeDetected(false).modelOutput("").errorMessage("Unhandled map batch failure")
                                 .inputEntriesCount(req.batchSize()).usedEntriesCount(0).omittedEntriesCount(req.batchSize())
                                 .batchChatIds(req.batchChatIds()).usedChatIds(List.of()).omittedChatIds(req.batchChatIds())
                                 .expectedChatIds(req.batchChatIds()).foundChatIds(List.of())
                                 .missingExpectedChatIds(req.batchChatIds()).coverageComplete(false).latencyMs(0).build());
+
+                            roundAllAuthFailures = false;
 
                         int missingSoFar = Math.max(0, authoritativeAllIds.size() - usedByProcessing.size());
                         listener.onMapBatchCompleted(
@@ -491,6 +504,13 @@ public class WidgetReviewMapReduceOrchestrator {
             remainingMissing.removeAll(usedByProcessing);
 
             listener.onMapRoundCompleted(requestId, round, maxRetryRounds, usedByProcessing.size(), remainingMissing.size());
+
+            if (!roundAnySuccess && roundAllAuthFailures) {
+                log.log(Level.WARNING,
+                        "[map-reduce][{0}] stopping after round {1} due to authentication failures across all map batches.",
+                        new Object[]{requestId, Integer.valueOf(round)});
+                break;
+            }
         }
 
         List<String> missingIds = new ArrayList<>(remainingMissing);
@@ -498,6 +518,51 @@ public class WidgetReviewMapReduceOrchestrator {
         List<String> usedIds = subtract(authoritativeAllIds, missingIds);
         List<Integer> failedDistinct = distinctInts(failedBatches);
         int totalBatches = cumulativeBatchCounter;
+
+        if (mapOutputs.isEmpty() && allMapFailuresAreAuthFailures(allMapBatchResults)) {
+            listener.onReduceStarted(requestId, totalSelected, totalBatches, 0, missingIds.size());
+
+            String authError = "Workspace authentication failed for all summary map batches (HTTP 401/403).";
+            WorkspaceResponse authFailureResponse = new WorkspaceResponse(
+                403,
+                "{\"error\":\"No valid api key found.\",\"message\":\"" + authError + "\"}",
+                "application/json"
+            );
+            ReduceResult authFailureReduce = ReduceResult.builder()
+                .requestId(requestId)
+                .httpStatus(403)
+                .success(false)
+                .retryUsed(false)
+                .contextTooLargeDetected(false)
+                .finalReport("")
+                .errorMessage(authError)
+                .totalSelected(totalSelected)
+                .totalBatches(totalBatches)
+                .mapOutputsReceived(0)
+                .failedBatchIndexes(failedDistinct)
+                .failedBatchReasons(List.of("upstream_4xx_auth_failure"))
+                .allSelectedChatIds(authoritativeAllIds)
+                .usedChatIds(usedIds)
+                .missingChatIds(missingIds)
+                .coverageComplete(false)
+                .latencyMs(0)
+                .build();
+
+            listener.onReduceCompleted(requestId, false, 403, missingIds.size());
+            listener.onCompleted(requestId, false, usedIds.size(), missingIds.size(), totalBatches);
+
+            return new OrchestrationResult(
+                authFailureResponse,
+                mapOutputs,
+                failedDistinct,
+                allMapBatchResults,
+                null,
+                authFailureReduce,
+                totalSelected,
+                totalBatches
+            ).withBatchFailures(allBatchFailures)
+                .withCoverage(authoritativeAllIds, missingIds, false, maxRetryRounds);
+        }
 
         listener.onReduceStarted(requestId, totalSelected, totalBatches, mapOutputs.size(), missingIds.size());
 
@@ -694,6 +759,20 @@ public class WidgetReviewMapReduceOrchestrator {
     ) throws IOException, InterruptedException {
 
         MapBatchExecutionResult primary = executeMapBatchWithAdaptiveRebatch(apiKey, attachments, req, requestId, round);
+
+        if (primary.result == null) {
+            return primary;
+        }
+        if (primary.result.isSuccess()) {
+            // Successful batch already contributes expected coverage; avoid duplicate recovery calls.
+            return primary;
+        }
+
+        int primaryStatus = primary.result.getHttpStatus();
+        if (primaryStatus == 401 || primaryStatus == 403) {
+            // Authentication failures do not improve with marker recovery retries.
+            return primary;
+        }
 
         List<String> expected = normalizeIds(req.batchChatIds());
         Set<String> missingByMarkers = new LinkedHashSet<>(expected);
@@ -958,7 +1037,7 @@ public class WidgetReviewMapReduceOrchestrator {
         boolean mapOutputValid = validation.isValid();
         if (!mapOutputValid) {
             log.log(
-                Level.WARNING,
+                Level.INFO,
                 "[map-reduce][{0}][map] non-fatal validation errors batch={1} errors={2}",
                 new Object[]{requestId, req.getBatchIndex(), validation.getErrors()}
             );
@@ -1230,6 +1309,37 @@ public class WidgetReviewMapReduceOrchestrator {
             return "parse_error";
         }
         return "batch_processing_failure";
+    }
+
+    private boolean isDailySummarySession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return false;
+        }
+        String normalized = sessionId.trim().toLowerCase(Locale.ROOT);
+        return normalized.startsWith("dashboard-daily-summary");
+    }
+
+    private boolean allMapFailuresAreAuthFailures(List<MapBatchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return false;
+        }
+
+        boolean sawFailure = false;
+        for (MapBatchResult result : results) {
+            if (result == null) {
+                continue;
+            }
+            if (result.isSuccess()) {
+                return false;
+            }
+
+            sawFailure = true;
+            int status = result.getHttpStatus();
+            if (status != 401 && status != 403) {
+                return false;
+            }
+        }
+        return sawFailure;
     }
 
     private List<String> extractUniqueChatIds(List<SelectedEntry> entries) {

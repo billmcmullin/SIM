@@ -44,72 +44,12 @@
 
         <section class="section">
             <h2>Widget Availability Health Check</h2>
-            <p>Configure how widget availability is validated. Saved in PostgreSQL.</p>
+            <p>Configure the healthcheck server URL and API key. Saved in PostgreSQL.</p>
 
             <form id="widgetHealthConfigForm" onsubmit="return false;">
                 <div class="form-group">
-                    <label for="whcHealthcheckUrl">Healthcheck URL</label>
-                    <input type="text" id="whcHealthcheckUrl" placeholder="http://anythingllm:3001/api/health" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="whcMethod">Method</label>
-                    <select id="whcMethod">
-                        <option value="GET">GET</option>
-                        <option value="HEAD">HEAD</option>
-                        <option value="POST">POST</option>
-                    </select>
-                </div>
-
-                <button type="button" id="testWidgetHealthConfigBtn">Test Now</button>
-
-                <div class="form-group">
-                    <label for="whcTimeoutMs">Timeout (ms)</label>
-                    <input type="number" id="whcTimeoutMs" min="1" max="120000" step="1" placeholder="8000" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="whcExpectJsonField">Expected JSON Field (optional)</label>
-                    <input type="text" id="whcExpectJsonField" placeholder="status">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcExpectJsonValue">Expected JSON Value (optional)</label>
-                    <input type="text" id="whcExpectJsonValue" placeholder="ok">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcWidgetId">Widget ID (optional)</label>
-                    <input type="text" id="whcWidgetId" placeholder="specific-widget-id">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcRequestOrigin">Request Origin (optional)</label>
-                    <input type="text" id="whcRequestOrigin" placeholder="https://heavyarms">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcRequestReferer">Request Referer (optional)</label>
-                    <input type="text" id="whcRequestReferer"
-                        placeholder="https://heavyarms/dtp/grs/widget/internal/customHTMLWidget.jsp?...">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcRequestUserAgent">Request User-Agent (optional)</label>
-                    <input type="text" id="whcRequestUserAgent" placeholder="Mozilla/5.0 ...">
-                </div>
-
-                <div class="form-group">
-                    <label for="whcRequestCookie">Request Cookie (optional)</label>
-                    <input type="password" id="whcRequestCookie" placeholder="SESSION=...; XSRF-TOKEN=...">
-                    <div class="small-note">
-                        <span id="whcRequestCookieStoredNote" style="display:none;">A request cookie is already stored. Leave blank to keep it.</span>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="whcApiKeyHeaderName">API Key Header Name (optional)</label>
-                    <input type="text" id="whcApiKeyHeaderName" placeholder="Authorization">
+                    <label for="whcHealthcheckUrl">Server URL</label>
+                    <input type="text" id="whcHealthcheckUrl" placeholder="http://anythingllm:3001/api/v1/system">
                 </div>
 
                 <div class="form-group">
@@ -123,6 +63,7 @@
 
                 <div class="actions">
                     <button type="button" id="loadWidgetHealthConfigBtn">Reload Widget Health Config</button>
+                    <button type="button" id="testWidgetHealthConfigBtn">Test Now</button>
                     <button type="button" id="saveWidgetHealthConfigBtn">Save Widget Health Config</button>
                 </div>
 
@@ -497,6 +438,15 @@
                 <div id="syncIntervalMessage" class="widget-message" style="color:#047857; margin-top:8px;"></div>
             </div>
             <div id="widgetTableExplorerMessage" class="widget-message" style="color:#047857;"></div>
+            <div id="widgetSyncProgressWrap" style="display:none; margin:8px 0 10px 0;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="flex:1 1 280px; min-width:220px; background:#e5e7eb; border-radius:999px; height:10px; overflow:hidden;">
+                        <div id="widgetSyncProgressBar" style="width:0%; height:100%; background:#2563eb; transition:width .25s ease;"></div>
+                    </div>
+                    <span id="widgetSyncProgressText" class="small-note" style="font-size:12px;">0%</span>
+                </div>
+                <div id="widgetSyncCurrentWidget" class="small-note" style="margin-top:6px;"></div>
+            </div>
             <div style="overflow-x:auto;">
                 <table class="widget-table" id="widgetTableExplorerTable">
                     <thead>
@@ -514,6 +464,53 @@
                     </tbody>
                 </table>
             </div>
+        </section>
+
+        <section class="section">
+            <h2>Summary Configuration</h2>
+            <p>Configure automatic summary generation cadence, payload size, and prompt template.</p>
+            <p class="small-note" style="margin-bottom:8px;">
+                Summary generation supports both HTTP and HTTPS using the same workspace connection behavior as sync and test connection.
+            </p>
+            <div class="actions" style="margin-bottom:8px;">
+                <button type="button" id="summaryAutoToggleBtn">Disable Automatic Summary</button>
+                <span id="summaryAutoModeBadge" class="small-note" aria-live="polite" style="align-self:center; color:#047857;">Auto Summary: Enabled</span>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="summaryInterval">Summary Interval (minutes)</label>
+                    <input type="number" id="summaryInterval" min="5" placeholder="60">
+                </div>
+                <div class="form-group">
+                    <label for="summaryMaxRows">Max Chats Per Summary</label>
+                    <input type="number" id="summaryMaxRows" min="50" max="5000" placeholder="1200">
+                </div>
+                <div class="form-group">
+                    <label for="summaryMaxUpstreamEntries">Max Evidence Entries Sent</label>
+                    <input type="number" id="summaryMaxUpstreamEntries" min="5" max="200" placeholder="40">
+                </div>
+                <div class="form-group">
+                    <label for="summaryMaxMessageChars">Max Summary Message Characters</label>
+                    <input type="number" id="summaryMaxMessageChars" min="600" max="12000" placeholder="2200">
+                </div>
+                <div class="form-group">
+                    <label for="summaryMaxRequestBytes">Max Summary Request Bytes</label>
+                    <input type="number" id="summaryMaxRequestBytes" min="1024" max="65536" placeholder="4096">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="summaryPromptTemplate">Summary Prompt Template</label>
+                <textarea id="summaryPromptTemplate" rows="10" placeholder="Enter summary prompt template"></textarea>
+            </div>
+            <div class="actions">
+                <button type="button" id="saveSummarySettingsBtn">Save Summary Settings</button>
+                <button type="button" id="adminSummaryRetryBtn">Generate Summary Now</button>
+            </div>
+            <p class="small-note" style="margin-top:8px;">
+                Generate Summary Now always runs immediately (ignores summary interval) and resets the next automatic summary time window from that run.
+            </p>
+            <div class="small-note" id="summaryRuntimeStatus" style="margin-top:8px;"></div>
+            <div id="summarySettingsMessage" class="widget-message" style="color:#047857; margin-top:8px;"></div>
         </section>
 
         <section class="section terms-section">
@@ -745,6 +742,18 @@
                 }
             }
 
+                function showDisabledBanner(text) {
+                    banner.style.display = 'block';
+                    banner.style.padding = '10px 12px';
+                    banner.style.borderRadius = '6px';
+                    banner.style.marginBottom = '12px';
+                    banner.style.fontWeight = '600';
+                    banner.style.background = '#f3f4f6';
+                    banner.style.border = '1px solid #d1d5db';
+                    banner.style.color = '#374151';
+                    banner.textContent = text || 'Chat Widget Healthcheck is disabled in Admin settings';
+                }
+
             async function pollWidgetAvailability() {
                 try {
                     const res = await fetch(endpoint, {
@@ -759,6 +768,11 @@
                     }
 
                     const data = await res.json();
+                    const status = String(data && data.status ? data.status : '').toUpperCase();
+                    if (status === 'DISABLED') {
+                        showDisabledBanner('Chat Widget Healthcheck is disabled in Admin settings');
+                        return;
+                    }
                     const ok = !!data.available;
                     const details = data && data.details ? ` (${data.details})` : '';
 

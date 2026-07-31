@@ -2,17 +2,28 @@
 package com.sim.chatserver.service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -42,10 +53,20 @@ public class WorkspaceClient {
     private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(90);
     private static final int MAX_ERROR_LOG_CHARS = 2000;
     private static final int MAX_LOG_MESSAGE_PREVIEW_CHARS = 800;
+    private static final String VERBOSE_WILDFLY_ENV = "SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG";
+    private static final boolean VERBOSE_WILDFLY_LOGS = isTruthy(System.getenv(VERBOSE_WILDFLY_ENV));
 
     private final HttpClient httpClient;
     private final int maxRetries;
     private final Duration requestTimeout;
+
+    private enum AuthHeaderMode {
+        CUSTOM_HEADER,
+        AUTH_BEARER,
+        AUTH_RAW,
+        X_API_KEY,
+        AUTH_BEARER_AND_X_API_KEY
+    }
 
     public WorkspaceClient() {
         this(HttpClient.newBuilder()
@@ -70,45 +91,250 @@ public class WorkspaceClient {
             JsonArray attachments,
             String requestId
     ) throws IOException, InterruptedException {
+        return sendChatInternal(targetUrl, apiKey, message, mode, sessionId, reset, attachments, requestId, false);
+        }
+
+        /**
+         * Compatibility mode for endpoints that require exactly Authorization: Bearer
+         * semantics (matching successful curl/test-connection behavior).
+         */
+        public WorkspaceResponse sendChatBearerCompat(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments,
+            String requestId
+        ) throws IOException, InterruptedException {
+        return sendChatInternal(targetUrl, apiKey, message, mode, sessionId, reset, attachments, requestId, true);
+        }
+
+        private WorkspaceResponse sendChatInternal(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments,
+            String requestId,
+            boolean bearerCompatOnly
+        ) throws IOException, InterruptedException {
 
         // FULL message as-is (no truncation here)
         final String safeMessage = message == null ? "" : message;
         final String safeMode = (mode == null || mode.isBlank()) ? "chat" : mode;
         final JsonArray safeAttachments = attachments == null ? Json.createArrayBuilder().build() : attachments;
         final URI targetUri = toSafeHttpUri(targetUrl);
+        final String safeRequestId = safe(requestId);
+        final boolean hasExplicitApiKey = ApiAuthResolver.normalizeApiKeyToken(apiKey) != null;
+        final ApiAuthResolver.ResolvedApiAuth primaryAuth = hasExplicitApiKey
+            ? ApiAuthResolver.resolveForServerConfigOutbound(apiKey)
+            : ApiAuthResolver.resolveForOutbound(apiKey);
+        final ApiAuthResolver.ResolvedApiAuth secondaryAuth = hasExplicitApiKey
+            ? ApiAuthResolver.ResolvedApiAuth.empty()
+            : ApiAuthResolver.resolveForOutbound(null);
+        final List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(primaryAuth, secondaryAuth);
 
-        JsonObject payload = buildPayload(safeMessage, safeMode, sessionId, reset, safeAttachments);
+        if (authCandidates.isEmpty()) {
+            throw new IOException("Workspace API key is required.");
+        }
+
+        boolean includeSessionId = shouldIncludeSessionId(sessionId);
+        JsonObject payload = buildPayload(safeMessage, safeMode, sessionId, includeSessionId, reset, safeAttachments);
         String body = payload.toString();
 
         int attempt = 0;
         while (true) {
             attempt++;
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(targetUri)
-                    .timeout(requestTimeout)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
-
             try {
                 if (attempt == 1) {
-                    log.info("[workspace-client][" + safe(requestId) + "] send"
-                            + " mode=" + safeMode
-                            + " reset=" + reset
-                            + " messageChars=" + safeMessage.length()
-                            + " payloadChars=" + body.length()
-                            + " attachments=" + safeAttachments.size()
-                            + " target=" + safeTarget(targetUrl)
-                            + " messagePreview=" + truncateOneLine(safeMessage, MAX_LOG_MESSAGE_PREVIEW_CHARS));
+                    if (VERBOSE_WILDFLY_LOGS) {
+                        log.log(Level.INFO,
+                            "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6} messagePreview={7}",
+                            new Object[]{
+                                safeRequestId,
+                                safeMode,
+                                    reset,
+                                    safeMessage.length(),
+                                    body.length(),
+                                    safeAttachments.size(),
+                                safeTarget(targetUrl),
+                                truncateOneLine(safeMessage, MAX_LOG_MESSAGE_PREVIEW_CHARS)
+                            });
+                    } else {
+                        log.log(Level.INFO,
+                            "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6}",
+                            new Object[]{
+                                safeRequestId,
+                                safeMode,
+                                    reset,
+                                    safeMessage.length(),
+                                    body.length(),
+                                    safeAttachments.size(),
+                                safeTarget(targetUrl)
+                            });
+                    }
+
+                    ServerDiagnosticsLog.write(
+                        "workspace-client",
+                            safeRequestId,
+                        "send",
+                        "target=" + targetUri
+                            + "\nmode=" + safeMode
+                            + "\nreset=" + reset
+                            + "\nsessionIdIncluded=" + includeSessionId
+                            + "\nmessageChars=" + safeMessage.length()
+                            + "\npayloadChars=" + body.length()
+                            + "\nattachments=" + safeAttachments.size()
+                            + "\nauthCandidates=" + summarizeAuthCandidates(authCandidates)
+                            + "\nmessage=" + safeMessage
+                            + "\npayload=" + body
+                    );
                 }
 
-                HttpResponse<String> response = httpClient.send(
-                        request,
-                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-                );
+                HttpResponse<String> response = null;
+                AuthHeaderMode usedMode = AuthHeaderMode.AUTH_BEARER;
+                String usedAuthSource = "";
+                StringBuilder authAttemptTrace = new StringBuilder();
+
+                if (bearerCompatOnly) {
+                    ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(0);
+                    usedAuthSource = safe(auth.source());
+                    usedMode = AuthHeaderMode.AUTH_BEARER;
+                    authAttemptTrace.append(usedAuthSource)
+                            .append('|')
+                            .append(usedMode.name());
+
+                    WorkspaceResponse wrapped = sendBearerCompatViaHttpURLConnection(targetUri, body, auth);
+                    int status = wrapped.statusCode();
+                    String responseBody = wrapped.body() == null ? "" : wrapped.body();
+                    String contentType = wrapped.contentType() == null ? "" : wrapped.contentType();
+
+                    authAttemptTrace.append("=>").append(status);
+
+                    if (status >= 400 && status < 500) {
+                        if (VERBOSE_WILDFLY_LOGS) {
+                            log.log(Level.WARNING,
+                                "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
+                                new Object[]{
+                                    safeRequestId,
+                                        status,
+                                        attempt,
+                                        isLikelyContextTooLarge(wrapped),
+                                    truncate(responseBody, MAX_ERROR_LOG_CHARS)
+                                });
+                        } else {
+                            log.log(Level.WARNING,
+                                "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
+                                new Object[]{
+                                    safeRequestId,
+                                        status,
+                                        attempt,
+                                        isLikelyContextTooLarge(wrapped)
+                                });
+                        }
+
+                        ServerDiagnosticsLog.write(
+                            "workspace-client",
+                                safeRequestId,
+                            "upstream-4xx",
+                            "status=" + status
+                                + "\nattempt=" + attempt
+                                + "\nauthSource=" + usedAuthSource
+                                + "\nauthMode=" + usedMode.name()
+                                + "\nauthAttemptTrace=" + authAttemptTrace
+                                + "\ncontextTooLarge=" + isLikelyContextTooLarge(wrapped)
+                                + "\ncontentType=" + contentType
+                                + "\nresponseBody=" + responseBody
+                        );
+                    }
+
+                    boolean retryable = isRetryableStatus(status);
+                    if (retryable && attempt <= (maxRetries + 1)) {
+                        log.log(Level.WARNING,
+                            "[workspace-client][{0}] retryable status status={1} attempt={2}",
+                                new Object[]{safeRequestId, status, attempt});
+
+                        ServerDiagnosticsLog.write(
+                            "workspace-client",
+                            safeRequestId,
+                            "retryable-status",
+                            "status=" + status
+                                + "\nattempt=" + attempt
+                                + "\ncontentType=" + contentType
+                                + "\nresponseBody=" + responseBody
+                        );
+                        continue;
+                    }
+
+                    return wrapped;
+                }
+
+                for (int authIndex = 0; authIndex < authCandidates.size(); authIndex++) {
+                    ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(authIndex);
+                        List<AuthHeaderMode> modeCandidates = bearerCompatOnly
+                            ? List.of(AuthHeaderMode.AUTH_BEARER)
+                            : resolveModeCandidates(auth.preferredHeaderName());
+
+                    for (int modeIndex = 0; modeIndex < modeCandidates.size(); modeIndex++) {
+                        AuthHeaderMode authModeCandidate = modeCandidates.get(modeIndex);
+                        HttpRequest request = buildRequest(targetUri, body, auth, authModeCandidate);
+                        HttpResponse<String> candidate = httpClient.send(
+                                request,
+                                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                        );
+                        int candidateStatus = candidate.statusCode();
+
+                        if (authAttemptTrace.length() > 0) {
+                            authAttemptTrace.append(", ");
+                        }
+                        authAttemptTrace.append(safe(auth.source()))
+                            .append('|')
+                            .append(authModeCandidate.name())
+                            .append("=>")
+                            .append(candidateStatus);
+
+                        response = candidate;
+                        usedMode = authModeCandidate;
+                        usedAuthSource = safe(auth.source());
+
+                        if (candidateStatus >= 200 && candidateStatus < 300) {
+                            break;
+                        }
+
+                        boolean hasMoreModes = modeIndex < (modeCandidates.size() - 1);
+                        boolean hasMoreAuth = authIndex < (authCandidates.size() - 1);
+
+                        if (isAuthModeRetryableStatus(candidateStatus) && (hasMoreModes || hasMoreAuth)) {
+                            if (hasMoreModes) {
+                                log.log(Level.INFO,
+                                        "[workspace-client][{0}] auth fallback switching mode after status={1} mode={2} source={3}",
+                                        new Object[]{safeRequestId, candidateStatus, authModeCandidate.name(), safe(auth.source())});
+                                continue;
+                            }
+                            if (hasMoreAuth) {
+                                log.log(Level.INFO,
+                                        "[workspace-client][{0}] auth fallback switching source after status={1} source={2}",
+                                        new Object[]{safeRequestId, candidateStatus, safe(auth.source())});
+                                break;
+                            }
+                        }
+
+                        break;
+                    }
+
+                    if (response != null && response.statusCode() >= 200 && response.statusCode() < 300) {
+                        break;
+                    }
+                }
+
+                if (response == null) {
+                    throw new IOException("Workspace call failed before receiving a response.");
+                }
 
                 int status = response.statusCode();
                 String responseBody = response.body() == null ? "" : response.body();
@@ -117,25 +343,82 @@ public class WorkspaceClient {
                 WorkspaceResponse wrapped = new WorkspaceResponse(status, responseBody, contentType);
 
                 if (status >= 400 && status < 500) {
-                    log.warning("[workspace-client][" + safe(requestId) + "] upstream 4xx"
-                            + " status=" + status
-                            + " attempt=" + attempt
-                            + " contextTooLarge=" + isLikelyContextTooLarge(wrapped)
-                            + " body=" + truncate(responseBody, MAX_ERROR_LOG_CHARS));
+                    if (VERBOSE_WILDFLY_LOGS) {
+                        log.log(Level.WARNING,
+                            "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
+                            new Object[]{
+                                safeRequestId,
+                                    status,
+                                    attempt,
+                                    isLikelyContextTooLarge(wrapped),
+                                truncate(responseBody, MAX_ERROR_LOG_CHARS)
+                            });
+                    } else {
+                        log.log(Level.WARNING,
+                            "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
+                            new Object[]{
+                                safeRequestId,
+                                    status,
+                                    attempt,
+                                    isLikelyContextTooLarge(wrapped)
+                            });
+                    }
+
+                    ServerDiagnosticsLog.write(
+                        "workspace-client",
+                            safeRequestId,
+                        "upstream-4xx",
+                        "status=" + status
+                            + "\nattempt=" + attempt
+                            + "\nauthSource=" + usedAuthSource
+                            + "\nauthMode=" + usedMode.name()
+                            + "\nauthAttemptTrace=" + authAttemptTrace
+                            + "\ncontextTooLarge=" + isLikelyContextTooLarge(wrapped)
+                            + "\ncontentType=" + contentType
+                            + "\nresponseBody=" + responseBody
+                    );
                 }
 
                 boolean retryable = isRetryableStatus(status);
                 if (retryable && attempt <= (maxRetries + 1)) {
-                    log.warning("[workspace-client][" + safe(requestId) + "] retryable status"
-                            + " status=" + status
-                            + " attempt=" + attempt);
+                    log.log(Level.WARNING,
+                        "[workspace-client][{0}] retryable status status={1} attempt={2}",
+                            new Object[]{safeRequestId, status, attempt});
+
+                    ServerDiagnosticsLog.write(
+                        "workspace-client",
+                        safeRequestId,
+                        "retryable-status",
+                        "status=" + status
+                            + "\nattempt=" + attempt
+                            + "\ncontentType=" + contentType
+                            + "\nresponseBody=" + responseBody
+                    );
                     continue;
                 }
 
                 return wrapped;
             } catch (IOException ex) {
                 if (attempt <= (maxRetries + 1)) {
-                    log.log(Level.WARNING, "[workspace-client][" + safe(requestId) + "] network failure, retrying attempt=" + attempt, ex);
+                    String errorRef = UUID.randomUUID().toString();
+                    log.log(Level.WARNING,
+                            "[workspace-client][{0}] network failure, retrying attempt={1} errorRef={2} reason={3}",
+                            new Object[]{
+                                safeRequestId,
+                                attempt,
+                                errorRef,
+                                truncateOneLine(safe(ex.getMessage()), 220)
+                            });
+
+                    ServerDiagnosticsLog.write(
+                            "workspace-client",
+                            safeRequestId,
+                            "network-failure",
+                            "attempt=" + attempt
+                                    + "\nerrorRef=" + errorRef
+                                    + "\nreason=" + safe(ex.getMessage()),
+                            ex
+                    );
                     continue;
                 }
                 throw ex;
@@ -184,10 +467,11 @@ public class WorkspaceClient {
         return false;
     }
 
-    private JsonObject buildPayload(
+        private JsonObject buildPayload(
             String message,
             String mode,
             String sessionId,
+            boolean includeSessionId,
             boolean reset,
             JsonArray attachments
     ) {
@@ -196,7 +480,7 @@ public class WorkspaceClient {
                 .add("mode", (mode == null || mode.isBlank()) ? "chat" : mode)
                 .add("reset", reset);
 
-        if (sessionId != null && !sessionId.isBlank()) {
+        if (includeSessionId && sessionId != null && !sessionId.isBlank()) {
             b.add("sessionId", sessionId);
         }
         if (attachments != null && !attachments.isEmpty()) {
@@ -204,6 +488,187 @@ public class WorkspaceClient {
         }
 
         return b.build();
+    }
+
+    private boolean shouldIncludeSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return false;
+        }
+
+        String normalizedSession = sessionId.trim().toLowerCase(Locale.ROOT);
+        if (normalizedSession.startsWith("dashboard-daily-summary")) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private AuthHeaderMode resolvePrimaryAuthMode(String preferredHeaderName) {
+        String header = preferredHeaderName == null ? "" : preferredHeaderName.trim();
+        if ("x-api-key".equalsIgnoreCase(header)) {
+            return AuthHeaderMode.X_API_KEY;
+        }
+        if (!header.isBlank() && !"authorization".equalsIgnoreCase(header)) {
+            return AuthHeaderMode.CUSTOM_HEADER;
+        }
+        return AuthHeaderMode.AUTH_BEARER;
+    }
+
+    private List<AuthHeaderMode> resolveModeCandidates(String preferredHeaderName) {
+        AuthHeaderMode primary = resolvePrimaryAuthMode(preferredHeaderName);
+        LinkedHashSet<AuthHeaderMode> ordered = new LinkedHashSet<>();
+        ordered.add(primary);
+
+        // Compat fallback set: different deployments validate auth header formats differently.
+        ordered.add(AuthHeaderMode.AUTH_BEARER);
+        ordered.add(AuthHeaderMode.X_API_KEY);
+        ordered.add(AuthHeaderMode.AUTH_RAW);
+        ordered.add(AuthHeaderMode.AUTH_BEARER_AND_X_API_KEY);
+
+        return new ArrayList<>(ordered);
+    }
+
+    private boolean isAuthModeRetryableStatus(int status) {
+        // 400 is typically payload/contract related, not an auth-header mode issue.
+        // Restrict auth fallback to explicit auth failures to avoid noisy retries.
+        return status == 401 || status == 403;
+    }
+
+    private List<ApiAuthResolver.ResolvedApiAuth> buildAuthCandidates(
+            ApiAuthResolver.ResolvedApiAuth primary,
+            ApiAuthResolver.ResolvedApiAuth secondary
+    ) {
+        Map<String, ApiAuthResolver.ResolvedApiAuth> unique = new LinkedHashMap<>();
+        for (ApiAuthResolver.ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
+            if (candidate == null || !candidate.hasToken()) {
+                continue;
+            }
+            String token = ApiAuthResolver.normalizeApiKeyToken(candidate.rawValue());
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            String key = token + "|" + safe(candidate.preferredHeaderName());
+            unique.putIfAbsent(key, candidate);
+        }
+        return new ArrayList<>(unique.values());
+    }
+
+    private String summarizeAuthCandidates(List<ApiAuthResolver.ResolvedApiAuth> authCandidates) {
+        if (authCandidates == null || authCandidates.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (ApiAuthResolver.ResolvedApiAuth auth : authCandidates) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(safe(auth.source()))
+                    .append('|')
+                    .append(safe(auth.preferredHeaderName()));
+        }
+        return sb.toString();
+    }
+
+    private WorkspaceResponse sendBearerCompatViaHttpURLConnection(
+            URI targetUri,
+            String body,
+            ApiAuthResolver.ResolvedApiAuth auth
+    ) throws IOException {
+        if (targetUri == null) {
+            throw new IOException("Workspace target URL is required.");
+        }
+        if (auth == null || auth.token() == null || auth.token().isBlank()) {
+            throw new IOException("Workspace API key is required.");
+        }
+
+        HttpURLConnection conn = (HttpURLConnection) targetUri.toURL().openConnection();
+        byte[] bytes = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
+        try {
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout((int) Math.min(Integer.MAX_VALUE, Duration.ofSeconds(20).toMillis()));
+            conn.setReadTimeout((int) Math.min(Integer.MAX_VALUE, requestTimeout.toMillis()));
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Authorization", "Bearer " + auth.token());
+            conn.setFixedLengthStreamingMode(bytes.length);
+
+            conn.getOutputStream().write(bytes);
+
+            int status = conn.getResponseCode();
+            String contentType = safe(conn.getHeaderField("Content-Type"));
+
+            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = "";
+            if (stream != null) {
+                try (InputStream in = stream) {
+                    responseBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+
+            return new WorkspaceResponse(status, responseBody, contentType);
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private HttpRequest buildRequest(URI targetUri, String body, ApiAuthResolver.ResolvedApiAuth auth, AuthHeaderMode mode) {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(targetUri)
+                .timeout(requestTimeout)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+
+        String token = auth == null ? null : auth.token();
+        String rawValue = auth == null ? null : auth.rawValue();
+        String preferredHeader = auth == null ? null : auth.preferredHeaderName();
+
+        if (token == null || token.isBlank()) {
+            return requestBuilder.build();
+        }
+
+        switch (mode) {
+            case CUSTOM_HEADER -> applyCustomHeader(requestBuilder, preferredHeader, rawValue, token);
+            case AUTH_RAW -> requestBuilder.header("Authorization", normalizeRawAuthorizationValue(rawValue, token));
+            case X_API_KEY -> requestBuilder.header("X-API-Key", token);
+            case AUTH_BEARER_AND_X_API_KEY -> requestBuilder
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-API-Key", token);
+            case AUTH_BEARER -> requestBuilder.header("Authorization", "Bearer " + token);
+        }
+
+        return requestBuilder.build();
+    }
+
+    private void applyCustomHeader(HttpRequest.Builder requestBuilder, String headerName, String rawValue, String token) {
+        String normalizedHeader = headerName == null ? "" : headerName.trim();
+        if (normalizedHeader.isBlank()) {
+            return;
+        }
+
+        if ("authorization".equalsIgnoreCase(normalizedHeader)) {
+            requestBuilder.header("Authorization", "Bearer " + token);
+            return;
+        }
+        if ("x-api-key".equalsIgnoreCase(normalizedHeader)) {
+            requestBuilder.header("X-API-Key", token);
+            return;
+        }
+
+        String headerValue = rawValue;
+        if (headerValue == null || headerValue.isBlank()) {
+            headerValue = token;
+        }
+        requestBuilder.header(normalizedHeader, headerValue);
+    }
+
+    private String normalizeRawAuthorizationValue(String rawValue, String token) {
+        String raw = ApiAuthResolver.stripAuthorizationPrefix(rawValue);
+        if (raw == null || raw.isBlank()) {
+            return token;
+        }
+        return raw;
     }
 
     private boolean isRetryableStatus(int status) {
@@ -296,6 +761,18 @@ public class WorkspaceClient {
         } catch (IllegalArgumentException e) {
             return "(invalid-target)";
         }
+    }
+
+    private static boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(normalized)
+                || "1".equals(normalized)
+                || "yes".equals(normalized)
+                || "y".equals(normalized)
+                || "on".equals(normalized);
     }
 
     /**

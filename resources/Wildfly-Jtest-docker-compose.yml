@@ -9,7 +9,7 @@ services:
     command:
       - /bin/bash
       - -lc
-      - /opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0 -Djboss.tx.node.id="$$JBOSS_TX_NODE_ID"
+      - /opt/jboss/wildfly/bin/standalone.sh --stability=community -b 0.0.0.0 -Djboss.tx.node.id="$$JBOSS_TX_NODE_ID"
     volumes:
       # Shared volume that contains Jtest Coverage Agent jars and properties file.
       - type: volume
@@ -19,6 +19,7 @@ services:
       - ./conf/standalone.conf:/opt/jboss/wildfly/bin/standalone.conf:ro
       - ./conf/standalone.xml:/opt/jboss/wildfly/standalone/configuration/standalone.xml:ro
       - ../sim-app/target/chat-server.war:/opt/jboss/wildfly/standalone/deployments/chat-server.war:ro
+      - ../logs/server-diagnostics:/opt/jboss/wildfly/sim-logs
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -30,6 +31,13 @@ services:
       # Generic Key, made by randomkeygen.com
       CONFIG_ENCRYPTION_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
       SIM_EMAIL_CRYPTO_KEY: 3SKEIyxGENnTp5VAqOEN9BElhaRrVI9SihXD6P5rMeY=
+      # Set true only when troubleshooting healthcheck failures.
+      WIDGET_HEALTHCHECK_DEBUG_FAILURES: "false"
+      # Detailed diagnostics are written to files under SIM_SERVER_DIAGNOSTIC_LOG_DIR.
+      SIM_SERVER_DIAGNOSTIC_LOG_ENABLED: "true"
+      SIM_SERVER_DIAGNOSTIC_LOG_DIR: /opt/jboss/wildfly/sim-logs
+      # Keep WildFly console logs concise by default.
+      SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG: "false"
       TZ: America/Los_Angeles
     networks:
       - sim-net

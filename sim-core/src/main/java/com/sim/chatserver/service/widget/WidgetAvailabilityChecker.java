@@ -25,6 +25,7 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -44,18 +45,29 @@ public class WidgetAvailabilityChecker {
 
     private static final Logger log = Logger.getLogger(WidgetAvailabilityChecker.class.getName());
 
-    private static final String DEFAULT_URL = "http://anythingllm:3001/api/health";
+    private static final String DEFAULT_URL = "http://anythingllm:3001/api/v1/system";
     private static final String DEFAULT_METHOD = "GET";
     private static final int DEFAULT_TIMEOUT_MS = 8000;
+    private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
+    private static final boolean DEFAULT_HEALTHCHECK_ENABLED = true;
+    private static final String DEBUG_FAILURES_ENV = "WIDGET_HEALTHCHECK_DEBUG_FAILURES";
+    private static final String DEBUG_FAILURES_PROP = "sim.widget.healthcheck.debug.failures";
+    private static final String REQUIRE_HTTPS_WITH_AUTH_ENV = "WIDGET_HEALTHCHECK_REQUIRE_HTTPS_WITH_AUTH";
+    private static final String REQUIRE_HTTPS_WITH_AUTH_PROP = "sim.widget.healthcheck.require.https.with.auth";
 
     private static final Pattern EMBED_STREAM_PATTERN = Pattern.compile("/api/embed/([^/]+)/stream-chat");
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final Pattern TOKEN_WHITESPACE = Pattern.compile("\\s+");
 
     @Inject
     AppDataSourceHolder dsHolder;
 
+    private final Object cacheLock = new Object();
+    private volatile CachedHealthResult cachedHealthResult;
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
+            .version(HttpClient.Version.HTTP_1_1)
             .build();
 
     private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
@@ -67,55 +79,197 @@ public class WidgetAvailabilityChecker {
     }
 
     public WidgetAvailabilityResult checkNow() {
-        Instant start = Instant.now();
-        String checkedAt = DateTimeFormatter.ISO_INSTANT.format(start);
+        return checkNow(false, false);
+    }
 
+    public WidgetAvailabilityResult checkNow(boolean forceRefresh) {
+        return checkNow(forceRefresh, false);
+    }
+
+    public WidgetAvailabilityResult checkNow(boolean forceRefresh, boolean runWhenDisabled) {
         EffectiveConfig cfg = resolveEffectiveConfig();
+        Instant now = Instant.now();
+
+        if (!cfg.enabled && !runWhenDisabled) {
+            WidgetAvailabilityResult disabled = disabled(now, cfg);
+            cacheResult(cfg, disabled, now);
+            return disabled;
+        }
+
+        if (!cfg.enabled && runWhenDisabled) {
+            log.info(() -> "Widget healthcheck service is disabled, running one-off manual availability test.");
+        }
+
+        if (!forceRefresh && !runWhenDisabled) {
+            WidgetAvailabilityResult cached = getCachedResultIfFresh(cfg);
+            if (cached != null) {
+                return cached;
+            }
+        }
+
+        synchronized (cacheLock) {
+            if (!forceRefresh && !runWhenDisabled) {
+                WidgetAvailabilityResult cached = getCachedResultIfFresh(cfg);
+                if (cached != null) {
+                    return cached;
+                }
+            }
+
+            Instant checkedAt = Instant.now();
+            WidgetAvailabilityResult live = runLiveCheck(cfg, checkedAt);
+
+            if (!cfg.enabled && runWhenDisabled) {
+                live = new WidgetAvailabilityResult(
+                        live.available(),
+                        live.status(),
+                        live.checkedAtIso(),
+                        live.latencyMs(),
+                        safeMsg(live.details()) + " [manual-check-while-disabled]");
+            }
+
+            if (!runWhenDisabled) {
+                cacheResult(cfg, live, checkedAt);
+            }
+            return live;
+        }
+    }
+
+    private WidgetAvailabilityResult getCachedResultIfFresh(EffectiveConfig cfg) {
+        CachedHealthResult cached = cachedHealthResult;
+        if (cached == null || cfg == null) {
+            return null;
+        }
+
+        String fingerprint = configFingerprint(cfg);
+        if (!fingerprint.equals(cached.configFingerprint)) {
+            return null;
+        }
+
+        long ageSeconds = Duration.between(cached.checkedAt, Instant.now()).toSeconds();
+        if (ageSeconds < 0 || ageSeconds >= Math.max(1, cfg.checkIntervalSeconds)) {
+            return null;
+        }
+
+        log.fine(() -> "Returning cached widget availability result ageSeconds=" + ageSeconds
+                + " intervalSeconds=" + cfg.checkIntervalSeconds + sourceSuffix(cfg));
+        return cached.result;
+    }
+
+    private void cacheResult(EffectiveConfig cfg, WidgetAvailabilityResult result, Instant checkedAt) {
+        if (cfg == null || result == null || checkedAt == null) {
+            return;
+        }
+        cachedHealthResult = new CachedHealthResult(configFingerprint(cfg), checkedAt, result);
+    }
+
+    private String configFingerprint(EffectiveConfig cfg) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(cfg.enabled).append('|')
+                .append(cfg.checkIntervalSeconds).append('|')
+                .append(safeMsg(cfg.url)).append('|')
+                .append(safeMsg(cfg.method)).append('|')
+                .append(cfg.timeoutMs).append('|')
+                .append(safeMsg(cfg.expectField)).append('|')
+                .append(safeMsg(cfg.expectValue)).append('|')
+                .append(safeMsg(cfg.widgetId)).append('|')
+                .append(safeMsg(cfg.requestOrigin)).append('|')
+                .append(safeMsg(cfg.requestReferer)).append('|')
+                .append(safeMsg(cfg.requestUserAgent)).append('|')
+                .append(safeMsg(cfg.requestCookie)).append('|')
+                .append(safeMsg(cfg.apiKeyHeaderName)).append('|')
+                .append(safeMsg(cfg.apiKeyValue));
+        return sb.toString();
+    }
+
+    private WidgetAvailabilityResult runLiveCheck(EffectiveConfig cfg, Instant start) {
+        Instant checkStart = start == null ? Instant.now() : start;
+        String checkedAt = DateTimeFormatter.ISO_INSTANT.format(checkStart);
+        String requestId = UUID.randomUUID().toString();
         log.info(() -> "Widget availability check starting: method=" + safeMsg(cfg.method)
                 + " url=" + safeUrl(cfg.url)
                 + " timeoutMs=" + cfg.timeoutMs
                 + " expectFieldSet=" + (cfg.expectField != null)
                 + " expectValueSet=" + (cfg.expectValue != null)
+                + " checkIntervalSeconds=" + cfg.checkIntervalSeconds
                 + sourceSuffix(cfg));
 
-        if ((cfg.apiKeyValue != null || cfg.requestCookie != null) && !isHttpsUrl(cfg.url)) {
-            long latencyMs = Duration.between(start, Instant.now()).toMillis();
+        ServerDiagnosticsLog.write(
+            "widget-availability-checker",
+            requestId,
+            "healthcheck-request",
+            "method=" + safeMsg(cfg.method)
+                + "\nurl=" + safeUrl(cfg.url)
+                + "\ntimeoutMs=" + cfg.timeoutMs
+                + "\nsource=" + safeMsg(cfg.source)
+        );
+
+        boolean sensitiveAuthConfigured = cfg.apiKeyValue != null || cfg.requestCookie != null;
+        boolean httpsUrl = isHttpsUrl(cfg.url);
+        boolean requireHttpsWithAuth = isHttpsRequiredWithAuth();
+
+        if (sensitiveAuthConfigured && !httpsUrl && requireHttpsWithAuth) {
+            long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
             log.warning(() -> "Widget availability check blocked: sensitive auth material requires HTTPS url="
                 + safeUrl(cfg.url) + sourceSuffix(cfg));
+            ServerDiagnosticsLog.write(
+                    "widget-availability-checker",
+                    requestId,
+                    "healthcheck-blocked",
+                    "reason=sensitive-auth-without-https\nurl=" + safeUrl(cfg.url)
+                            + "\nlatencyMs=" + latencyMs
+            );
             return down(checkedAt, latencyMs, "Sensitive auth material configured but healthcheck URL is not HTTPS"
                 + sourceSuffix(cfg));
+        }
+
+        if (sensitiveAuthConfigured && !httpsUrl && !requireHttpsWithAuth) {
+            log.info(() -> "Widget availability check allowing HTTP URL with sensitive auth material because "
+                    + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + safeUrl(cfg.url)
+                    + sourceSuffix(cfg));
         }
 
         try {
             String effectiveWidgetId = effectiveWidgetId(cfg);
             if ("POST".equals(cfg.method) && effectiveWidgetId != null) {
                 cfg.widgetId = effectiveWidgetId;
-                return runSyntheticSseProbe(cfg, start, checkedAt);
+                return runSyntheticSseProbe(cfg, checkStart, checkedAt, requestId);
             }
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder()
-                    .uri(URI.create(cfg.url))
-                    .timeout(Duration.ofMillis(cfg.timeoutMs));
+            HttpResponse<String> response = sendHttpHealthRequest(cfg, null);
 
-                applyApiKeyHeader(builder, cfg);
-
-            if ("HEAD".equals(cfg.method)) {
-                builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
-            } else if ("POST".equals(cfg.method)) {
-                builder.POST(HttpRequest.BodyPublishers.noBody());
-                builder.header("Content-Type", "application/json");
-            } else {
-                builder.GET();
+            if (shouldRetryWithXApiKey(cfg, response.statusCode())) {
+                final int initialStatus = response.statusCode();
+                log.info(() -> "Widget availability retrying with X-API-Key after status=" + initialStatus
+                        + " url=" + safeUrl(cfg.url) + sourceSuffix(cfg));
+                ServerDiagnosticsLog.write(
+                        "widget-availability-checker",
+                        requestId,
+                        "healthcheck-retry",
+                        "reason=auth-header-fallback"
+                        + "\ninitialStatus=" + initialStatus
+                                + "\nfromHeader=Authorization"
+                                + "\ntoHeader=X-API-Key"
+                                + "\nurl=" + safeUrl(cfg.url)
+                );
+                response = sendHttpHealthRequest(cfg, "X-API-Key");
             }
 
-            HttpRequest request = builder.build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            long latencyMs = Duration.between(start, Instant.now()).toMillis();
+            long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
             int status = response.statusCode();
             String body = response.body() == null ? "" : response.body();
             String contentType = headerValue(response, "content-type");
             String wwwAuthenticate = headerValue(response, "www-authenticate");
+
+                ServerDiagnosticsLog.write(
+                    "widget-availability-checker",
+                    requestId,
+                    "healthcheck-response",
+                    "status=" + status
+                        + "\nlatencyMs=" + latencyMs
+                        + "\ncontentType=" + safeMsg(contentType)
+                        + "\nurl=" + safeUrl(cfg.url)
+                        + "\nbodySnippet=" + bodySnippet(body)
+                );
 
             if (status < 200 || status >= 300) {
                 log.warning(() -> "Widget availability check returned non-success status=" + status
@@ -152,25 +306,127 @@ public class WidgetAvailabilityChecker {
             return up(checkedAt, latencyMs, "Healthcheck succeeded" + sourceSuffix(cfg));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            long latencyMs = Duration.between(start, Instant.now()).toMillis();
-            log.log(Level.WARNING, "Widget availability check interrupted for url=" + safeUrl(cfg.url)
-                    + sourceSuffix(cfg), e);
-            return down(checkedAt, latencyMs, "Interrupted during healthcheck" + sourceSuffix(cfg));
+            long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
+            String errorRef = UUID.randomUUID().toString();
+                ServerDiagnosticsLog.write(
+                    "widget-availability-checker",
+                    requestId,
+                    "healthcheck-error",
+                    "errorRef=" + errorRef + "\nlatencyMs=" + latencyMs + "\nurl=" + safeUrl(cfg.url),
+                    e
+                );
+            if (isFailureDebugEnabled()) {
+                log.log(Level.WARNING, "Widget availability check interrupted for url=" + safeUrl(cfg.url)
+                        + " errorRef=" + errorRef + sourceSuffix(cfg), e);
+                return down(checkedAt, latencyMs, "Interrupted during healthcheck" + sourceSuffix(cfg));
+            }
+
+            log.warning(() -> "Widget availability check interrupted. errorRef=" + errorRef
+                    + " Set " + DEBUG_FAILURES_ENV + "=true for full debug details.");
+            return down(checkedAt, latencyMs, genericFailureDetails(errorRef));
         } catch (IOException | IllegalArgumentException e) {
-            long latencyMs = Duration.between(start, Instant.now()).toMillis();
-            log.log(Level.WARNING, "Widget availability check error for url=" + safeUrl(cfg.url)
-                    + " latencyMs=" + latencyMs + sourceSuffix(cfg), e);
-            return down(checkedAt, latencyMs, "Exception: " + e.getClass().getSimpleName()
-                    + " - " + safeMsg(e.getMessage()) + sourceSuffix(cfg));
+            long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
+            String errorRef = UUID.randomUUID().toString();
+            ServerDiagnosticsLog.write(
+                "widget-availability-checker",
+                requestId,
+                "healthcheck-error",
+                "errorRef=" + errorRef + "\nlatencyMs=" + latencyMs + "\nurl=" + safeUrl(cfg.url)
+                    + "\nmessage=" + safeMsg(e.getMessage()),
+                e
+            );
+            if (isFailureDebugEnabled()) {
+                log.log(Level.WARNING, "Widget availability check error for url=" + safeUrl(cfg.url)
+                        + " latencyMs=" + latencyMs + " errorRef=" + errorRef + sourceSuffix(cfg), e);
+                return down(checkedAt, latencyMs, "Exception: " + e.getClass().getSimpleName()
+                        + " - " + safeMsg(e.getMessage()) + sourceSuffix(cfg));
+            }
+
+            log.warning(() -> "Widget availability check failed. errorRef=" + errorRef
+                    + " Set " + DEBUG_FAILURES_ENV + "=true for full debug details.");
+            return down(checkedAt, latencyMs, genericFailureDetails(errorRef));
         }
     }
 
-    private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt) throws IOException, InterruptedException {
+    private boolean isFailureDebugEnabled() {
+        String prop = trimToNull(System.getProperty(DEBUG_FAILURES_PROP));
+        if (prop != null) {
+            return isTruthy(prop);
+        }
+        String envValue = readEnvCanonical(DEBUG_FAILURES_ENV, 16);
+        return envValue != null && isTruthy(envValue);
+    }
+
+    private boolean isHttpsRequiredWithAuth() {
+        String prop = trimToNull(System.getProperty(REQUIRE_HTTPS_WITH_AUTH_PROP));
+        if (prop != null) {
+            if (isTruthy(prop)) {
+                return true;
+            }
+            if (isFalsy(prop)) {
+                return false;
+            }
+        }
+
+        String envValue = readEnvCanonical(REQUIRE_HTTPS_WITH_AUTH_ENV, 16);
+        if (envValue == null) {
+            return false;
+        }
+        if (isTruthy(envValue)) {
+            return true;
+        }
+        if (isFalsy(envValue)) {
+            return false;
+        }
+        return false;
+    }
+
+    private boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(normalized)
+                || "1".equals(normalized)
+                || "yes".equals(normalized)
+                || "y".equals(normalized)
+                || "on".equals(normalized);
+    }
+
+    private boolean isFalsy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "false".equals(normalized)
+                || "0".equals(normalized)
+                || "no".equals(normalized)
+                || "n".equals(normalized)
+                || "off".equals(normalized);
+    }
+
+    private String genericFailureDetails(String errorRef) {
+        return "Something went wrong during widget healthcheck. To enable debug details set "
+                + DEBUG_FAILURES_ENV + "=true"
+                + " (or system property " + DEBUG_FAILURES_PROP + "=true)."
+                + " Reference: " + errorRef;
+    }
+
+    private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt, String requestId) throws IOException, InterruptedException {
         String probeUrl = buildEmbedStreamUrl(cfg.url, cfg.widgetId);
         String payload = buildSyntheticPayload();
         log.info(() -> "Widget synthetic SSE probe starting: url=" + safeUrl(probeUrl)
             + " timeoutMs=" + cfg.timeoutMs
             + sourceSuffix(cfg));
+
+        ServerDiagnosticsLog.write(
+                "widget-availability-checker",
+                requestId,
+                "sse-request",
+                "method=POST\nurl=" + safeUrl(probeUrl)
+                        + "\nwidgetId=" + safeMsg(cfg.widgetId)
+                        + "\npayload=" + payload
+        );
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
                 .uri(URI.create(probeUrl))
@@ -207,6 +463,17 @@ public class WidgetAvailabilityChecker {
         String body = response.body() == null ? "" : response.body();
         String contentType = headerValue(response, "content-type");
         String wwwAuthenticate = headerValue(response, "www-authenticate");
+
+        ServerDiagnosticsLog.write(
+            "widget-availability-checker",
+            requestId,
+            "sse-response",
+            "status=" + status
+                + "\nlatencyMs=" + latencyMs
+                + "\ncontentType=" + safeMsg(contentType)
+                + "\nurl=" + safeUrl(probeUrl)
+                + "\nbodySnippet=" + bodySnippet(body)
+        );
 
         if (status < 200 || status >= 300) {
             log.warning(() -> "Widget synthetic SSE probe returned non-success status=" + status
@@ -400,6 +667,8 @@ public class WidgetAvailabilityChecker {
                 if (db != null && trimToNull(db.getHealthcheckUrl()) != null) {
                     EffectiveConfig cfg = new EffectiveConfig();
                     cfg.source = "DB";
+                    cfg.enabled = db.isHealthcheckEnabled();
+                    cfg.checkIntervalSeconds = normalizeCheckIntervalSeconds(db.getCheckIntervalSeconds());
                     cfg.url = trimToNull(db.getHealthcheckUrl());
                     cfg.method = normalizeMethod(db.getMethod());
                     cfg.timeoutMs = normalizeTimeout(db.getTimeoutMs());
@@ -425,6 +694,8 @@ public class WidgetAvailabilityChecker {
                     log.info(() -> "Widget availability config resolved from DB: method=" + safeMsg(cfg.method)
                             + " url=" + safeUrl(cfg.url)
                             + " timeoutMs=" + cfg.timeoutMs
+                            + " enabled=" + cfg.enabled
+                            + " checkIntervalSeconds=" + cfg.checkIntervalSeconds
                             + sourceSuffix(cfg));
                     return cfg;
                 }
@@ -435,6 +706,9 @@ public class WidgetAvailabilityChecker {
 
         EffectiveConfig envCfg = new EffectiveConfig();
         envCfg.source = "ENV/DEFAULT";
+        envCfg.enabled = parseBooleanEnv("WIDGET_HEALTHCHECK_ENABLED", DEFAULT_HEALTHCHECK_ENABLED);
+        envCfg.checkIntervalSeconds = normalizeCheckIntervalSeconds(
+            parseIntEnv("WIDGET_HEALTHCHECK_INTERVAL_SECONDS", DEFAULT_CHECK_INTERVAL_SECONDS));
         envCfg.url = env("WIDGET_HEALTHCHECK_URL", DEFAULT_URL);
         envCfg.method = normalizeMethod(env("WIDGET_HEALTHCHECK_METHOD", DEFAULT_METHOD));
         envCfg.timeoutMs = normalizeTimeout(parseIntEnv("WIDGET_HEALTHCHECK_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
@@ -459,6 +733,8 @@ public class WidgetAvailabilityChecker {
         log.info(() -> "Widget availability config resolved from ENV/DEFAULT: method=" + safeMsg(envCfg.method)
             + " url=" + safeUrl(envCfg.url)
             + " timeoutMs=" + envCfg.timeoutMs
+            + " enabled=" + envCfg.enabled
+            + " checkIntervalSeconds=" + envCfg.checkIntervalSeconds
             + sourceSuffix(envCfg));
         return envCfg;
     }
@@ -476,6 +752,16 @@ public class WidgetAvailabilityChecker {
             return DEFAULT_TIMEOUT_MS;
         }
         return Math.min(timeoutMs, 120_000);
+    }
+
+    private int normalizeCheckIntervalSeconds(int checkIntervalSeconds) {
+        if (checkIntervalSeconds <= 0) {
+            return DEFAULT_CHECK_INTERVAL_SECONDS;
+        }
+        if (checkIntervalSeconds < 30) {
+            return 30;
+        }
+        return Math.min(checkIntervalSeconds, 86_400);
     }
 
     private boolean matchesExpectedJson(String body, String expectedField, String expectedValue) {
@@ -546,6 +832,20 @@ public class WidgetAvailabilityChecker {
         }
     }
 
+    private boolean parseBooleanEnv(String key, boolean defaultValue) {
+        String raw = readEnvCanonical(key, 32);
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (isTruthy(raw)) {
+            return true;
+        }
+        if (isFalsy(raw)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
     private String canonicalizeInput(String value, int maxChars) {
         String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).trim();
         if (normalized.isBlank()) {
@@ -597,29 +897,62 @@ public class WidgetAvailabilityChecker {
         }
     }
 
+    private HttpResponse<String> sendHttpHealthRequest(EffectiveConfig cfg, String apiKeyHeaderOverride)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(cfg.url))
+                .timeout(Duration.ofMillis(cfg.timeoutMs));
+
+        applyApiKeyHeader(builder, cfg, apiKeyHeaderOverride);
+
+        if ("HEAD".equals(cfg.method)) {
+            builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
+        } else if ("POST".equals(cfg.method)) {
+            builder.POST(HttpRequest.BodyPublishers.noBody());
+            builder.header("Content-Type", "application/json");
+        } else {
+            builder.GET();
+        }
+
+        HttpRequest request = builder.build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private boolean shouldRetryWithXApiKey(EffectiveConfig cfg, int statusCode) {
+        if (cfg == null || cfg.apiKeyValue == null) {
+            return false;
+        }
+        String configuredHeader = trimToNull(cfg.apiKeyHeaderName);
+        if (configuredHeader != null && !"authorization".equalsIgnoreCase(configuredHeader)) {
+            return false;
+        }
+        return statusCode == 400 || statusCode == 401 || statusCode == 403;
+    }
+
     private String safeMsg(String msg) {
         return msg == null ? "" : msg;
     }
 
     private void applyApiKeyHeader(HttpRequest.Builder requestBuilder, EffectiveConfig cfg) {
+        applyApiKeyHeader(requestBuilder, cfg, null);
+    }
+
+    private void applyApiKeyHeader(HttpRequest.Builder requestBuilder, EffectiveConfig cfg, String headerOverride) {
         if (requestBuilder == null || cfg == null || cfg.apiKeyValue == null) {
             return;
         }
-        String headerName = cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName;
-        String headerValue = cfg.apiKeyValue;
+        String headerName = headerOverride != null
+                ? headerOverride
+                : (cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName);
+        String token = normalizeApiTokenForHeader(cfg.apiKeyValue);
+        if (token.isEmpty()) {
+            return;
+        }
+        String headerValue;
         if ("authorization".equalsIgnoreCase(headerName)) {
-            String token = trimToNull(headerValue);
-            if (token == null) {
-                return;
-            }
-            token = stripAuthorizationPrefix(token);
-            if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
-                token = token.substring(7).trim();
-            }
-            if (token.isEmpty()) {
-                return;
-            }
             headerValue = "Bearer " + token;
+        } else {
+            headerValue = token;
         }
         requestBuilder.header(headerName, headerValue);
     }
@@ -633,6 +966,26 @@ public class WidgetAvailabilityChecker {
             return t.substring(14).trim();
         }
         return t;
+    }
+
+    private String normalizeApiTokenForHeader(String rawToken) {
+        String token = stripAuthorizationPrefix(rawToken);
+        if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            token = token.substring(7).trim();
+        }
+
+        token = CONTROL_CHARS.matcher(token).replaceAll("");
+        token = token.trim();
+
+        if (token.length() >= 2) {
+            char first = token.charAt(0);
+            char last = token.charAt(token.length() - 1);
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                token = token.substring(1, token.length() - 1).trim();
+            }
+        }
+
+        return TOKEN_WHITESPACE.matcher(token).replaceAll("");
     }
 
     private String resolveGlobalServerApiKey() {
@@ -682,7 +1035,9 @@ public class WidgetAvailabilityChecker {
     }
 
     private String sourceSuffix(EffectiveConfig cfg) {
-        StringBuilder sb = new StringBuilder(" [source=").append(cfg.source).append("]");
+        StringBuilder sb = new StringBuilder(" [source=").append(cfg.source).append("]")
+                .append(" [enabled=").append(cfg.enabled).append(']')
+                .append(" [checkIntervalSeconds=").append(cfg.checkIntervalSeconds).append(']');
         if (cfg.widgetId != null) {
             sb.append(" [widgetId=").append(cfg.widgetId).append("]");
         }
@@ -723,6 +1078,17 @@ public class WidgetAvailabilityChecker {
                 .toString();
     }
 
+    private String bodySnippet(String body) {
+        if (body == null) {
+            return "";
+        }
+        String s = body.replaceAll("\\s+", " ").trim();
+        if (s.isEmpty()) {
+            return "";
+        }
+        return s.length() > 300 ? s.substring(0, 300) + "..." : s;
+    }
+
     private WidgetAvailabilityResult up(String checkedAt, long latencyMs, String details) {
         return new WidgetAvailabilityResult(true, "UP", checkedAt, latencyMs, details);
     }
@@ -731,9 +1097,23 @@ public class WidgetAvailabilityChecker {
         return new WidgetAvailabilityResult(false, "DOWN", checkedAt, latencyMs, details);
     }
 
+    private WidgetAvailabilityResult disabled(Instant checkedAt, EffectiveConfig cfg) {
+        String checkedAtIso = checkedAt == null
+                ? DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+                : DateTimeFormatter.ISO_INSTANT.format(checkedAt);
+        return new WidgetAvailabilityResult(
+                true,
+                "DISABLED",
+                checkedAtIso,
+                0L,
+                "Widget healthcheck service is disabled by configuration" + sourceSuffix(cfg));
+    }
+
     static final class EffectiveConfig {
 
         String source;
+        boolean enabled;
+        int checkIntervalSeconds;
         String url;
         String method;
         int timeoutMs;
@@ -748,6 +1128,19 @@ public class WidgetAvailabilityChecker {
         String requestCookie;
         String apiKeyHeaderName;
         String apiKeyValue;
+    }
+
+    static final class CachedHealthResult {
+
+        final String configFingerprint;
+        final Instant checkedAt;
+        final WidgetAvailabilityResult result;
+
+        CachedHealthResult(String configFingerprint, Instant checkedAt, WidgetAvailabilityResult result) {
+            this.configFingerprint = configFingerprint;
+            this.checkedAt = checkedAt;
+            this.result = result;
+        }
     }
 
     static final class SseValidationResult {

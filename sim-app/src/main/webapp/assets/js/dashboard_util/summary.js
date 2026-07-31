@@ -2,6 +2,116 @@
     'use strict';
 
     const core = window.DashboardCore;
+    const MANUAL_SUMMARY_RETRY_ENDPOINT = '/admin/widgets/summary/retry';
+    const DEFAULT_NO_SUMMARY_MESSAGE = 'No summary has been produced yet. It will appear after the next summary run.';
+    let manualSummaryRetryInFlight = false;
+
+    const fmtTs = (value, fallback = '—') => {
+        if (core && typeof core.formatHumanReadableTimestamp === 'function') {
+            return core.formatHumanReadableTimestamp(value, fallback);
+        }
+        if (!value) {
+            return fallback;
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return String(value);
+        }
+        const formatted = date.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+        return formatted.endsWith('.') ? formatted : `${formatted}.`;
+    };
+
+    function isAdminUser() {
+        const topBar = document.querySelector('.top-bar');
+        const role = topBar?.dataset?.role || '';
+        return String(role).toUpperCase() === 'ADMIN';
+    }
+
+    function setManualSummaryRetryStatus(message) {
+        const statusEl = document.getElementById('manualSummaryRetryStatus');
+        if (!statusEl) {
+            return;
+        }
+        statusEl.textContent = message || '';
+    }
+
+    function setManualSummaryRetryVisibility(show, inProgress) {
+        const buttonEl = document.getElementById('manualSummaryRetryBtn');
+        if (!buttonEl) {
+            return;
+        }
+
+        if (!isAdminUser() || !show) {
+            buttonEl.style.display = 'none';
+            if (!manualSummaryRetryInFlight) {
+                setManualSummaryRetryStatus('');
+            }
+            return;
+        }
+
+        buttonEl.style.display = '';
+        buttonEl.disabled = manualSummaryRetryInFlight || !!inProgress;
+    }
+
+    function wireManualSummaryRetryButton(contextPath) {
+        const buttonEl = document.getElementById('manualSummaryRetryBtn');
+        if (!buttonEl || buttonEl.dataset.wired === '1') {
+            return;
+        }
+
+        buttonEl.dataset.wired = '1';
+        buttonEl.addEventListener('click', async () => {
+            if (manualSummaryRetryInFlight) {
+                return;
+            }
+
+            manualSummaryRetryInFlight = true;
+            buttonEl.disabled = true;
+            setManualSummaryRetryStatus('Generating summary now...');
+
+            try {
+                const response = await fetch(`${contextPath}${MANUAL_SUMMARY_RETRY_ENDPOINT}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' }
+                });
+
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch {
+                    payload = null;
+                }
+
+                if (response.ok && payload?.status === 'ok') {
+                    setManualSummaryRetryStatus(payload?.message || 'Manual summary generation succeeded.');
+                    await loadDailySummary(contextPath);
+                    return;
+                }
+
+                const errorMessage = payload?.message || `Manual summary generation failed (HTTP ${response.status}).`;
+                setManualSummaryRetryStatus(errorMessage);
+                setManualSummaryRetryVisibility(true, false);
+            } catch (error) {
+                console.warn('Manual summary generation failed:', error);
+                setManualSummaryRetryStatus('Manual summary generation request failed.');
+                setManualSummaryRetryVisibility(true, false);
+            } finally {
+                manualSummaryRetryInFlight = false;
+                const shouldEnable = document.getElementById('manualSummaryRetryBtn')?.style.display !== 'none';
+                if (buttonEl) {
+                    buttonEl.disabled = !shouldEnable;
+                }
+            }
+        });
+    }
 
     function ensureSummaryProgressUi() {
         const bodyEl = document.getElementById('dailySummaryBody');
@@ -79,9 +189,9 @@
         const status = meta?.statusText || 'idle';
         const progress = Number.isFinite(Number(meta?.progressPct)) ? Number(meta.progressPct) : 0;
         const entryCount = Number.isFinite(Number(summary?.entryCount)) ? Number(summary.entryCount) : 0;
-        const generatedAt = meta?.generatedAt || '—';
-        const startedAt = meta?.startedAt || '—';
-        const updatedAt = meta?.updatedAt || '—';
+        const generatedAt = fmtTs(meta?.generatedAt, '—');
+        const startedAt = fmtTs(meta?.startedAt, '—');
+        const updatedAt = fmtTs(meta?.updatedAt, '—');
         const message = meta?.message || '';
 
         return [
@@ -163,6 +273,62 @@
         });
     }
 
+    function setSummaryDisabledView(disabled) {
+        const actionsEl = document.getElementById('dailySummaryActions');
+        const metaEl = document.getElementById('dailySummaryMeta');
+        const progressWrapEl = document.getElementById('dailySummaryProgressWrap');
+        const bodyEl = document.getElementById('dailySummaryBody');
+
+        if (actionsEl) {
+            actionsEl.style.display = disabled ? 'none' : '';
+        }
+        if (metaEl) {
+            metaEl.style.display = disabled ? 'none' : '';
+        }
+        if (progressWrapEl) {
+            progressWrapEl.style.display = disabled ? 'none' : '';
+        }
+        if (bodyEl) {
+            bodyEl.style.display = disabled ? 'none' : '';
+            if (disabled) {
+                bodyEl.innerHTML = '';
+            }
+        }
+    }
+
+    async function renderSummaryAutoStatus(contextPath) {
+        const statusEl = document.getElementById('dailySummaryAutoStatus');
+        if (!statusEl) {
+            return false;
+        }
+
+        statusEl.style.display = 'none';
+        statusEl.textContent = '';
+
+        try {
+            const resp = await fetch(`${contextPath}/admin/widgets/sync/timer`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' }
+            });
+            if (!resp.ok) {
+                return false;
+            }
+
+            const data = await resp.json();
+            const disabled = !!(data && data.status === 'ok' && data.summaryAutoEnabled === false);
+            if (!disabled) {
+                return false;
+            }
+
+            statusEl.textContent = 'Automatic summary is currently disabled in Admin settings.';
+            statusEl.style.display = '';
+            return true;
+        } catch {
+            // Non-fatal: dashboard summary should still render even if status probe is unavailable.
+            return false;
+        }
+    }
+
     async function loadDailySummary(contextPath) {
         const bodyEl = document.getElementById('dailySummaryBody');
         const metaEl = document.getElementById('dailySummaryMeta');
@@ -171,7 +337,14 @@
             return;
         }
 
+        wireManualSummaryRetryButton(contextPath);
         ensureSummaryProgressUi();
+        const summaryDisabled = await renderSummaryAutoStatus(contextPath);
+        setSummaryDisabledView(summaryDisabled);
+        if (summaryDisabled) {
+            return;
+        }
+
         bodyEl.innerHTML = '<p style="margin:0;">Loading latest summary…</p>';
         if (metaEl) {
             metaEl.textContent = 'Loading latest daily analysis…';
@@ -196,6 +369,7 @@
                     if (metaEl) {
                         metaEl.textContent = `Status: ${resp.status}`;
                     }
+                    setManualSummaryRetryVisibility(false, false);
                     setSummaryProgress(0, 'error');
                     hideSummaryProgressIfDone(false);
                     return;
@@ -208,17 +382,19 @@
                 if (metaEl) {
                     metaEl.textContent = 'Request failed.';
                 }
+                setManualSummaryRetryVisibility(false, false);
                 setSummaryProgress(0, 'request failed');
                 hideSummaryProgressIfDone(false);
                 return;
             }
 
             if (!data || data.status !== 'ok' || !data.summary) {
-                bodyEl.innerHTML = '<p style="margin:0;">Summary is not available yet.</p>';
+                bodyEl.innerHTML = `<p style="margin:0;">${DEFAULT_NO_SUMMARY_MESSAGE}</p>`;
                 if (metaEl) {
-                    metaEl.textContent = 'No summary returned.';
+                    metaEl.textContent = 'Awaiting first summary output.';
                 }
-                setSummaryProgress(0, 'not ready');
+                setManualSummaryRetryVisibility(false, false);
+                setSummaryProgress(0, 'not produced yet');
                 hideSummaryProgressIfDone(false);
                 return;
             }
@@ -226,8 +402,14 @@
             const s = data.summary || {};
             const m = data.meta || {};
             const inProgress = !!m.inProgress;
+            const isError = String(m.statusText || '').toLowerCase() === 'error';
             const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
             const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
+
+            setManualSummaryRetryVisibility(isError && !inProgress, inProgress);
+            if (isError && m.message) {
+                setManualSummaryRetryStatus(String(m.message));
+            }
 
             setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
 
@@ -255,10 +437,10 @@
             }
 
             const entryCount = Number.isFinite(Number(s.entryCount)) ? Number(s.entryCount) : 0;
-            const generatedAt = m.generatedAt ? String(m.generatedAt) : '';
+            const generatedAt = fmtTs(m.generatedAt, '—');
             const slot = Number.isFinite(Number(m.slot)) ? Number(m.slot) : 0;
             if (metaEl) {
-                metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt || '—'}${inProgress ? ' • updating…' : ''}`;
+                metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt}${inProgress ? ' • updating…' : ''}`;
             }
 
             hideSummaryProgressIfDone(inProgress);
