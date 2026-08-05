@@ -41,6 +41,8 @@ import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -159,7 +161,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -1120,16 +1122,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private String readRequestBody(HttpServletRequest req) throws IOException {
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             throw new IOException("Invalid JSON request payload.");
         }
         try (var reader = req.getReader()) {
@@ -1164,10 +1158,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        normalized = normalized.replace("\u0000", "")
-                .replace("\r", "")
-                .replace("\n", "\n")
-                .trim();
+        normalized = ServletRequestParamUtil.normalizeBodyText(normalized, 0, false);
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
             return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
         }
@@ -1192,30 +1183,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         return true;
     }
 
     private void respondWithError(HttpServletResponse resp, int status, String message) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(message) + "\"}");
-    }
-
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", " ");
+        ServletJsonResponseUtil.writeError(resp, status, message);
     }
 
     private String trimTo(String value, int maxChars) {

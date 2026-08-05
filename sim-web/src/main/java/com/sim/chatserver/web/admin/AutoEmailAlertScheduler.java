@@ -20,7 +20,9 @@ import com.sim.chatserver.widget.WidgetStore;
 
 import javax.sql.DataSource;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -45,6 +47,9 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.regex.Pattern;
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
 
 /**
  * Background scheduler that evaluates configured alert conditions and sends email notifications.
@@ -107,7 +112,7 @@ public class AutoEmailAlertScheduler {
         log.info("Automatic email alert scheduler stopped.");
     }
 
-    TestEmailResult sendHealthTestEmail(AutoEmailAlertConfig cfg) {
+    final TestEmailResult sendHealthTestEmail(AutoEmailAlertConfig cfg) {
         if (cfg == null) {
             return new TestEmailResult(false, "Health test email was not sent: no configuration provided.");
         }
@@ -128,8 +133,13 @@ public class AutoEmailAlertScheduler {
         String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Test Alert: Widget Healthcheck Offline");
         String textBody = buildHealthBody(cfg, result, now, now)
                 + "\n\n[TEST EMAIL] This is a manual healthcheck alert preview.";
-        String htmlBody = buildHealthHtmlBody(cfg, result, now, now)
-                .replace("</body></html>", "<p><em>[TEST EMAIL] This is a manual healthcheck alert preview.</em></p></body></html>");
+        String htmlBody = buildHealthHtmlBody(
+            cfg,
+            result,
+            now,
+            now,
+            "[TEST EMAIL] This is a manual healthcheck alert preview."
+        );
         List<EmailAttachment> attachments = resolveHealthAttachments(cfg);
 
         boolean sent = sendEmail(recipients, subject, textBody, htmlBody, attachments);
@@ -147,7 +157,7 @@ public class AutoEmailAlertScheduler {
 
         try {
             runTick();
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Automatic email alert tick failed.", e);
         } finally {
             tickRunning.set(false);
@@ -410,85 +420,81 @@ public class AutoEmailAlertScheduler {
     }
 
     private String buildHealthHtmlBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<html><body>");
-        sb.append("<h2>SIM healthcheck alert</h2>");
-        sb.append("<p><strong>Status:</strong> OFFLINE</p>");
-        sb.append("<p><strong>Detected at:</strong> ").append(escapeHtml(formatInstant(now))).append("</p>");
+        return buildHealthHtmlBody(cfg, result, now, offlineSince, null);
+    }
+
+    private String buildHealthHtmlBody(
+            AutoEmailAlertConfig cfg,
+            WidgetAvailabilityResult result,
+            Instant now,
+            Instant offlineSince,
+            String testNotice
+    ) {
+        HtmlEmailBuilder builder = HtmlEmailBuilder.create("SIM healthcheck alert");
+        builder.addLabeledValue("Status", "OFFLINE");
+        builder.addLabeledValue("Detected at", formatInstant(now));
+
         if (offlineSince != null) {
-            sb.append("<p><strong>Offline since:</strong> ").append(escapeHtml(formatInstant(offlineSince))).append("</p>");
+            builder.addLabeledValue("Offline since", formatInstant(offlineSince));
         }
         if (result != null) {
-            sb.append("<p><strong>Checker status:</strong> ").append(escapeHtml(defaultIfBlank(result.status(), "DOWN"))).append("</p>");
-            sb.append("<p><strong>Checker timestamp:</strong> ")
-                    .append(escapeHtml(defaultIfBlank(result.checkedAtIso(), formatInstant(now))))
-                    .append("</p>");
-            sb.append("<p><strong>Latency ms:</strong> ").append(Math.max(0L, result.latencyMs())).append("</p>");
+            builder.addLabeledValue("Checker status", defaultIfBlank(result.status(), "DOWN"));
+            builder.addLabeledValue("Checker timestamp", defaultIfBlank(result.checkedAtIso(), formatInstant(now)));
+            builder.addLabeledValue("Latency ms", String.valueOf(Math.max(0L, result.latencyMs())));
             if (hasText(result.details())) {
-                sb.append("<p><strong>Details:</strong> ").append(escapeHtml(result.details())).append("</p>");
+                builder.addLabeledValue("Details", result.details());
             }
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append("<p>").append(escapeHtml(cfg.getHealthMessage())).append("</p>");
+            builder.addParagraph(cfg.getHealthMessage());
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("<p><strong>Runbook:</strong> ")
-                    .append("<a href=\"").append(escapeHtml(runbookUrl)).append("\">")
-                    .append(escapeHtml(runbookUrl))
-                    .append("</a></p>");
+            builder.addLabeledLink("Runbook", runbookUrl);
         }
 
         if (hasText(cfg.getHealthRunbookAttachmentPath())) {
-            sb.append("<p><strong>Runbook attachment path:</strong> ")
-                    .append(escapeHtml(cfg.getHealthRunbookAttachmentPath()))
-                    .append("</p>");
+            builder.addLabeledValue("Runbook attachment path", cfg.getHealthRunbookAttachmentPath());
         }
 
-        sb.append("<p>This alert will resend based on the configured resend timer until healthcheck succeeds.</p>");
-        sb.append("</body></html>");
-        return sb.toString();
+        if (hasText(testNotice)) {
+            builder.addEmphasizedParagraph(testNotice);
+        }
+
+        builder.addParagraph("This alert will resend based on the configured resend timer until healthcheck succeeds.");
+        return builder.build();
     }
 
     private String buildHealthRecoveryHtmlBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<html><body>");
-        sb.append("<h2>SIM healthcheck recovery notification</h2>");
-        sb.append("<p><strong>Status:</strong> ONLINE</p>");
-        sb.append("<p><strong>Recovered at:</strong> ").append(escapeHtml(formatInstant(now))).append("</p>");
+        HtmlEmailBuilder builder = HtmlEmailBuilder.create("SIM healthcheck recovery notification");
+        builder.addLabeledValue("Status", "ONLINE");
+        builder.addLabeledValue("Recovered at", formatInstant(now));
+
         if (offlineSince != null) {
-            sb.append("<p><strong>Offline since:</strong> ").append(escapeHtml(formatInstant(offlineSince))).append("</p>");
-            sb.append("<p><strong>Estimated outage duration:</strong> ")
-                    .append(escapeHtml(formatDuration(now, offlineSince)))
-                    .append("</p>");
+            builder.addLabeledValue("Offline since", formatInstant(offlineSince));
+            builder.addLabeledValue("Estimated outage duration", formatDuration(now, offlineSince));
         }
         if (result != null) {
-            sb.append("<p><strong>Checker status:</strong> ").append(escapeHtml(defaultIfBlank(result.status(), "UP"))).append("</p>");
-            sb.append("<p><strong>Checker timestamp:</strong> ")
-                    .append(escapeHtml(defaultIfBlank(result.checkedAtIso(), formatInstant(now))))
-                    .append("</p>");
-            sb.append("<p><strong>Latency ms:</strong> ").append(Math.max(0L, result.latencyMs())).append("</p>");
+            builder.addLabeledValue("Checker status", defaultIfBlank(result.status(), "UP"));
+            builder.addLabeledValue("Checker timestamp", defaultIfBlank(result.checkedAtIso(), formatInstant(now)));
+            builder.addLabeledValue("Latency ms", String.valueOf(Math.max(0L, result.latencyMs())));
             if (hasText(result.details())) {
-                sb.append("<p><strong>Details:</strong> ").append(escapeHtml(result.details())).append("</p>");
+                builder.addLabeledValue("Details", result.details());
             }
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append("<p>").append(escapeHtml(cfg.getHealthMessage())).append("</p>");
+            builder.addParagraph(cfg.getHealthMessage());
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("<p><strong>Runbook:</strong> ")
-                    .append("<a href=\"").append(escapeHtml(runbookUrl)).append("\">")
-                    .append(escapeHtml(runbookUrl))
-                    .append("</a></p>");
+            builder.addLabeledLink("Runbook", runbookUrl);
         }
 
-        sb.append("</body></html>");
-        return sb.toString();
+        return builder.build();
     }
 
     private List<EmailAttachment> resolveHealthAttachments(AutoEmailAlertConfig cfg) {
@@ -542,18 +548,6 @@ public class AutoEmailAlertScheduler {
             log.log(Level.FINE, "Ignoring invalid runbook URL.", e);
             return null;
         }
-    }
-
-    private String escapeHtml(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
     }
 
     private String buildTermBody(AutoEmailAlertConfig cfg, Instant now, long previousCount, long currentCount, long delta) {
@@ -649,5 +643,95 @@ public class AutoEmailAlertScheduler {
     }
 
     public record TestEmailResult(boolean sent, String message) {
+    }
+
+    private static final class HtmlEmailBuilder {
+
+        private final StringWriter out;
+        private final XMLStreamWriter writer;
+
+        private HtmlEmailBuilder(String title) throws XMLStreamException {
+            this.out = new StringWriter();
+            this.writer = XMLOutputFactory.newFactory().createXMLStreamWriter(out);
+            writer.writeStartDocument(StandardCharsets.UTF_8.name(), "1.0");
+            writer.writeStartElement("html");
+            writer.writeStartElement("body");
+            writer.writeStartElement("h2");
+            writer.writeCharacters(title == null ? "" : title);
+            writer.writeEndElement();
+        }
+
+        private static HtmlEmailBuilder create(String title) {
+            try {
+                return new HtmlEmailBuilder(title);
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to initialize HTML email builder", e);
+            }
+        }
+
+        private void addParagraph(String text) {
+            try {
+                writer.writeStartElement("p");
+                writer.writeCharacters(text == null ? "" : text);
+                writer.writeEndElement();
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to append paragraph", e);
+            }
+        }
+
+        private void addEmphasizedParagraph(String text) {
+            try {
+                writer.writeStartElement("p");
+                writer.writeStartElement("em");
+                writer.writeCharacters(text == null ? "" : text);
+                writer.writeEndElement();
+                writer.writeEndElement();
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to append emphasized paragraph", e);
+            }
+        }
+
+        private void addLabeledValue(String label, String value) {
+            try {
+                writer.writeStartElement("p");
+                writer.writeStartElement("strong");
+                writer.writeCharacters((label == null ? "" : label) + ":");
+                writer.writeEndElement();
+                writer.writeCharacters(" " + (value == null ? "" : value));
+                writer.writeEndElement();
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to append labeled value", e);
+            }
+        }
+
+        private void addLabeledLink(String label, String url) {
+            try {
+                writer.writeStartElement("p");
+                writer.writeStartElement("strong");
+                writer.writeCharacters((label == null ? "" : label) + ":");
+                writer.writeEndElement();
+                writer.writeCharacters(" ");
+                writer.writeStartElement("a");
+                writer.writeAttribute("href", url == null ? "" : url);
+                writer.writeCharacters(url == null ? "" : url);
+                writer.writeEndElement();
+                writer.writeEndElement();
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to append labeled link", e);
+            }
+        }
+
+        private String build() {
+            try {
+                writer.writeEndElement();
+                writer.writeEndElement();
+                writer.writeEndDocument();
+                writer.flush();
+                writer.close();
+                return out.toString();
+            } catch (XMLStreamException e) {
+                throw new IllegalStateException("Unable to finalize HTML email body", e);
+            }
+        }
     }
 }

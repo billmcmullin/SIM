@@ -9,6 +9,7 @@ import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
 import com.sim.chatserver.salesforce.SalesforceClient;
 import com.sim.chatserver.salesforce.SalesforceCustomerMatch;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -35,9 +36,8 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
             return;
         }
 
-        RequestContext context = RequestContext.from(req);
-        String sessionId = trimToNull(context.first("sessionId"));
-        String friendlyName = trimToNull(context.first("friendlyName"));
+        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, "sessionId", 128, true, true));
+        String friendlyName = trimToNull(ServletRequestParamUtil.firstParam(req, "friendlyName", 128, true, true));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorPayload("Invalid sessionId format."));
@@ -170,32 +170,4 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private static final class RequestContext {
-        private static final int MAX_PARAM_LEN = 128;
-
-        private final HttpServletRequest request;
-
-        private RequestContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank() || request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
-        }
-    }
 }

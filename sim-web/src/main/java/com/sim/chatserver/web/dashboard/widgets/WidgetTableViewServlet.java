@@ -15,6 +15,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -41,8 +43,7 @@ public class WidgetTableViewServlet extends HttpServlet {
             return;
         }
 
-        RequestContext context = RequestContext.from(req);
-        String widgetId = context.first("widgetId");
+        String widgetId = ServletRequestParamUtil.firstParam(req, "widgetId", 128, true, true);
         if (widgetId == null || widgetId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
@@ -53,7 +54,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         }
 
         // Optional date filter from dashboard links
-        String dateRaw = context.first("date");
+        String dateRaw = ServletRequestParamUtil.firstParam(req, "date", 128, true, true);
         LocalDate selectedDate = null;
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
@@ -109,7 +110,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         String rendered = template
                 .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role))
-                .replace("${contextPath}", escapeHtml(safeContextPath(req.getContextPath())))
+                .replace("${contextPath}", escapeHtml(ServletPathUtil.safeContextPathStrict(req.getContextPath())))
                 .replace("${widgetId}", escapeHtml(widgetId))
                 .replace("${widgetName}", escapeHtml(widgetName))
                 .replace("${selectedDate}", escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
@@ -163,43 +164,4 @@ public class WidgetTableViewServlet extends HttpServlet {
         return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
-    private static final class RequestContext {
-        private static final int MAX_PARAM_LEN = 128;
-
-        private final HttpServletRequest request;
-
-        private RequestContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank() || request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
-        }
-    }
 }

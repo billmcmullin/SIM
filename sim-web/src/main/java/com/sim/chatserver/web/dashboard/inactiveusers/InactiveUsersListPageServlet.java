@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -102,27 +103,27 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             return;
         }
 
-        String scope = nvl(firstParam(req, "scope")).trim();
+        String scope = nvl(ServletRequestParamUtil.firstParam(req, "scope", 256, false, false)).trim();
         if (!"widget".equalsIgnoreCase(scope)) {
             scope = "all";
         }
 
-        String widgetIdFilter = sanitizeWidgetId(firstParam(req, "widgetId"));
-        String search = sanitizeSearch(firstParam(req, "search"));
+        String widgetIdFilter = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, false, false));
+        String search = sanitizeSearch(ServletRequestParamUtil.firstParam(req, "search", 256, false, false));
         String searchLower = search.toLowerCase();
         boolean hasSearch = !searchLower.isBlank();
 
-        int days = parseInt(firstParam(req, "days"), DEFAULT_DAYS);
+        int days = parseInt(ServletRequestParamUtil.firstParam(req, "days", 256, false, false), DEFAULT_DAYS);
         if (days < 1) {
             days = DEFAULT_DAYS;
         }
 
-        int page = parseInt(firstParam(req, "page"), 1);
+        int page = parseInt(ServletRequestParamUtil.firstParam(req, "page", 256, false, false), 1);
         if (page < 1) {
             page = 1;
         }
 
-        int limit = parseInt(firstParam(req, "limit"), DEFAULT_LIMIT);
+        int limit = parseInt(ServletRequestParamUtil.firstParam(req, "limit", 256, false, false), DEFAULT_LIMIT);
         if (limit < 1) {
             limit = DEFAULT_LIMIT;
         }
@@ -642,37 +643,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\r", "").replace("\n", "").trim();
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
     }
 
     private String safeSessionUser(HttpSession session) {

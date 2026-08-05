@@ -15,12 +15,13 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -39,7 +40,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         if (!isLoggedIn(req, resp)) {
             return;
         }
-        String widgetId = sanitizeWidgetId(firstParam(req, "widgetId"));
+        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, true, true));
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required.");
             return;
@@ -59,9 +60,9 @@ public class WidgetTableSelectionServlet extends HttpServlet {
             }
 
             FilterState filters = new FilterState(
-                    firstParam(req, "filterPrompt"),
-                    firstParam(req, "filterResponse"),
-                    firstParam(req, "search")
+            ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
+            ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),
+            ServletRequestParamUtil.firstParam(req, "search", 256, true, true)
             );
 
             String sql = "SELECT widget_chat_id FROM " + quoteIdentifier(tableName) + filters.buildWhereClause()
@@ -158,10 +159,6 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
@@ -183,28 +180,15 @@ public class WidgetTableSelectionServlet extends HttpServlet {
     private void jsonError(HttpServletResponse resp, int status, String message) {
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "error")
-                .add("message", escapeJson(message))
+                .add("message", message == null ? "" : message)
                 .build();
         writeJson(resp, status, payload);
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", " ");
-    }
-
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
         JsonObject safePayload = payload == null ? Json.createObjectBuilder().build() : payload;
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(safePayload);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, safePayload);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to write widget table selection response", e);
             try {
@@ -269,34 +253,6 @@ public class WidgetTableSelectionServlet extends HttpServlet {
 
         private String pattern(String input) {
             return '%' + input.trim() + '%';
-        }
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest req) {
-            return new RequestParamContext(req);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 }

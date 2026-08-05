@@ -25,11 +25,12 @@ import com.sim.chatserver.service.ApiAuthResolver;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -93,10 +94,10 @@ public class TestConnectionServlet extends HttpServlet {
             return;
         }
 
-        String host = firstParam(req, "serverHost");
-        String port = firstParam(req, "serverPort");
-        String apiKey = firstParam(req, "apiKey");
-        String workspaceName = firstParam(req, "workspaceName");
+        String host = ServletRequestParamUtil.firstParam(req, "serverHost", 512, true, true);
+        String port = ServletRequestParamUtil.firstParam(req, "serverPort", 512, true, true);
+        String apiKey = ServletRequestParamUtil.firstParam(req, "apiKey", 512, true, true);
+        String workspaceName = ServletRequestParamUtil.firstParam(req, "workspaceName", 512, true, true);
         ServerConfig storedConfig = null;
 
         if (host == null || host.isBlank() || port == null || port.isBlank()) {
@@ -607,29 +608,7 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
-        }
-    }
-
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isBlank()) {
-            return null;
-        }
-        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 
     private String truncate(String value) {

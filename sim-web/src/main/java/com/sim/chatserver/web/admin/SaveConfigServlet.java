@@ -7,10 +7,11 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -24,26 +25,26 @@ public class SaveConfigServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String serverHostParam = firstParam(req, "serverHost");
-        String serverPortValue = firstParam(req, "serverPort");
-        String connectionInfoParam = firstParam(req, "connectionInfo");
-        String apiKeyParam = firstParam(req, "apiKey");
-        String workspaceNameParam = firstParam(req, "workspaceName");
+        String serverHostParam = ServletRequestParamUtil.firstParam(req, "serverHost", 1024, true, true);
+        String serverPortValue = ServletRequestParamUtil.firstParam(req, "serverPort", 1024, true, true);
+        String connectionInfoParam = ServletRequestParamUtil.firstParam(req, "connectionInfo", 1024, true, true);
+        String apiKeyParam = ServletRequestParamUtil.firstParam(req, "apiKey", 1024, true, true);
+        String workspaceNameParam = ServletRequestParamUtil.firstParam(req, "workspaceName", 1024, true, true);
 
         // Salesforce params
-        String salesforceInstanceUrlParam = firstParam(req, "salesforceInstanceUrl");
-        String salesforceApiKeyParam = firstParam(req, "salesforceApiKey");
+        String salesforceInstanceUrlParam = ServletRequestParamUtil.firstParam(req, "salesforceInstanceUrl", 1024, true, true);
+        String salesforceApiKeyParam = ServletRequestParamUtil.firstParam(req, "salesforceApiKey", 1024, true, true);
 
         // Salesforce OAuth refresh params
-        String salesforceLoginUrlParam = firstParam(req, "salesforceLoginUrl");
-        String salesforceClientIdParam = firstParam(req, "salesforceClientId");
-        String salesforceClientSecretParam = firstParam(req, "salesforceClientSecret");
-        String salesforceRefreshTokenParam = firstParam(req, "salesforceRefreshToken");
+        String salesforceLoginUrlParam = ServletRequestParamUtil.firstParam(req, "salesforceLoginUrl", 1024, true, true);
+        String salesforceClientIdParam = ServletRequestParamUtil.firstParam(req, "salesforceClientId", 1024, true, true);
+        String salesforceClientSecretParam = ServletRequestParamUtil.firstParam(req, "salesforceClientSecret", 1024, true, true);
+        String salesforceRefreshTokenParam = ServletRequestParamUtil.firstParam(req, "salesforceRefreshToken", 1024, true, true);
 
         // Salesforce username + password + API token params
-        String salesforceUsernameParam = firstParam(req, "salesforceUsername");
-        String salesforcePasswordParam = firstParam(req, "salesforcePassword");
-        String salesforceApiTokenParam = firstParam(req, "salesforceApiToken");
+        String salesforceUsernameParam = ServletRequestParamUtil.firstParam(req, "salesforceUsername", 1024, true, true);
+        String salesforcePasswordParam = ServletRequestParamUtil.firstParam(req, "salesforcePassword", 1024, true, true);
+        String salesforceApiTokenParam = ServletRequestParamUtil.firstParam(req, "salesforceApiToken", 1024, true, true);
 
         try {
             ServerConfig existingConfig = EncryptedDbConfigStore.load();
@@ -168,27 +169,7 @@ public class SaveConfigServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
-    }
-
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 }

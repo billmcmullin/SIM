@@ -49,6 +49,8 @@ import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -109,19 +111,19 @@ public class DashboardServlet extends HttpServlet {
             return;
         }
 
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
         String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
         boolean isAdmin = "ADMIN".equalsIgnoreCase(role);
         String adminButtonStyle = isAdmin ? "" : "display:none;";
         String adminHref = contextPath + "/admin";
 
-        String infoMessageHtml = buildInfoMessageHtml(firstParam(req, "msg"));
+        String infoMessageHtml = buildInfoMessageHtml(ServletRequestParamUtil.firstParam(req, "msg", 256, true, true));
 
         List<WidgetEntry> widgets = loadWidgets();
 
-        LocalDate rangeEnd = parseLocalDate(firstParam(req, "rangeEnd"))
+        LocalDate rangeEnd = parseLocalDate(ServletRequestParamUtil.firstParam(req, "rangeEnd", 256, true, true))
                 .orElse(LocalDate.now(ZoneId.systemDefault()));
-        LocalDate rangeStart = parseLocalDate(firstParam(req, "rangeStart"))
+        LocalDate rangeStart = parseLocalDate(ServletRequestParamUtil.firstParam(req, "rangeStart", 256, true, true))
                 .orElse(rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1));
         if (rangeStart.isAfter(rangeEnd)) {
             rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
@@ -516,10 +518,6 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
@@ -528,51 +526,12 @@ public class DashboardServlet extends HttpServlet {
         return CDI.current().select(TermsStore.class).get();
     }
 
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-        }
-    }
-
     private String sanitizeForLog(String value) {
         if (value == null) {
             return "";
         }
         String normalized = value.replace('\r', '_').replace('\n', '_');
         return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
     }
 
     private Map<String, SessionLabelStore.SessionLabel> loadSessionLabels(List<SessionStat> stats) {

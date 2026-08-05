@@ -49,12 +49,13 @@ import org.apache.commons.csv.CSVRecord;
 
 import com.sim.chatserver.config.Database;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
@@ -110,7 +111,7 @@ public class DatabaseImportServlet extends HttpServlet {
             return;
         }
 
-        String action = Optional.ofNullable(firstParam(req, "action")).orElse("").trim();
+        String action = Optional.ofNullable(ServletRequestParamUtil.firstParam(req, "action", 128, true, false)).orElse("").trim();
         if ("precheck".equalsIgnoreCase(action)) {
             handlePrecheck(req, resp);
         } else if ("run".equalsIgnoreCase(action)) {
@@ -854,37 +855,6 @@ public class DatabaseImportServlet extends HttpServlet {
         return '"' + ident + '"';
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
-    static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank()) {
-                return null;
-            }
-            if (request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            return sanitizeRequestValue(value);
-        }
-    }
-
     static String sanitizeRequestValue(String value) {
         if (value == null) {
             return null;
@@ -1032,12 +1002,7 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private void json(HttpServletResponse resp, int status, JsonObject obj) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(obj);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, obj);
     }
 
     private String safe(String s) {

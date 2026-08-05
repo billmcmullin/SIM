@@ -5,6 +5,8 @@ import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConfig;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -12,7 +14,6 @@ import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +22,6 @@ import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Locale;
@@ -270,22 +270,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             throw new IOException("Invalid JSON payload.");
         }
         try (var reader = req.getReader()) {
-            char[] buffer = new char[4096];
-            StringBuilder builder = new StringBuilder();
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload too large.");
-                }
-                builder.append(buffer, 0, read);
-            }
-            String normalized = builder.toString().replace("\u0000", "").replace("\r", "").trim();
-            if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-                throw new IOException("Payload too large.");
-            }
-            return normalized;
+            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
         }
     }
 
@@ -387,19 +372,10 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
-        JsonObject body = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", safe(message))
-                .build();
-        writeJson(resp, status, body);
+        ServletJsonResponseUtil.writeError(resp, status, safe(message));
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body == null ? Json.createObjectBuilder().build() : body);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 }

@@ -25,6 +25,7 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -66,9 +67,9 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return; // error already sent
         }
 
-        String rawTerm = firstParam(req, "term");
+        String rawTerm = ServletRequestParamUtil.firstParam(req, "term", 256, true, true);
         String requestedTerm = (rawTerm == null) ? "" : rawTerm.trim();
-        String scope = firstParam(req, "scope");
+        String scope = ServletRequestParamUtil.firstParam(req, "scope", 256, true, true);
         boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
 
         List<TermChatSnapshot> snapshots;
@@ -122,7 +123,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     }
 
     private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String dateParam = firstParam(req, "date");
+        String dateParam = ServletRequestParamUtil.firstParam(req, "date", 256, true, true);
         if (dateParam != null && !dateParam.isBlank()) {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
@@ -133,7 +134,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             }
         }
 
-        String day = firstParam(req, "day");
+        String day = ServletRequestParamUtil.firstParam(req, "day", 256, true, true);
         if (day == null || day.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
             return null;
@@ -348,10 +349,6 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         if (dsHolder != null) {
             return dsHolder;
@@ -364,34 +361,6 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return termsStore;
         }
         return CDI.current().select(TermsStore.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {

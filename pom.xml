@@ -16,6 +16,7 @@
         <module>sim-web</module>
         <module>sim-app</module>
         <module>sim-email</module>
+        <module>sim-testng-tests</module>
         <module>sim-playwright</module>
     </modules>
 

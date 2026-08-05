@@ -15,10 +15,11 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.security.SalesforceAuthClient;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -45,14 +46,12 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-
-        String instanceUrl = requestContext.first("salesforceInstanceUrl", 512);
-        String apiKey = requestContext.first("salesforceApiKey", 4096);
-        String loginUrl = requestContext.first("salesforceLoginUrl", 512);
-        String username = requestContext.first("salesforceUsername", 256);
-        String password = requestContext.first("salesforcePassword", 4096);
-        String apiToken = requestContext.first("salesforceApiToken", 4096);
+        String instanceUrl = ServletRequestParamUtil.firstParam(req, "salesforceInstanceUrl", 512, true, true);
+        String apiKey = ServletRequestParamUtil.firstParam(req, "salesforceApiKey", 4096, true, true);
+        String loginUrl = ServletRequestParamUtil.firstParam(req, "salesforceLoginUrl", 512, true, true);
+        String username = ServletRequestParamUtil.firstParam(req, "salesforceUsername", 256, true, true);
+        String password = ServletRequestParamUtil.firstParam(req, "salesforcePassword", 4096, true, true);
+        String apiToken = ServletRequestParamUtil.firstParam(req, "salesforceApiToken", 4096, true, true);
 
         // fallback to stored values
         if (isBlank(instanceUrl) || isBlank(apiKey) || isBlank(loginUrl)
@@ -205,12 +204,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 
     private boolean isBlank(String v) {
@@ -228,39 +222,4 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
-    }
 }

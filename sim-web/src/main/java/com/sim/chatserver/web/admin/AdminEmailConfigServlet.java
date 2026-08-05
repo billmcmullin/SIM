@@ -7,6 +7,8 @@ import com.sim.chatserver.email.EmailFactory;
 import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
 import com.sim.chatserver.email.ResolvedEmailConfig;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -14,7 +16,6 @@ import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -314,20 +315,9 @@ public class AdminEmailConfigServlet extends HttpServlet {
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {
-        StringBuilder body = new StringBuilder();
-        char[] buffer = new char[2048];
-        int total = 0;
-        int read;
         try (var reader = req.getReader()) {
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size");
-                }
-                body.append(buffer, 0, read);
-            }
+            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
         }
-        return body.toString().replace("\u0000", "").replace("\r", "").trim();
     }
 
     private DbEmailConfigProvider emailConfigProvider() {
@@ -343,12 +333,9 @@ public class AdminEmailConfigServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject obj) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
         JsonObject payload = obj == null ? Json.createObjectBuilder().build() : obj;
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(payload);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to write admin email config response", e);
             try {

@@ -10,12 +10,13 @@ import java.util.logging.Logger;
 import com.sim.chatserver.service.translation.DefaultTranslationService;
 import com.sim.chatserver.service.translation.TranslationService;
 import com.sim.chatserver.service.translation.TranslationService.TranslationResult;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -27,7 +28,6 @@ import jakarta.servlet.http.HttpSession;
 public class ReviewTranslateServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(ReviewTranslateServlet.class.getName());
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final int MAX_JSON_PAYLOAD_BYTES = 16 * 1024;
 
     private static final TranslationService TRANSLATION_SERVICE = new DefaultTranslationService();
@@ -35,8 +35,6 @@ public class ReviewTranslateServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
 
         if (!isLoggedIn(req)) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -100,8 +98,6 @@ public class ReviewTranslateServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
         resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
         writeJson(resp, Json.createObjectBuilder()
                 .add("status", "error")
@@ -115,9 +111,8 @@ public class ReviewTranslateServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject obj) throws IOException {
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(obj == null ? Json.createObjectBuilder().build() : obj);
-        }
+        int status = resp.getStatus() <= 0 ? HttpServletResponse.SC_OK : resp.getStatus();
+        ServletJsonResponseUtil.writeJson(resp, status, obj == null ? Json.createObjectBuilder().build() : obj);
     }
 
     private String readRequestBody(HttpServletRequest req) {
@@ -130,20 +125,9 @@ public class ReviewTranslateServlet extends HttpServlet {
         }
 
         try {
-            StringBuilder body = new StringBuilder();
-            char[] buffer = new char[2048];
-            int total = 0;
-            int read;
             try (BufferedReader reader = req.getReader()) {
-                while ((read = reader.read(buffer)) != -1) {
-                    total += read;
-                    if (total > MAX_JSON_PAYLOAD_BYTES) {
-                        throw new IllegalArgumentException("Payload exceeds allowed size");
-                    }
-                    body.append(buffer, 0, read);
-                }
+                return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
             }
-            return body.toString().replace("\u0000", "").replace("\r", "").trim();
         } catch (IOException ex) {
             throw new IllegalArgumentException("Invalid JSON payload", ex);
         }

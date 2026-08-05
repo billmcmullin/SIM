@@ -20,6 +20,8 @@ import com.sim.chatserver.model.CustomerIdentitySessionLink;
 import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
 import com.sim.chatserver.service.CustomerIdentityService;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
@@ -47,9 +49,8 @@ public class CustomerProfileServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String sessionId = trimToNull(requestContext.first("sessionId", 256));
-        String friendlyNameParam = trimToNull(requestContext.first("friendlyName", 256));
+        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, "sessionId", 256, true, true));
+        String friendlyNameParam = trimToNull(ServletRequestParamUtil.firstParam(req, "friendlyName", 256, true, true));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid sessionId format.");
@@ -96,7 +97,7 @@ public class CustomerProfileServlet extends HttpServlet {
                     friendlyNameParam
             );
 
-            String contextPath = safeContextPath(req.getContextPath());
+            String contextPath = ServletPathUtil.safeContextPathStrict(req.getContextPath());
             String linkedSessionsHtml = buildLinkedSessionsRows(linkedSessions, contextPath);
 
             String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
@@ -264,54 +265,7 @@ public class CustomerProfileServlet extends HttpServlet {
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
     private CustomerIdentityService identityService() {
         return new CustomerIdentityService();
-    }
-
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
     }
 }

@@ -11,6 +11,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -75,9 +76,8 @@ public class ProfileServlet extends HttpServlet {
             return;
         }
 
-        RequestContext context = RequestContext.from(req);
-        String newUsername = sanitizeInput(context.first("username"));
-        String newPassword = sanitizeInput(context.first("password"));
+        String newUsername = sanitizeInput(ServletRequestParamUtil.firstParam(req, "username", 128, true, true));
+        String newPassword = sanitizeInput(ServletRequestParamUtil.firstParam(req, "password", 128, true, true));
 
         if (newUsername == null || newUsername.isBlank()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Username cannot be empty.");
@@ -192,33 +192,4 @@ public class ProfileServlet extends HttpServlet {
         }
     }
 
-    private static final class RequestContext {
-
-        private static final int MAX_PARAM_LEN = 128;
-
-        private final HttpServletRequest req;
-
-        private RequestContext(HttpServletRequest req) {
-            this.req = req;
-        }
-
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank() || req == null) {
-                return null;
-            }
-            String value = req.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > MAX_PARAM_LEN ? trimmed.substring(0, MAX_PARAM_LEN) : trimmed;
-        }
-    }
 }

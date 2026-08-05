@@ -13,11 +13,13 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -39,14 +41,12 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String REVIEW_FORWARD_PATH = "/dashboard/widgets/drilldown/review";
 
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login", REVIEW_FORWARD_PATH);
     private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
-        RequestParamContext requestContext = RequestParamContext.from(req);
+        String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             if (wantsJson(req)) {
@@ -57,7 +57,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
 
-        String rawTerm = requestContext.first("term", 256);
+        String rawTerm = ServletRequestParamUtil.firstParam(req, "term", 256, true, true);
         if (rawTerm == null || rawTerm.isBlank()) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
@@ -68,7 +68,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         String normalizedTerm = normalize(rawTerm);
-        String mode = normalize(requestContext.first("mode", 64));
+        String mode = normalize(ServletRequestParamUtil.firstParam(req, "mode", 64, true, true));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
         boolean yesterdayOnly = MODE_YESTERDAY_ONLY.equalsIgnoreCase(mode);
 
@@ -223,13 +223,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
         try {
-            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-                writer.writeObject(body);
-            }
+            ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write term-selection JSON response", ex);
             sendErrorSafe(resp, status);
@@ -256,17 +251,6 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             }
         }
         return List.of();
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
     }
 
     private String normalize(String s) {
@@ -302,42 +286,6 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return true;
         }
         return SAFE_TERM_PATH.matcher(p).matches();
-    }
-
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
     }
 
     private void sendErrorSafe(HttpServletResponse resp, int status) {

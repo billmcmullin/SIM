@@ -42,6 +42,8 @@ import org.openpdf.text.pdf.PdfWriter;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionIdFormatter;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.enterprise.inject.spi.CDI;
@@ -82,7 +84,7 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
             return;
         }
@@ -717,16 +719,8 @@ public class WidgetExportServlet extends HttpServlet {
         if (raw == null || raw.isBlank()) {
             return "";
         }
-        String normalized = raw.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
+        String normalized = ServletRequestParamUtil.normalizeValue(raw, 32, true, false);
         return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
-    }
-
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
     private String readRequestBody(HttpServletRequest req) throws IOException {
@@ -734,22 +728,7 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
         try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-            char[] buf = new char[2048];
-            StringBuilder body = new StringBuilder();
-            int total = 0;
-            int read;
-            while ((read = reader.read(buf)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size.");
-                }
-                body.append(buf, 0, read);
-            }
-            String normalized = body.toString().replace("\u0000", "").replace("\r", "").trim();
-            if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-                throw new IOException("Payload exceeds allowed size.");
-            }
-            return normalized;
+            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
         }
     }
 
@@ -798,10 +777,8 @@ public class WidgetExportServlet extends HttpServlet {
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.setContentType("application/json; charset=UTF-8");
             resp.setHeader("Cache-Control", "no-store");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         return true;

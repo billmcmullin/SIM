@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -42,7 +43,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             return;
         }
 
-        int limit = parseLimit(firstParam(req, "limit"), 200);
+        int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 32, true, true), 200);
 
         List<TermChatSnapshot> snapshots = collectLatestChats(limit);
         if (snapshots.isEmpty()) {
@@ -182,39 +183,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
-        }
     }
 }

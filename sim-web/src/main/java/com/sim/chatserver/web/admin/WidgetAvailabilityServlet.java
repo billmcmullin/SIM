@@ -2,9 +2,11 @@ package com.sim.chatserver.web.admin;
 
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker.WidgetAvailabilityResult;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
+import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -13,7 +15,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -74,7 +75,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                     .add("latencyMs", Math.max(0L, finalResult.latencyMs()))
                     .add("details", safe(finalResult.details(), ""));
 
-            writeJson(resp, HttpServletResponse.SC_OK, json.build().toString());
+                writeJson(resp, HttpServletResponse.SC_OK, json.build());
         } catch (IllegalStateException | SecurityException e) {
             log.log(Level.WARNING, "Widget availability check failed for user=" + user
                     + " role=" + role, e);
@@ -86,7 +87,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                     .add("latencyMs", 0)
                     .add("details", "Availability check failed");
 
-            writeJson(resp, HttpServletResponse.SC_OK, json.build().toString());
+            writeJson(resp, HttpServletResponse.SC_OK, json.build());
         }
     }
 
@@ -122,14 +123,11 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                 .add("latencyMs", 0)
                 .add("details", "Authentication required.");
 
-        writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, json.build().toString());
+        writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, json.build());
     }
 
-    private void writeJson(HttpServletResponse resp, int status, String body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write(body == null ? "{}" : body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     private String safe(String value, String fallback) {

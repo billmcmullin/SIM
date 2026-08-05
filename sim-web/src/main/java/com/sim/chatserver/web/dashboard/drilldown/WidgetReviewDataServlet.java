@@ -29,6 +29,8 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -37,7 +39,6 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -80,14 +81,14 @@ public class WidgetReviewDataServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = sanitizeSelectionId(firstParam(req, "selectionId"));
+        String selectionId = sanitizeSelectionId(ServletRequestParamUtil.firstParam(req, "selectionId", 256, true, true));
         if (selectionId == null) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"selectionId required.\"}");
             return;
         }
 
-        LocalDate selectedDate = parseDate(firstParam(req, "date"), resp);
+        LocalDate selectedDate = parseDate(ServletRequestParamUtil.firstParam(req, "date", 256, true, true), resp);
         if (selectedDate == LocalDate.MIN) {
             return;
         }
@@ -118,11 +119,11 @@ public class WidgetReviewDataServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         String widgetDisplayName = resolveWidgetDisplayNameCached(widgetId);
 
-        String limitParam = firstParam(req, "limit");
+        String limitParam = ServletRequestParamUtil.firstParam(req, "limit", 256, true, true);
         Integer rawLimit = parseIntegerOrNull(limitParam);
         boolean unboundedRequested = isUnlimitedLimit(limitParam, rawLimit);
 
-        int page = Math.max(DEFAULT_PAGE, parseInteger(firstParam(req, "page"), DEFAULT_PAGE));
+        int page = Math.max(DEFAULT_PAGE, parseInteger(ServletRequestParamUtil.firstParam(req, "page", 256, true, true), DEFAULT_PAGE));
         int offset;
         int limit;
 
@@ -144,9 +145,9 @@ public class WidgetReviewDataServlet extends HttpServlet {
             offset = (page - 1) * limit;
         }
 
-        String search = trimToNull(firstParam(req, "search"));
-        String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
-        String sortDir = parseSortDirection(firstParam(req, "sortDir"));
+        String search = trimToNull(ServletRequestParamUtil.firstParam(req, "search", 256, true, true));
+        String sortColumn = parseSortColumn(ServletRequestParamUtil.firstParam(req, "sortColumn", 256, true, true));
+        String sortDir = parseSortDirection(ServletRequestParamUtil.firstParam(req, "sortDir", 256, true, true));
 
         final long t1 = System.nanoTime();
 
@@ -273,15 +274,15 @@ public class WidgetReviewDataServlet extends HttpServlet {
             HttpServletResponse resp,
             long t0) throws IOException {
 
-        String search = trimToNull(firstParam(req, "search"));
-        String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
-        String sortDir = parseSortDirection(firstParam(req, "sortDir"));
+        String search = trimToNull(ServletRequestParamUtil.firstParam(req, "search", 256, true, true));
+        String sortColumn = parseSortColumn(ServletRequestParamUtil.firstParam(req, "sortColumn", 256, true, true));
+        String sortDir = parseSortDirection(ServletRequestParamUtil.firstParam(req, "sortDir", 256, true, true));
 
-        String limitParam = firstParam(req, "limit");
+        String limitParam = ServletRequestParamUtil.firstParam(req, "limit", 256, true, true);
         Integer rawLimit = parseIntegerOrNull(limitParam);
         boolean unboundedRequested = isUnlimitedLimit(limitParam, rawLimit);
 
-        int page = Math.max(DEFAULT_PAGE, parseInteger(firstParam(req, "page"), DEFAULT_PAGE));
+        int page = Math.max(DEFAULT_PAGE, parseInteger(ServletRequestParamUtil.firstParam(req, "page", 256, true, true), DEFAULT_PAGE));
         int limit;
         int offset;
 
@@ -492,40 +493,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return value == null ? fallback : value;
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
     }
 
     private String sanitizeSelectionId(String rawSelectionId) {
@@ -682,11 +651,11 @@ public class WidgetReviewDataServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject body) throws IOException {
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
+        int status = resp.getStatus();
+        if (status <= 0) {
+            status = HttpServletResponse.SC_OK;
         }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     private static final class QueryParts {

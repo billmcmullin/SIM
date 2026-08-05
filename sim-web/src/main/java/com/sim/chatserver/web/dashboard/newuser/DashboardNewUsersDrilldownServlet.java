@@ -30,6 +30,8 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -60,15 +62,15 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             return;
         }
 
-        String contextPath = safeContextPath(req.getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathNoEmptyGuard(req.getContextPath());
 
-        int page = parsePositiveIntOrDefault(firstParam(req, "page"), 1);
-        int pageSize = parsePositiveIntOrDefault(firstParam(req, "pageSize"), 10);
+        int page = parsePositiveIntOrDefault(ServletRequestParamUtil.firstParam(req, "page", 256, true, true), 1);
+        int pageSize = parsePositiveIntOrDefault(ServletRequestParamUtil.firstParam(req, "pageSize", 256, true, true), 10);
         if (pageSize != 10 && pageSize != 25 && pageSize != 50) {
             pageSize = 10;
         }
 
-        LocalDate dayFilter = parseDateOrNull(firstParam(req, "day"));
+        LocalDate dayFilter = parseDateOrNull(ServletRequestParamUtil.firstParam(req, "day", 256, true, true));
 
         List<Row> allRows = new ArrayList<>();
 
@@ -340,10 +342,6 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return java.net.URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         if (dsHolder != null) {
             return dsHolder;
@@ -363,17 +361,6 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
     private static final class Row {
 
         final String display;
@@ -389,31 +376,4 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
     }
 
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest req) {
-            return new RequestParamContext(req);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-        }
-    }
 }

@@ -14,6 +14,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
@@ -325,7 +327,13 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private String firstParam(HttpServletRequest req, String name, int maxLen) {
-        return RequestParamContext.from(req).first(name, maxLen);
+        String value = ServletRequestParamUtil.firstParam(
+                req,
+                name,
+                maxLen > 0 ? maxLen : DEFAULT_PARAM_MAX_LEN,
+                true,
+                false);
+        return value == null ? "" : value;
     }
 
     private AppDataSourceHolder dataSourceHolder() {
@@ -335,36 +343,8 @@ public class WidgetTableServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            int effectiveMax = maxLen > 0 ? maxLen : DEFAULT_PARAM_MAX_LEN;
-            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
-        }
-    }
-
     private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType("application/json");
-        resp.getWriter().write("{\"status\":\"error\",\"message\":\"" + escapeJson(message) + "\"}");
+        ServletJsonResponseUtil.writeError(resp, status, message);
     }
 
     private String buildSingleResponse(String widgetId, String tableName, boolean exists, String countJson, String message,

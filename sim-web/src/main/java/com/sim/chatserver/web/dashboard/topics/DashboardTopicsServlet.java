@@ -30,6 +30,8 @@ import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -52,7 +54,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String contextPath = safeContextPath(req.getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathNoTrailingSlash(req.getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -60,12 +62,12 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
 
         String user = String.valueOf(session.getAttribute("user"));
-        boolean includeOther = parseBooleanFlag(firstParam(req, "includeOther"));
+        boolean includeOther = parseBooleanFlag(ServletRequestParamUtil.firstParam(req, "includeOther", 256, false, false));
 
         DateWindow window = resolveDateWindow(
-                firstParam(req, "day"),
-                firstParam(req, "start"),
-                firstParam(req, "end")
+            ServletRequestParamUtil.firstParam(req, "day", 256, false, false),
+            ServletRequestParamUtil.firstParam(req, "start", 256, false, false),
+            ServletRequestParamUtil.firstParam(req, "end", 256, false, false)
         );
 
         List<WidgetEntry> widgets;
@@ -284,44 +286,12 @@ public class DashboardTopicsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank()) {
-                return null;
-            }
-            if (request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\r", "").replace("\n", "").trim();
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-        }
     }
 
     private String escapeHtml(String input) {
@@ -341,17 +311,6 @@ public class DashboardTopicsServlet extends HttpServlet {
             }
         }
         return escaped.toString();
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || "/".equals(trimmed)) {
-            return "";
-        }
-        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
     }
 
     private static final class TopicPattern {

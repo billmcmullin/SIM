@@ -23,6 +23,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -52,8 +53,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        int days = parseDays(requestContext.first("days"));
+        int days = parseDays(ServletRequestParamUtil.firstParam(req, "days", 32, true, true));
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
@@ -165,8 +165,8 @@ public class DashboardTrendsServlet extends HttpServlet {
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-                .replace("${contextPath}", escapeHtml(req.getContextPath()))
-                .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+            .replace("${contextPath}", DashboardTemplateRenderer.escapeHtml(req.getContextPath() == null ? "" : req.getContextPath()))
+            .replace("${user}", DashboardTemplateRenderer.escapeHtml(String.valueOf(session.getAttribute("user"))))
                 .replace("${selectedDays}", String.valueOf(days))
                 .replace("${trendData}", escapeForJs(trendData.toString()));
 
@@ -250,10 +250,6 @@ public class DashboardTrendsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String escapeHtml(String input) {
-        return DashboardTemplateRenderer.escapeHtml(input == null ? "" : input);
-    }
-
     private String escapeForJs(String value) {
         if (value == null) {
             return "";
@@ -262,38 +258,4 @@ public class DashboardTrendsServlet extends HttpServlet {
                 .replace("\n", "\\n").replace("\r", "\\r");
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value) {
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
-        }
-    }
 }

@@ -3,6 +3,8 @@ package com.sim.chatserver.web.admin;
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore;
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -10,7 +12,6 @@ import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -78,7 +79,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         try {
             WidgetHealthConfigStore currentStore = ensureStoreInitialized();
 
-            if (!isValidJsonRequest(req)) {
+            if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
                 return;
             }
@@ -305,36 +306,12 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         if (req == null) {
             throw new IOException("Missing request");
         }
-        StringBuilder body = new StringBuilder();
-        char[] buffer = new char[2048];
-        int total = 0;
-        int read;
         try (BufferedReader reader = req.getReader()) {
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size");
-                }
-                body.append(buffer, 0, read);
-            }
+            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
         }
-        return body.toString().replace("\u0000", "").replace("\r", "").trim();
-    }
-
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body == null ? Json.createObjectBuilder().build() : body);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 }

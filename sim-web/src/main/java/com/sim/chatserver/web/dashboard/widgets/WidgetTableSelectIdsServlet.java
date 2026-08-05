@@ -17,11 +17,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -44,21 +45,19 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-
-        String widgetId = requestContext.first("widgetId", 128);
+        String widgetId = ServletRequestParamUtil.firstParam(req, "widgetId", 128, true, true);
         if (widgetId == null || widgetId.isBlank()) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
 
-        String search = normalize(requestContext.first("search", 128));
-        String filterPrompt = normalize(requestContext.first("filterPrompt", 128));
-        String filterResponse = normalize(requestContext.first("filterResponse", 128));
+        String search = normalize(ServletRequestParamUtil.firstParam(req, "search", 128, true, true));
+        String filterPrompt = normalize(ServletRequestParamUtil.firstParam(req, "filterPrompt", 128, true, true));
+        String filterResponse = normalize(ServletRequestParamUtil.firstParam(req, "filterResponse", 128, true, true));
 
         // NEW: optional date filter (YYYY-MM-DD)
         LocalDate selectedDate = null;
-        String dateRaw = requestContext.first("date", 128);
+        String dateRaw = ServletRequestParamUtil.firstParam(req, "date", 128, true, true);
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
@@ -224,13 +223,8 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
         try {
-            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-                writer.writeObject(payload);
-            }
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write widget id selection response", ex);
             sendFallbackError(resp, status);
@@ -247,39 +241,4 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         }
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 128 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
-    }
 }

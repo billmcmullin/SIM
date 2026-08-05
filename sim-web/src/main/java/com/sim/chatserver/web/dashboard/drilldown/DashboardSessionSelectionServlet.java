@@ -15,6 +15,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -40,7 +41,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
             return;
         }
 
-        String rawSessionId = firstQueryParam(req, "sessionId");
+        String rawSessionId = ServletRequestParamUtil.firstParam(req, "sessionId", 128, true, true);
         if (rawSessionId == null || rawSessionId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "sessionId parameter is required.");
             return;
@@ -130,40 +131,8 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
     }
 
-    private String firstQueryParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 128 ? normalized.substring(0, 128) : normalized;
-        }
     }
 
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
