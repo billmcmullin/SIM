@@ -4,10 +4,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -23,13 +25,13 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/session-names.html";
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            try {
-                req.getRequestDispatcher("/login").forward(req, resp);
-            } catch (IOException ex) {
-                log.log(Level.FINE, "Unable to forward to login", ex);
+            RequestDispatcher dispatcher = req.getRequestDispatcher("/login");
+            if (dispatcher != null) {
+                dispatcher.forward(req, resp);
+            } else {
                 sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
             }
             return;
@@ -38,22 +40,29 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         String userName = session.getAttribute("user") instanceof String value ? value : "";
         String role = session.getAttribute("role") instanceof String value ? value : "USER";
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+        String contextPath = req.getContextPath();
+        if (contextPath == null) {
+            contextPath = "";
+        }
         String rendered = template
-                .replace("${contextPath}", req.getContextPath())
-            .replace("${user}", escapeHtml(userName))
+                .replace("${contextPath}", contextPath)
+                .replace("${user}", escapeHtml(userName))
                 .replace("${role}", escapeHtml(role));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try {
-            resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to write session names page", ex);
-            sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        PrintWriter out = resp.getWriter();
+        if (out == null) {
+            throw new IOException("Response writer unavailable");
         }
+        out.write(rendered);
+        out.flush();
     }
 
-    private String loadTemplate(ServletContext context, String path) {
+    private String loadTemplate(ServletContext context, String path) throws IOException {
+        if (context == null) {
+            return "";
+        }
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
                 log.warning("Session names template not found.");
@@ -67,9 +76,6 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to load session names template", ex);
-            return "";
         }
     }
 

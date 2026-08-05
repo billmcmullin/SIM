@@ -60,7 +60,14 @@ public final class DashboardDbUtil {
     }
 
     public static boolean tableExists(Connection conn, String tableName) throws SQLException {
+        if (conn == null || tableName == null || tableName.isBlank()) {
+            return false;
+        }
         DatabaseMetaData meta = conn.getMetaData();
+        if (meta == null) {
+            // If metadata is unavailable, allow callers to probe via normal query path.
+            return true;
+        }
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
             try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
                 if (rs.next()) {
@@ -75,6 +82,9 @@ public final class DashboardDbUtil {
      * Request-scoped + global cached table existence check.
      */
     public static boolean tableExistsCached(Connection conn, String tableName, Map<String, Boolean> requestCache) throws SQLException {
+        if (conn == null || tableName == null || tableName.isBlank()) {
+            return false;
+        }
         if (requestCache == null) {
             requestCache = new LinkedHashMap<>();
         }

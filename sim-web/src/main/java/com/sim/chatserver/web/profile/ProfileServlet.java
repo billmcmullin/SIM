@@ -33,33 +33,30 @@ public class ProfileServlet extends HttpServlet {
     UserService userService;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            try {
-                resp.sendRedirect(LOGIN_PATH);
-            } catch (IOException ex) {
-                log.log(Level.FINE, "Unable to redirect to login", ex);
-                sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
-            }
+            resp.sendRedirect(LOGIN_PATH);
             return;
         }
 
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String username = String.valueOf(session.getAttribute("user"));
+        String contextPath = req.getContextPath();
+        if (contextPath == null) {
+            contextPath = "";
+        }
         String rendered = template
                 .replace("${user}", escapeHtml(username))
-                .replace("${contextPath}", req.getContextPath());
+                .replace("${contextPath}", contextPath);
 
         resp.setContentType("text/html;charset=UTF-8");
-        try {
-            try (PrintWriter out = resp.getWriter()) {
-                out.print(rendered);
-            }
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to write profile page", ex);
-            sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        PrintWriter out = resp.getWriter();
+        if (out == null) {
+            throw new IOException("Response writer unavailable");
         }
+        out.print(rendered);
+        out.flush();
     }
 
     @Override

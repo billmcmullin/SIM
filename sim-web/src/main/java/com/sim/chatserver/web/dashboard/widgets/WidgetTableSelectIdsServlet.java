@@ -45,19 +45,19 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = ServletRequestParamUtil.firstParam(req, "widgetId", 128, true, true);
+        String widgetId = ServletRequestParamUtil.firstParamFromValues(req, "widgetId", 128, true, true);
         if (widgetId == null || widgetId.isBlank()) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
         }
 
-        String search = normalize(ServletRequestParamUtil.firstParam(req, "search", 128, true, true));
-        String filterPrompt = normalize(ServletRequestParamUtil.firstParam(req, "filterPrompt", 128, true, true));
-        String filterResponse = normalize(ServletRequestParamUtil.firstParam(req, "filterResponse", 128, true, true));
+        String search = normalize(ServletRequestParamUtil.firstParamFromValues(req, "search", 128, true, true));
+        String filterPrompt = normalize(ServletRequestParamUtil.firstParamFromValues(req, "filterPrompt", 128, true, true));
+        String filterResponse = normalize(ServletRequestParamUtil.firstParamFromValues(req, "filterResponse", 128, true, true));
 
         // NEW: optional date filter (YYYY-MM-DD)
         LocalDate selectedDate = null;
-        String dateRaw = ServletRequestParamUtil.firstParam(req, "date", 128, true, true);
+        String dateRaw = ServletRequestParamUtil.firstParamFromValues(req, "date", 128, true, true);
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);

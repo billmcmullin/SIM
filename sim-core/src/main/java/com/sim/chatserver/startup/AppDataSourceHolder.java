@@ -84,11 +84,22 @@ public class AppDataSourceHolder {
     }
 
     public String getActiveJdbcUrl() {
-        try (Connection conn = requireDataSource().getConnection()) {
+        DataSource dataSource;
+        try {
+            dataSource = requireDataSource();
+        } catch (IllegalStateException ex) {
+            log.log(Level.FINE, "No active datasource available for JDBC URL probe", ex);
+            return "unknown";
+        }
+
+        try (Connection conn = dataSource.getConnection()) {
+            if (conn == null) {
+                return "unknown";
+            }
             if (conn.getMetaData() != null && conn.getMetaData().getURL() != null) {
                 return conn.getMetaData().getURL();
             }
-        } catch (SQLException ex) {
+        } catch (SQLException | RuntimeException ex) {
             log.log(Level.FINE, "Unable to read active JDBC URL from datasource", ex);
         }
         return "unknown";
