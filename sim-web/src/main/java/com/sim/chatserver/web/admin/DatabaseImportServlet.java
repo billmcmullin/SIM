@@ -66,7 +66,6 @@ import jakarta.servlet.http.Part;
 
 @MultipartConfig
 // parasoft-suppress SERVLET.AJDBC "This servlet intentionally orchestrates import persistence and delegates SQL safety to validated identifiers and prepared statements."
-// parasoft-suppress SERVLET.CETS "Checked exceptions are handled through explicit import error flows and converted to controlled JSON responses."
 public class DatabaseImportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
@@ -102,7 +101,8 @@ public class DatabaseImportServlet extends HttpServlet {
     private static final String POST_IMPORT_SYNC_URL = readEnv("SIM_POST_IMPORT_SYNC_URL");
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req)) {
             json(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
                     .add("status", "error")
@@ -121,6 +121,19 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("status", "error")
                     .add("message", "Invalid action. Use action=precheck or action=run")
                     .build());
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

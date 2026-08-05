@@ -29,7 +29,8 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorPayload("Authentication required."));
@@ -134,6 +135,19 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_OK, ok);
         } catch (java.sql.SQLException | IllegalArgumentException | IllegalStateException e) {
             throw new ServletException("Unable to sync customer profile from Salesforce", e);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

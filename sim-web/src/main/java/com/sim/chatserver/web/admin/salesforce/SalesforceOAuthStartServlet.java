@@ -48,7 +48,8 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req)) {
             resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Admin authentication required.");
             return;
@@ -104,6 +105,19 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
 
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
         resp.sendRedirect(safeAuthorizeUrl);
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private boolean isAdmin(HttpServletRequest req) {

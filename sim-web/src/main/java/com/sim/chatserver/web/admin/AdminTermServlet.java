@@ -21,7 +21,6 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,7 +37,8 @@ public class AdminTermServlet extends HttpServlet {
     TermsStore termsStore;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -58,23 +58,41 @@ public class AdminTermServlet extends HttpServlet {
                     .add("status", "ok")
                     .add("terms", arrayBuilder)
                     .build();
-                ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, response);
+            writeJsonSafe(resp, HttpServletResponse.SC_OK, response);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to list terms", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load term definitions.");
+            writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load term definitions.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
 
-        req.setCharacterEncoding("UTF-8");
+        try {
+            req.setCharacterEncoding("UTF-8");
+        } catch (IOException | RuntimeException e) {
+            log.log(Level.FINE, "Unable to set request character encoding", e);
+        }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
@@ -86,7 +104,7 @@ public class AdminTermServlet extends HttpServlet {
             }
         } catch (JsonException e) {
             log.log(Level.FINE, "Invalid term create payload", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
@@ -96,7 +114,7 @@ public class AdminTermServlet extends HttpServlet {
         String type = payload.getString("matchType", "WILDCARD").trim();
 
         if (name.isEmpty() || description.isEmpty()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Name and description are required.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Name and description are required.");
             return;
         }
 
@@ -115,23 +133,41 @@ public class AdminTermServlet extends HttpServlet {
                             .add("matchType", term.getMatchType())
                             .add("isSystem", term.isSystemFlag()))
                     .build();
-                        ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, body);
+            writeJsonSafe(resp, HttpServletResponse.SC_OK, body);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to create term", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_CONFLICT, "Term already exists or could not be inserted.");
+            writeErrorSafe(resp, HttpServletResponse.SC_CONFLICT, "Term already exists or could not be inserted.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
     @Override
-    protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPut(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
 
-        req.setCharacterEncoding("UTF-8");
+        try {
+            req.setCharacterEncoding("UTF-8");
+        } catch (IOException | RuntimeException e) {
+            log.log(Level.FINE, "Unable to set request character encoding", e);
+        }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
@@ -143,7 +179,7 @@ public class AdminTermServlet extends HttpServlet {
             }
         } catch (JsonException e) {
             log.log(Level.FINE, "Invalid term update payload", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
@@ -154,7 +190,7 @@ public class AdminTermServlet extends HttpServlet {
         String type = payload.getString("matchType", "WILDCARD").trim();
 
         if (idObj == null || name.isEmpty() || description.isEmpty()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "id, name, and description are required.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "id, name, and description are required.");
             return;
         }
         long id = idObj;
@@ -162,7 +198,7 @@ public class AdminTermServlet extends HttpServlet {
         try {
             TermDefinition updated = termsStore().updateTerm(id, name, description, pattern, type);
             if (updated == null) {
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be modified.");
+                writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be modified.");
                 return;
             }
             JsonObject body = Json.createObjectBuilder()
@@ -175,21 +211,35 @@ public class AdminTermServlet extends HttpServlet {
                             .add("matchType", updated.getMatchType())
                             .add("isSystem", updated.isSystemFlag()))
                     .build();
-                        ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, body);
+            writeJsonSafe(resp, HttpServletResponse.SC_OK, body);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to update term", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to update term.");
+            writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to update term.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPut", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
     @Override
-    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
         String idParam = ServletRequestParamUtil.firstParam(req, "id", 128, true, true);
         if (idParam == null || !SAFE_LONG_PARAM.matcher(idParam).matches()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "id is required.");
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "id is required.");
             return;
         }
 
@@ -197,39 +247,85 @@ public class AdminTermServlet extends HttpServlet {
             long id = Long.parseLong(idParam);
             boolean deleted = termsStore().deleteTerm(id);
             if (!deleted) {
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be deleted or term not found.");
+                writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be deleted or term not found.");
                 return;
             }
-            ServletJsonResponseUtil.writeJson(
+            writeJsonSafe(
                     resp,
                     HttpServletResponse.SC_OK,
                     Json.createObjectBuilder().add("status", "ok").build());
         } catch (NumberFormatException | SQLException e) {
             log.log(Level.WARNING, "Failed to delete term", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to delete term.");
+            writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to delete term.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
-    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
         if (!"ADMIN".equalsIgnoreCase(role)) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+            writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
             return false;
         }
         return true;
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
             return "";
         }
         try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Failed reading request body", e);
+            return "";
+        }
+    }
+
+    private void writeErrorSafe(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Failed writing error response", e);
+            sendFallbackServerError(resp);
+        }
+    }
+
+    private void writeJsonSafe(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Failed writing JSON response", e);
+            sendFallbackServerError(resp);
+        }
+    }
+
+    private void sendFallbackServerError(HttpServletResponse resp) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.reset();
+            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Failed sending fallback server error", ioe);
         }
     }
 

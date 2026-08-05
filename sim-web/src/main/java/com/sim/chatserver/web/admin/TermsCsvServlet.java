@@ -40,7 +40,6 @@ import jakarta.servlet.http.Part;
         maxFileSize = 1024 * 1024 * 5, // 5MB
         maxRequestSize = 1024 * 1024 * 10) // 10MB
 public class TermsCsvServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.CETS "Checked servlet I/O and multipart exceptions are handled at endpoint boundaries with safe fallback responses."
     // parasoft-suppress SERVLET.IF "CDI-managed TermsStore dependency is required and does not retain mutable request state."
     // parasoft-suppress SECURITY.ESD.SIF "Injected TermsStore is framework-managed and not a serialized secret payload."
     // parasoft-suppress SECURITY.IBA.VRD "Redirect targets are constrained to same-context admin path via safeRedirectTarget before redirect."
@@ -55,7 +54,8 @@ public class TermsCsvServlet extends HttpServlet {
     private static final String[] CSV_HEADER = new String[]{"name", "description", "match_pattern", "match_type", "system_flag"};
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         // export
         if (!isAdmin(req)) {
             sendErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Administrator access required.");
@@ -96,10 +96,24 @@ public class TermsCsvServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to export terms", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to export terms.");
         }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         // import
         if (!isAdmin(req)) {
             sendErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Administrator access required.");
@@ -176,6 +190,19 @@ public class TermsCsvServlet extends HttpServlet {
             msg.append("&errors=").append(URLEncoder.encode(String.join("; ", errors), StandardCharsets.UTF_8));
         }
         sendRedirectSafe(resp, safeRedirectTarget(req, msg.toString()));
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private String safeRedirectTarget(HttpServletRequest req, String query) {

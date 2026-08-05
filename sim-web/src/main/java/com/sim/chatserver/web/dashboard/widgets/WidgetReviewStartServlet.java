@@ -124,7 +124,8 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.", null);
@@ -199,6 +200,19 @@ public class WidgetReviewStartServlet extends HttpServlet {
                 .build()
             ;
         writeJson(resp, HttpServletResponse.SC_OK, ok);
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     public static String createSnapshotSelection(HttpSession session,

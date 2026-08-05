@@ -28,7 +28,8 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionNamesLabelServlet.class.getName());
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!requireAuth(req, resp)) {
             return;
         }
@@ -64,6 +65,19 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
                     .add("status", "error")
                     .add("message", "Unable to save session label")
                     .build());
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

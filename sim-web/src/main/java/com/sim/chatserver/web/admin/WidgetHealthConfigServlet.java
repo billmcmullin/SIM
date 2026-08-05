@@ -49,7 +49,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -68,10 +69,24 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to load widget health config", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorJson("Unable to load widget health config."));
         }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -138,6 +153,19 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         } catch (SQLException | IllegalArgumentException | IllegalStateException | JsonException e) {
             log.log(Level.WARNING, "Unable to save widget health config", e);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Unable to save widget health config."));
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

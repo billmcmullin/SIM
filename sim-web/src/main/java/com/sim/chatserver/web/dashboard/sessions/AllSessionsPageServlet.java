@@ -25,7 +25,8 @@ public class AllSessionsPageServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/all_sessions.html";
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         // require authentication
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
@@ -64,6 +65,19 @@ public class AllSessionsPageServlet extends HttpServlet {
         resp.setContentType("text/html; charset=UTF-8");
         try (PrintWriter writer = resp.getWriter()) {
             writer.print(rendered);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

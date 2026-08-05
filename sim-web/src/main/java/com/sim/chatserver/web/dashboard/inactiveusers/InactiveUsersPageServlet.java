@@ -98,7 +98,8 @@ public class InactiveUsersPageServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession httpSession = req.getSession(false);
         if (httpSession == null || httpSession.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -247,6 +248,19 @@ public class InactiveUsersPageServlet extends HttpServlet {
         resp.setContentLength(renderedBytes.length);
         try (var output = resp.getOutputStream()) {
             output.write(renderedBytes);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

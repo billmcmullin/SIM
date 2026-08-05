@@ -46,7 +46,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -112,6 +113,19 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to render summary markdown page", e);
             resp.setContentType("text/plain;charset=UTF-8");
             resp.getWriter().write("Unable to load summary markdown page.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
