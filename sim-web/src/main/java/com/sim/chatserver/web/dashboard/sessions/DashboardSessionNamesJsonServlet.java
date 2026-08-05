@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -30,7 +33,6 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -42,32 +44,29 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
     private static final int DEFAULT_LIMIT = 10;
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        String contextPath = safeContextPath(req.getServletContext().getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
                     Json.createObjectBuilder().add("status", "unauthorized").build());
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String query = requestContext.first("q", 256);
+        String query = ServletRequestParamUtil.firstParam(req, "q", 256, true, true);
         if (query == null || query.isBlank()) {
-            query = requestContext.first("search", 256);
+            query = ServletRequestParamUtil.firstParam(req, "search", 256, true, true);
         }
 
-        boolean labeledOnly = "true".equalsIgnoreCase(requestContext.first("labeledOnly", 16));
+        boolean labeledOnly = "true".equalsIgnoreCase(ServletRequestParamUtil.firstParam(req, "labeledOnly", 16, true, true));
 
-        int limit = parsePositiveInteger(requestContext.first("limit", 32), DEFAULT_LIMIT);
-        int page = parsePositiveInteger(requestContext.first("page", 32), 1);
-        int offset = parseNonNegativeInteger(requestContext.first("offset", 32), -1);
+        int limit = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, "limit", 32, true, true), DEFAULT_LIMIT);
+        int page = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, "page", 32, true, true), 1);
+        int offset = parseNonNegativeInteger(ServletRequestParamUtil.firstParam(req, "offset", 32, true, true), -1);
 
         if (offset >= 0) {
             page = (offset / limit) + 1;
@@ -301,23 +300,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType(JSON_UTF8);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
-        }
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     static final class SessionAccumulator {
@@ -326,39 +309,4 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         Timestamp lastEntry = null;
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
-        }
-    }
 }

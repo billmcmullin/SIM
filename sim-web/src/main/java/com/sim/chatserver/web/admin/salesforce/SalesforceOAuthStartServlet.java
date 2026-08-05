@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.web.util.ServletPathUtil;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -175,7 +176,8 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (port > 0 && !defaultPort) {
             sb.append(':').append(port);
         }
-        sb.append(safeContextPath(req.getContextPath())).append("/admin/salesforce/oauth/callback");
+        sb.append(ServletPathUtil.safeContextPathEnsureLeadingSlash(req.getContextPath()))
+            .append("/admin/salesforce/oauth/callback");
         return sb.toString();
     }
 
@@ -297,17 +299,6 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             return normalized;
         }
         return null;
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim().replace("\r", "").replace("\n", "");
-        if (trimmed.isEmpty()) {
-            return "";
-        }
-        return trimmed.charAt(0) == '/' ? trimmed : '/' + trimmed;
     }
 
     private String enc(String v) {

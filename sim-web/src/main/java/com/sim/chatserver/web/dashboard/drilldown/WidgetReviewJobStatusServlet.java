@@ -2,7 +2,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -11,6 +10,8 @@ import java.util.Set;
 
 import com.sim.chatserver.model.review.ReviewJobStatus;
 import com.sim.chatserver.service.ReviewJobService;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -56,8 +57,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String jobId = safe(requestContext.first("jobId", 256));
+        String jobId = safe(ServletRequestParamUtil.firstParam(req, "jobId", 256, true, true));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -158,16 +158,15 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 .add("running", running)
                 .add("batchProgressPercent", batchPercent);
 
-        resp.setStatus(HttpServletResponse.SC_OK);
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.getWriter().write(Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("job", job)
-                .add("progress", progress)
-                .add("coverage", coverage)
-                .build()
-                .toString());
+            ServletJsonResponseUtil.writeJson(
+                resp,
+                HttpServletResponse.SC_OK,
+                Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("job", job)
+                    .add("progress", progress)
+                    .add("coverage", coverage)
+                    .build());
     }
 
     @Override
@@ -176,8 +175,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String jobId = safe(requestContext.first("jobId", 256));
+        String jobId = safe(ServletRequestParamUtil.firstParam(req, "jobId", 256, true, true));
         if (jobId.isBlank()) {
             respondError(resp, HttpServletResponse.SC_BAD_REQUEST, "jobId is required.");
             return;
@@ -191,15 +189,14 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         boolean cancelled = JOB_SERVICE.cancel(jobId);
         ReviewJobStatus updated = JOB_SERVICE.getStatus(jobId);
 
-        resp.setStatus(HttpServletResponse.SC_OK);
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.getWriter().write(Json.createObjectBuilder()
+        ServletJsonResponseUtil.writeJson(
+            resp,
+            HttpServletResponse.SC_OK,
+            Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("cancelled", cancelled)
                 .add("job", updated == null ? Json.createObjectBuilder().build() : updated.toJson())
-                .build()
-                .toString());
+                .build());
     }
 
     static ReviewJobService jobService() {
@@ -216,14 +213,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     }
 
     private void respondError(HttpServletResponse resp, int status, String message) throws IOException {
-        resp.setStatus(status);
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.getWriter().write(Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", safe(message))
-                .build()
-                .toString());
+        ServletJsonResponseUtil.writeError(resp, status, safe(message));
     }
 
     private jakarta.json.JsonArray toJsonArray(List<String> values) {
@@ -336,39 +326,4 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         return value == null ? "" : value.trim();
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
-    }
 }

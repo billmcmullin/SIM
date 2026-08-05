@@ -32,6 +32,9 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -39,7 +42,6 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -120,11 +122,11 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || resp == null || session == null) {
             return;
         }
-        int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
+        int days = parseDays(ServletRequestParamUtil.firstParam(req, "days", 256, true, false)).orElse(DEFAULT_DAYS);
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-        String contextPath = safeContextPath(req.getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathStrict(req.getContextPath());
         Metrics metrics = loadMetrics(start, end, contextPath);
 
         String user = String.valueOf(session.getAttribute("user"));
@@ -150,10 +152,10 @@ public class DashboardNewUsersServlet extends HttpServlet {
             return;
         }
         LocalDate rangeEnd = LocalDate.now(ZoneId.systemDefault());
-        int days = parseDays(firstParam(req, "days")).orElse(DEFAULT_DAYS);
+        int days = parseDays(ServletRequestParamUtil.firstParam(req, "days", 256, true, false)).orElse(DEFAULT_DAYS);
         LocalDate rangeStart = rangeEnd.minusDays(days - 1);
 
-        Metrics metrics = loadMetrics(rangeStart, rangeEnd, safeContextPath(req.getContextPath()));
+        Metrics metrics = loadMetrics(rangeStart, rangeEnd, ServletPathUtil.safeContextPathStrict(req.getContextPath()));
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
         JsonArrayBuilder values = Json.createArrayBuilder();
@@ -191,14 +193,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
         if (req == null || resp == null) {
             return;
         }
-        Optional<LocalDate> dayOpt = parseLocalDate(firstParam(req, "day"));
+        Optional<LocalDate> dayOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, "day", 256, true, false));
         if (dayOpt.isEmpty()) {
             writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing or invalid day.");
             return;
         }
         LocalDate day = dayOpt.get();
 
-        DayResult result = loadDayFirstSeen(day, safeContextPath(req.getServletContext().getContextPath()));
+        DayResult result = loadDayFirstSeen(day, ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath()));
 
         JsonArrayBuilder rows = Json.createArrayBuilder();
         int rank = 1;
@@ -528,37 +530,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return java.net.URLEncoder.encode(v, StandardCharsets.UTF_8);
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\r", "").replace("\n", "").trim();
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
     }
 
     private String normalizeServletPath(String servletPath) {
@@ -575,32 +548,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return normalizeServletPath(req.getHttpServletMapping().getPattern());
     }
 
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
-    }
-
     private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        JsonObject body = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "Request failed." : message)
-                .build();
-        writeJson(resp, status, body);
+        ServletJsonResponseUtil.writeError(resp, status, message == null ? "Request failed." : message);
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     private static final class Metrics {

@@ -14,13 +14,14 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -33,7 +34,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetReviewStartServlet.class.getName());
     private static final String SESSION_KEY = "widgetReviewSelections";
     private static final int MAX_SELECTIONS_PER_SESSION = 200;
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
 
     public static final class Selection {
@@ -132,7 +132,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
@@ -332,14 +332,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return json;
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private void writeError(HttpServletResponse resp, int status, String message, String selectionId) {
         var b = Json.createObjectBuilder()
                 .add("status", "error")
@@ -351,11 +343,8 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(payload);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(java.util.logging.Level.FINE, "Unable to write JSON response", e);
             try {

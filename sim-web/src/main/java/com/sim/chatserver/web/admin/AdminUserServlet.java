@@ -9,12 +9,13 @@ import java.util.logging.Logger;
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.service.UserService;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -64,7 +65,7 @@ public class AdminUserServlet extends HttpServlet {
             return;
         }
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -99,7 +100,7 @@ public class AdminUserServlet extends HttpServlet {
         if (!isAdmin(req, resp)) {
             return;
         }
-        String userId = firstParam(req, "userId", 64);
+        String userId = ServletRequestParamUtil.firstParam(req, "userId", Math.max(1, 64), true, true);
         if (userId == null || userId.isBlank()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing userId.");
             return;
@@ -134,33 +135,6 @@ public class AdminUserServlet extends HttpServlet {
         return CDI.current().select(UserService.class).get();
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
-    private String firstParam(HttpServletRequest req, String name, int maxLen) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String val = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (val.isEmpty()) {
-            return null;
-        }
-        int bound = Math.max(1, maxLen);
-        if (val.length() > bound) {
-            return val.substring(0, bound);
-        }
-        return val;
-    }
-
     private long safeUserId(UserAccount user) {
         if (user == null) {
             return -1L;
@@ -186,13 +160,8 @@ public class AdminUserServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
         try {
-            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-                writer.writeObject(payload);
-            }
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write admin user response", ex);
             try {

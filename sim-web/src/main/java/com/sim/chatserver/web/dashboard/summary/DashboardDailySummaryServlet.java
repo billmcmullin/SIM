@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.summary;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -10,11 +9,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -49,27 +49,26 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        LocalDate day = parseDay(requestContext.first("day", 256), zone);
-        int slot = parseSlotOrCurrent(requestContext.first("slot", 32), zone);
+        LocalDate day = parseDay(ServletRequestParamUtil.firstParamFromValues(req, "day", 256, true, true), zone);
+        int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParamFromValues(req, "slot", 32, true, true), zone);
 
         try {
             DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
 
             JsonObject payload = store.fetchExactOrLatest(day, slot);
-            writeJson(resp, payload == null ? errorJson("Unable to load summary.") : payload);
+            writeJson(resp, HttpServletResponse.SC_OK,
+                    payload == null ? errorJson("Unable to load summary.") : payload);
 
         } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
-            writeJson(resp, errorJson("Unable to load summary."));
+            writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
         }
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            writeJson(resp, errorJson("Authentication required."));
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson("Authentication required."));
             return false;
         }
         return true;
@@ -119,12 +118,10 @@ public class DashboardDailySummaryServlet extends HttpServlet {
                 .build();
     }
 
-    private void writeJson(HttpServletResponse resp, JsonObject payload) {
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         JsonObject safePayload = payload == null ? Json.createObjectBuilder().build() : payload;
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(safePayload);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, safePayload);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to write dashboard summary response", e);
             try {
@@ -172,51 +169,4 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         this.dsHolder = dsHolder;
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String[] values = request.getParameterValues(name);
-            if ((values == null || values.length == 0) && request.getParameterMap() != null) {
-                values = request.getParameterMap().get(name);
-            }
-            if (values != null) {
-                for (String value : values) {
-                    String normalized = normalize(value, maxLen);
-                    if (normalized != null) {
-                        return normalized;
-                    }
-                }
-            }
-
-            String normalized = normalize(request.getParameter(name), maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return normalized.length() > effectiveMax ? normalized.substring(0, effectiveMax) : normalized;
-        }
-    }
 }

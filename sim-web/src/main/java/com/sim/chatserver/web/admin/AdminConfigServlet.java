@@ -16,6 +16,7 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -134,8 +135,8 @@ public class AdminConfigServlet extends HttpServlet {
             String salesforceClientId = config != null ? config.getSalesforceClientId() : "";
                 String salesforceUsername = config != null ? config.getSalesforceUsername() : "";
 
-            String salesforceOAuthStatus = firstQueryParam(req, "salesforceOAuthStatus");
-            String salesforceOAuthMessage = firstQueryParam(req, "salesforceOAuthMessage");
+            String salesforceOAuthStatus = ServletRequestParamUtil.firstParam(req, "salesforceOAuthStatus", 512, true, true);
+            String salesforceOAuthMessage = ServletRequestParamUtil.firstParam(req, "salesforceOAuthMessage", 512, true, true);
             if (salesforceOAuthStatus == null) {
                 salesforceOAuthStatus = "";
             }
@@ -185,10 +186,6 @@ public class AdminConfigServlet extends HttpServlet {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
             throw e;
         }
-    }
-
-    private String firstQueryParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
     }
 
     private static String serializeTerms(List<TermDefinition> terms) {
@@ -296,33 +293,5 @@ public class AdminConfigServlet extends HttpServlet {
             return termsStore;
         }
         return CDI.current().select(TermsStore.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
-        }
     }
 }

@@ -29,6 +29,9 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -42,7 +45,6 @@ import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
 import jakarta.json.JsonValue;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -134,10 +136,7 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        resp.getWriter().write("{\"status\":\"error\",\"message\":\"Method not allowed.\"}");
+        ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method not allowed.");
     }
 
     private void handleSummary(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -145,12 +144,12 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        String allParam = firstParam(req, "all");
-        String labeledOnlyParam = firstParam(req, "labeledOnly");
-        String searchParam = firstParam(req, "search");
-        String activityParam = firstParam(req, "activity");
-        String limitParam = firstParam(req, "limit");
-        String pageParam = firstParam(req, "page");
+        String allParam = ServletRequestParamUtil.firstParam(req, "all", 256, false, false);
+        String labeledOnlyParam = ServletRequestParamUtil.firstParam(req, "labeledOnly", 256, false, false);
+        String searchParam = ServletRequestParamUtil.firstParam(req, "search", 256, false, false);
+        String activityParam = ServletRequestParamUtil.firstParam(req, "activity", 256, false, false);
+        String limitParam = ServletRequestParamUtil.firstParam(req, "limit", 256, false, false);
+        String pageParam = ServletRequestParamUtil.firstParam(req, "page", 256, false, false);
 
         boolean returnAll = parseBooleanParam(allParam);
         boolean labeledOnly = parseBooleanParam(labeledOnlyParam);
@@ -186,10 +185,7 @@ public class AllSessionsServlet extends HttpServlet {
                 }
             } catch (SQLException e) {
                 log.log(Level.SEVERE, "Unable to compute session summary", e);
-                resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                resp.setContentType("application/json; charset=UTF-8");
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load sessions.\"}");
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load sessions.");
                 return;
             }
         }
@@ -326,12 +322,9 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = sanitizeSessionId(firstParam(req, "sessionId"));
+        String sessionId = sanitizeSessionId(ServletRequestParamUtil.firstParam(req, "sessionId", 256, false, false));
         if (sessionId == null || sessionId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"sessionId required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "sessionId required.");
             return;
         }
 
@@ -368,10 +361,7 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to load chats for session", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load chats for session.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load chats for session.");
             return;
         }
 
@@ -396,7 +386,7 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Invalid JSON payload.")
@@ -413,18 +403,12 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid JSON payload for session selection", e);
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid JSON payload.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
         if (!payload.containsKey("selectedChatIds")) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"selectedChatIds required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "selectedChatIds required.");
             return;
         }
 
@@ -443,10 +427,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         if (selected.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No valid chat IDs provided.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid chat IDs provided.");
             return;
         }
 
@@ -495,18 +476,12 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to collect selected session chats", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create selection.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
             return;
         }
 
         if (snapshots.isEmpty()) {
-            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"No matching chats found for selection.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_NOT_FOUND, "No matching chats found for selection.");
             return;
         }
 
@@ -514,14 +489,11 @@ public class AllSessionsServlet extends HttpServlet {
                 req.getSession(false),
                 "Selected Session Chats",
                 snapshots,
-            safeContextPath(req.getServletContext().getContextPath()) + "/dashboard/sessions"
+            ServletPathUtil.safeContextPathNoEmptyGuard(req.getServletContext().getContextPath()) + "/dashboard/sessions"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("application/json; charset=UTF-8");
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to create selection.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
             return;
         }
 
@@ -722,12 +694,7 @@ public class AllSessionsServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     private int parseInteger(String value, int fallback) {
@@ -746,10 +713,6 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         if (dsHolder != null) {
             return dsHolder;
@@ -757,59 +720,12 @@ public class AllSessionsServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private String readRequestBody(HttpServletRequest req) throws IOException {
         if (req == null) {
             return "";
         }
         try (var reader = req.getReader()) {
-            StringBuilder body = new StringBuilder();
-            char[] buffer = new char[1024];
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
-                body.append(buffer, 0, read);
-            }
-            return body.toString().replace("\u0000", "").replace("\r", "").trim();
-        }
-    }
-
-    static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank()) {
-                return null;
-            }
-            if (request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\r", "").replace("\n", "").trim();
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES, 1024);
         }
     }
 
@@ -845,17 +761,6 @@ public class AllSessionsServlet extends HttpServlet {
             return PATH_DATA;
         }
         return normalizeServletPath(req.getHttpServletMapping().getPattern());
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
     }
 
     private String formatInstant(Instant value) {

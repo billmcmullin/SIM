@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -24,6 +23,8 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -32,7 +33,6 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -56,59 +56,52 @@ public class WidgetTableDataServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-
         if (!isLoggedIn(req, resp)) {
             return;
         }
 
-        String widgetId = firstParam(req, "widgetId");
+        String widgetId = ServletRequestParamUtil.firstParam(req, "widgetId", 256, true, true);
         if (widgetId == null || widgetId.isBlank()) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"widgetId required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required.");
             return;
         }
 
         // NEW: optional date filter
         LocalDate selectedDate = null;
-        String dateRaw = firstParam(req, "date");
+        String dateRaw = ServletRequestParamUtil.firstParam(req, "date", 256, true, true);
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
                 selectedDate = LocalDate.parse(dateRaw.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
                 log.log(Level.FINE, "Invalid widget table data date parameter", ex);
-                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Invalid date. Expected YYYY-MM-DD.\"}");
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid date. Expected YYYY-MM-DD.");
                 return;
             }
         }
 
         WidgetEntry plugin = findWidget(widgetId);
         if (plugin == null) {
-            resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Widget not found.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_NOT_FOUND, "Widget not found.");
             return;
         }
 
         String tableName = sanitizeWidgetTableName(widgetId);
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             if (!tableExists(conn, tableName)) {
-                resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                resp.getWriter().write("{\"status\":\"error\",\"message\":\"Table for widget does not exist.\"}");
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Table for widget does not exist.");
                 return;
             }
 
-                int limit = parseLimit(firstParam(req, "limit"));
-                int page = parsePage(firstParam(req, "page"));
+                int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 256, true, true));
+                int page = parsePage(ServletRequestParamUtil.firstParam(req, "page", 256, true, true));
             int offset = (page - 1) * limit;
-                String search = firstParam(req, "search");
-                String sortColumn = parseSortColumn(firstParam(req, "sortColumn"));
-                String sortDir = parseSortDirection(firstParam(req, "sortDir"));
+                String search = ServletRequestParamUtil.firstParam(req, "search", 256, true, true);
+                String sortColumn = parseSortColumn(ServletRequestParamUtil.firstParam(req, "sortColumn", 256, true, true));
+                String sortDir = parseSortDirection(ServletRequestParamUtil.firstParam(req, "sortDir", 256, true, true));
 
             FilterState filters = new FilterState(
-                    firstParam(req, "filterPrompt"),
-                    firstParam(req, "filterResponse"),
+                    ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
+                    ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),
                     search,
                     selectedDate
             );
@@ -218,22 +211,17 @@ public class WidgetTableDataServlet extends HttpServlet {
                     .add("totalPages", totalPages)
                     .add("page", page)
                     .build();
-
-            try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-                writer.writeObject(body);
-            }
+            ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, body);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to read widget rows", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to load widget data.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load widget data.");
         }
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         return true;
@@ -251,10 +239,6 @@ public class WidgetTableDataServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to list widgets", e);
         }
         return null;
-    }
-
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
     }
 
     private AppDataSourceHolder dataSourceHolder() {
@@ -437,34 +421,6 @@ public class WidgetTableDataServlet extends HttpServlet {
         private String pattern(String input) {
             String trimmed = input.trim();
             return new StringBuilder(trimmed.length() + 2).append('%').append(trimmed).append('%').toString();
-        }
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
         }
     }
 }

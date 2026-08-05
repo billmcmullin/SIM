@@ -31,6 +31,8 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -38,7 +40,6 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -56,12 +57,12 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            writeJson(resp, Json.createObjectBuilder().add("status", "unauthorized").build());
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    Json.createObjectBuilder().add("status", "unauthorized").build());
             return;
         }
 
-        boolean includeOther = parseBooleanFlag(firstParam(req, "includeOther"));
+        boolean includeOther = parseBooleanFlag(ServletRequestParamUtil.firstParam(req, "includeOther", 256, true, true));
         DateWindow window = resolveDateWindow(req);
 
         List<WidgetEntry> widgets;
@@ -191,12 +192,11 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             JsonObject err = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Unable to build topics data")
                     .build();
-            writeJson(resp, err);
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, err);
             return;
         }
 
@@ -276,20 +276,18 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 .add("uniqueChatsTotal", uniqueChatsTotal)
                 .build();
 
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
-        writeJson(resp, payload);
+        writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private DateWindow resolveDateWindow(HttpServletRequest req) {
-        Optional<LocalDate> dayOpt = parseLocalDate(firstParam(req, "day"));
+        Optional<LocalDate> dayOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, "day", 256, true, true));
         if (dayOpt.isPresent()) {
             LocalDate d = dayOpt.get();
             return new DateWindow(d, d.plusDays(1), d.format(DATE_FMT));
         }
 
-        Optional<LocalDate> startOpt = parseLocalDate(firstParam(req, "start"));
-        Optional<LocalDate> endOpt = parseLocalDate(firstParam(req, "end"));
+        Optional<LocalDate> startOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, "start", 256, true, true));
+        Optional<LocalDate> endOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, "end", 256, true, true));
 
         if (startOpt.isPresent() || endOpt.isPresent()) {
             LocalDate s = startOpt.orElseGet(endOpt::get);
@@ -343,10 +341,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         return matched;
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
@@ -355,12 +349,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         return CDI.current().select(TermsStore.class).get();
     }
 
-    private void writeJson(HttpServletResponse resp, JsonObject payload) throws IOException {
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(payload);
-        }
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 
     private List<Map.Entry<String, Integer>> sortTopicMap(Map<String, Integer> map) {
@@ -427,31 +417,4 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
     }
 
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-        }
-    }
 }

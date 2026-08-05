@@ -13,11 +13,12 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 import com.sim.chatserver.widget.WidgetStore.DuplicateWidgetIdException;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -38,8 +39,7 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String filter = requestContext.first("filter", 256);
+        String filter = ServletRequestParamUtil.firstParam(req, "filter", 256, true, true);
         try {
             List<WidgetEntry> widgets = WidgetStore.list(filter);
             JsonArrayBuilder arr = Json.createArrayBuilder();
@@ -67,10 +67,9 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String widgetId = sanitizeWidgetId(requestContext.first("widgetId", 256));
-        String displayName = sanitizeDisplayName(requestContext.first("displayName", 256));
-        String idValue = requestContext.first("id", 256);
+        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, true, true));
+        String displayName = sanitizeDisplayName(ServletRequestParamUtil.firstParam(req, "displayName", 256, true, true));
+        String idValue = ServletRequestParamUtil.firstParam(req, "id", 256, true, true);
 
         if (widgetId == null || displayName == null) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
@@ -133,8 +132,7 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String idsParam = requestContext.first("ids", 256);
+        String idsParam = ServletRequestParamUtil.firstParam(req, "ids", 256, true, true);
 
         if (idsParam == null || idsParam.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
@@ -208,12 +206,7 @@ public class WidgetApiServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(APPLICATION_JSON);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(body);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, body);
     }
 
     private String sanitizeWidgetId(String value) {
@@ -238,39 +231,4 @@ public class WidgetApiServlet extends HttpServlet {
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
     }
 
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 256 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
-    }
 }

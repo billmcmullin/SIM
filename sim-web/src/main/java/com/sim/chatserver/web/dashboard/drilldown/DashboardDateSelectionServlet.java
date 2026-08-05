@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -48,7 +49,7 @@ public class DashboardDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        String rawDate = firstQueryParam(req, "date");
+        String rawDate = ServletRequestParamUtil.firstParam(req, "date", 32, true, true);
         if (rawDate == null || rawDate.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "date parameter is required (yyyy-MM-dd).");
             return;
@@ -93,43 +94,11 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     }
 
-    private String firstQueryParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         if (dsHolder != null) {
             return dsHolder;
         }
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
-        }
     }
 
     private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {

@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonException;
@@ -66,16 +67,16 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return;
         }
 
-        String error = sanitizeOAuthParam(firstParam(req, "error"));
+        String error = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "error", 1024, true, true));
         if (error != null) {
-            String description = sanitizeOAuthParam(firstParam(req, "error_description"));
+            String description = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "error_description", 1024, true, true));
             redirectWithMessage(resp, req, false,
                     "Salesforce authorization failed: " + safe(description != null ? description : error));
             return;
         }
 
-        String code = sanitizeOAuthParam(firstParam(req, "code"));
-        String state = sanitizeOAuthParam(firstParam(req, "state"));
+        String code = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "code", 1024, true, true));
+        String state = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "state", 1024, true, true));
         if (code == null || state == null) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing OAuth code/state.");
             return;
@@ -372,10 +373,6 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         return x.replaceAll("/+$", "");
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private String normalizeScheme(String scheme) {
         if (scheme == null) {
             return null;
@@ -472,33 +469,5 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         String accessToken;
         String refreshToken;
         String instanceUrl;
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (normalized.isEmpty()) {
-                return null;
-            }
-            return normalized.length() > 1024 ? normalized.substring(0, 1024) : normalized;
-        }
     }
 }

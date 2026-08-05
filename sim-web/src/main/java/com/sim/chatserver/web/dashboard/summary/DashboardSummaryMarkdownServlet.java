@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.JsonObject;
@@ -53,9 +54,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        RequestContext context = RequestContext.from(req);
-        LocalDate day = parseDay(context.first("day"), zone);
-        int slot = parseSlotOrCurrent(context.first("slot"), zone);
+        LocalDate day = parseDay(ServletRequestParamUtil.firstParam(req, "day", 128, true, true), zone);
+        int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParam(req, "slot", 128, true, true), zone);
 
         try {
             JsonObject payload = summaryStore().fetchExactOrLatest(day, slot);
@@ -99,7 +99,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             vars.put("suggestedNextAction", DashboardTemplateRenderer.escapeHtml(suggestedNextAction));
 
             // hidden input value for copy button
-            vars.put("markdownSourceAttr", escapeHtmlAttribute(markdown));
+            vars.put("markdownSourceAttr", DashboardTemplateRenderer.escapeHtml(markdown == null ? "" : markdown));
 
             String rendered = DashboardTemplateRenderer.renderTemplate(template, vars);
 
@@ -348,37 +348,5 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    static final class RequestContext {
-
-        private final HttpServletRequest request;
-
-        private RequestContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestContext from(HttpServletRequest req) {
-            return new RequestContext(req);
-        }
-
-        private String first(String name) {
-            if (name == null || name.isBlank() || request == null) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
-        }
-    }
-
-    private String escapeHtmlAttribute(String s) {
-        return DashboardTemplateRenderer.escapeHtml(s == null ? "" : s);
     }
 }

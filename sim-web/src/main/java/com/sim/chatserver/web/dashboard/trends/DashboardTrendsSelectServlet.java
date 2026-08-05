@@ -19,6 +19,8 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -27,7 +29,6 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -53,7 +54,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
             return;
         }
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -205,28 +206,24 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private void writeError(HttpServletResponse resp, int status, String message) {
-        JsonObject payload = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
-                .build();
-        writeJson(resp, status, payload);
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write trends selection response", ex);
+            try {
+                if (!resp.isCommitted()) {
+                    resp.sendError(status);
+                }
+            } catch (IOException sendErrorFailure) {
+                log.log(Level.FINE, "Unable to send fallback error response", sendErrorFailure);
+            }
+        }
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(payload);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write trends selection response", ex);
             try {

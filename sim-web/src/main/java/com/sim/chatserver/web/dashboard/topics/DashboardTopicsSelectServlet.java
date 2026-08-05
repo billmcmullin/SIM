@@ -24,6 +24,9 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -35,7 +38,6 @@ import jakarta.json.JsonException;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -62,7 +64,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -174,7 +176,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                 session,
                 "Popular Topics",
                 snapshots,
-            safeContextPath(req.getContextPath()) + "/dashboard/topics"
+            ServletPathUtil.safeContextPathEnsureLeadingSlash(req.getContextPath()) + "/dashboard/topics"
         );
 
         if (selectionId == null || selectionId.isBlank()) {
@@ -228,31 +230,12 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private String readRequestBody(HttpServletRequest req) throws IOException {
         if (req == null) {
             return "";
         }
         try (BufferedReader reader = req.getReader()) {
-            StringBuilder body = new StringBuilder();
-            char[] buffer = new char[2048];
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size.");
-                }
-                body.append(buffer, 0, read);
-            }
-            return sanitizePayload(body.toString());
+            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
         }
     }
 
@@ -263,51 +246,23 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private String sanitizePayload(String payload) {
-        if (payload == null) {
-            return "";
-        }
-        return payload.replace("\u0000", "")
-                .replace("\r", "")
-                .trim();
-    }
-
     private String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         Object raw = rs.getObject(column);
         if (raw == null) {
             return null;
         }
-        String normalized = String.valueOf(raw).replace("\u0000", "").replace("\r", "").trim();
-        if (normalized.isEmpty()) {
+        String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), maxChars, true);
+        if (normalized == null) {
             return null;
         }
-        return normalized.length() > maxChars ? normalized.substring(0, maxChars) : normalized;
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String normalized = contextPath.trim().replace("\r", "").replace("\n", "");
-        if (normalized.isEmpty()) {
-            return "";
-        }
-        return normalized.charAt(0) == '/' ? normalized : '/' + normalized;
+        return normalized;
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
-        JsonObjectBuilder payload = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message);
-        writeJson(resp, status, payload.build());
+        ServletJsonResponseUtil.writeError(resp, status, message);
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(payload);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 }

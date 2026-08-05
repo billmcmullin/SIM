@@ -7,10 +7,11 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.util.SessionLabelStore;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
@@ -32,9 +33,9 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = firstParam(req, "sessionId");
-        String displayName = firstParam(req, "displayName");
-        String email = firstParam(req, "email");
+        String sessionId = ServletRequestParamUtil.firstParam(req, "sessionId", 512, true, true);
+        String displayName = ServletRequestParamUtil.firstParam(req, "displayName", 512, true, true);
+        String email = ServletRequestParamUtil.firstParam(req, "email", 512, true, true);
 
         if (sessionId == null || sessionId.isBlank()) {
             sessionId = readPartValue(req, "sessionId");
@@ -96,26 +97,7 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        resp.setStatus(status);
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("application/json; charset=UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getOutputStream())) {
-            writer.writeObject(payload == null ? Json.createObjectBuilder().build() : payload);
-        }
+        ServletJsonResponseUtil.writeJson(resp, status, payload);
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
-    }
 }

@@ -6,7 +6,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
+import jakarta.json.Json;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -23,19 +26,16 @@ public class WorkspaceConfigServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Authentication required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return;
         }
         String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
         if (!"ADMIN".equalsIgnoreCase(role)) {
-            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Admin role required.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
             return;
         }
 
-        RequestParamContext requestContext = RequestParamContext.from(req);
-        String workspaceName = requestContext.first("workspaceName", 512);
+        String workspaceName = ServletRequestParamUtil.firstParam(req, "workspaceName", 512, true, true);
         if (workspaceName == null) {
             workspaceName = "";
         }
@@ -43,58 +43,17 @@ public class WorkspaceConfigServlet extends HttpServlet {
 
         try {
             EncryptedDbConfigStore.saveWorkspaceName(workspaceName);
-            resp.setContentType("application/json");
-            resp.getWriter().write("{\"status\":\"ok\",\"workspaceName\":\"" + escapeJson(workspaceName) + "\"}");
+            ServletJsonResponseUtil.writeJson(
+                    resp,
+                    HttpServletResponse.SC_OK,
+                    Json.createObjectBuilder()
+                            .add("status", "ok")
+                            .add("workspaceName", workspaceName)
+                            .build());
         } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Unable to save workspace name", e);
-            resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            resp.getWriter().write("{\"status\":\"error\",\"message\":\"Unable to save workspace name.\"}");
+            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to save workspace name.");
         }
     }
 
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
-    }
-
-    private static final class RequestParamContext {
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name, int maxLen) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            String normalized = normalize(value, maxLen);
-            if (normalized != null) {
-                return normalized;
-            }
-            return null;
-        }
-
-        private String normalize(String value, int maxLen) {
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            int effectiveMax = maxLen <= 0 ? 512 : maxLen;
-            return trimmed.length() > effectiveMax ? trimmed.substring(0, effectiveMax) : trimmed;
-        }
-    }
 }

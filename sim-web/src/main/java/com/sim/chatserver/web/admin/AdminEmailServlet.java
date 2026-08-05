@@ -9,6 +9,8 @@ import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
 import com.sim.chatserver.email.ResolvedEmailConfig;
 import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
@@ -16,7 +18,6 @@ import jakarta.json.JsonArray;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
-import jakarta.json.JsonWriter;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
 
@@ -42,7 +43,7 @@ public class AdminEmailServlet extends HttpServlet {
             return;
         }
 
-        if (!isValidJsonRequest(req)) {
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid JSON payload.");
             return;
         }
@@ -126,14 +127,6 @@ public class AdminEmailServlet extends HttpServlet {
         }
     }
 
-    private boolean isValidJsonRequest(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        long len = req.getContentLengthLong();
-        return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
     private DbEmailConfigProvider resolveDbProvider() {
         return CDI.current().select(DbEmailConfigProvider.class).get();
     }
@@ -192,13 +185,8 @@ public class AdminEmailServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
-        resp.setStatus(status);
-        resp.setCharacterEncoding("UTF-8");
-        resp.setContentType("application/json; charset=UTF-8");
         try {
-            try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-                writer.writeObject(payload);
-            }
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write admin email response", ex);
             try {

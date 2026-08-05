@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.web.util.ServletPathUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -103,7 +105,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
             return;
         }
 
-        int days = parseInt(firstParam(req, "days"), DEFAULT_DAYS);
+        int days = parseInt(ServletRequestParamUtil.firstParam(req, "days", 256, false, false), DEFAULT_DAYS);
         if (days < 1) {
             days = DEFAULT_DAYS;
         }
@@ -230,7 +232,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         String jsonData = buildInactiveUsersJson(payload, widgetNameById);
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String user = safeSessionUser(httpSession);
-        String contextPath = safeContextPath(req.getContextPath());
+        String contextPath = ServletPathUtil.safeContextPathNoEmptyGuard(req.getContextPath());
         String jsonDataB64 = Base64.getEncoder().encodeToString(jsonData.getBytes(StandardCharsets.UTF_8));
 
         String rendered = template
@@ -620,54 +622,14 @@ public class InactiveUsersPageServlet extends HttpServlet {
         }
     }
 
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\r", "").replace("\n", "").trim();
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
-        }
     }
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
         Object raw = rs.getObject(column);
         String value = raw == null ? null : String.valueOf(raw);
         return safeDbText(value, maxLen);
-    }
-
-    private String safeContextPath(String contextPath) {
-        if (contextPath == null || contextPath.isBlank()) {
-            return "";
-        }
-        String trimmed = contextPath.trim();
-        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
-            return "";
-        }
-        return trimmed;
     }
 
     private String safeDbText(String value, int maxLen) {

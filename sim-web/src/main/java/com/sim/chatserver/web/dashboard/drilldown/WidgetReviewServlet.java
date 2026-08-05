@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.servlet.ServletContext;
@@ -35,11 +36,15 @@ public class WidgetReviewServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = normalizeSelectionId(firstQueryParam(req, "selectionId"));
+        String selectionId = ServletRequestParamUtil.normalizeValue(
+            ServletRequestParamUtil.firstParam(req, "selectionId", 256, true, true),
+            256,
+            true,
+            true);
         if (selectionId == null) {
             Object forwardedSelectionId = req.getAttribute("selectionId");
             if (forwardedSelectionId instanceof String forwarded) {
-                selectionId = normalizeSelectionId(forwarded);
+                selectionId = ServletRequestParamUtil.normalizeValue(forwarded, 256, true, true);
             }
         }
         if (selectionId == null) {
@@ -169,26 +174,6 @@ public class WidgetReviewServlet extends HttpServlet {
         }
         String t = value.trim();
         return t.isEmpty() ? null : t;
-    }
-
-    private String normalizeSelectionId(String value) {
-        String normalized = trimToNull(value);
-        if (normalized == null) {
-            return null;
-        }
-        normalized = normalized.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
-    }
-
-    private String firstQueryParam(HttpServletRequest req, String name) {
-        if (req == null || name == null || name.isBlank()) {
-            return null;
-        }
-        String value = req.getParameter(name);
-        return normalizeSelectionId(value);
     }
 
     private String urlDecode(String value) {

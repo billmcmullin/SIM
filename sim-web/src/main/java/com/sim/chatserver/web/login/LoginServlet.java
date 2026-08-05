@@ -7,6 +7,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
@@ -55,8 +56,8 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        String username = sanitizeUsername(firstParam(req, "username"));
-        String password = sanitizePassword(firstParam(req, "password"));
+        String username = sanitizeUsername(ServletRequestParamUtil.firstParam(req, "username", 256, true, true));
+        String password = sanitizePassword(ServletRequestParamUtil.firstParam(req, "password", 256, true, true));
         if (username == null || password == null) {
             req.setAttribute("loginError", "missing");
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -122,38 +123,6 @@ public class LoginServlet extends HttpServlet {
 
             configuredUserService = service;
             return service;
-        }
-    }
-
-    private String firstParam(HttpServletRequest req, String name) {
-        return RequestParamContext.from(req).first(name);
-    }
-
-    private static final class RequestParamContext {
-
-        private final HttpServletRequest request;
-
-        private RequestParamContext(HttpServletRequest request) {
-            this.request = request;
-        }
-
-        private static RequestParamContext from(HttpServletRequest request) {
-            return new RequestParamContext(request);
-        }
-
-        private String first(String name) {
-            if (request == null || name == null || name.isBlank()) {
-                return null;
-            }
-            String value = request.getParameter(name);
-            if (value == null) {
-                return null;
-            }
-            String trimmed = value.replace("\u0000", "").replace("\r", "").replace("\n", "").trim();
-            if (trimmed.isEmpty()) {
-                return null;
-            }
-            return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
         }
     }
 

@@ -99,7 +99,7 @@ public class ReviewJobService {
                         result.rawResponseBody(),
                         result.contentType()
                 );
-            } catch (RuntimeException ex) {
+            } catch (Exception ex) {
                 log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", ex);
                 failJob(jobId, 500, ex.getMessage() == null ? "Async job failed." : ex.getMessage());
             } finally {
@@ -561,7 +561,7 @@ public class ReviewJobService {
         for (Future<?> f : futures.values()) {
             try {
                 f.cancel(true);
-            } catch (RuntimeException ex) {
+            } catch (IllegalStateException ex) {
                 log.log(Level.FINE, "Unable to cancel review job future cleanly", ex);
             }
         }
