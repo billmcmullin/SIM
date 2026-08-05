@@ -97,6 +97,9 @@ public final class ServletRequestParamUtil {
     public static String readNormalizedBodyText(Reader reader,
             int maxLen,
             int bufferSize) throws IOException {
+        if (reader == null) {
+            return "";
+        }
         char[] buffer = new char[Math.max(256, bufferSize)];
         StringBuilder body = new StringBuilder(Math.min(Math.max(maxLen, 1), 4096));
 
@@ -122,6 +125,9 @@ public final class ServletRequestParamUtil {
     public static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
             int maxLen,
             int bufferSize) throws IOException {
+        if (reader == null) {
+            return "";
+        }
         char[] buffer = new char[Math.max(256, bufferSize)];
         StringBuilder body = new StringBuilder(Math.min(Math.max(maxLen, 1), 4096));
 

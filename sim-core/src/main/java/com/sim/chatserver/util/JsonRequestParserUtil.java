@@ -1,6 +1,7 @@
 package com.sim.chatserver.util;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,7 +57,12 @@ public final class JsonRequestParserUtil {
         }
 
         try {
-            String body = readAtMost(req.getReader(), max);
+            Reader requestReader = req.getReader();
+            if (requestReader == null) {
+                return emptyObject();
+            }
+
+            String body = readAtMost(requestReader, max);
 
             if (body.isBlank()) {
                 return emptyObject();
@@ -192,6 +198,9 @@ public final class JsonRequestParserUtil {
     }
 
     private static String readAtMost(java.io.Reader reader, int maxChars) throws IOException, BodyTooLargeException {
+        if (reader == null) {
+            return "";
+        }
         char[] buffer = new char[2048];
         int total = 0;
         StringBuilder payload = new StringBuilder(Math.min(maxChars, 4096));

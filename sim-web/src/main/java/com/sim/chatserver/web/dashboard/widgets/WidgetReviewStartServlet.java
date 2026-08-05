@@ -307,6 +307,9 @@ public class WidgetReviewStartServlet extends HttpServlet {
         char[] buffer = new char[2048];
         int total = 0;
         try (var reader = req.getReader()) {
+            if (reader == null) {
+                return "";
+            }
             int read;
             while ((read = reader.read(buffer)) != -1) {
                 total += read;

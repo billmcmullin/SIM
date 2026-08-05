@@ -1127,6 +1127,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             throw new IOException("Invalid JSON request payload.");
         }
         try (var reader = req.getReader()) {
+            if (reader == null) {
+                return "";
+            }
             char[] buffer = new char[4096];
             StringBuilder builder = new StringBuilder();
             int total = 0;

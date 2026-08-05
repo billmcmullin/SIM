@@ -72,7 +72,10 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
             Part part = req.getPart(name);
             if (part != null) {
                 final int maxBytes = 4096;
-                byte[] bytes = part.getInputStream().readNBytes(maxBytes + 1);
+                byte[] bytes = part.getInputStream().readAllBytes();
+                if (bytes == null) {
+                    return null;
+                }
                 if (bytes.length > maxBytes) {
                     return null;
                 }

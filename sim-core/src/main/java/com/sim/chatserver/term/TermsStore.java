@@ -289,7 +289,7 @@ public class TermsStore {
                 if (!rs.next()) {
                     return false;
                 }
-                return rs.getBoolean("system_flag");
+                return readSafeDbBoolean(rs, "system_flag");
             }
         }
     }
@@ -363,15 +363,45 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        long value = rs.getLong(column);
+        try {
+            Object value = rs.getObject(column);
+            if (value instanceof Number number) {
+                return Math.max(0L, number.longValue());
+            }
+            if (value instanceof String text) {
+                try {
+                    return Math.max(0L, Long.parseLong(text.trim()));
+                } catch (NumberFormatException ex) {
+                    log.log(Level.FINE, "Invalid numeric text in column " + column, ex);
+                    return 0L;
+                }
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject failed for column " + column + ", falling back to getLong", ex);
+        }
+
+        long numeric = rs.getLong(column);
         if (rs.wasNull()) {
             return 0L;
         }
-        return Math.max(0L, value);
+        return Math.max(0L, numeric);
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         String value = rs.getString(column);
+        if (value == null) {
+            try {
+                String typed = rs.getObject(column, String.class);
+                if (typed != null) {
+                    value = typed;
+                }
+            } catch (SQLException ignored) {
+                Object raw = rs.getObject(column);
+                if (raw != null) {
+                    value = String.valueOf(raw);
+                }
+            }
+        }
         if (value == null) {
             return "";
         }
@@ -380,6 +410,20 @@ public class TermsStore {
             return normalized.substring(0, maxChars);
         }
         return normalized;
+    }
+
+    private boolean readSafeDbBoolean(ResultSet rs, String column) throws SQLException {
+        try {
+            Boolean value = rs.getObject(column, Boolean.class);
+            if (value != null) {
+                return value;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject(Boolean) failed for column " + column + ", falling back to getBoolean", ex);
+        }
+
+        boolean value = rs.getBoolean(column);
+        return !rs.wasNull() && value;
     }
 
     private static String normalizeMatchType(String type) {
