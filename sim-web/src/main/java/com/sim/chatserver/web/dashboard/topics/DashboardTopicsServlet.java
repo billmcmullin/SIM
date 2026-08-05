@@ -53,7 +53,8 @@ public class DashboardTopicsServlet extends HttpServlet {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         String contextPath = ServletPathUtil.safeContextPathNoTrailingSlash(req.getContextPath());
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
@@ -153,6 +154,19 @@ public class DashboardTopicsServlet extends HttpServlet {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private DateWindow resolveDateWindow(String dayParam, String startParam, String endParam) {

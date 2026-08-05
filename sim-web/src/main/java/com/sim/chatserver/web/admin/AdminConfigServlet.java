@@ -51,7 +51,8 @@ public class AdminConfigServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         final String rid = UUID.randomUUID().toString().substring(0, 8);
         log.info(() -> "[RID " + rid + "] GET /admin start");
 
@@ -185,6 +186,19 @@ public class AdminConfigServlet extends HttpServlet {
         } catch (ServletException | IOException e) {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
             throw e;
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

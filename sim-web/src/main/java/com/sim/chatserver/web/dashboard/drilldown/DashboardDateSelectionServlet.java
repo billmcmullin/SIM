@@ -42,7 +42,8 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -92,6 +93,19 @@ public class DashboardDateSelectionServlet extends HttpServlet {
 
         req.setAttribute("selectionId", selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private AppDataSourceHolder dataSourceHolder() {

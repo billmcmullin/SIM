@@ -42,7 +42,8 @@ public class CustomerProfileServlet extends HttpServlet {
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.sendRedirect(LOGIN_PATH);
@@ -126,6 +127,19 @@ public class CustomerProfileServlet extends HttpServlet {
         } catch (SQLException e) {
             LOGGER.log(Level.WARNING, "Customer profile data lookup failed", e);
             throw new ServletException("Unable to load customer profile.", e);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

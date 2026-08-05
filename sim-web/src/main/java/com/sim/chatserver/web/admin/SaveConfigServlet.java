@@ -24,7 +24,8 @@ public class SaveConfigServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(SaveConfigServlet.class.getName());
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         String serverHostParam = ServletRequestParamUtil.firstParam(req, "serverHost", 1024, true, true);
         String serverPortValue = ServletRequestParamUtil.firstParam(req, "serverPort", 1024, true, true);
         String connectionInfoParam = ServletRequestParamUtil.firstParam(req, "connectionInfo", 1024, true, true);
@@ -158,6 +159,19 @@ public class SaveConfigServlet extends HttpServlet {
                     Json.createObjectBuilder().add("status", "ok").build());
         } catch (SQLException e) {
             throw new ServletException("Unable to save server configuration", e);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

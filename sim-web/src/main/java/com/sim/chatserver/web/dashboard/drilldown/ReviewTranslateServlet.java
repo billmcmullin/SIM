@@ -33,7 +33,8 @@ public class ReviewTranslateServlet extends HttpServlet {
     private static final TranslationService TRANSLATION_SERVICE = new DefaultTranslationService();
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
         if (!isLoggedIn(req)) {
@@ -93,16 +94,43 @@ public class ReviewTranslateServlet extends HttpServlet {
                     .add("message", "Unable to translate at this time.")
                     .build());
         }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
         writeJson(resp, Json.createObjectBuilder()
                 .add("status", "error")
                 .add("message", "POST required.")
                 .build());
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private boolean isLoggedIn(HttpServletRequest req) {

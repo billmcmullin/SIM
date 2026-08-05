@@ -47,7 +47,8 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
     private static final int ACTIVE_DAYS = 7;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
@@ -144,6 +145,19 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     .add("message", "Unable to load session metrics")
                     .build();
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

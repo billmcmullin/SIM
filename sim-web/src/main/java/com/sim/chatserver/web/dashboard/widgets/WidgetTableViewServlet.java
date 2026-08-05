@@ -36,7 +36,8 @@ public class WidgetTableViewServlet extends HttpServlet {
     private static final Pattern WIDGET_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             req.getRequestDispatcher("/login").forward(req, resp);
@@ -119,6 +120,19 @@ public class WidgetTableViewServlet extends HttpServlet {
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
     }
 
     private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {

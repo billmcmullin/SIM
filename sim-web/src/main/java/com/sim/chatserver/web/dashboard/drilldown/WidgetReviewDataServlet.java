@@ -74,7 +74,8 @@ public class WidgetReviewDataServlet extends HttpServlet {
     private static final Map<String, String> widgetNameCache = new ConcurrentHashMap<>();
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         final long t0 = System.nanoTime();
 
         if (!isLoggedIn(req, resp)) {
@@ -265,6 +266,19 @@ public class WidgetReviewDataServlet extends HttpServlet {
             log.log(Level.SEVERE, "Unable to fetch selected rows", e);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             writeJson(resp, "{\"status\":\"error\",\"message\":\"Unable to load selection.\"}");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

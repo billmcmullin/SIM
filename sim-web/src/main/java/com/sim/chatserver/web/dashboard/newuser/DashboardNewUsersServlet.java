@@ -73,7 +73,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
     private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (req == null) {
             writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid request.");
             return;
@@ -109,6 +110,19 @@ public class DashboardNewUsersServlet extends HttpServlet {
                     resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                     resp.setContentType("text/plain;charset=UTF-8");
                     resp.getWriter().write("Unable to load new user metrics.");
+                }
+            }
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }

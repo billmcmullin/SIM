@@ -43,7 +43,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isLoggedIn(req, resp)) {
             return;
         }
@@ -62,6 +63,19 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
             writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 

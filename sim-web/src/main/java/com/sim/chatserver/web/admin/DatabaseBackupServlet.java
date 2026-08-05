@@ -60,7 +60,8 @@ public class DatabaseBackupServlet extends HttpServlet {
     );
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         if (!isAdmin(req)) {
             resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Admin authentication required.");
             return;
@@ -83,7 +84,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                 try {
                     exportTableAsCsv(conn, zip, table);
                     exported.add(table);
-                } catch (SQLException | IOException tableErr) {
+                } catch (IllegalStateException tableErr) {
                     skipped.add(table);
                     log.log(Level.WARNING, "Failed exporting table: " + table, tableErr);
                 }
@@ -94,11 +95,24 @@ public class DatabaseBackupServlet extends HttpServlet {
             zip.finish();
             log.info(() -> "Data backup export completed. Exported tables=" + exported.size() + ", skipped=" + skipped.size());
 
-        } catch (SQLException | IOException e) {
+        } catch (SQLException | IOException | IllegalStateException e) {
             log.log(Level.SEVERE, "Data backup export failed", e);
             if (!resp.isCommitted()) {
                 resp.reset();
                 resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Data export failed.");
+            }
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
             }
         }
     }
@@ -117,7 +131,7 @@ public class DatabaseBackupServlet extends HttpServlet {
      * Returns all PUBLIC schema base tables, excluding internal/system tables
      * if configured.
      */
-    private List<String> listExportableTables(Connection conn) throws SQLException {
+    private List<String> listExportableTables(Connection conn) {
         List<String> out = new ArrayList<>();
 
         String sql = """
@@ -138,76 +152,86 @@ public class DatabaseBackupServlet extends HttpServlet {
                 }
                 out.add(table);
             }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to list exportable tables.", e);
         }
 
         return out;
     }
 
-    private void exportTableAsCsv(Connection conn, ZipOutputStream zip, String tableName) throws SQLException, IOException {
-        List<String> columns = listTableColumns(conn, tableName);
-        if (columns.isEmpty()) {
-            return;
-        }
-        String projected = String.join(", ", columns.stream().map(this::quoteIdent).toList());
-        String sql = "SELECT " + projected + " FROM " + quoteIdent(tableName);
+    private void exportTableAsCsv(Connection conn, ZipOutputStream zip, String tableName) {
+        try {
+            List<String> columns = listTableColumns(conn, tableName);
+            if (columns.isEmpty()) {
+                return;
+            }
+            String projected = String.join(", ", columns.stream().map(this::quoteIdent).toList());
+            String sql = "SELECT " + projected + " FROM " + quoteIdent(tableName);
 
-        try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-            ps.setFetchSize(1000);
+            try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+                ps.setFetchSize(1000);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                ResultSetMetaData md = rs.getMetaData();
-                int cols = md.getColumnCount();
+                try (ResultSet rs = ps.executeQuery()) {
+                    ResultSetMetaData md = rs.getMetaData();
+                    int cols = md.getColumnCount();
 
-                zip.putNextEntry(new ZipEntry("tables/" + tableName + ".csv"));
-                OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
+                    zip.putNextEntry(new ZipEntry("tables/" + tableName + ".csv"));
+                    OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
 
-                // Header row
-                for (int i = 1; i <= cols; i++) {
-                    if (i > 1) {
-                        w.write(',');
-                    }
-                    w.write(csvEscape(md.getColumnLabel(i)));
-                }
-                w.write("\n");
-
-                // Data rows
-                while (rs.next()) {
+                    // Header row
                     for (int i = 1; i <= cols; i++) {
                         if (i > 1) {
                             w.write(',');
                         }
-                        w.write(csvEscape(readCellAsText(rs, md, i)));
+                        w.write(csvEscape(md.getColumnLabel(i)));
                     }
                     w.write("\n");
-                }
 
-                w.flush();
-                zip.closeEntry();
+                    // Data rows
+                    while (rs.next()) {
+                        for (int i = 1; i <= cols; i++) {
+                            if (i > 1) {
+                                w.write(',');
+                            }
+                            w.write(csvEscape(readCellAsText(rs, md, i)));
+                        }
+                        w.write("\n");
+                    }
+
+                    w.flush();
+                    zip.closeEntry();
+                }
             }
+        } catch (SQLException | IOException e) {
+            throw new IllegalStateException("Failed exporting table: " + tableName, e);
         }
     }
 
-    private void writeManifest(ZipOutputStream zip, List<String> exported, List<String> skipped, String ts) throws IOException {
-        zip.putNextEntry(new ZipEntry("manifest.json"));
-        OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
+    private void writeManifest(ZipOutputStream zip, List<String> exported, List<String> skipped, String ts) {
+        try {
+            zip.putNextEntry(new ZipEntry("manifest.json"));
+            OutputStreamWriter w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
 
-        w.write("{\n");
-        w.write("  \"formatVersion\": 1,\n");
-        w.write("  \"type\": \"raw-data-export\",\n");
-        w.write("  \"generatedAt\": \"" + jsonEscape(ts) + "\",\n");
-        w.write("  \"schema\": \"public\",\n");
-        w.write("  \"exportedTableCount\": " + exported.size() + ",\n");
-        w.write("  \"skippedTableCount\": " + skipped.size() + ",\n");
-        w.write("  \"exportedTables\": " + toJsonArray(exported) + ",\n");
-        w.write("  \"skippedTables\": " + toJsonArray(skipped));
-        w.write('\n');
-        w.write("}\n");
+            w.write("{\n");
+            w.write("  \"formatVersion\": 1,\n");
+            w.write("  \"type\": \"raw-data-export\",\n");
+            w.write("  \"generatedAt\": \"" + jsonEscape(ts) + "\",\n");
+            w.write("  \"schema\": \"public\",\n");
+            w.write("  \"exportedTableCount\": " + exported.size() + ",\n");
+            w.write("  \"skippedTableCount\": " + skipped.size() + ",\n");
+            w.write("  \"exportedTables\": " + toJsonArray(exported) + ",\n");
+            w.write("  \"skippedTables\": " + toJsonArray(skipped));
+            w.write('\n');
+            w.write("}\n");
 
-        w.flush();
-        zip.closeEntry();
+            w.flush();
+            zip.closeEntry();
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to write backup manifest.", e);
+        }
     }
 
-    private List<String> listTableColumns(Connection conn, String tableName) throws SQLException {
+    private List<String> listTableColumns(Connection conn, String tableName) {
         List<String> out = new ArrayList<>();
         String sql = "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -220,53 +244,69 @@ public class DatabaseBackupServlet extends HttpServlet {
                     }
                 }
             }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to list columns for table: " + tableName, e);
         }
         return out;
     }
 
-    private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) throws SQLException {
-        int sqlType = md.getColumnType(columnIndex);
-        if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
-            byte[] bytes = readValidatedBinary(rs, columnIndex);
-            if (bytes == null) {
-                return "";
+    private String readCellAsText(ResultSet rs, ResultSetMetaData md, int columnIndex) {
+        try {
+            int sqlType = md.getColumnType(columnIndex);
+            if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
+                byte[] bytes = readValidatedBinary(rs, columnIndex);
+                if (bytes == null) {
+                    return "";
+                }
+                return Base64.getEncoder().encodeToString(bytes);
             }
-            return Base64.getEncoder().encodeToString(bytes);
-        }
 
-        if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
-            Timestamp ts = readValidatedTimestamp(rs, columnIndex);
-            if (ts == null) {
-                return "";
+            if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
+                Timestamp ts = readValidatedTimestamp(rs, columnIndex);
+                if (ts == null) {
+                    return "";
+                }
+                return ISO_INSTANT_FMT.format(ts.toInstant());
             }
-            return ISO_INSTANT_FMT.format(ts.toInstant());
-        }
 
-        if (sqlType == Types.DATE) {
-            java.sql.Date sqlDate = readValidatedDate(rs, columnIndex);
-            if (sqlDate == null) {
-                return "";
+            if (sqlType == Types.DATE) {
+                java.sql.Date sqlDate = readValidatedDate(rs, columnIndex);
+                if (sqlDate == null) {
+                    return "";
+                }
+                LocalDate localDate = sqlDate.toLocalDate();
+                return localDate == null ? "" : localDate.toString();
             }
-            LocalDate localDate = sqlDate.toLocalDate();
-            return localDate == null ? "" : localDate.toString();
-        }
 
-        String value = readValidatedCellText(rs, columnIndex);
-        return value == null ? "" : value;
+            String value = readValidatedCellText(rs, columnIndex);
+            return value == null ? "" : value;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read cell value.", e);
+        }
     }
 
-    private String readValidatedIdentifier(ResultSet rs, int columnIndex) throws SQLException {
+    private String readValidatedIdentifier(ResultSet rs, int columnIndex) {
         return sanitizeIdentifier(readValidatedCellText(rs, columnIndex));
     }
 
-    private String readValidatedCellText(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
+    private String readValidatedCellText(ResultSet rs, int columnIndex) {
+        Object rawValue;
+        try {
+            rawValue = rs.getObject(columnIndex);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read text cell value.", e);
+        }
         String raw = rawValue == null ? null : String.valueOf(rawValue);
         return sanitizeCellText(raw);
     }
 
-    private byte[] readValidatedBinary(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
+    private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
+        Object rawValue;
+        try {
+            rawValue = rs.getObject(columnIndex);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read binary cell value.", e);
+        }
         if (rawValue instanceof byte[] bytes) {
             return sanitizeBinary(bytes);
         }
@@ -276,8 +316,13 @@ public class DatabaseBackupServlet extends HttpServlet {
         return sanitizeBinary(fallbackBytes);
     }
 
-    private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
+    private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
+        Object rawValue;
+        try {
+            rawValue = rs.getObject(columnIndex);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read timestamp cell value.", e);
+        }
         if (rawValue instanceof Timestamp value) {
             try {
                 java.time.Instant instant = value.toInstant();
@@ -315,8 +360,13 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
     }
 
-    private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) throws SQLException {
-        Object rawValue = rs.getObject(columnIndex);
+    private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) {
+        Object rawValue;
+        try {
+            rawValue = rs.getObject(columnIndex);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read date cell value.", e);
+        }
         if (rawValue instanceof java.sql.Date date) {
             try {
                 LocalDate localDate = date.toLocalDate();

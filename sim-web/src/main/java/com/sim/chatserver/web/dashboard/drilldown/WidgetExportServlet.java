@@ -77,7 +77,8 @@ public class WidgetExportServlet extends HttpServlet {
     AppDataSourceHolder dsHolder;
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         long startedAt = System.nanoTime();
 
         if (!isLoggedIn(req, resp)) {
@@ -150,6 +151,19 @@ public class WidgetExportServlet extends HttpServlet {
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Export failed", e);
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed.");
+        }
+    
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
         }
     }
 
