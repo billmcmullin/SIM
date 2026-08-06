@@ -107,9 +107,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 if (reqExpectsJson(path)) {
                     writeJsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load new user metrics.");
                 } else {
-                    resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                    resp.setContentType("text/plain;charset=UTF-8");
-                    resp.getWriter().write("Unable to load new user metrics.");
+                    writePlainTextError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load new user metrics.");
                 }
             }
         }
@@ -132,7 +130,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return PATH_DATA.equals(path) || PATH_DAY.equals(path) || PATH_DAY_DATA.equals(path);
     }
 
-    private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) throws IOException {
+    private void handlePage(HttpServletRequest req, HttpServletResponse resp, HttpSession session) {
         if (req == null || resp == null || session == null) {
             return;
         }
@@ -158,10 +156,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         resp.setContentType("text/html; charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write dashboard new users page response", e);
         }
     }
 
-    private void handleData(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleData(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null || resp == null) {
             return;
         }
@@ -203,7 +203,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
-    private void handleDay(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleDay(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null || resp == null) {
             return;
         }
@@ -307,7 +307,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private void computeNewSessionMetrics(Connection conn, List<WidgetEntry> widgets, Metrics metrics, String contextPath) throws SQLException {
+    private void computeNewSessionMetrics(Connection conn, List<WidgetEntry> widgets, Metrics metrics, String contextPath) {
         Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
         Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
 
@@ -345,7 +345,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
+    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) {
         Map<String, Timestamp> earliestBySession = new LinkedHashMap<>();
         for (WidgetEntry widget : widgets) {
             if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
@@ -373,12 +373,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
                         earliestBySession.put(sid, ts);
                     }
                 }
+            } catch (SQLException e) {
+                log.log(Level.FINE, "Unable to query earliest session rows for table " + table, e);
             }
         }
         return earliestBySession;
     }
 
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
+    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) {
         Map<String, Integer> totals = new LinkedHashMap<>();
         for (WidgetEntry widget : widgets) {
             if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
@@ -402,6 +404,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
                     int c = rs.getInt("c");
                     totals.merge(sid, Integer.valueOf(c), Integer::sum);
                 }
+            } catch (SQLException e) {
+                log.log(Level.FINE, "Unable to query total chats for table " + table, e);
             }
         }
         return totals;
@@ -443,22 +447,30 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) throws IOException {
+    private String loadTemplate(HttpServletRequest req, String path) {
+        if (req == null || req.getServletContext() == null || path == null || path.isBlank()) {
+            return "";
+        }
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.log(Level.WARNING, "Template not found: {0}", path);
+                return "";
             }
             try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder b = new StringBuilder();
@@ -468,6 +480,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 }
                 return b.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load template " + path, e);
+            return "";
         }
     }
 
@@ -562,12 +577,49 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return normalizeServletPath(req.getHttpServletMapping().getPattern());
     }
 
-    private void writeJsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, message == null ? "Request failed." : message);
+    private void writeJsonError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message == null ? "Request failed." : message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
+    }
+
+    private void writePlainTextError(HttpServletResponse resp, int status, String message) {
+        if (resp == null) {
+            return;
+        }
+        try {
+            resp.setStatus(status);
+            resp.setContentType("text/plain;charset=UTF-8");
+            try (PrintWriter writer = resp.getWriter()) {
+                writer.write(message == null ? "Request failed." : message);
+            }
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to write plain text error", e);
+        }
     }
 
     private static final class Metrics {

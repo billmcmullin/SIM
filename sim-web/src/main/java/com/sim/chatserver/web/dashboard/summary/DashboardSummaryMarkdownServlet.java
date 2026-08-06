@@ -70,13 +70,13 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
             String metaDay = readJsonString(meta, "day", day.toString());
             String metaSlot = String.valueOf(readJsonInt(meta, "slot", slot));
-            String metaGeneratedAt = readJsonString(meta, "generatedAt", "—");
+            String metaGeneratedAt = readJsonString(meta, "generatedAt", "â€”");
             String statusText = readJsonString(meta, "statusText", "idle");
             String statusClass = cssStatus(statusText);
 
             int entryCount = readJsonInt(summary, "entryCount", 0);
             int progressPct = readJsonInt(meta, "progressPct", 0);
-            String metaUpdatedAt = readJsonString(meta, "updatedAt", "—");
+            String metaUpdatedAt = readJsonString(meta, "updatedAt", "â€”");
             String metaMessage = readJsonString(meta, "message", "");
             String suggestedNextAction = suggestNextAction(payload);
 
@@ -94,7 +94,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             vars.put("statusClass", DashboardTemplateRenderer.escapeHtml(statusClass));
             vars.put("entryCount", DashboardTemplateRenderer.escapeHtml(String.valueOf(Math.max(0, entryCount))));
             vars.put("progressPct", DashboardTemplateRenderer.escapeHtml(String.valueOf(progressPct)));
-            vars.put("metaMessage", DashboardTemplateRenderer.escapeHtml(metaMessage.isBlank() ? "—" : metaMessage));
+            vars.put("metaMessage", DashboardTemplateRenderer.escapeHtml(metaMessage.isBlank() ? "â€”" : metaMessage));
 
             vars.put("previewHtml", previewHtml);
             vars.put("suggestedNextAction", DashboardTemplateRenderer.escapeHtml(suggestedNextAction));
@@ -169,10 +169,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
         JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
 
-        String overall = readJsonString(summary, "overall", "—");
-        String quality = readJsonString(summary, "quality", "—");
-        String response = readJsonString(summary, "response", "—");
-        String usage = readJsonString(summary, "usage", "—");
+        String overall = readJsonString(summary, "overall", "â€”");
+        String quality = readJsonString(summary, "quality", "â€”");
+        String response = readJsonString(summary, "response", "â€”");
+        String usage = readJsonString(summary, "usage", "â€”");
         int entryCount = readJsonInt(summary, "entryCount", 0);
 
         String day = readJsonString(meta, "day", "");
@@ -212,14 +212,14 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
         JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
 
-        String overall = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "overall", "—"));
-        String quality = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "quality", "—"));
-        String response = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "response", "—"));
-        String usage = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "usage", "—"));
+        String overall = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "overall", "â€”"));
+        String quality = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "quality", "â€”"));
+        String response = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "response", "â€”"));
+        String usage = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "usage", "â€”"));
 
-        String day = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "day", "—"));
+        String day = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "day", "â€”"));
         String slot = DashboardTemplateRenderer.escapeHtml(String.valueOf(readJsonInt(meta, "slot", 0)));
-        String generatedAt = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "generatedAt", "—"));
+        String generatedAt = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "generatedAt", "â€”"));
         String statusText = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "statusText", "idle"));
         int progressPct = readJsonInt(meta, "progressPct", 0);
         int entryCount = readJsonInt(summary, "entryCount", 0);
@@ -269,7 +269,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             return "Promote underused high-value widgets and add clearer in-app guidance so users discover the right tools faster.";
         }
 
-        return "Review Top Terms and Latest Chats to identify one repeated issue, then apply a focused prompt update and monitor tomorrow’s trend.";
+        return "Review Top Terms and Latest Chats to identify one repeated issue, then apply a focused prompt update and monitor tomorrowâ€™s trend.";
     }
 
     private boolean containsAny(String text, String... terms) {
@@ -296,11 +296,11 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     }
 
     private String blankDash(String s) {
-        return (s == null || s.isBlank()) ? "—" : s;
+        return (s == null || s.isBlank()) ? "â€”" : s;
     }
 
     private String safeBlock(String s) {
-        return (s == null || s.isBlank()) ? "—" : s;
+        return (s == null || s.isBlank()) ? "â€”" : s;
     }
 
     private String readJsonString(JsonObject obj, String key, String fallback) {

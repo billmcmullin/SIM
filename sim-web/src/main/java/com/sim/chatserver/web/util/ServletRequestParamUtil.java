@@ -23,7 +23,7 @@ public final class ServletRequestParamUtil {
             return null;
         }
 
-        return normalizeParam(request.getParameter(name), maxLen, stripNullByte, nullIfEmpty);
+        return normalizeParam(readParam(request, name), maxLen, stripNullByte, nullIfEmpty);
     }
 
     public static String firstParamFromValues(HttpServletRequest request,
@@ -35,9 +35,9 @@ public final class ServletRequestParamUtil {
             return null;
         }
 
-        String[] values = request.getParameterValues(name);
-        if ((values == null || values.length == 0) && request.getParameterMap() != null) {
-            values = request.getParameterMap().get(name);
+        String[] values = readParameterValues(request, name);
+        if ((values == null || values.length == 0) && readParameterMap(request) != null) {
+            values = readParameterMap(request).get(name);
         }
         if (values != null) {
             for (String value : values) {
@@ -48,7 +48,7 @@ public final class ServletRequestParamUtil {
             }
         }
 
-        return normalizeParam(request.getParameter(name), maxLen, stripNullByte, nullIfEmpty);
+        return normalizeParam(readParam(request, name), maxLen, stripNullByte, nullIfEmpty);
     }
 
     public static String normalizeValue(String value,
@@ -168,5 +168,51 @@ public final class ServletRequestParamUtil {
         }
 
         return normalized;
+    }
+
+    private static String readParam(HttpServletRequest request, String name) {
+        String raw = request.getParameter(name);
+        if (raw == null) {
+            return null;
+        }
+        return raw.replace('\r', ' ').replace('\n', ' ');
+    }
+
+    private static String[] readParameterValues(HttpServletRequest request, String name) {
+        String[] values = request.getParameterValues(name);
+        if (values == null) {
+            return null;
+        }
+        String[] sanitized = new String[values.length];
+        for (int i = 0; i < values.length; i++) {
+            String value = values[i];
+            sanitized[i] = value == null ? null : value.replace('\r', ' ').replace('\n', ' ');
+        }
+        return sanitized;
+    }
+
+    private static java.util.Map<String, String[]> readParameterMap(HttpServletRequest request) {
+        java.util.Map<String, String[]> map = request.getParameterMap();
+        if (map == null || map.isEmpty()) {
+            return map;
+        }
+
+        java.util.Map<String, String[]> copy = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, String[]> entry : map.entrySet()) {
+            String key = entry.getKey();
+            String[] values = entry.getValue();
+            if (values == null) {
+                copy.put(key, null);
+                continue;
+            }
+
+            String[] sanitized = new String[values.length];
+            for (int i = 0; i < values.length; i++) {
+                String value = values[i];
+                sanitized[i] = value == null ? null : value.replace('\r', ' ').replace('\n', ' ');
+            }
+            copy.put(key, sanitized);
+        }
+        return copy;
     }
 }

@@ -15,7 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 /**
- * Serves the /dashboard/sessions page which renders the “All Sessions” SPA. The
+ * Serves the /dashboard/sessions page which renders the â€œAll Sessionsâ€ SPA. The
  * initial script tag injects the context path (for AJAX), default pagination
  * parameters, and initial filters.
  */

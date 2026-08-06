@@ -402,25 +402,31 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeString(ResultSet rs, String column, int maxLen) throws SQLException {
-        String direct = rs.getString(column);
-        if (direct != null) {
-            return sanitizeText(direct, maxLen);
-        }
-
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = readRawText(rs, column);
         return sanitizeText(value, maxLen);
     }
 
     private String getSafeString(ResultSet rs, int column, int maxLen) throws SQLException {
-        String direct = rs.getString(column);
-        if (direct != null) {
-            return sanitizeText(direct, maxLen);
-        }
-
-        Object raw = rs.getObject(column);
-        String value = raw == null ? null : String.valueOf(raw);
+        String value = readRawText(rs, column);
         return sanitizeText(value, maxLen);
+    }
+
+    private String readRawText(ResultSet rs, String column) throws SQLException {
+        try {
+            String typed = rs.getObject(column, String.class);
+            if (typed != null) {
+                return typed;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", using generic conversion", ex);
+        }
+        Object raw = rs.getObject(column);
+        return raw == null ? null : String.valueOf(raw);
+    }
+
+    private String readRawText(ResultSet rs, int column) throws SQLException {
+        Object raw = rs.getObject(column);
+        return raw == null ? null : String.valueOf(raw);
     }
 
     private String sanitizeText(String value, int maxLen) {
@@ -450,18 +456,7 @@ public class DashboardDailySummaryStore {
             return value;
         }
 
-        int directValue = rs.getInt(column);
-        if (!rs.wasNull()) {
-            if (directValue < min) {
-                return min;
-            }
-            if (directValue > max) {
-                return max;
-            }
-            return directValue;
-        }
-
-        String raw = getSafeString(rs, column, 64);
+        String raw = sanitizeText(readRawText(rs, column), 64);
         if (raw.isBlank() || !raw.matches("^-?\\d+$")) {
             return min;
         }
@@ -487,18 +482,7 @@ public class DashboardDailySummaryStore {
             return direct;
         }
 
-        Object rawValue = rs.getObject(column);
-        if (rawValue == null) {
-            return null;
-        }
-        if (rawValue instanceof Timestamp ts) {
-            return ts;
-        }
-        if (rawValue instanceof java.sql.Date date) {
-            return new Timestamp(date.getTime());
-        }
-
-        String raw = sanitizeText(String.valueOf(rawValue), 128);
+        String raw = getSafeString(rs, column, 128);
         if (raw.isBlank()) {
             return null;
         }
@@ -519,16 +503,6 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
-        java.sql.Date direct = rs.getDate(column);
-        if (direct != null) {
-            try {
-                return direct.toLocalDate().toString();
-            } catch (DateTimeException | IllegalArgumentException e) {
-                log.log(Level.FINE, "Invalid date value for column " + column, e);
-                return "";
-            }
-        }
-
         String raw = getSafeString(rs, column, 32);
         if (raw.isBlank()) {
             return "";

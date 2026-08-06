@@ -1504,7 +1504,7 @@ public class WidgetReviewMapReduceOrchestrator {
         final ReduceRequest reduceRequest;
         final ReduceResult reduceResult;
 
-        ReduceExecutionResult(WorkspaceResponse response, ReduceRequest reduceRequest, ReduceResult reduceResult) {
+        private ReduceExecutionResult(WorkspaceResponse response, ReduceRequest reduceRequest, ReduceResult reduceResult) {
             this.response = response;
             this.reduceRequest = reduceRequest;
             this.reduceResult = reduceResult;

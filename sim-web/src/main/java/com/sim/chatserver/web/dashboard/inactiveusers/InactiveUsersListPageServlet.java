@@ -262,7 +262,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         List<Row> pageRows = allRows.subList(start, end);
 
         String jsonData = buildJson(pageRows);
-        String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
+        String template = sanitizeTemplate(loadTemplate(req.getServletContext(), TEMPLATE_PATH));
 
         String title = "all".equals(scope)
                 ? "All Inactive Users"
@@ -318,7 +318,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
-    private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) throws SQLException {
+    private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) {
         List<Row> rows = new ArrayList<>();
         String table = sanitizeWidgetTableName(widgetId);
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
@@ -347,6 +347,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 r.frustrationReason = "";
                 rows.add(r);
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to load widget rows for " + table, e);
         }
         return rows;
     }
@@ -602,24 +604,43 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.log(Level.WARNING, "Template not found: {0}", path);
+                return "";
             }
             byte[] bytes = stream.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load inactive users template: " + path, e);
+            return "";
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private String sanitizeTemplate(String template) {
+        if (template == null) {
+            return null;
+        }
+        String normalized = template.replace("\u0000", "").replace("\r", "");
+        if (normalized.length() > 500_000) {
+            return normalized.substring(0, 500_000);
+        }
+        return normalized;
+    }
+
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

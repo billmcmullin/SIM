@@ -621,8 +621,19 @@ public class TestConnectionServlet extends HttpServlet {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write test-connection JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private String truncate(String value) {

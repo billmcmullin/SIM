@@ -73,14 +73,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         String scope = ServletRequestParamUtil.firstParam(req, "scope", 256, true, true);
         boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
 
-        List<TermChatSnapshot> snapshots;
-        try {
-            snapshots = collectDateEntries(date);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load date entries for review", e);
-            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load chats for day.");
-            return;
-        }
+        List<TermChatSnapshot> snapshots = collectDateEntries(date);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day.");
@@ -104,8 +97,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         String selectionLabel = requestedTerm.isBlank()
-                ? (termEntriesOnly ? ("Date " + date + " • Term Entries") : ("Date " + date))
-                : ("Date " + date + " • " + requestedTerm);
+                ? (termEntriesOnly ? ("Date " + date + " â€¢ Term Entries") : ("Date " + date))
+                : ("Date " + date + " â€¢ " + requestedTerm);
 
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
@@ -136,21 +129,21 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
     }
 
-    private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) {
         String dateParam = ServletRequestParamUtil.firstParam(req, "date", 256, true, true);
         if (dateParam != null && !dateParam.isBlank()) {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
             } catch (DateTimeParseException ex) {
                 log.log(Level.FINE, "Invalid date parameter for relative date selection");
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
+                sendError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid date value. Use YYYY-MM-DD.");
                 return null;
             }
         }
 
         String day = ServletRequestParamUtil.firstParam(req, "day", 256, true, true);
         if (day == null || day.isBlank()) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
+            sendError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
             return null;
         }
 
@@ -160,13 +153,13 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             case "yesterday" ->
                 LocalDate.now(ZoneId.systemDefault()).minusDays(1);
             default -> {
-                resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid day value. Use today or yesterday.");
+                sendError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid day value. Use today or yesterday.");
                 yield null;
             }
         };
     }
 
-    private List<TermChatSnapshot> collectDateEntries(LocalDate date) throws SQLException {
+    private List<TermChatSnapshot> collectDateEntries(LocalDate date) {
         List<TermChatSnapshot> snapshots = new ArrayList<>();
         List<WidgetEntry> widgets = listWidgets();
         if (widgets.isEmpty()) {
@@ -215,8 +208,12 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                             ));
                         }
                     }
+                } catch (SQLException e) {
+                    log.log(Level.FINE, "Unable to read relative-date entries from table " + tableName, e);
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to collect relative date entries", e);
         }
 
         return snapshots;
@@ -377,16 +374,31 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return CDI.current().select(TermsStore.class).get();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
+    }
+
+    private void sendError(HttpServletResponse resp, int status, String message) {
+        if (resp == null) {
+            return;
+        }
+        try {
+            resp.sendError(status, message == null ? "Request failed." : message);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to send error response", e);
+        }
     }
 
     private String sanitizeWidgetTableName(String widgetId) {

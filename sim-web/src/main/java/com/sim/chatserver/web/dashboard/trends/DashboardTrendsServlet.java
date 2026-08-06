@@ -215,10 +215,11 @@ public class DashboardTrendsServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) throws IOException {
+    private String loadTemplate(HttpServletRequest req, String path) {
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template missing: " + path);
+                log.log(Level.WARNING, "Template missing: {0}", path);
+                return "";
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();
@@ -228,17 +229,24 @@ public class DashboardTrendsServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load trends template: " + path, e);
+            return "";
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

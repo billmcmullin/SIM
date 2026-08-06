@@ -281,7 +281,7 @@ public class TermsCsvServlet extends HttpServlet {
             // If you need to set system-flag on existing rows, add a TermsStore API to do so and call it here.
             return false; // existing updated
         } else {
-            // No existing term found — create new term using CSV columns.
+            // No existing term found â€” create new term using CSV columns.
             TermDefinition created = termsStore.createTerm(name, description, matchPattern, matchType);
 
             // Note: TermsStore.createTerm in the current API doesn't accept a systemFlag parameter.

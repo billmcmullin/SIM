@@ -235,7 +235,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             }
         }
         if (winner == null) {
-            return "—";
+            return "â€”";
         }
         return displayNames.getOrDefault(winner, winner);
     }
@@ -298,7 +298,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
 
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "—";
+            return "â€”";
         }
         return ts.toInstant()
                 .atZone(ZoneId.systemDefault())

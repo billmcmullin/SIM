@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -125,7 +127,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.", null);
@@ -200,19 +201,6 @@ public class WidgetReviewStartServlet extends HttpServlet {
                 .build()
             ;
         writeJson(resp, HttpServletResponse.SC_OK, ok);
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     public static String createSnapshotSelection(HttpSession session,
@@ -320,7 +308,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         StringBuilder payload = new StringBuilder(Math.min(MAX_JSON_PAYLOAD_BYTES, 4096));
         char[] buffer = new char[2048];
         int total = 0;
-        try (var reader = req.getReader()) {
+        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             if (reader == null) {
                 return "";
             }

@@ -6,7 +6,6 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.text.Normalizer;
-import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -203,20 +202,6 @@ public final class SecurityValidationService {
             return remote;
         }
 
-        // Only fall back to forwarding headers when remote address is unavailable.
-        String xff = readForwardedHeaderToken(req, "X-Forwarded-For", 512);
-        if (!xff.isBlank()) {
-            String first = canonicalizeInput(xff.split(",")[0], 64);
-            if (isParseableAddress(first)) {
-                return first;
-            }
-        }
-
-        String xri = readForwardedHeaderToken(req, "X-Real-IP", 64);
-        if (isParseableAddress(xri)) {
-            return xri;
-        }
-
         return "(unknown)";
     }
 
@@ -249,6 +234,7 @@ public final class SecurityValidationService {
             try {
                 octet = Integer.parseInt(part);
             } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Invalid IPv4 octet encountered while parsing client address.", ex);
                 return false;
             }
             if (octet < 0 || octet > 255) {
@@ -364,21 +350,15 @@ public final class SecurityValidationService {
         if (req == null || headerName == null || headerName.isBlank()) {
             return "";
         }
-        Enumeration<String> headers = req.getHeaders(headerName);
-        if (headers == null) {
+        String raw = req.getHeader(headerName);
+        if (raw == null || raw.isBlank()) {
             return "";
         }
-        while (headers.hasMoreElements()) {
-            String raw = headers.nextElement();
-            if (raw == null || raw.isBlank()) {
-                continue;
-            }
-            int comma = raw.indexOf(',');
-            String token = comma >= 0 ? raw.substring(0, comma) : raw;
-            String normalized = canonicalizeInput(token, maxLen);
-            if (!normalized.isBlank()) {
-                return normalized;
-            }
+        int comma = raw.indexOf(',');
+        String token = comma >= 0 ? raw.substring(0, comma) : raw;
+        String normalized = canonicalizeInput(token, maxLen);
+        if (!normalized.isBlank()) {
+            return normalized;
         }
         return "";
     }

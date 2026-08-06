@@ -158,7 +158,7 @@ public class CustomerProfileServlet extends HttpServlet {
             String sid = nullToEmpty(link.getSessionId());
             String display = nullToEmpty(link.getDisplayNameSnapshot());
             String email = nullToEmpty(link.getContactEmailSnapshot());
-            String updated = link.getUpdatedAt() == null ? "—" : formatOffsetDateTime(link.getUpdatedAt());
+            String updated = link.getUpdatedAt() == null ? "â€”" : formatOffsetDateTime(link.getUpdatedAt());
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
@@ -172,11 +172,11 @@ public class CustomerProfileServlet extends HttpServlet {
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(display.isBlank() ? "—" : display));
+            row.append(escapeHtml(display.isBlank() ? "â€”" : display));
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(email.isBlank() ? "—" : email));
+            row.append(escapeHtml(email.isBlank() ? "â€”" : email));
             closeTag(row, "td");
 
             openTag(row, "td");
@@ -234,7 +234,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String nullToDash(String value) {
         String v = trimToNull(value);
-        return v == null ? "—" : v;
+        return v == null ? "â€”" : v;
     }
 
     private String firstNonBlank(String... values) {
@@ -274,7 +274,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String formatOffsetDateTime(OffsetDateTime value) {
         if (value == null) {
-            return "—";
+            return "â€”";
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }

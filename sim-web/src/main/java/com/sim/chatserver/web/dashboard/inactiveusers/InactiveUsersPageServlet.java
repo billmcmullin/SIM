@@ -155,7 +155,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
                         row.frustrationDetected = fr.detected;
                         row.frustrationScore = fr.score;
                         row.frustrationReason = fr.reason;
-                    } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                    } catch (IllegalArgumentException | IllegalStateException ex) {
                         row.frustrationDetected = false;
                         row.frustrationScore = 0.0;
                         row.frustrationReason = "";
@@ -283,7 +283,7 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return lastEntry.toInstant().toEpochMilli() < cutoff.toEpochMilli();
     }
 
-    private Map<String, InactiveRow> querySessionAggregateForTable(Connection conn, String table, String widgetId, String widgetLabel) throws SQLException {
+    private Map<String, InactiveRow> querySessionAggregateForTable(Connection conn, String table, String widgetId, String widgetLabel) {
         Map<String, InactiveRow> out = new LinkedHashMap<>();
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                 + quoteIdentifier(table)
@@ -309,11 +309,13 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 r.frustrationReason = "";
                 out.put(r.sessionId, r);
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to aggregate inactive sessions for table " + table, e);
         }
         return out;
     }
 
-    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) throws SQLException {
+    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
         List<String> prompts = new ArrayList<>();
         if (sessionId == null || sessionId.isBlank() || limit < 1) {
             return prompts;
@@ -591,14 +593,18 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 .build();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -640,8 +646,17 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        Object raw = rs.getObject(column);
+    private String readDbText(ResultSet rs, String column, int maxLen) {
+        if (rs == null || column == null || column.isBlank()) {
+            return null;
+        }
+        Object raw;
+        try {
+            raw = rs.getObject(column);
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to read DB text for column " + column, e);
+            return null;
+        }
         String value = raw == null ? null : String.valueOf(raw);
         return safeDbText(value, maxLen);
     }
@@ -657,10 +672,14 @@ public class InactiveUsersPageServlet extends HttpServlet {
         return normalized;
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
+        if (context == null || path == null || path.isBlank()) {
+            return "";
+        }
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.log(Level.WARNING, "Template not found: {0}", path);
+                return "";
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder b = new StringBuilder();
@@ -670,6 +689,9 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 }
                 return b.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load template " + path, e);
+            return "";
         }
     }
 

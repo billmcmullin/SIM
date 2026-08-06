@@ -65,7 +65,6 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 
 @MultipartConfig
-// parasoft-suppress SERVLET.AJDBC "This servlet intentionally orchestrates import persistence and delegates SQL safety to validated identifiers and prepared statements."
 public class DatabaseImportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
@@ -137,8 +136,15 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
-    private void handlePrecheck(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
-        Part file = req.getPart("file");
+    private void handlePrecheck(HttpServletRequest req, HttpServletResponse resp) {
+        Part file;
+        try {
+            file = req.getPart("file");
+        } catch (IOException | ServletException e) {
+            log.log(Level.WARNING, "Unable to read upload payload for precheck", e);
+            json(resp, HttpServletResponse.SC_BAD_REQUEST, err("Upload backup ZIP file."));
+            return;
+        }
         if (file == null || file.getSize() == 0) {
             json(resp, HttpServletResponse.SC_BAD_REQUEST, err("Upload backup ZIP file."));
             return;
@@ -183,8 +189,15 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
-    private void handleImportRun(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
-        Part file = req.getPart("file");
+    private void handleImportRun(HttpServletRequest req, HttpServletResponse resp) {
+        Part file;
+        try {
+            file = req.getPart("file");
+        } catch (IOException | ServletException e) {
+            log.log(Level.WARNING, "Unable to read upload payload for import", e);
+            json(resp, HttpServletResponse.SC_BAD_REQUEST, err("Upload backup ZIP file."));
+            return;
+        }
         if (file == null || file.getSize() == 0) {
             json(resp, HttpServletResponse.SC_BAD_REQUEST, err("Upload backup ZIP file."));
             return;
@@ -549,8 +562,28 @@ public class DatabaseImportServlet extends HttpServlet {
         return info;
     }
 
-    private Integer readMetadataInt(ResultSet rs, String columnName) throws SQLException {
-        String text = rs.getString(columnName);
+    private Integer readMetadataInt(ResultSet rs, String columnName) {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return null;
+        }
+        Integer direct = null;
+        try {
+            direct = rs.getObject(columnName, Integer.class);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed metadata integer read failed for column " + columnName, ex);
+        }
+        if (direct != null) {
+            return direct;
+        }
+
+        Object fallbackObj;
+        try {
+            fallbackObj = rs.getObject(columnName);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Metadata object read failed for column " + columnName, ex);
+            return null;
+        }
+        String text = fallbackObj == null ? null : String.valueOf(fallbackObj);
         if (text == null) {
             return null;
         }
@@ -715,7 +748,6 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private void bindDate(PreparedStatement ps, int idx, String v) throws SQLException {
-        // parasoft-suppress SECURITY.BV.ADT "Date value is parsed from controlled CSV import content and immediately bound to a SQL parameter."
         java.sql.Date d = parseDateStrict(v);
         if (d == null) {
             throw new SQLException("Invalid date format '" + v + '\'');
@@ -723,10 +755,15 @@ public class DatabaseImportServlet extends HttpServlet {
         ps.setDate(idx, d);
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getTables(null, "public", tableName, new String[]{"TABLE"})) {
-            return rs.next();
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, "public", tableName, new String[]{"TABLE"})) {
+                return rs.next();
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
+            return false;
         }
     }
 
@@ -913,7 +950,7 @@ public class DatabaseImportServlet extends HttpServlet {
                 .replace("\n", "");
     }
 
-    private String readMetadataIdentifier(ResultSet rs, String columnName) throws SQLException {
+    private String readMetadataIdentifier(ResultSet rs, String columnName) {
         String raw = readSafeDbText(rs, columnName, 63);
         if (raw == null) {
             return null;
@@ -922,8 +959,25 @@ public class DatabaseImportServlet extends HttpServlet {
         return SQL_IDENTIFIER.matcher(normalized).matches() ? normalized : null;
     }
 
-    private String readSafeDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        String raw = rs.getString(columnName);
+    private String readSafeDbText(ResultSet rs, String columnName, int maxLen) {
+        String raw;
+        try {
+            raw = rs.getObject(columnName, String.class);
+            if (raw == null) {
+                Object rawObj = rs.getObject(columnName);
+                raw = rawObj == null ? null : String.valueOf(rawObj);
+            }
+        } catch (SQLException ex) {
+            Object rawObj;
+            try {
+                rawObj = rs.getObject(columnName);
+                raw = rawObj == null ? null : String.valueOf(rawObj);
+            } catch (SQLException ex2) {
+                log.log(Level.FINE, "DB text read failed for column " + columnName, ex2);
+                raw = null;
+            }
+            log.log(Level.FINE, "Typed DB text read failed for column " + columnName + ", using object conversion", ex);
+        }
         if (raw == null) {
             return null;
         }
@@ -1014,8 +1068,19 @@ public class DatabaseImportServlet extends HttpServlet {
                 .build();
     }
 
-    private void json(HttpServletResponse resp, int status, JsonObject obj) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, obj);
+    private void json(HttpServletResponse resp, int status, JsonObject obj) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, obj);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private String safe(String s) {

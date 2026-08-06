@@ -515,21 +515,18 @@ public class WidgetSyncServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        if (isTimerRequest(req)) {
-            handleTimerStatus(resp);
-        } else {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND);
-        }
-    
+            if (isTimerRequest(req)) {
+                handleTimerStatus(resp);
+            } else {
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+            }
         } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            log.log(Level.WARNING, "Unhandled I/O exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
@@ -538,101 +535,98 @@ public class WidgetSyncServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        if (isTimerRequest(req)) {
-            handleTimerUpdate(req, resp);
-            return;
-        }
-
-        if (isSummaryRetryRequest(req)) {
-            handleManualSummaryRetry(req, resp);
-            return;
-        }
-
-        if (!authorizeAdmin(req, resp)) {
-            return;
-        }
-
-        if (!syncRunning.compareAndSet(false, true)) {
-            jsonError(resp, HttpServletResponse.SC_CONFLICT, "Sync already in progress.");
-            return;
-        }
-
-        beginSyncProgress("manual_sync", "Manual sync started.");
-        try {
-            List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
-            updateLastSyncedMaybePersist(true);
-
-            boolean summaryRan = false;
-            boolean summarySuccess = true;
-
-            // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
-            if (summaryAutoPausedUntilManualSuccess) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
-                        defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
-            } else if (!summaryAutoEnabled) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because automatic summary generation is disabled.");
-            } else if (!isSummaryRunDueNow()) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because summary interval has not elapsed. nextRunAt={0}",
-                        computeNextSummaryRunAtIso());
-            } else {
-                summaryRan = true;
-                updateSyncProgress("summary_generation", "Generating daily summary...", 92);
-                summarySuccess = runDailySummaryGeneration(false);
+            if (isTimerRequest(req)) {
+                handleTimerUpdate(req, resp);
+                return;
             }
 
-            JsonArrayBuilder arr = Json.createArrayBuilder();
-            for (WidgetSyncStatus status : statuses) {
-                arr.add(status.toJson());
+            if (isSummaryRetryRequest(req)) {
+                handleManualSummaryRetry(req, resp);
+                return;
             }
 
-            JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("widgetStatus", arr)
-                    .build();
-
-            String completionMessage;
-            if (!summaryRan) {
-                completionMessage = summaryAutoPausedUntilManualSuccess
-                        ? "Sync completed. Summary generation is paused until an admin generates a summary."
-                        : (!summaryAutoEnabled
-                        ? "Sync completed. Automatic summary generation is disabled."
-                        : "Sync completed. Summary generation skipped until the configured interval elapses.");
-            } else if (!summarySuccess) {
-                completionMessage = "Sync completed. Summary generation failed and automatic summaries are now paused.";
-            } else {
-                completionMessage = "Sync completed successfully.";
+            if (!authorizeAdmin(req, resp)) {
+                return;
             }
-            finishSyncProgress(true, completionMessage);
 
-            writeJson(resp, HttpServletResponse.SC_OK, payload);
-        } catch (SQLException | IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
+            if (!syncRunning.compareAndSet(false, true)) {
+                jsonError(resp, HttpServletResponse.SC_CONFLICT, "Sync already in progress.");
+                return;
             }
-            logWarningWithDiagnostics(
-                    "manual-sync-failed",
-                    "Widget sync failed",
-                    "widgetId=" + defaultString(firstParam(req, "widgetId")),
-                    e
-            );
-            finishSyncProgress(false, "Sync failed. Check server logs.");
-            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
-        } finally {
-            syncRunning.set(false);
-        }
-    
+
+            beginSyncProgress("manual_sync", "Manual sync started.");
+            try {
+                List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
+                updateLastSyncedMaybePersist(true);
+
+                boolean summaryRan = false;
+                boolean summarySuccess = true;
+
+                // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
+                if (summaryAutoPausedUntilManualSuccess) {
+                    log.log(Level.INFO,
+                            "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
+                            defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
+                } else if (!summaryAutoEnabled) {
+                    log.log(Level.INFO,
+                            "Skipping summary generation during manual sync because automatic summary generation is disabled.");
+                } else if (!isSummaryRunDueNow()) {
+                    log.log(Level.INFO,
+                            "Skipping summary generation during manual sync because summary interval has not elapsed. nextRunAt={0}",
+                            computeNextSummaryRunAtIso());
+                } else {
+                    summaryRan = true;
+                    updateSyncProgress("summary_generation", "Generating daily summary...", 92);
+                    summarySuccess = runDailySummaryGeneration(false);
+                }
+
+                JsonArrayBuilder arr = Json.createArrayBuilder();
+                for (WidgetSyncStatus status : statuses) {
+                    arr.add(status.toJson());
+                }
+
+                JsonObject payload = Json.createObjectBuilder()
+                        .add("status", "ok")
+                        .add("widgetStatus", arr)
+                        .build();
+
+                String completionMessage;
+                if (!summaryRan) {
+                    completionMessage = summaryAutoPausedUntilManualSuccess
+                            ? "Sync completed. Summary generation is paused until an admin generates a summary."
+                            : (!summaryAutoEnabled
+                            ? "Sync completed. Automatic summary generation is disabled."
+                            : "Sync completed. Summary generation skipped until the configured interval elapses.");
+                } else if (!summarySuccess) {
+                    completionMessage = "Sync completed. Summary generation failed and automatic summaries are now paused.";
+                } else {
+                    completionMessage = "Sync completed successfully.";
+                }
+                finishSyncProgress(true, completionMessage);
+
+                writeJson(resp, HttpServletResponse.SC_OK, payload);
+            } catch (SQLException | IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                logWarningWithDiagnostics(
+                        "manual-sync-failed",
+                        "Widget sync failed",
+                        "widgetId=" + defaultString(firstParam(req, "widgetId")),
+                        e
+                );
+                finishSyncProgress(false, "Sync failed. Check server logs.");
+                jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
+            } finally {
+                syncRunning.set(false);
+            }
         } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            log.log(Level.WARNING, "Unhandled I/O exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
@@ -654,7 +648,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return SUMMARY_RETRY_PATTERN.equals(pattern);
     }
 
-    private void handleManualSummaryRetry(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleManualSummaryRetry(HttpServletRequest req, HttpServletResponse resp) {
         if (!authorizeAdmin(req, resp)) {
             return;
         }
@@ -695,7 +689,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private void handleTimerStatus(HttpServletResponse resp) throws IOException {
+    private void handleTimerStatus(HttpServletResponse resp) {
         boolean running = syncRunning.get();
         String startedAt = syncStartedAt == null ? "" : syncStartedAt.toString();
         String finishedAt = syncFinishedAt == null ? "" : syncFinishedAt.toString();
@@ -741,7 +735,7 @@ public class WidgetSyncServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
-    private void handleTimerUpdate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleTimerUpdate(HttpServletRequest req, HttpServletResponse resp) {
         if (!authorizeAdmin(req, resp)) {
             return;
         }
@@ -2640,6 +2634,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         .header("Authorization", "Bearer " + token)
                         .header("X-API-Key", token);
                 case AUTH_BEARER -> builder.header("Authorization", "Bearer " + token);
+                default -> builder.header("Authorization", "Bearer " + token);
             }
         }
 
@@ -2974,7 +2969,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null) {
             jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
@@ -3513,12 +3508,34 @@ public class WidgetSyncServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, message);
+    private void jsonError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private Set<String> parseCsvToSet(String csv) {
@@ -3553,6 +3570,8 @@ public class WidgetSyncServlet extends HttpServlet {
             }
             return parsed;
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer environment value for {0}: {1}",
+                    new Object[]{envName, raw});
             return fallback;
         }
     }
@@ -3572,6 +3591,8 @@ public class WidgetSyncServlet extends HttpServlet {
             }
             return parsed;
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid long environment value for {0}: {1}",
+                    new Object[]{envName, raw});
             return fallback;
         }
     }
@@ -3968,7 +3989,8 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         try {
             return Integer.parseInt(matcher.group(1));
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse included entry count from summary text.", ex);
             return -1;
         }
     }
@@ -4376,6 +4398,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String text = payload.getString("textResponse", "");
             return text.isBlank();
         } catch (JsonException | ClassCastException ex) {
+            log.log(Level.FINE, "Unable to parse abort response payload.", ex);
             return false;
         }
     }
@@ -4588,8 +4611,12 @@ public class WidgetSyncServlet extends HttpServlet {
         if (req == null || name == null || name.isBlank()) {
             return null;
         }
-        String[] values = req.getParameterValues(name);
-        String value = (values == null || values.length == 0) ? null : values[0];
+        String value = ServletRequestParamUtil.firstParam(
+                req,
+                name,
+                Math.max(maxLen, MAX_SUMMARY_PROMPT_CHARS),
+                true,
+                false);
         if (value == null) {
             return null;
         }
@@ -4604,11 +4631,6 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isHttpsRequiredWithAuth() {
-        String prop = readSystemPropertySanitized(REQUIRE_HTTPS_WITH_AUTH_PROP, 16);
-        if (prop != null && !prop.isBlank()) {
-            return Boolean.parseBoolean(prop.trim());
-        }
-
         String env = readEnvSanitized(REQUIRE_HTTPS_WITH_AUTH_ENV, 16);
         if (env == null || env.isBlank()) {
             return false;
@@ -4617,11 +4639,6 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isUpstreamSummaryRequired() {
-        String prop = readSystemPropertySanitized(REQUIRE_UPSTREAM_SUMMARY_PROP, 16);
-        if (prop != null && !prop.isBlank()) {
-            return Boolean.parseBoolean(prop.trim());
-        }
-
         String env = readEnvSanitized(REQUIRE_UPSTREAM_SUMMARY_ENV, 16);
         if (env == null || env.isBlank()) {
             // Default to strict mode so summaries come from AnythingLLM unless explicitly relaxed.
@@ -4630,7 +4647,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return Boolean.parseBoolean(env.trim());
     }
 
-    private long readPersistedIntervalSeconds(ResultSet rs, String columnName, long fallback) throws SQLException {
+    private long readPersistedIntervalSeconds(ResultSet rs, String columnName, long fallback) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return fallback;
         }
@@ -4649,7 +4666,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private int readPersistedInt(ResultSet rs, String columnName, int fallback) throws SQLException {
+    private int readPersistedInt(ResultSet rs, String columnName, int fallback) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return fallback;
         }
@@ -4665,7 +4682,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private boolean readPersistedBoolean(ResultSet rs, String columnName, boolean fallback) throws SQLException {
+    private boolean readPersistedBoolean(ResultSet rs, String columnName, boolean fallback) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return fallback;
         }
@@ -4682,7 +4699,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return fallback;
     }
 
-    private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
+    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return null;
         }
@@ -4706,11 +4723,22 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private String readDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
+    private String readDbText(ResultSet rs, String columnName, int maxLen) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return "";
         }
-        String text = rs.getString(columnName);
+        String text = null;
+        try {
+            text = rs.getObject(columnName, String.class);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + columnName + ", falling back to getString", ex);
+            try {
+                text = rs.getString(columnName);
+            } catch (SQLException ex2) {
+                log.log(Level.FINE, "ResultSet#getString failed for column " + columnName, ex2);
+                text = null;
+            }
+        }
         if (text == null) {
             return "";
         }
@@ -4781,11 +4809,19 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private static String readSystemPropertySanitized(String propertyName, int maxLen) {
-        return sanitizeConfigToken(System.getProperty(propertyName), maxLen);
+        if (propertyName == null || propertyName.isBlank()) {
+            return null;
+        }
+        String mappedEnv = propertyName.toUpperCase(Locale.ROOT).replace('.', '_');
+        return readEnvSanitized(mappedEnv, maxLen);
     }
 
     private static String readEnvSanitized(String envName, int maxLen) {
-        return sanitizeConfigToken(System.getenv(envName), maxLen);
+        if (envName == null || envName.isBlank()) {
+            return null;
+        }
+        String raw = System.getenv().get(envName);
+        return sanitizeConfigToken(raw, maxLen);
     }
 
     private static String sanitizeConfigToken(String raw, int maxLen) {

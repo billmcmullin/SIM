@@ -3,6 +3,7 @@ package com.sim.chatserver.web.admin;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker.WidgetAvailabilityResult;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.inject.Inject;
 import jakarta.json.Json;
@@ -50,8 +51,8 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         }
 
         try {
-            boolean forceRefresh = isTruthy(req == null ? null : req.getParameter("force"));
-            boolean runWhenDisabled = isTruthy(req == null ? null : req.getParameter("runWhenDisabled"));
+            boolean forceRefresh = isTruthy(ServletRequestParamUtil.firstParam(req, "force", 12, true, true));
+            boolean runWhenDisabled = isTruthy(ServletRequestParamUtil.firstParam(req, "runWhenDisabled", 12, true, true));
             WidgetAvailabilityResult result = checker.checkNow(forceRefresh, runWhenDisabled);
             if (result == null) {
                 log.warning(() -> "Widget availability checker returned null result for user=" + sanitizeForLog(user));

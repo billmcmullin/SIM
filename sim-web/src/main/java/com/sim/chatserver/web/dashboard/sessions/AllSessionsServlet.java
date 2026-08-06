@@ -151,7 +151,7 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method not allowed.");
+        writeError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method not allowed.");
     
         } catch (Exception e) {
             java.util.logging.Logger.getLogger(getClass().getName())
@@ -167,7 +167,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private void handleSummary(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleSummary(HttpServletRequest req, HttpServletResponse resp) {
         if (!requireAuth(req, resp)) {
             return;
         }
@@ -213,7 +213,7 @@ public class AllSessionsServlet extends HttpServlet {
                 }
             } catch (SQLException e) {
                 log.log(Level.SEVERE, "Unable to compute session summary", e);
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load sessions.");
+                writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load sessions.");
                 return;
             }
         }
@@ -345,14 +345,14 @@ public class AllSessionsServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_OK, body);
     }
 
-    private void handleChats(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleChats(HttpServletRequest req, HttpServletResponse resp) {
         if (!requireAuth(req, resp)) {
             return;
         }
 
         String sessionId = sanitizeSessionId(ServletRequestParamUtil.firstParam(req, "sessionId", 256, false, false));
         if (sessionId == null || sessionId.isBlank()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "sessionId required.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "sessionId required.");
             return;
         }
 
@@ -389,7 +389,7 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to load chats for session", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load chats for session.");
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load chats for session.");
             return;
         }
 
@@ -409,7 +409,7 @@ public class AllSessionsServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, body);
     }
 
-    private void handleSelect(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleSelect(HttpServletRequest req, HttpServletResponse resp) {
         if (!requireAuth(req, resp)) {
             return;
         }
@@ -431,12 +431,12 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid JSON payload for session selection", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
 
         if (!payload.containsKey("selectedChatIds")) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "selectedChatIds required.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "selectedChatIds required.");
             return;
         }
 
@@ -455,7 +455,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         if (selected.isEmpty()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid chat IDs provided.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid chat IDs provided.");
             return;
         }
 
@@ -504,12 +504,12 @@ public class AllSessionsServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to collect selected session chats", e);
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
             return;
         }
 
         if (snapshots.isEmpty()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_NOT_FOUND, "No matching chats found for selection.");
+            writeError(resp, HttpServletResponse.SC_NOT_FOUND, "No matching chats found for selection.");
             return;
         }
 
@@ -521,7 +521,7 @@ public class AllSessionsServlet extends HttpServlet {
         );
 
         if (selectionId == null || selectionId.isBlank()) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
+            writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create selection.");
             return;
         }
 
@@ -612,7 +612,7 @@ public class AllSessionsServlet extends HttpServlet {
         return out;
     }
 
-    private Set<String> gatherSessionIdsForSearch(Connection conn, String tableName, String pattern) throws SQLException {
+    private Set<String> gatherSessionIdsForSearch(Connection conn, String tableName, String pattern) {
         Set<String> ids = new HashSet<>();
         String sql = "SELECT DISTINCT session_id FROM " + quoteIdentifier(tableName)
                 + " WHERE (prompt ILIKE ? OR response_text ILIKE ?)";
@@ -627,11 +627,13 @@ public class AllSessionsServlet extends HttpServlet {
                     }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to gather session IDs for search", e);
         }
         return ids;
     }
 
-    private void aggregateSessions(Connection conn, String tableName, Map<String, SessionSummary> sessions, String widgetId, Set<String> filter) throws SQLException {
+    private void aggregateSessions(Connection conn, String tableName, Map<String, SessionSummary> sessions, String widgetId, Set<String> filter) {
         String sql = "SELECT session_id, COUNT(*) AS cnt, MIN(created_at) AS first_ts, MAX(created_at) AS last_ts FROM "
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
@@ -652,10 +654,12 @@ public class AllSessionsServlet extends HttpServlet {
                 summary.accept(first, count, widgetId);
                 summary.accept(last, 0, widgetId);
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to aggregate session data for table " + tableName, e);
         }
     }
 
-    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null) {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "error")
@@ -685,14 +689,18 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -721,8 +729,34 @@ public class AllSessionsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
+    }
+
+    private void writeError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private int parseInteger(String value, int fallback) {
@@ -748,17 +782,38 @@ public class AllSessionsServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
             return "";
         }
         try (var reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES, 1024);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read request body", e);
+            return "";
         }
     }
 
-    private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
-        return safeDbText(rs.getString(column), maxLen);
+    private String readDbText(ResultSet rs, String column, int maxLen) {
+        if (rs == null || column == null || column.isBlank()) {
+            return null;
+        }
+        String value;
+        try {
+            value = rs.getObject(column, String.class);
+            if (value != null) {
+                return safeDbText(value, maxLen);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object fallback", ex);
+        }
+        try {
+            Object raw = rs.getObject(column);
+            return safeDbText(raw == null ? null : String.valueOf(raw), maxLen);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
+            return null;
+        }
     }
 
     private String safeDbText(String value, int maxLen) {

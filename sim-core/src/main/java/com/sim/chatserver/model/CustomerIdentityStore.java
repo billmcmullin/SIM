@@ -477,12 +477,32 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
+        String typed;
+        try {
+            typed = rs.getObject(column, String.class);
+            if (typed != null) {
+                return sanitizeDbText(typed, maxChars);
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed text read failed for column " + column + ", using object conversion", e);
+        }
+
         Object rawValue = rs.getObject(column);
         String raw = rawValue == null ? null : String.valueOf(rawValue);
         return sanitizeDbText(raw, maxChars);
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
+        Long typed;
+        try {
+            typed = rs.getObject(column, Long.class);
+            if (typed != null) {
+                return typed < 0L ? 0L : typed;
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed long read failed for column " + column + ", using object conversion", e);
+        }
+
         Object raw = rs.getObject(column);
         if (raw == null) {
             return 0L;
@@ -507,6 +527,16 @@ public final class CustomerIdentityStore {
     }
 
     private static Timestamp readSafeTimestamp(ResultSet rs, String column) throws SQLException {
+        Timestamp typed;
+        try {
+            typed = rs.getObject(column, Timestamp.class);
+            if (typed != null) {
+                return typed;
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed timestamp read failed for column " + column + ", using object conversion", e);
+        }
+
         Object raw = rs.getObject(column);
         if (raw == null) {
             return null;

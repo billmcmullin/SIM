@@ -180,7 +180,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private String formatTimestamp(Timestamp value) {
-        return value == null ? "—" : ISO_INSTANT_FMT.format(value.toInstant());
+        return value == null ? "â€”" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int parsePositiveInteger(String value, int fallback) {
@@ -213,8 +213,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter)
-            throws SQLException {
+    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter) {
         Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
         if (widgets == null || widgets.isEmpty()) {
             return accumulators;
@@ -267,20 +266,26 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                         }
                     }
                 }
+            } catch (SQLException e) {
+                log.log(Level.FINE, "Unable to collect session accumulators for table " + tableName, e);
             }
         }
 
         return accumulators;
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -313,8 +318,19 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write session-names JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     static final class SessionAccumulator {

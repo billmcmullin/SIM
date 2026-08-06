@@ -249,24 +249,51 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        if (rs.wasNull()) {
+        Object raw = rs.getObject(column);
+        if (raw == null) {
             return 0;
         }
-        return Math.max(0, value);
+        if (raw instanceof Number number) {
+            return Math.max(0, number.intValue());
+        }
+        String text = sanitizeDbText(String.valueOf(raw), 32);
+        if (text.isBlank() || !text.matches("^-?\\d+$")) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(text));
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getString(column);
+        String value;
+        try {
+            value = rs.getObject(column, String.class);
+            if (value != null) {
+                return sanitizeDbText(value, maxChars);
+            }
+        } catch (SQLException ex) {
+            // Fall back to generic object conversion when typed extraction is unavailable.
+        }
+        Object raw = rs.getObject(column);
+        value = raw == null ? null : String.valueOf(raw);
         return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        Timestamp timestamp = rs.getTimestamp("created_at");
+        Timestamp timestamp;
+        try {
+            timestamp = rs.getObject("created_at", Timestamp.class);
+        } catch (SQLException ex) {
+            timestamp = null;
+        }
         if (timestamp != null) {
             return timestamp.toInstant();
         }
-        String text = rs.getString("created_at");
+        Object raw = rs.getObject("created_at");
+        String text = raw == null ? null : String.valueOf(raw);
         if (text != null && !text.isBlank()) {
             try {
                 return Instant.parse(text.trim());

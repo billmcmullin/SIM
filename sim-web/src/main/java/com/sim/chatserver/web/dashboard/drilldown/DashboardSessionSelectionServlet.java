@@ -49,14 +49,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
         String sessionId = rawSessionId.trim();
 
-        List<TermChatSnapshot> snapshots;
-        try {
-            snapshots = collectSessionEntries(sessionId);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load sessions for review", e);
-            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load session chats.");
-            return;
-        }
+        List<TermChatSnapshot> snapshots = collectSessionEntries(sessionId);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested session.");
@@ -92,7 +85,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
     }
 
-    private List<TermChatSnapshot> collectSessionEntries(String sessionId) throws SQLException {
+    private List<TermChatSnapshot> collectSessionEntries(String sessionId) {
         List<TermChatSnapshot> snapshots = new ArrayList<>();
         List<WidgetEntry> widgets = listWidgets();
         if (widgets.isEmpty()) {
@@ -132,6 +125,8 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                     log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + e.getMessage(), e);
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to collect session entries for review", e);
         }
         return snapshots;
     }
@@ -149,14 +144,18 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -15,6 +17,7 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public final class ServletJsonResponseUtil {
 
+    private static final Logger LOG = Logger.getLogger(ServletJsonResponseUtil.class.getName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
     private ServletJsonResponseUtil() {
@@ -43,6 +46,7 @@ public final class ServletJsonResponseUtil {
         try {
             out = response.getOutputStream();
         } catch (IllegalStateException ex) {
+            LOG.log(Level.FINE, "Output stream unavailable; falling back to writer.", ex);
             out = null;
         }
 
@@ -52,6 +56,7 @@ public final class ServletJsonResponseUtil {
                 return;
             } catch (NullPointerException ex) {
                 // Some mocked servlet responses return null-backed streams in tests.
+                LOG.log(Level.FINE, "Output stream writer was null-backed; falling back to character writer.", ex);
             }
         }
 
@@ -59,7 +64,8 @@ public final class ServletJsonResponseUtil {
         if (fallbackWriter == null) {
             throw new IOException("Response writer unavailable");
         }
-        fallbackWriter.write(safePayload.toString());
-        fallbackWriter.flush();
+        try (JsonWriter writer = Json.createWriter(fallbackWriter)) {
+            writer.writeObject(safePayload);
+        }
     }
 }

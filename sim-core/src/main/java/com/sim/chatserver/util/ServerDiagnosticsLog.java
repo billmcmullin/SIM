@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -27,8 +28,10 @@ public final class ServerDiagnosticsLog {
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
+    private static final String ENV_JBOSS_LOG_DIR = "JBOSS_SERVER_LOG_DIR";
 
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
+    private static final int MAX_CONFIG_VALUE_LEN = 512;
     private static final Object LOCK = new Object();
 
     private static volatile boolean warnedWriteFailure;
@@ -111,9 +114,9 @@ public final class ServerDiagnosticsLog {
         }
     }
 
-    public static boolean isEnabled() {
-        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
-        String dirRaw = trimToNull(System.getenv(ENV_DIR));
+    static boolean isEnabled() {
+        String enabledRaw = readValidatedEnv(ENV_ENABLED);
+        String dirRaw = readValidatedPathEnv(ENV_DIR);
 
         if (enabledRaw == null) {
             return dirRaw != null;
@@ -122,17 +125,17 @@ public final class ServerDiagnosticsLog {
     }
 
     private static Path resolveLogDirectory() {
-        String configured = trimToNull(System.getenv(ENV_DIR));
+        String configured = readValidatedPathEnv(ENV_DIR);
         if (configured != null) {
-            return Paths.get(configured);
+            return Paths.get(configured).normalize();
         }
 
-        String jbossLogDir = trimToNull(System.getProperty("jboss.server.log.dir"));
+        String jbossLogDir = readValidatedPathEnv(ENV_JBOSS_LOG_DIR);
         if (jbossLogDir != null) {
-            return Paths.get(jbossLogDir, DEFAULT_DIR_NAME);
+            return Paths.get(jbossLogDir, DEFAULT_DIR_NAME).normalize();
         }
 
-        return Paths.get(DEFAULT_DIR_NAME);
+        return Paths.get(DEFAULT_DIR_NAME).toAbsolutePath().normalize();
     }
 
     private static boolean isTruthy(String value) {
@@ -175,6 +178,35 @@ public final class ServerDiagnosticsLog {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String readValidatedEnv(String name) {
+        return sanitizeConfigValue(System.getenv(name));
+    }
+
+    private static String readValidatedPathEnv(String name) {
+        String raw = readValidatedEnv(name);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            String normalized = Paths.get(raw).normalize().toString();
+            return trimToNull(normalized);
+        } catch (InvalidPathException ex) {
+            log.log(Level.WARNING, "Ignoring invalid diagnostics path from env {0}", name);
+            return null;
+        }
+    }
+
+    private static String sanitizeConfigValue(String value) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        if (trimmed.length() > MAX_CONFIG_VALUE_LEN) {
+            return trimmed.substring(0, MAX_CONFIG_VALUE_LEN);
+        }
+        return trimmed;
     }
 
     private static String safeErrorMessage(Throwable error) {

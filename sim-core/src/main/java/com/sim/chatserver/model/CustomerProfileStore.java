@@ -2,6 +2,7 @@ package com.sim.chatserver.model;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
+import java.security.spec.InvalidKeySpecException;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
@@ -273,7 +275,7 @@ public final class CustomerProfileStore {
         try {
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             return factory.generateSecret(spec).getEncoded();
-        } catch (GeneralSecurityException e) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             throw new IllegalStateException("Unable to derive profile encryption key", e);
         } finally {
             spec.clearPassword();
@@ -323,6 +325,14 @@ public final class CustomerProfileStore {
     }
 
     private static String readDbRawText(ResultSet rs, String column) throws SQLException {
+        try {
+            String typed = rs.getObject(column, String.class);
+            if (typed != null) {
+                return typed;
+            }
+        } catch (SQLException ex) {
+            LOG.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object conversion", ex);
+        }
         Object raw = rs.getObject(column);
         return raw == null ? null : String.valueOf(raw);
     }
@@ -340,6 +350,15 @@ public final class CustomerProfileStore {
     }
 
     private static Timestamp readDbTimestamp(ResultSet rs, String column) throws SQLException {
+        try {
+            Timestamp typed = rs.getObject(column, Timestamp.class);
+            if (typed != null) {
+                return typed;
+            }
+        } catch (SQLException ex) {
+            LOG.log(Level.FINE, "Typed DB timestamp read failed for column " + column + ", using object conversion", ex);
+        }
+
         Object raw = rs.getObject(column);
         if (raw == null) {
             return null;
