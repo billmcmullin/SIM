@@ -1,8 +1,10 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.ByteArrayInputStream;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 
@@ -214,5 +216,6 @@ public class WidgetReviewManualMessageServletTest
             }
         };
         when(req.getInputStream()).thenReturn(inputStream);
+        when(req.getReader()).thenReturn(new BufferedReader(new StringReader(body)));
     }
 }

@@ -10,6 +10,7 @@ import java.time.Instant;
 import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -84,9 +85,13 @@ class WidgetHealthConfigStoreTest {
         when(rs.next()).thenReturn(true);
 
         when(rs.getInt("id")).thenReturn(1);
+        when(rs.getString("id")).thenReturn("1");
         when(rs.getString("healthcheck_url")).thenReturn("  http://example.com/health  ");
         when(rs.getString("method")).thenReturn("patch");
         when(rs.getInt("timeout_ms")).thenReturn(200_000);
+        when(rs.getString("timeout_ms")).thenReturn("200000");
+        when(rs.getString("healthcheck_enabled")).thenReturn("true");
+        when(rs.getString("check_interval_seconds")).thenReturn("600");
         when(rs.getObject("id", Integer.class)).thenReturn(1);
         when(rs.getObject("healthcheck_url", String.class)).thenReturn("  http://example.com/health  ");
         when(rs.getObject("method", String.class)).thenReturn("patch");
@@ -114,6 +119,7 @@ class WidgetHealthConfigStoreTest {
         when(rs.getObject("api_key_value", String.class)).thenReturn(" token ");
         when(rs.getObject("updated_by", String.class)).thenReturn(" tester ");
         when(rs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
+        when(rs.getString("updated_at")).thenReturn("2026-01-01T00:00:00Z");
 
         WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
 
@@ -163,7 +169,12 @@ class WidgetHealthConfigStoreTest {
         when(loadRs.next()).thenReturn(true);
 
         when(loadRs.getInt("id")).thenReturn(1);
+        when(loadRs.getString("id")).thenReturn("1");
         when(loadRs.getString("healthcheck_url")).thenReturn("http://anythingllm:3001/api/v1/system");
+        when(loadRs.getString("healthcheck_enabled")).thenReturn("true");
+        when(loadRs.getString("check_interval_seconds")).thenReturn("300");
+        when(loadRs.getString("method")).thenReturn("GET");
+        when(loadRs.getString("timeout_ms")).thenReturn("8000");
         when(loadRs.getBoolean("healthcheck_enabled")).thenReturn(true);
         when(loadRs.getInt("check_interval_seconds")).thenReturn(300);
         when(loadRs.getString("method")).thenReturn("GET");
@@ -195,6 +206,7 @@ class WidgetHealthConfigStoreTest {
         when(loadRs.getObject("api_key_value", String.class)).thenReturn(null);
         when(loadRs.getObject("updated_by", String.class)).thenReturn("tester");
         when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
+        when(loadRs.getString("updated_at")).thenReturn(Instant.now().toString());
 
         WidgetHealthConfigStore.WidgetHealthConfig in = new WidgetHealthConfigStore.WidgetHealthConfig();
         in.setHealthcheckUrl("   ");
@@ -228,5 +240,32 @@ class WidgetHealthConfigStoreTest {
         assertEquals(300, out.getCheckIntervalSeconds());
         assertEquals("GET", out.getMethod());
         assertEquals(8000, out.getTimeoutMs());
+    }
+
+    @Test
+    void load_rowPresent_handlesLegacyTimestampAndBooleanTokens() throws Exception {
+        PreparedStatement loadPs = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+
+        when(connection.prepareStatement(contains("SELECT id, healthcheck_url"))).thenReturn(loadPs);
+        when(loadPs.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true);
+
+        when(rs.getString("id")).thenReturn("1");
+        when(rs.getString("healthcheck_url")).thenReturn("http://example.com/health");
+        when(rs.getString("method")).thenReturn("head");
+        when(rs.getString("timeout_ms")).thenReturn("-5");
+        when(rs.getString("healthcheck_enabled")).thenReturn("0");
+        when(rs.getString("check_interval_seconds")).thenReturn("15");
+        when(rs.getString("updated_at")).thenReturn("2026-01-01 00:00:00");
+
+        WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
+
+        assertNotNull(out);
+        assertFalse(out.isHealthcheckEnabled());
+        assertEquals(30, out.getCheckIntervalSeconds());
+        assertEquals("HEAD", out.getMethod());
+        assertEquals(1, out.getTimeoutMs());
+        assertNotNull(out.getUpdatedAt());
     }
 }
