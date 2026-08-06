@@ -155,7 +155,7 @@ public class TermsCsvServlet extends HttpServlet {
                             } else {
                                 updated++;
                             }
-                        } catch (IllegalArgumentException | SQLException e) {
+                        } catch (IllegalArgumentException | IllegalStateException e) {
                             log.log(Level.FINE, "Skipping invalid CSV data line", e);
                             errors.add("line " + lineNum + ": " + e.getMessage());
                         }
@@ -171,7 +171,7 @@ public class TermsCsvServlet extends HttpServlet {
                     } else {
                         updated++;
                     }
-                } catch (IllegalArgumentException | SQLException e) {
+                } catch (IllegalArgumentException | IllegalStateException e) {
                     log.log(Level.FINE, "Skipping invalid CSV data line", e);
                     errors.add("line " + lineNum + ": " + e.getMessage());
                 }
@@ -231,7 +231,7 @@ public class TermsCsvServlet extends HttpServlet {
      * If you want the CSV to be able to flip system-ness, add an API in
      * TermsStore (e.g. setSystemFlag(id, boolean)) and call it here.
      */
-    private boolean processRow(String[] cols) throws SQLException {
+    private boolean processRow(String[] cols) {
         // Ensure at least column count length
         String name = cols.length > 0 ? cols[0].trim() : "";
         String description = cols.length > 1 ? cols[1].trim() : "";
@@ -251,7 +251,12 @@ public class TermsCsvServlet extends HttpServlet {
 
         // find existing by name (listAll and match by name, case-insensitive)
         TermDefinition existing = null;
-        List<TermDefinition> all = termsStore.listAll();
+        List<TermDefinition> all;
+        try {
+            all = termsStore.listAll();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to load existing terms", e);
+        }
         for (TermDefinition td : all) {
             if (td.getName() != null && td.getName().equalsIgnoreCase(name)) {
                 existing = td;
@@ -269,12 +274,17 @@ public class TermsCsvServlet extends HttpServlet {
             // Overwrite non-system entries using CSV columns (name, description, pattern, type)
             Long existingId = existing.getId();
             if (existingId == null || existingId <= 0L) {
-                throw new SQLException("Failed to update term with invalid id");
+                throw new IllegalStateException("Failed to update term with invalid id");
             }
-            TermDefinition updated = termsStore.updateTerm(existingId, name, description, matchPattern, matchType);
+            TermDefinition updated;
+            try {
+                updated = termsStore.updateTerm(existingId, name, description, matchPattern, matchType);
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to update term with id " + existingId, e);
+            }
             if (updated == null) {
                 // If updateTerm returns null (unexpected for non-system), treat as failure.
-                throw new SQLException("Failed to update term with id " + existingId);
+                throw new IllegalStateException("Failed to update term with id " + existingId);
             }
 
             // Note: we do not toggle existing system-ness here even if CSV's system_flag is true.
@@ -282,7 +292,12 @@ public class TermsCsvServlet extends HttpServlet {
             return false; // existing updated
         } else {
             // No existing term found â€” create new term using CSV columns.
-            TermDefinition created = termsStore.createTerm(name, description, matchPattern, matchType);
+            TermDefinition created;
+            try {
+                created = termsStore.createTerm(name, description, matchPattern, matchType);
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to create term " + name, e);
+            }
 
             // Note: TermsStore.createTerm in the current API doesn't accept a systemFlag parameter.
             // If you need to create a term marked as system (csvSystemFlag == true), then

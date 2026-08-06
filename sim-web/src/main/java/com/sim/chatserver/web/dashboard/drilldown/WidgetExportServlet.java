@@ -3,6 +3,7 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -72,11 +73,10 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    AppDataSourceHolder dsHolder;
+    static volatile AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         long startedAt = System.nanoTime();
 
         if (!isLoggedIn(req, resp)) {
@@ -84,7 +84,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
             return;
         }
 
@@ -96,13 +96,13 @@ public class WidgetExportServlet extends HttpServlet {
             }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid export payload", e);
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
             return;
         }
 
         String selectionId = payload.getString("selectionId", "").trim();
         if (selectionId.isEmpty()) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
             return;
         }
 
@@ -113,7 +113,7 @@ public class WidgetExportServlet extends HttpServlet {
         HttpSession session = req.getSession(false);
         WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
+            sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
             return;
         }
 
@@ -146,22 +146,20 @@ public class WidgetExportServlet extends HttpServlet {
                     + " selectedIds=" + selectedChatIds.size()
                     + " rows=" + exportRows.size()
                     + " durationMs=" + ms);
-        } catch (SQLException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Export failed", e);
-            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed.");
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Export failed.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to send export error response", e);
         }
     }
 
@@ -229,7 +227,7 @@ public class WidgetExportServlet extends HttpServlet {
         };
     }
 
-    private List<TermChatSnapshot> resolveExportRows(WidgetReviewStartServlet.Selection selection, List<String> selectedChatIds) throws SQLException {
+    private List<TermChatSnapshot> resolveExportRows(WidgetReviewStartServlet.Selection selection, List<String> selectedChatIds) {
         List<TermChatSnapshot> exportRows = new ArrayList<>();
 
         if (selection.hasSnapshots()) {
@@ -300,6 +298,8 @@ public class WidgetExportServlet extends HttpServlet {
                     }
                 }
             }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to resolve export rows", e);
         }
 
         exportRows.sort(Comparator.comparingInt(x -> orderValue(order, safe(x.getChatId()))));
@@ -340,7 +340,7 @@ public class WidgetExportServlet extends HttpServlet {
                 out.write('\n');
             }
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write CSV export", e);
+            throw new IllegalStateException("Unable to write CSV export", e);
         }
     }
 
@@ -359,7 +359,7 @@ public class WidgetExportServlet extends HttpServlet {
             }
             Json.createWriter(out).writeArray(ab.build());
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write JSON export", e);
+            throw new IllegalStateException("Unable to write JSON export", e);
         }
     }
 
@@ -381,7 +381,7 @@ public class WidgetExportServlet extends HttpServlet {
                 out.write('\n');
             }
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write text export", e);
+            throw new IllegalStateException("Unable to write text export", e);
         }
     }
 
@@ -393,17 +393,21 @@ public class WidgetExportServlet extends HttpServlet {
             try (OutputStream out = resp.getOutputStream()) {
                 out.write(pdfBytes);
             }
-        } catch (RuntimeException | IOException t) {
+        } catch (IllegalStateException | IOException t) {
             log.log(Level.WARNING, "PDF generation failed; falling back to text export.", t);
-            resp.setContentType("text/plain; charset=UTF-8");
-            try (OutputStream out = resp.getOutputStream()) {
-                String fallback = (reportMarkdown != null && !reportMarkdown.isBlank())
-                        ? reportMarkdown
-                        : buildFallbackText(rows, selectionId);
-                out.write(fallback.getBytes(StandardCharsets.UTF_8));
-            } catch (IOException ioe) {
-                log.log(Level.WARNING, "Unable to write fallback text export", ioe);
-            }
+            String fallback = (reportMarkdown != null && !reportMarkdown.isBlank())
+                    ? reportMarkdown
+                    : buildFallbackText(rows, selectionId);
+            writeTextPayload(resp, fallback);
+        }
+    }
+
+    private void writeTextPayload(HttpServletResponse resp, String payload) {
+        resp.setContentType("text/plain; charset=UTF-8");
+        try (OutputStream out = resp.getOutputStream()) {
+            out.write(safe(payload).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to write fallback text export", e);
         }
     }
 
@@ -422,11 +426,11 @@ public class WidgetExportServlet extends HttpServlet {
 
             Paragraph pTitle = new Paragraph("Chat Analysis Evidence Report", title);
             pTitle.setSpacingAfter(8);
-            doc.add(pTitle);
+            addDocumentElement(doc, pTitle);
 
-            doc.add(new Paragraph("Selection ID: " + safe(selectionId), small));
-            doc.add(new Paragraph("Generated: " + Instant.now(), small));
-            doc.add(new Paragraph(" "));
+            addDocumentElement(doc, new Paragraph("Selection ID: " + safe(selectionId), small));
+            addDocumentElement(doc, new Paragraph("Generated: " + Instant.now(), small));
+            addDocumentElement(doc, new Paragraph(" "));
 
             if (reportMarkdown != null && !reportMarkdown.isBlank()) {
                 addSection(doc, h2, normal, "Executive Chat Analysis", cleanSectionBody(section(reportMarkdown, "Executive Chat Analysis")));
@@ -450,26 +454,26 @@ public class WidgetExportServlet extends HttpServlet {
         return baos.toByteArray();
     }
 
-    private void addSection(Document doc, Font h2, Font normal, String heading, String body) throws DocumentException {
+    private void addSection(Document doc, Font h2, Font normal, String heading, String body) {
         Paragraph head = new Paragraph(heading, h2);
         head.setSpacingBefore(6);
         head.setSpacingAfter(4);
-        doc.add(head);
+        addDocumentElement(doc, head);
 
         Paragraph content = new Paragraph(safe(body), normal);
         content.setSpacingAfter(8);
-        doc.add(content);
+        addDocumentElement(doc, content);
     }
 
-    private void addBulletSection(Document doc, Font h2, Font normal, String heading, String sectionMd) throws DocumentException {
+    private void addBulletSection(Document doc, Font h2, Font normal, String heading, String sectionMd) {
         Paragraph head = new Paragraph(heading, h2);
         head.setSpacingBefore(6);
         head.setSpacingAfter(4);
-        doc.add(head);
+        addDocumentElement(doc, head);
 
         String body = cleanSectionBody(sectionMd);
         if (body.isBlank()) {
-            doc.add(new Paragraph("None", normal));
+            addDocumentElement(doc, new Paragraph("None", normal));
             return;
         }
 
@@ -480,25 +484,25 @@ public class WidgetExportServlet extends HttpServlet {
                 Paragraph sub = new Paragraph(t.substring(4).trim(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11));
                 sub.setSpacingBefore(4);
                 sub.setSpacingAfter(2);
-                doc.add(sub);
+                addDocumentElement(doc, sub);
             } else if (t.startsWith("- ")) {
                 Paragraph bullet = new Paragraph("â€¢ " + t.substring(2).trim(), normal);
                 bullet.setIndentationLeft(14f);
                 bullet.setSpacingAfter(2);
-                doc.add(bullet);
+                addDocumentElement(doc, bullet);
             } else if (!t.isBlank()) {
                 Paragraph para = new Paragraph(t, normal);
                 para.setSpacingAfter(3);
-                doc.add(para);
+                addDocumentElement(doc, para);
             }
         }
     }
 
-    private void addMetricsTable(Document doc, Font h2, Font normal, String sectionMd) throws DocumentException {
+    private void addMetricsTable(Document doc, Font h2, Font normal, String sectionMd) {
         Paragraph head = new Paragraph("Key Metrics", h2);
         head.setSpacingBefore(6);
         head.setSpacingAfter(4);
-        doc.add(head);
+        addDocumentElement(doc, head);
 
         String body = cleanSectionBody(sectionMd);
         List<String> tableLines = new ArrayList<>();
@@ -512,7 +516,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
 
         if (tableLines.size() < 2) {
-            doc.add(new Paragraph("No metrics table found.", normal));
+            addDocumentElement(doc, new Paragraph("No metrics table found.", normal));
             return;
         }
 
@@ -546,7 +550,7 @@ public class WidgetExportServlet extends HttpServlet {
             }
         }
 
-        doc.add(table);
+        addDocumentElement(doc, table);
     }
 
     private boolean isMarkdownTableSeparatorRow(String line) {
@@ -554,12 +558,16 @@ public class WidgetExportServlet extends HttpServlet {
         return !s.isEmpty() && s.matches("[:\\-\\s]+");
     }
 
-    private void addRowsTable(Document doc, List<TermChatSnapshot> rows, Font normal) throws DocumentException {
+    private void addRowsTable(Document doc, List<TermChatSnapshot> rows, Font normal) {
         PdfPTable table = new PdfPTable(4);
         table.setWidthPercentage(100f);
         table.setSpacingBefore(4f);
         table.setSpacingAfter(8f);
-        table.setWidths(new float[]{1.2f, 1.4f, 3.2f, 3.2f});
+        try {
+            table.setWidths(new float[]{1.2f, 1.4f, 3.2f, 3.2f});
+        } catch (DocumentException ex) {
+            throw new IllegalStateException("Unable to configure PDF table widths", ex);
+        }
 
         addHeaderCell(table, "Chat ID");
         addHeaderCell(table, "Created");
@@ -579,7 +587,15 @@ public class WidgetExportServlet extends HttpServlet {
             table.addCell(new PdfPCell(new Phrase(trimForCell(safe(r.getResponse()), 180), normal)));
         }
 
-        doc.add(table);
+        addDocumentElement(doc, table);
+    }
+
+    private void addDocumentElement(Document doc, Element element) {
+        try {
+            doc.add(element);
+        } catch (DocumentException ex) {
+            throw new IllegalStateException("Unable to add PDF element", ex);
+        }
     }
 
     private void addHeaderCell(PdfPTable table, String text) {
@@ -749,8 +765,21 @@ public class WidgetExportServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (java.io.Reader reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+
+        try (InputStream in = req.getInputStream();
+                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
+            byte[] buffer = new byte[2048];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                out.write(buffer, 0, read);
+            }
+            String normalized = ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
+            return normalized == null ? "" : normalized;
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read export request body", e);
             return "";
@@ -763,23 +792,15 @@ public class WidgetExportServlet extends HttpServlet {
         }
         String value;
         try {
-            value = rs.getObject(columnName, String.class);
+            value = rs.getString(columnName);
             if (value != null) {
                 String normalizedTyped = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
                 return normalizedTyped.length() > maxLen ? normalizedTyped.substring(0, maxLen) : normalizedTyped;
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName + ", using fallback conversion", ex);
-        }
-
-        Object raw;
-        try {
-            raw = rs.getObject(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object DB text read failed for column " + columnName, ex);
+            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
             return "";
         }
-        value = raw == null ? null : String.valueOf(raw);
         if (value == null) {
             return "";
         }
@@ -796,21 +817,20 @@ public class WidgetExportServlet extends HttpServlet {
         }
         Timestamp ts;
         try {
-            ts = rs.getObject(columnName, Timestamp.class);
+            ts = rs.getTimestamp(columnName);
         } catch (SQLException ex) {
             ts = null;
         }
         if (ts != null) {
             return ts;
         }
-        Object raw;
+        String text;
         try {
-            raw = rs.getObject(columnName);
+            text = rs.getString(columnName);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read timestamp object for column " + columnName, ex);
+            log.log(Level.FINE, "Unable to read timestamp text for column " + columnName, ex);
             return null;
         }
-        String text = raw == null ? null : String.valueOf(raw);
         if (text == null) {
             return null;
         }
@@ -841,13 +861,7 @@ public class WidgetExportServlet extends HttpServlet {
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             } catch (IOException e) {
                 log.log(Level.FINE, "Unable to write auth error response", e);
-                if (resp != null && !resp.isCommitted()) {
-                    try {
-                        resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
-                    } catch (IOException ioe) {
-                        log.log(Level.FINEST, "Fallback sendError failed", ioe);
-                    }
-                }
+                sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             }
             return false;
         }

@@ -240,7 +240,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     private Metrics loadMetrics(LocalDate rangeStart, LocalDate rangeEnd, String contextPath) {
         Metrics metrics = new Metrics(rangeStart, rangeEnd);
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        try (Connection conn = openConnectionSafe()) {
             List<WidgetEntry> widgets;
             try {
                 widgets = WidgetStore.list(null);
@@ -249,7 +249,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 widgets = List.of();
             }
             computeNewSessionMetrics(conn, widgets, metrics, contextPath);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute new-user metrics", e);
         }
         return metrics;
@@ -264,7 +264,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        try (Connection conn = openConnectionSafe()) {
             Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
             Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
 
@@ -301,9 +301,17 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             return new DayResult(rows);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load day first-seen data", e);
             return new DayResult(List.of());
+        }
+    }
+
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to open database connection", e);
         }
     }
 

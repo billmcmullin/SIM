@@ -68,17 +68,20 @@ public class DashboardLatestChatsServlet extends HttpServlet {
         req.setAttribute("selectionId", selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (IOException | ServletException | RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
         }
     }
 

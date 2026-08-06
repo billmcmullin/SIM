@@ -1,7 +1,9 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -53,11 +55,10 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
-    AppDataSourceHolder dsHolder;
+    static volatile AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -193,19 +194,6 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                 .build();
 
         writeJson(resp, HttpServletResponse.SC_OK, ok);
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private boolean tableExists(Connection conn, String tableName) {
@@ -252,8 +240,20 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (BufferedReader reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+
+        try (InputStream in = req.getInputStream();
+                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
+            byte[] buffer = new byte[2048];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                out.write(buffer, 0, read);
+            }
+            return ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read topics-select request body", e);
             return "";
@@ -268,28 +268,17 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     }
 
     private String readDbText(ResultSet rs, String column, int maxChars) {
-        String typed;
+        String raw;
         try {
-            typed = rs.getObject(column, String.class);
-            if (typed != null) {
-                String normalizedTyped = ServletRequestParamUtil.normalizeBodyText(typed, maxChars, true);
-                return normalizedTyped;
-            }
+            raw = rs.getString(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object fallback", ex);
-        }
-
-        Object raw;
-        try {
-            raw = rs.getObject(column);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
+            log.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
             return null;
         }
         if (raw == null) {
             return null;
         }
-        String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), maxChars, true);
+        String normalized = ServletRequestParamUtil.normalizeBodyText(raw, maxChars, true);
         if (normalized == null) {
             return null;
         }
