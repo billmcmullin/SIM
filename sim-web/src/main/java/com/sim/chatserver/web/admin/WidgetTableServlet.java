@@ -121,7 +121,7 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        try (Connection conn = openConnectionSafe()) {
             TableStatus status = determineTableStatus(conn, tableName);
             Long count = null;
             if (status.exists) {
@@ -135,7 +135,7 @@ public class WidgetTableServlet extends HttpServlet {
                     count,
                     status.message,
                     false);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to check widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to inspect the database.");
@@ -146,7 +146,7 @@ public class WidgetTableServlet extends HttpServlet {
     private void handleBulkCheck(HttpServletResponse resp, List<String> widgetIds) {
         JsonArrayBuilder statuses = Json.createArrayBuilder();
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        try (Connection conn = openConnectionSafe()) {
             for (String wid : widgetIds) {
                 String tableName = sanitizeWidgetId(wid);
                 if (!isSafeIdentifier(tableName)) {
@@ -186,7 +186,7 @@ public class WidgetTableServlet extends HttpServlet {
                     .add("status", "ok")
                     .add("statuses", statuses);
                 writeJson(resp, HttpServletResponse.SC_OK, payload.build());
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to check widget tables (bulk)", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to check widget table statuses.");
@@ -210,7 +210,7 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        try (Connection conn = openConnectionSafe()) {
             TableStatus status = determineTableStatus(conn, tableName);
             if (status.exists) {
                 writeSingleResponse(resp,
@@ -242,6 +242,14 @@ public class WidgetTableServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to create widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to create the table.");
+        }
+    }
+
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to open database connection", e);
         }
     }
 

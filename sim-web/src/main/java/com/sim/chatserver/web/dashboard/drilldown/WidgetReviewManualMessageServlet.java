@@ -269,8 +269,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         + " selected=" + selectedEntries.size()
                         + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
                 log.info(completionLog);
-        } catch (IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
+        } catch (RuntimeException ex) {
+            if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
             }
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] execution failed", ex);
@@ -324,7 +324,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws IOException {
+            ) {
 
         ReviewJobService jobs = WidgetReviewJobStatusServlet.jobService();
 
@@ -605,8 +605,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         warnings,
                         finalReport, body, contentType
                 );
-            } catch (IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) {
+            } catch (RuntimeException e) {
+                if (causedByInterrupted(e)) {
                     Thread.currentThread().interrupt();
                 }
                 log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
@@ -624,12 +624,17 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         resp.setStatus(HttpServletResponse.SC_ACCEPTED);
         resp.setContentType("application/json; charset=UTF-8");
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.getWriter().write(Json.createObjectBuilder()
-                .add("status", "accepted")
-                .add("requestId", requestId)
-                .add("jobId", jobId)
-                .build()
-                .toString());
+        try {
+            resp.getWriter().write(Json.createObjectBuilder()
+                    .add("status", "accepted")
+                    .add("requestId", requestId)
+                    .add("jobId", jobId)
+                    .build()
+                    .toString());
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to write async accepted response", e);
+            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+        }
     }
 
     private WorkspaceResponse runSinglePass(
@@ -642,7 +647,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws IOException, InterruptedException {
+            ) {
         String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
         String deterministicHeader = "Deterministic metadata (use exactly; do not estimate):\n"
             + "- exact_total_selected: " + selectedEntries.size() + '\n'
@@ -652,14 +657,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String context = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getSinglePassContextMaxChars());
         String outbound = buildOutboundMessage(promptWithMeta, context, mrConfig.getSinglePassMessageMaxChars());
 
-        WorkspaceResponse response = workspaceClient.sendChat(
+        WorkspaceResponse response = sendChatHandled(
                 targetUrl, apiKey, outbound, mode, sessionId, requestReset, attachments, requestId
         );
 
         if (workspaceClient.isLikelyContextTooLarge(response)) {
             String retryContext = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getRetryContextChars());
             String retryMsg = buildOutboundMessage(promptWithMeta, retryContext, mrConfig.getRetryMessageMaxChars());
-            response = workspaceClient.sendChat(
+                response = sendChatHandled(
                     targetUrl, apiKey, retryMsg, mode, sessionId, true, attachments, requestId
             );
         }
@@ -686,7 +691,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
             String requestId
-    ) throws IOException, InterruptedException {
+    ) {
         return runMapReduce(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, WidgetReviewMapReduceOrchestrator.NOOP_PROGRESS_LISTENER);
     }
 
@@ -701,22 +706,29 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             List<SelectedEntry> selectedEntries,
             String requestId,
             WidgetReviewMapReduceOrchestrator.ProgressListener progressListener
-    ) throws IOException, InterruptedException {
+    ) {
 
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration =
-            WidgetReviewOrchestrationRunner.run(
-                orchestrator,
-                targetUrl,
-                apiKey,
-                userMessage,
-                mode,
-                sessionId,
-                requestReset,
-                attachments,
-                selectedEntries,
-                requestId,
-                progressListener
+        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
+        try {
+            orchestration = WidgetReviewOrchestrationRunner.run(
+                    orchestrator,
+                    targetUrl,
+                    apiKey,
+                    userMessage,
+                    mode,
+                    sessionId,
+                    requestReset,
+                    attachments,
+                    selectedEntries,
+                    requestId,
+                    progressListener
             );
+        } catch (Exception ex) {
+            if (causedByInterrupted(ex)) {
+                Thread.currentThread().interrupt();
+            }
+            throw new IllegalStateException("Map-reduce orchestration failed", ex);
+        }
 
         List<MapBatchResult> mapBatchResults = orchestration.mapBatchResults();
         List<BatchFailure> failures = orchestration.batchFailures();
@@ -790,6 +802,46 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             log.info(summaryLog);
 
         return new MapReduceExecutionResult(finalResp, orchestration);
+    }
+
+    private WorkspaceResponse sendChatHandled(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            String requestId
+    ) {
+        try {
+            return workspaceClient.sendChat(
+                    targetUrl,
+                    apiKey,
+                    message,
+                    mode,
+                    sessionId,
+                    requestReset,
+                    attachments,
+                    requestId
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("Workspace chat request failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workspace chat request interrupted", e);
+        }
+    }
+
+    private boolean causedByInterrupted(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) {

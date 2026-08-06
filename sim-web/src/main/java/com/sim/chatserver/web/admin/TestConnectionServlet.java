@@ -243,8 +243,8 @@ public class TestConnectionServlet extends HttpServlet {
                         .add("upstreamBody", truncate(chatResponse.body))
                         .build());
             }
-        } catch (IOException | InterruptedException | IllegalArgumentException e) {
-            if (e instanceof InterruptedException) {
+        } catch (RuntimeException e) {
+            if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
             String errorRef = UUID.randomUUID().toString();
@@ -279,19 +279,27 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private ProbeResponse executeProbe(String endpoint, List<ApiAuthResolver.ResolvedApiAuth> authCandidates, ProbeKind probeKind)
-            throws IOException, InterruptedException {
+            {
         return executeProbe(endpoint, authCandidates, probeKind, CHAT_PROBE_PAYLOAD);
     }
 
     private ProbeResponse executeProbe(String endpoint, List<ApiAuthResolver.ResolvedApiAuth> authCandidates, ProbeKind probeKind, String chatPayload)
-            throws IOException, InterruptedException {
+            {
         ProbeResponse lastResponse = null;
 
         for (int authIndex = 0; authIndex < authCandidates.size(); authIndex++) {
             ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(authIndex);
             AuthHeaderMode mode = resolvePrimaryAuthMode(auth.preferredHeaderName());
             HttpRequest request = buildProbeRequest(endpoint, auth, mode, probeKind, chatPayload);
-            HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Connection probe interrupted", e);
+            } catch (IOException e) {
+                throw new IllegalStateException("Connection probe transport failed", e);
+            }
             int status = response.statusCode();
             lastResponse = new ProbeResponse(status, response.body() == null ? "" : response.body(), mode, auth.source());
 
@@ -307,7 +315,7 @@ public class TestConnectionServlet extends HttpServlet {
         }
 
         if (lastResponse == null) {
-            throw new IOException("Connection probe failed before receiving a response.");
+            throw new IllegalStateException("Connection probe failed before receiving a response.");
         }
         return lastResponse;
     }
@@ -433,7 +441,7 @@ public class TestConnectionServlet extends HttpServlet {
             String endpoint,
             List<ApiAuthResolver.ResolvedApiAuth> authCandidates,
             String requestId
-    ) throws IOException, InterruptedException {
+        ) {
         String[] payloads = new String[]{
                 CHAT_PROBE_PAYLOAD_NO_RESET,
                 CHAT_PROBE_PAYLOAD_MINIMAL_RESET,
@@ -554,7 +562,12 @@ public class TestConnectionServlet extends HttpServlet {
         if (!PORT_PATTERN.matcher(port).matches()) {
             throw new IllegalArgumentException("Invalid port");
         }
-        int portNumber = Integer.parseInt(port);
+        int portNumber;
+        try {
+            portNumber = Integer.parseInt(port);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("Invalid port", ex);
+        }
         if (portNumber < 1 || portNumber > 65535) {
             throw new IllegalArgumentException("Port out of range");
         }
@@ -645,5 +658,16 @@ public class TestConnectionServlet extends HttpServlet {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private boolean causedByInterrupted(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }

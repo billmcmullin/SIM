@@ -9,7 +9,6 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -20,6 +19,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -38,9 +38,10 @@ public class GraphTokenClient {
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
-    private static final String ENV_JBOSS_LOG_DIR = "JBOSS_SERVER_LOG_DIR";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
     private static final int MAX_CONFIG_VALUE_LEN = 512;
+    private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
+    private static final Pattern SAFE_DIR_TOKEN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
     private static volatile boolean warnedDiagFailure;
 
@@ -226,8 +227,8 @@ public class GraphTokenClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = readValidatedEnv(ENV_ENABLED);
-        String dirRaw = readValidatedPathEnv(ENV_DIR);
+        String enabledRaw = readValidatedBooleanEnv(ENV_ENABLED);
+        String dirRaw = readValidatedDirectoryTokenEnv(ENV_DIR);
         if (enabledRaw == null) {
             return dirRaw != null;
         }
@@ -235,16 +236,9 @@ public class GraphTokenClient {
     }
 
     private Path resolveDiagnosticsDir() {
-        String configured = readValidatedPathEnv(ENV_DIR);
-        if (configured != null) {
-            return Paths.get(configured).normalize();
-        }
-
-        String jbossLogDir = readValidatedPathEnv(ENV_JBOSS_LOG_DIR);
-        if (jbossLogDir != null) {
-            return Paths.get(jbossLogDir, DEFAULT_DIR_NAME).normalize();
-        }
-        return Paths.get(DEFAULT_DIR_NAME).toAbsolutePath().normalize();
+        String configured = readValidatedDirectoryTokenEnv(ENV_DIR);
+        String dirName = configured == null ? DEFAULT_DIR_NAME : configured;
+        return Paths.get(dirName).toAbsolutePath().normalize();
     }
 
     private boolean isTruthy(String value) {
@@ -289,26 +283,44 @@ public class GraphTokenClient {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private String readValidatedEnv(String name) {
-        return sanitizeConfigValue(System.getenv(name));
+    private String readValidatedBooleanEnv(String name) {
+        String sanitized = sanitizeConfigValue(System.getenv(name));
+        if (sanitized == null) {
+            return null;
+        }
+        if (!SAFE_BOOL_TEXT.matcher(sanitized).matches()) {
+            LOG.log(Level.WARNING, "Ignoring unsafe diagnostics config from env {0}", name);
+            return null;
+        }
+        return sanitized;
     }
 
-    private String readValidatedPathEnv(String name) {
-        String raw = readValidatedEnv(name);
-        if (raw == null) {
+    private String readValidatedDirectoryTokenEnv(String name) {
+        String sanitized = sanitizeConfigValue(System.getenv(name));
+        if (sanitized == null) {
             return null;
         }
-        try {
-            String normalized = Paths.get(raw).normalize().toString();
-            return trimToNull(normalized);
-        } catch (InvalidPathException ex) {
-            LOG.log(Level.WARNING, "Ignoring invalid diagnostics path from env {0}", name);
+        if (!SAFE_DIR_TOKEN.matcher(sanitized).matches()) {
+            LOG.log(Level.WARNING, "Ignoring unsafe diagnostics directory token from env {0}", name);
             return null;
         }
+        return sanitized;
     }
 
     private String sanitizeConfigValue(String value) {
-        String trimmed = trimToNull(value);
+        if (value == null) {
+            return null;
+        }
+
+        StringBuilder cleaned = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!Character.isISOControl(c)) {
+                cleaned.append(c);
+            }
+        }
+
+        String trimmed = trimToNull(cleaned.toString());
         if (trimmed == null) {
             return null;
         }

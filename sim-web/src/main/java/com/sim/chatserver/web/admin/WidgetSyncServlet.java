@@ -388,7 +388,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
     private static volatile TrustedUrlValidator trustedUrlValidator;
     private static volatile ReviewOutputValidator reviewOutputValidator;
-    private AppDataSourceHolder dsHolder;
+    private static volatile AppDataSourceHolder dsHolder;
     private TermsStore termsStore;
 
     private static ScheduledExecutorService createScheduler() {
@@ -479,7 +479,7 @@ public class WidgetSyncServlet extends HttpServlet {
             summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
             summaryStore.ensureTable();
             loadSyncSettings();
-        } catch (SQLException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             logWarningWithDiagnostics(
                     "init-settings-store-failed",
                     "Unable to initialize sync settings/store",
@@ -514,121 +514,114 @@ public class WidgetSyncServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
-            if (isTimerRequest(req)) {
-                handleTimerStatus(resp);
-            } else {
-                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
-            }
-        } catch (Exception e) {
-            log.log(Level.WARNING, "Unhandled I/O exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        if (isTimerRequest(req)) {
+            handleTimerStatus(resp);
+        } else {
+            sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, null);
         }
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+        if (isTimerRequest(req)) {
+            handleTimerUpdate(req, resp);
+            return;
+        }
+
+        if (isSummaryRetryRequest(req)) {
+            handleManualSummaryRetry(req, resp);
+            return;
+        }
+
+        if (!authorizeAdmin(req, resp)) {
+            return;
+        }
+
+        if (!syncRunning.compareAndSet(false, true)) {
+            jsonError(resp, HttpServletResponse.SC_CONFLICT, "Sync already in progress.");
+            return;
+        }
+
+        beginSyncProgress("manual_sync", "Manual sync started.");
         try {
-            if (isTimerRequest(req)) {
-                handleTimerUpdate(req, resp);
-                return;
+            List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
+            updateLastSyncedMaybePersist(true);
+
+            boolean summaryRan = false;
+            boolean summarySuccess = true;
+
+            // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
+            if (summaryAutoPausedUntilManualSuccess) {
+                log.log(Level.INFO,
+                        "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
+                        defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
+            } else if (!summaryAutoEnabled) {
+                log.log(Level.INFO,
+                        "Skipping summary generation during manual sync because automatic summary generation is disabled.");
+            } else if (!isSummaryRunDueNow()) {
+                log.log(Level.INFO,
+                        "Skipping summary generation during manual sync because summary interval has not elapsed. nextRunAt={0}",
+                        computeNextSummaryRunAtIso());
+            } else {
+                summaryRan = true;
+                updateSyncProgress("summary_generation", "Generating daily summary...", 92);
+                summarySuccess = runDailySummaryGeneration(false);
             }
 
-            if (isSummaryRetryRequest(req)) {
-                handleManualSummaryRetry(req, resp);
-                return;
+            JsonArrayBuilder arr = Json.createArrayBuilder();
+            for (WidgetSyncStatus status : statuses) {
+                arr.add(status.toJson());
             }
 
-            if (!authorizeAdmin(req, resp)) {
-                return;
+            JsonObject payload = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("widgetStatus", arr)
+                    .build();
+
+            String completionMessage;
+            if (!summaryRan) {
+                completionMessage = summaryAutoPausedUntilManualSuccess
+                        ? "Sync completed. Summary generation is paused until an admin generates a summary."
+                        : (!summaryAutoEnabled
+                        ? "Sync completed. Automatic summary generation is disabled."
+                        : "Sync completed. Summary generation skipped until the configured interval elapses.");
+            } else if (!summarySuccess) {
+                completionMessage = "Sync completed. Summary generation failed and automatic summaries are now paused.";
+            } else {
+                completionMessage = "Sync completed successfully.";
             }
+            finishSyncProgress(true, completionMessage);
 
-            if (!syncRunning.compareAndSet(false, true)) {
-                jsonError(resp, HttpServletResponse.SC_CONFLICT, "Sync already in progress.");
-                return;
+            writeJson(resp, HttpServletResponse.SC_OK, payload);
+        } catch (RuntimeException e) {
+            if (causedByInterrupted(e)) {
+                Thread.currentThread().interrupt();
             }
+            logWarningWithDiagnostics(
+                    "manual-sync-failed",
+                    "Widget sync failed",
+                    "widgetId=" + defaultString(firstParam(req, "widgetId")),
+                    e
+            );
+            finishSyncProgress(false, "Sync failed. Check server logs.");
+            jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
+        } finally {
+            syncRunning.set(false);
+        }
+    }
 
-            beginSyncProgress("manual_sync", "Manual sync started.");
-            try {
-                List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
-                updateLastSyncedMaybePersist(true);
-
-                boolean summaryRan = false;
-                boolean summarySuccess = true;
-
-                // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
-                if (summaryAutoPausedUntilManualSuccess) {
-                    log.log(Level.INFO,
-                            "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
-                            defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
-                } else if (!summaryAutoEnabled) {
-                    log.log(Level.INFO,
-                            "Skipping summary generation during manual sync because automatic summary generation is disabled.");
-                } else if (!isSummaryRunDueNow()) {
-                    log.log(Level.INFO,
-                            "Skipping summary generation during manual sync because summary interval has not elapsed. nextRunAt={0}",
-                            computeNextSummaryRunAtIso());
-                } else {
-                    summaryRan = true;
-                    updateSyncProgress("summary_generation", "Generating daily summary...", 92);
-                    summarySuccess = runDailySummaryGeneration(false);
-                }
-
-                JsonArrayBuilder arr = Json.createArrayBuilder();
-                for (WidgetSyncStatus status : statuses) {
-                    arr.add(status.toJson());
-                }
-
-                JsonObject payload = Json.createObjectBuilder()
-                        .add("status", "ok")
-                        .add("widgetStatus", arr)
-                        .build();
-
-                String completionMessage;
-                if (!summaryRan) {
-                    completionMessage = summaryAutoPausedUntilManualSuccess
-                            ? "Sync completed. Summary generation is paused until an admin generates a summary."
-                            : (!summaryAutoEnabled
-                            ? "Sync completed. Automatic summary generation is disabled."
-                            : "Sync completed. Summary generation skipped until the configured interval elapses.");
-                } else if (!summarySuccess) {
-                    completionMessage = "Sync completed. Summary generation failed and automatic summaries are now paused.";
-                } else {
-                    completionMessage = "Sync completed successfully.";
-                }
-                finishSyncProgress(true, completionMessage);
-
-                writeJson(resp, HttpServletResponse.SC_OK, payload);
-            } catch (SQLException | IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                logWarningWithDiagnostics(
-                        "manual-sync-failed",
-                        "Widget sync failed",
-                        "widgetId=" + defaultString(firstParam(req, "widgetId")),
-                        e
-                );
-                finishSyncProgress(false, "Sync failed. Check server logs.");
-                jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Widget sync failed. Check server logs.");
-            } finally {
-                syncRunning.set(false);
+    private void sendErrorSafe(HttpServletResponse resp, int statusCode, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            if (message == null || message.isBlank()) {
+                resp.sendError(statusCode);
+            } else {
+                resp.sendError(statusCode, message);
             }
-        } catch (Exception e) {
-            log.log(Level.WARNING, "Unhandled I/O exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Failed sending error response", ioe);
         }
     }
 
@@ -891,8 +884,8 @@ public class WidgetSyncServlet extends HttpServlet {
             }
 
             log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
-        } catch (SQLException | IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
+        } catch (RuntimeException e) {
+            if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
             logWarningWithDiagnostics(
@@ -940,13 +933,34 @@ public class WidgetSyncServlet extends HttpServlet {
         return errorRef;
     }
 
-    private List<WidgetSyncStatus> runSync(String requestedWidgetId) throws SQLException, IOException, InterruptedException {
-        ServerConfig config = EncryptedDbConfigStore.load();
+    private boolean causedByInterrupted(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private List<WidgetSyncStatus> runSync(String requestedWidgetId) {
+        ServerConfig config;
+        try {
+            config = EncryptedDbConfigStore.load();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to load server configuration for widget sync.", e);
+        }
         if (config == null) {
-            throw new IOException("Server configuration is missing.");
+            throw new IllegalStateException("Server configuration is missing.");
         }
 
-        List<WidgetEntry> widgets = WidgetStore.list(null);
+        List<WidgetEntry> widgets;
+        try {
+            widgets = WidgetStore.list(null);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to load widget entries for sync.", e);
+        }
         if (requestedWidgetId != null && !requestedWidgetId.isBlank()) {
             widgets.removeIf(w -> w == null || !requestedWidgetId.equals(w.getWidgetId()));
         }
@@ -963,7 +977,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
         for (int i = 0; i < totalWidgets; i++) {
             if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Widget sync interrupted before processing next widget.");
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Widget sync interrupted before processing next widget.");
             }
 
             WidgetEntry widget = valid.get(i);
@@ -1061,8 +1076,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
             success = true;
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
-        } catch (SQLException | IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
+        } catch (SQLException | RuntimeException e) {
+            if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
             logWarningWithDiagnostics(
@@ -1367,7 +1382,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         singlePassMessage,
                         summaryRequestId
                 );
-            } catch (IOException | RuntimeException ex) {
+            } catch (IllegalArgumentException | IllegalStateException ex) {
                 finalResp = null;
                 String summary = isUpstreamSummaryRequired()
                     ? "Single-pass summary request failed while upstream summary is required"
@@ -1430,7 +1445,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             finalResp = directFallback;
                             statusCode = finalResp.statusCode();
                         }
-                    } catch (IOException | RuntimeException ex) {
+                    } catch (IllegalArgumentException | IllegalStateException ex) {
                         logWarningWithDiagnostics(
                                 "summary-direct-fallback-failed",
                                 "Direct summary fallback failed after single-pass upstream failure",
@@ -1498,17 +1513,11 @@ public class WidgetSyncServlet extends HttpServlet {
                     overall, quality, response, usage, entries.size(), false, true);
             resumeAutomaticSummaryGeneration("Summary generated successfully.");
             return true;
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
                     "Summary generation failed due to an internal error: " + defaultString(e.getMessage()));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
-            return failDailySummary(day, slot, Math.max(0, entryCount),
-                    "Summary generation interrupted.",
-                    "Summary generation was interrupted before completion.");
         }
     }
 
@@ -2389,9 +2398,8 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     // ---------- Existing sync implementation ----------
-    private List<JsonObject> fetchWidgetChatsWithRetry(ServerConfig config, String widgetId) throws IOException, InterruptedException {
-        IOException lastIo = null;
-        InterruptedException lastInterrupted = null;
+    private List<JsonObject> fetchWidgetChatsWithRetry(ServerConfig config, String widgetId) {
+        IllegalStateException lastFailure = null;
 
         for (int attempt = 1; attempt <= HTTP_MAX_ATTEMPTS; attempt++) {
             long start = System.nanoTime();
@@ -2403,14 +2411,15 @@ public class WidgetSyncServlet extends HttpServlet {
                             new Object[]{widgetId, attempt, ms});
                 }
                 return result;
-            } catch (InterruptedException ie) {
-                log.log(Level.FINE, "Widget sync fetch interrupted", ie);
-                lastInterrupted = ie;
-                Thread.currentThread().interrupt();
-                break;
-            } catch (IOException ioe) {
-                lastIo = ioe;
-                boolean retryable = isRetryable(ioe);
+            } catch (IllegalStateException ex) {
+                lastFailure = ex;
+                if (causedByInterrupted(ex)) {
+                    log.log(Level.FINE, "Widget sync fetch interrupted", ex);
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+
+                boolean retryable = isRetryable(ex);
                 if (!retryable || attempt == HTTP_MAX_ATTEMPTS) {
                     break;
                 }
@@ -2418,21 +2427,25 @@ public class WidgetSyncServlet extends HttpServlet {
                 long backoff = computeBackoffWithJitterMs(attempt);
                 log.log(Level.WARNING,
                     "Transient sync fetch failure for widget {0} (attempt {1}/{2}), retrying in {3}ms: {4}",
-                    new Object[]{widgetId, attempt, HTTP_MAX_ATTEMPTS, backoff, ioe.getMessage()});
-                TimeUnit.MILLISECONDS.sleep(backoff);
+                    new Object[]{widgetId, attempt, HTTP_MAX_ATTEMPTS, backoff, ex.getMessage()});
+                try {
+                    TimeUnit.MILLISECONDS.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Widget sync retry backoff interrupted", ie);
+                }
             }
         }
 
-        if (lastInterrupted != null) {
-            throw lastInterrupted;
-        }
-        throw lastIo == null ? new IOException("Sync fetch failed with unknown IO error") : lastIo;
+        throw lastFailure == null
+                ? new IllegalStateException("Sync fetch failed with unknown error")
+                : lastFailure;
     }
 
-    private List<JsonObject> fetchWidgetChatsOnce(ServerConfig config, String widgetId) throws IOException, InterruptedException {
+    private List<JsonObject> fetchWidgetChatsOnce(ServerConfig config, String widgetId) {
         URI uri = buildSyncUri(config, widgetId);
         if (uri == null) {
-            throw new IOException("Sync API URL is missing");
+            throw new IllegalStateException("Sync API URL is missing");
         }
 
         throttleSyncRequestRate();
@@ -2449,7 +2462,7 @@ public class WidgetSyncServlet extends HttpServlet {
         boolean apiKeyConfigured = apiKey != null && !apiKey.isBlank();
         boolean requireHttpsWithAuth = isHttpsRequiredWithAuth();
         if (apiKeyConfigured && !isHttpsUri(uri) && requireHttpsWithAuth) {
-            throw new IOException("API key configured but sync URL is not HTTPS");
+            throw new IllegalStateException("API key configured but sync URL is not HTTPS");
         }
         if (apiKeyConfigured && !isHttpsUri(uri) && !requireHttpsWithAuth) {
             log.info(() -> "Widget sync allowing HTTP URL with API key because "
@@ -2482,7 +2495,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         "status=" + statusCode + "\nwidgetId=" + defaultString(widgetId) + "\nbody=" + upstreamBody
                     );
                     }
-                    throw new IOException("Sync API transient server error " + statusCode
+                    throw new IllegalStateException("Sync API transient server error " + statusCode
                         + " (contentType=" + contentType + ", upstreamBody=" + upstreamBody + ')');
                 }
                 if (statusCode >= 300) {
@@ -2495,23 +2508,23 @@ public class WidgetSyncServlet extends HttpServlet {
                         "status=" + statusCode + "\nwidgetId=" + defaultString(widgetId) + "\nbody=" + upstreamBody
                     );
                     }
-                    throw new IOException("Sync API returned " + statusCode
+                    throw new IllegalStateException("Sync API returned " + statusCode
                         + " (contentType=" + contentType + ", upstreamBody=" + upstreamBody + ')');
                 }
 
                 if (!contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
-                    throw new IOException(String.format("Unexpected content type '%s'", contentType));
+                    throw new IllegalStateException(String.format("Unexpected content type '%s'", contentType));
                 }
 
                 try {
                     JsonNode root = OBJECT_MAPPER.readTree(bodyStream);
                     return normalizeResponse(root);
                 } catch (JsonProcessingException je) {
-                    throw new IOException("Invalid JSON received from sync API", je);
+                    throw new IllegalStateException("Invalid JSON received from sync API", je);
                 }
             }
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
+        } catch (IOException | RuntimeException e) {
+            if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
             ServerDiagnosticsLog.write(
@@ -2521,16 +2534,19 @@ public class WidgetSyncServlet extends HttpServlet {
                     "url=" + uri + "\nwidgetId=" + defaultString(widgetId) + "\nmessage=" + defaultString(e.getMessage()),
                     e
             );
-            throw e;
+            if (e instanceof RuntimeException runtimeEx) {
+                throw runtimeEx;
+            }
+            throw new IllegalStateException("Sync API communication failed", e);
         }
     }
 
-    private SyncHttpResult sendSyncRequest(URI uri, String apiKey) throws IOException, InterruptedException {
+    private SyncHttpResult sendSyncRequest(URI uri, String apiKey) {
         ApiAuthResolver.ResolvedApiAuth primaryAuth = ApiAuthResolver.resolveForOutbound(apiKey);
         ApiAuthResolver.ResolvedApiAuth secondaryAuth = ApiAuthResolver.resolveForOutbound(null);
         List<ApiAuthResolver.ResolvedApiAuth> candidates = buildAuthCandidates(primaryAuth, secondaryAuth);
         if (candidates.isEmpty()) {
-            throw new IOException("Sync API key is required.");
+            throw new IllegalStateException("Sync API key is required.");
         }
 
         SyncHttpResult lastResult = null;
@@ -2538,13 +2554,26 @@ public class WidgetSyncServlet extends HttpServlet {
             ApiAuthResolver.ResolvedApiAuth auth = candidates.get(authIndex);
             AuthHeaderMode mode = resolvePrimaryAuthMode(auth.preferredHeaderName());
             HttpRequest request = buildSyncRequest(uri, auth, mode);
-            HttpResponse<InputStream> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response;
+            try {
+                response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Sync request interrupted", e);
+            } catch (IOException e) {
+                throw new IllegalStateException("Unable to call sync API", e);
+            }
             int status = response.statusCode();
 
             boolean hasMoreAuth = authIndex < (candidates.size() - 1);
             if ((status == 401 || status == 403) && hasMoreAuth) {
-                try (InputStream ignored = response.body()) {
-                    // Drain/close before retrying fallback.
+                InputStream ignored = response.body();
+                if (ignored != null) {
+                    try {
+                        ignored.close();
+                    } catch (IOException closeErr) {
+                        log.log(Level.FINE, "Unable to close auth fallback response body", closeErr);
+                    }
                 }
 
                 log.log(Level.INFO,
@@ -2558,7 +2587,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         if (lastResult == null) {
-            throw new IOException("Sync request failed before receiving a response.");
+            throw new IllegalStateException("Sync request failed before receiving a response.");
         }
         return lastResult;
     }
@@ -2582,7 +2611,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return new ArrayList<>(unique.values());
     }
 
-    private void throttleSyncRequestRate() throws InterruptedException {
+    private void throttleSyncRequestRate() {
         if (SYNC_MIN_REQUEST_GAP_MS <= 0L) {
             return;
         }
@@ -2600,7 +2629,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         if (waitMs > 0L) {
-            Thread.sleep(waitMs);
+            try {
+                Thread.sleep(waitMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Sync request throttling interrupted", e);
+            }
         }
     }
 
@@ -2671,7 +2705,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return raw;
     }
 
-    private boolean isRetryable(IOException e) {
+    private boolean isRetryable(Throwable e) {
         String msg = e.getMessage();
         if (msg == null) {
             return true;
@@ -2703,7 +2737,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private synchronized void loadSyncSettings() throws SQLException {
+    private synchronized void loadSyncSettings() {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             ensureSyncSettingsTable(conn);
             SyncSettings settings = readSyncSettings(conn);
@@ -2719,6 +2753,8 @@ public class WidgetSyncServlet extends HttpServlet {
             summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
             lastSynced = settings.lastSynced;
             summaryLastRun = settings.summaryLastRun;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to load sync settings", e);
         }
     }
 
@@ -2736,166 +2772,176 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private void ensureSyncSettingsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS widget_sync_settings ("
-                + "id INTEGER PRIMARY KEY, interval_seconds BIGINT NOT NULL, last_synced TIMESTAMP, "
-                + "summary_interval_seconds BIGINT NOT NULL DEFAULT " + DEFAULT_SUMMARY_INTERVAL_SECONDS + ", "
-            + "summary_auto_enabled BOOLEAN NOT NULL DEFAULT TRUE, "
-                + "summary_prompt TEXT, "
-                + "summary_max_rows INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_ROWS + ", "
-            + "summary_max_upstream_entries INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES + ", "
-            + "summary_max_message_chars INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_MESSAGE_CHARS + ", "
-            + "summary_max_request_bytes INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_REQUEST_BYTES + ", "
-                + "summary_last_run TIMESTAMP)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.execute();
-        }
+    private void ensureSyncSettingsTable(Connection conn) {
+        try {
+            String sql = "CREATE TABLE IF NOT EXISTS widget_sync_settings ("
+                    + "id INTEGER PRIMARY KEY, interval_seconds BIGINT NOT NULL, last_synced TIMESTAMP, "
+                    + "summary_interval_seconds BIGINT NOT NULL DEFAULT " + DEFAULT_SUMMARY_INTERVAL_SECONDS + ", "
+                + "summary_auto_enabled BOOLEAN NOT NULL DEFAULT TRUE, "
+                    + "summary_prompt TEXT, "
+                    + "summary_max_rows INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_ROWS + ", "
+                + "summary_max_upstream_entries INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES + ", "
+                + "summary_max_message_chars INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_MESSAGE_CHARS + ", "
+                + "summary_max_request_bytes INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_REQUEST_BYTES + ", "
+                    + "summary_last_run TIMESTAMP)";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.execute();
+            }
 
-        addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_interval_seconds BIGINT");
-        addColumnIfMissing(conn,
-            "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_auto_enabled BOOLEAN");
-        addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_prompt TEXT");
-        addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_rows INTEGER");
-        addColumnIfMissing(conn,
-            "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_upstream_entries INTEGER");
-        addColumnIfMissing(conn,
-            "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_message_chars INTEGER");
-        addColumnIfMissing(conn,
-            "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_request_bytes INTEGER");
-        addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_last_run TIMESTAMP");
+            addColumnIfMissing(conn,
+                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_interval_seconds BIGINT");
+            addColumnIfMissing(conn,
+                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_auto_enabled BOOLEAN");
+            addColumnIfMissing(conn,
+                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_prompt TEXT");
+            addColumnIfMissing(conn,
+                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_rows INTEGER");
+            addColumnIfMissing(conn,
+                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_upstream_entries INTEGER");
+            addColumnIfMissing(conn,
+                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_message_chars INTEGER");
+            addColumnIfMissing(conn,
+                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_request_bytes INTEGER");
+            addColumnIfMissing(conn,
+                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_last_run TIMESTAMP");
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_interval_seconds = ? WHERE summary_interval_seconds IS NULL")) {
-            ps.setLong(1, DEFAULT_SUMMARY_INTERVAL_SECONDS);
-            ps.executeUpdate();
-        }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_interval_seconds = ? WHERE summary_interval_seconds IS NULL")) {
+                ps.setLong(1, DEFAULT_SUMMARY_INTERVAL_SECONDS);
+                ps.executeUpdate();
+            }
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_auto_enabled = ? WHERE summary_auto_enabled IS NULL")) {
-            ps.setBoolean(1, DEFAULT_SUMMARY_AUTO_ENABLED);
-            ps.executeUpdate();
-        }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_auto_enabled = ? WHERE summary_auto_enabled IS NULL")) {
+                ps.setBoolean(1, DEFAULT_SUMMARY_AUTO_ENABLED);
+                ps.executeUpdate();
+            }
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_max_rows = ? WHERE summary_max_rows IS NULL")) {
-            ps.setInt(1, DEFAULT_SUMMARY_MAX_ROWS);
-            ps.executeUpdate();
-        }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_max_rows = ? WHERE summary_max_rows IS NULL")) {
+                ps.setInt(1, DEFAULT_SUMMARY_MAX_ROWS);
+                ps.executeUpdate();
+            }
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_max_upstream_entries = ? WHERE summary_max_upstream_entries IS NULL")) {
-            ps.setInt(1, DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES);
-            ps.executeUpdate();
-        }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_max_upstream_entries = ? WHERE summary_max_upstream_entries IS NULL")) {
+                ps.setInt(1, DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES);
+                ps.executeUpdate();
+            }
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_max_message_chars = ? WHERE summary_max_message_chars IS NULL")) {
-            ps.setInt(1, DEFAULT_SUMMARY_MAX_MESSAGE_CHARS);
-            ps.executeUpdate();
-        }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_max_message_chars = ? WHERE summary_max_message_chars IS NULL")) {
+                ps.setInt(1, DEFAULT_SUMMARY_MAX_MESSAGE_CHARS);
+                ps.executeUpdate();
+            }
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE widget_sync_settings SET summary_max_request_bytes = ? WHERE summary_max_request_bytes IS NULL")) {
-            ps.setInt(1, DEFAULT_SUMMARY_MAX_REQUEST_BYTES);
-            ps.executeUpdate();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE widget_sync_settings SET summary_max_request_bytes = ? WHERE summary_max_request_bytes IS NULL")) {
+                ps.setInt(1, DEFAULT_SUMMARY_MAX_REQUEST_BYTES);
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to ensure sync settings table", e);
         }
     }
 
-    private void addColumnIfMissing(Connection conn, String ddl) throws SQLException {
+    private void addColumnIfMissing(Connection conn, String ddl) {
         try (PreparedStatement ps = conn.prepareStatement(ddl)) {
             ps.execute();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to add sync settings column", e);
         }
     }
 
-    private SyncSettings readSyncSettings(Connection conn) throws SQLException {
-        String sql = "SELECT interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
-            + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run"
-                + " FROM widget_sync_settings WHERE id = 1";
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", syncIntervalSeconds);
-                if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
-                    persistedInterval = syncIntervalSeconds;
-                }
+    private SyncSettings readSyncSettings(Connection conn) {
+        try {
+            String sql = "SELECT interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
+                + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run"
+                    + " FROM widget_sync_settings WHERE id = 1";
+            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", syncIntervalSeconds);
+                    if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
+                        persistedInterval = syncIntervalSeconds;
+                    }
 
-                long persistedSummaryInterval = readPersistedIntervalSeconds(
+                    long persistedSummaryInterval = readPersistedIntervalSeconds(
+                            rs,
+                            "summary_interval_seconds",
+                            summaryIntervalSeconds
+                    );
+                    boolean persistedSummaryAutoEnabled = readPersistedBoolean(
                         rs,
-                        "summary_interval_seconds",
-                        summaryIntervalSeconds
-                );
-                boolean persistedSummaryAutoEnabled = readPersistedBoolean(
-                    rs,
-                    "summary_auto_enabled",
-                    DEFAULT_SUMMARY_AUTO_ENABLED
-                );
+                        "summary_auto_enabled",
+                        DEFAULT_SUMMARY_AUTO_ENABLED
+                    );
 
-                int persistedSummaryMaxRows = readPersistedInt(rs, "summary_max_rows", summaryMaxRows);
-                int persistedSummaryMaxUpstreamEntries = readPersistedInt(
-                    rs,
-                    "summary_max_upstream_entries",
-                    summaryMaxUpstreamEntries
-                );
-                int persistedSummaryMaxMessageChars = readPersistedInt(
-                    rs,
-                    "summary_max_message_chars",
-                    summaryMaxMessageChars
-                );
-                int persistedSummaryMaxRequestBytes = readPersistedInt(
-                    rs,
-                    "summary_max_request_bytes",
-                    summaryMaxRequestBytes
-                );
+                    int persistedSummaryMaxRows = readPersistedInt(rs, "summary_max_rows", summaryMaxRows);
+                    int persistedSummaryMaxUpstreamEntries = readPersistedInt(
+                        rs,
+                        "summary_max_upstream_entries",
+                        summaryMaxUpstreamEntries
+                    );
+                    int persistedSummaryMaxMessageChars = readPersistedInt(
+                        rs,
+                        "summary_max_message_chars",
+                        summaryMaxMessageChars
+                    );
+                    int persistedSummaryMaxRequestBytes = readPersistedInt(
+                        rs,
+                        "summary_max_request_bytes",
+                        summaryMaxRequestBytes
+                    );
 
-                String persistedSummaryPrompt = readDbText(rs, "summary_prompt", MAX_SUMMARY_PROMPT_CHARS);
-                if (persistedSummaryPrompt != null && persistedSummaryPrompt.isBlank()) {
-                    persistedSummaryPrompt = DEFAULT_SUMMARY_PROMPT;
+                    String persistedSummaryPrompt = readDbText(rs, "summary_prompt", MAX_SUMMARY_PROMPT_CHARS);
+                    if (persistedSummaryPrompt != null && persistedSummaryPrompt.isBlank()) {
+                        persistedSummaryPrompt = DEFAULT_SUMMARY_PROMPT;
+                    }
+
+                    Timestamp persistedLastSynced = sanitizePersistedTimestamp(readDbTimestamp(rs, "last_synced"));
+                    Timestamp persistedSummaryLastRun = sanitizePersistedTimestamp(readDbTimestamp(rs, "summary_last_run"));
+                    return new SyncSettings(
+                            persistedInterval,
+                            persistedLastSynced,
+                            persistedSummaryInterval,
+                            persistedSummaryAutoEnabled,
+                            persistedSummaryPrompt,
+                            persistedSummaryMaxRows,
+                            persistedSummaryMaxUpstreamEntries,
+                            persistedSummaryMaxMessageChars,
+                            persistedSummaryMaxRequestBytes,
+                            persistedSummaryLastRun
+                    );
                 }
-
-                Timestamp persistedLastSynced = sanitizePersistedTimestamp(readDbTimestamp(rs, "last_synced"));
-                Timestamp persistedSummaryLastRun = sanitizePersistedTimestamp(readDbTimestamp(rs, "summary_last_run"));
-                return new SyncSettings(
-                        persistedInterval,
-                        persistedLastSynced,
-                        persistedSummaryInterval,
-                        persistedSummaryAutoEnabled,
-                        persistedSummaryPrompt,
-                        persistedSummaryMaxRows,
-                        persistedSummaryMaxUpstreamEntries,
-                        persistedSummaryMaxMessageChars,
-                        persistedSummaryMaxRequestBytes,
-                        persistedSummaryLastRun
-                );
             }
+            upsertSyncSettings(
+                    conn,
+                    syncIntervalSeconds,
+                    lastSynced,
+                    summaryIntervalSeconds,
+                    summaryAutoEnabled,
+                    resolveSummaryPrompt(),
+                    summaryMaxRows,
+                    summaryMaxUpstreamEntries,
+                    summaryMaxMessageChars,
+                    summaryMaxRequestBytes,
+                    summaryLastRun
+            );
+            return new SyncSettings(
+                    syncIntervalSeconds,
+                    lastSynced,
+                    summaryIntervalSeconds,
+                    summaryAutoEnabled,
+                    resolveSummaryPrompt(),
+                    summaryMaxRows,
+                    summaryMaxUpstreamEntries,
+                    summaryMaxMessageChars,
+                    summaryMaxRequestBytes,
+                    summaryLastRun
+            );
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read sync settings", e);
         }
-        upsertSyncSettings(
-                conn,
-                syncIntervalSeconds,
-                lastSynced,
-                summaryIntervalSeconds,
-                summaryAutoEnabled,
-                resolveSummaryPrompt(),
-                summaryMaxRows,
-                summaryMaxUpstreamEntries,
-                summaryMaxMessageChars,
-                summaryMaxRequestBytes,
-                summaryLastRun
-        );
-        return new SyncSettings(
-                syncIntervalSeconds,
-                lastSynced,
-                summaryIntervalSeconds,
-                summaryAutoEnabled,
-                resolveSummaryPrompt(),
-                summaryMaxRows,
-                summaryMaxUpstreamEntries,
-                summaryMaxMessageChars,
-                summaryMaxRequestBytes,
-                summaryLastRun
-        );
     }
 
     private Timestamp sanitizePersistedTimestamp(Timestamp value) {
@@ -2911,7 +2957,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return value;
     }
 
-    private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) throws SQLException {
+    private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) {
         upsertSyncSettings(
             conn,
             intervalSeconds,
@@ -2939,33 +2985,37 @@ public class WidgetSyncServlet extends HttpServlet {
             int summaryMessageChars,
             int summaryRequestBytes,
             Timestamp lastSummaryRun
-        ) throws SQLException {
-        String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
-            + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run) "
-            + "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            + "ON CONFLICT (id) DO UPDATE SET "
-            + "interval_seconds = EXCLUDED.interval_seconds, "
-            + "last_synced = EXCLUDED.last_synced, "
-            + "summary_interval_seconds = EXCLUDED.summary_interval_seconds, "
-            + "summary_auto_enabled = EXCLUDED.summary_auto_enabled, "
-            + "summary_prompt = EXCLUDED.summary_prompt, "
-            + "summary_max_rows = EXCLUDED.summary_max_rows, "
-            + "summary_max_upstream_entries = EXCLUDED.summary_max_upstream_entries, "
-            + "summary_max_message_chars = EXCLUDED.summary_max_message_chars, "
-            + "summary_max_request_bytes = EXCLUDED.summary_max_request_bytes, "
-            + "summary_last_run = EXCLUDED.summary_last_run";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, intervalSeconds);
-            ps.setTimestamp(2, lastSynced);
-            ps.setLong(3, clampSummaryIntervalSeconds(summaryInterval));
-            ps.setBoolean(4, summaryAuto);
-            ps.setString(5, normalizeSummaryPrompt(summaryPrompt));
-            ps.setInt(6, clampSummaryMaxRows(summaryRows));
-            ps.setInt(7, clampSummaryMaxUpstreamEntries(summaryUpstreamEntries));
-            ps.setInt(8, clampSummaryMaxMessageChars(summaryMessageChars));
-            ps.setInt(9, clampSummaryMaxRequestBytes(summaryRequestBytes));
-            ps.setTimestamp(10, lastSummaryRun);
-            ps.executeUpdate();
+        ) {
+        try {
+            String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
+                + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run) "
+                + "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (id) DO UPDATE SET "
+                + "interval_seconds = EXCLUDED.interval_seconds, "
+                + "last_synced = EXCLUDED.last_synced, "
+                + "summary_interval_seconds = EXCLUDED.summary_interval_seconds, "
+                + "summary_auto_enabled = EXCLUDED.summary_auto_enabled, "
+                + "summary_prompt = EXCLUDED.summary_prompt, "
+                + "summary_max_rows = EXCLUDED.summary_max_rows, "
+                + "summary_max_upstream_entries = EXCLUDED.summary_max_upstream_entries, "
+                + "summary_max_message_chars = EXCLUDED.summary_max_message_chars, "
+                + "summary_max_request_bytes = EXCLUDED.summary_max_request_bytes, "
+                + "summary_last_run = EXCLUDED.summary_last_run";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, intervalSeconds);
+                ps.setTimestamp(2, lastSynced);
+                ps.setLong(3, clampSummaryIntervalSeconds(summaryInterval));
+                ps.setBoolean(4, summaryAuto);
+                ps.setString(5, normalizeSummaryPrompt(summaryPrompt));
+                ps.setInt(6, clampSummaryMaxRows(summaryRows));
+                ps.setInt(7, clampSummaryMaxUpstreamEntries(summaryUpstreamEntries));
+                ps.setInt(8, clampSummaryMaxMessageChars(summaryMessageChars));
+                ps.setInt(9, clampSummaryMaxRequestBytes(summaryRequestBytes));
+                ps.setTimestamp(10, lastSummaryRun);
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to persist sync settings", e);
         }
     }
 
@@ -2987,71 +3037,79 @@ public class WidgetSyncServlet extends HttpServlet {
         return true;
     }
 
-    private void ensureTable(Connection conn, String tableName) throws SQLException {
+    private void ensureTable(Connection conn, String tableName) {
         if (ensuredTables.contains(tableName)) {
             return;
         }
 
-        String quotedTable = quoteIdentifier(tableName);
-        String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
-                + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
-                + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
-        try (PreparedStatement ps = conn.prepareStatement(createTableSql)) {
-            ps.execute();
-        }
+        try {
+            String quotedTable = quoteIdentifier(tableName);
+            String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
+                    + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
+                    + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
+            try (PreparedStatement ps = conn.prepareStatement(createTableSql)) {
+                ps.execute();
+            }
 
-        String idxName = (tableName + "_widget_chat_id_uidx");
-        if (idxName.length() > 63) {
-            idxName = idxName.substring(0, 63);
-        }
-        String quotedIdx = quoteIdentifier(idxName);
+            String idxName = (tableName + "_widget_chat_id_uidx");
+            if (idxName.length() > 63) {
+                idxName = idxName.substring(0, 63);
+            }
+            String quotedIdx = quoteIdentifier(idxName);
 
-        try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
-                + " ON " + quotedTable + " (widget_chat_id)")) {
-            ps.execute();
-        } catch (SQLException uniqueErr) {
-            log.log(Level.FINE, "Unique index creation failed, attempting dedupe before retry", uniqueErr);
-            dedupeByWidgetChatId(conn, tableName);
             try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
                     + " ON " + quotedTable + " (widget_chat_id)")) {
                 ps.execute();
+            } catch (SQLException uniqueErr) {
+                log.log(Level.FINE, "Unique index creation failed, attempting dedupe before retry", uniqueErr);
+                dedupeByWidgetChatId(conn, tableName);
+                try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
+                        + " ON " + quotedTable + " (widget_chat_id)")) {
+                    ps.execute();
+                }
             }
-        }
 
-        String createdAtIdxName = (tableName + "_created_at_idx");
-        if (createdAtIdxName.length() > 63) {
-            createdAtIdxName = createdAtIdxName.substring(0, 63);
-        }
-        String quotedCreatedAtIdx = quoteIdentifier(createdAtIdxName);
-
-        try (PreparedStatement ps = conn.prepareStatement("CREATE INDEX IF NOT EXISTS " + quotedCreatedAtIdx
-                + " ON " + quotedTable + " (created_at DESC)")) {
-            ps.execute();
-        } catch (SQLException createdAtIndexErr) {
-            log.log(Level.FINE, "Created_at index creation failed for {0}", tableName);
-            log.log(Level.FINEST, "Created_at index error", createdAtIndexErr);
-        }
-
-        ensuredTables.add(tableName);
-    }
-
-    private void dedupeByWidgetChatId(Connection conn, String tableName) throws SQLException {
-        String quoted = quoteIdentifier(tableName);
-        String sql = "DELETE FROM " + quoted + " a USING " + quoted + " b WHERE a.widget_chat_id = b.widget_chat_id "
-                + "AND a.widget_chat_id IS NOT NULL "
-                + "AND (a.created_at < b.created_at "
-                + "OR (a.created_at = b.created_at AND a.db_id < b.db_id) "
-                + "OR (a.created_at IS NULL AND b.created_at IS NOT NULL) "
-                + "OR (a.created_at IS NULL AND b.created_at IS NULL AND a.db_id < b.db_id))";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            int removed = ps.executeUpdate();
-            if (removed > 0) {
-                log.log(Level.INFO, "Removed {0} duplicate rows from {1}", new Object[]{removed, tableName});
+            String createdAtIdxName = (tableName + "_created_at_idx");
+            if (createdAtIdxName.length() > 63) {
+                createdAtIdxName = createdAtIdxName.substring(0, 63);
             }
+            String quotedCreatedAtIdx = quoteIdentifier(createdAtIdxName);
+
+            try (PreparedStatement ps = conn.prepareStatement("CREATE INDEX IF NOT EXISTS " + quotedCreatedAtIdx
+                    + " ON " + quotedTable + " (created_at DESC)")) {
+                ps.execute();
+            } catch (SQLException createdAtIndexErr) {
+                log.log(Level.FINE, "Created_at index creation failed for {0}", tableName);
+                log.log(Level.FINEST, "Created_at index error", createdAtIndexErr);
+            }
+
+            ensuredTables.add(tableName);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to ensure widget table " + tableName, e);
         }
     }
 
-    private List<JsonObject> findNewWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
+    private void dedupeByWidgetChatId(Connection conn, String tableName) {
+        try {
+            String quoted = quoteIdentifier(tableName);
+            String sql = "DELETE FROM " + quoted + " a USING " + quoted + " b WHERE a.widget_chat_id = b.widget_chat_id "
+                    + "AND a.widget_chat_id IS NOT NULL "
+                    + "AND (a.created_at < b.created_at "
+                    + "OR (a.created_at = b.created_at AND a.db_id < b.db_id) "
+                    + "OR (a.created_at IS NULL AND b.created_at IS NOT NULL) "
+                    + "OR (a.created_at IS NULL AND b.created_at IS NULL AND a.db_id < b.db_id))";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                int removed = ps.executeUpdate();
+                if (removed > 0) {
+                    log.log(Level.INFO, "Removed {0} duplicate rows from {1}", new Object[]{removed, tableName});
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to dedupe widget table " + tableName, e);
+        }
+    }
+
+    private List<JsonObject> findNewWidgetChats(Connection conn, String tableName, List<JsonObject> chats) {
         if (chats == null || chats.isEmpty()) {
             return List.of();
         }
@@ -3081,34 +3139,38 @@ public class WidgetSyncServlet extends HttpServlet {
         return newChats;
     }
 
-    private Set<String> fetchExistingWidgetChatIds(Connection conn, String tableName, List<String> candidateIds) throws SQLException {
+    private Set<String> fetchExistingWidgetChatIds(Connection conn, String tableName, List<String> candidateIds) {
         Set<String> existingIds = new LinkedHashSet<>();
         if (candidateIds == null || candidateIds.isEmpty()) {
             return existingIds;
         }
 
-        final int chunkSize = 500;
-        String quotedTable = quoteIdentifier(tableName);
+        try {
+            final int chunkSize = 500;
+            String quotedTable = quoteIdentifier(tableName);
 
-        for (int start = 0; start < candidateIds.size(); start += chunkSize) {
-            int end = Math.min(start + chunkSize, candidateIds.size());
-            List<String> chunk = candidateIds.subList(start, end);
-            String sql = "SELECT widget_chat_id FROM " + quotedTable + " WHERE widget_chat_id IN ("
-                    + buildInClausePlaceholders(chunk.size()) + ")";
+            for (int start = 0; start < candidateIds.size(); start += chunkSize) {
+                int end = Math.min(start + chunkSize, candidateIds.size());
+                List<String> chunk = candidateIds.subList(start, end);
+                String sql = "SELECT widget_chat_id FROM " + quotedTable + " WHERE widget_chat_id IN ("
+                        + buildInClausePlaceholders(chunk.size()) + ")";
 
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                for (int i = 0; i < chunk.size(); i++) {
-                    ps.setString(i + 1, chunk.get(i));
-                }
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String existing = rs.getString(1);
-                        if (existing != null && !existing.isBlank()) {
-                            existingIds.add(existing);
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    for (int i = 0; i < chunk.size(); i++) {
+                        ps.setString(i + 1, chunk.get(i));
+                    }
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            String existing = rs.getString(1);
+                            if (existing != null && !existing.isBlank()) {
+                                existingIds.add(existing);
+                            }
                         }
                     }
                 }
             }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to fetch existing widget chat IDs for table " + tableName, e);
         }
 
         return existingIds;
@@ -3128,7 +3190,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return sb.toString();
     }
 
-    private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) throws SQLException {
+    private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) {
         if (chats == null || chats.isEmpty()) {
             return 0;
         }
@@ -3151,10 +3213,16 @@ public class WidgetSyncServlet extends HttpServlet {
                 + " (widget_chat_id, prompt, response_text, created_at, session_id, username) "
                 + "VALUES (?,?,?,?,?,?) ON CONFLICT (widget_chat_id) DO NOTHING";
 
-        boolean originalAutoCommit = conn.getAutoCommit();
+        boolean originalAutoCommit;
         int inserted = 0;
 
-        conn.setAutoCommit(false);
+        try {
+            originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to begin widget chat insert transaction for table " + tableName, e);
+        }
+
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             for (JsonObject chat : uniqueById.values()) {
                 String chatId = getString(chat, "id");
@@ -3178,13 +3246,22 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
             }
             conn.commit();
+            return inserted;
         } catch (SQLException e) {
-            conn.rollback();
-            throw e;
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackError) {
+                e.addSuppressed(rollbackError);
+            }
+            throw new IllegalStateException("Unable to insert widget chats into table " + tableName, e);
         } finally {
-            conn.setAutoCommit(originalAutoCommit);
+            try {
+                conn.setAutoCommit(originalAutoCommit);
+            } catch (SQLException resetError) {
+                log.log(Level.FINE, "Unable to restore auto-commit for table {0}", tableName);
+                log.log(Level.FINEST, "Auto-commit restore error", resetError);
+            }
         }
-        return inserted;
     }
 
     private List<String> collectUniqueChatIds(List<JsonObject> chats) {
@@ -3481,7 +3558,7 @@ public class WidgetSyncServlet extends HttpServlet {
         return value.toString();
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
+    private boolean tableExists(Connection conn, String tableName) {
         if (tableName == null || tableName.isBlank()) {
             return false;
         }
@@ -3489,14 +3566,18 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
 
-        var meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    ensuredTables.add(tableName);
-                    return true;
+        try {
+            var meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        ensuredTables.add(tableName);
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -3513,13 +3594,7 @@ public class WidgetSyncServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON error response", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(status, message == null ? "Request failed." : message);
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
-                }
-            }
+            sendErrorSafe(resp, status, message == null ? "Request failed." : message);
         }
     }
 
@@ -3528,13 +3603,7 @@ public class WidgetSyncServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
-                }
-            }
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
         }
     }
 
@@ -3688,37 +3757,20 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private WorkspaceResponse runSummaryOrchestration(
-            String targetUrl,
-            String apiKey,
-            String summaryPrompt,
-            List<SelectedEntry> entries,
-            String requestId
-    ) throws IOException, InterruptedException {
-        return SummaryOrchestrationRunner.run(
-                orchestrator,
-                targetUrl,
-                apiKey,
-                summaryPrompt,
-                entries,
-                requestId
-        );
-    }
-
     private WorkspaceResponse runDirectSummaryChat(
             String targetUrl,
             String apiKey,
             String summaryPrompt,
             List<SelectedEntry> entries,
             String requestId
-    ) throws IOException, InterruptedException {
+        ) {
         if (workspaceClient == null) {
-            throw new IOException("Workspace client unavailable for direct summary fallback.");
+            throw new IllegalStateException("Workspace client unavailable for direct summary fallback.");
         }
 
         String directMessage = buildDirectSummaryMessage(summaryPrompt, entries);
         String directSessionId = "summary-direct-" + UUID.randomUUID();
-        WorkspaceResponse response = workspaceClient.sendChat(
+        WorkspaceResponse response = sendChatHandled(
                 targetUrl,
                 apiKey,
                 directMessage,
@@ -3742,7 +3794,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 "Retrying direct summary with compact payload after upstream status={0}",
                 new Object[]{response == null ? -1 : response.statusCode()});
 
-            response = workspaceClient.sendChat(
+            response = sendChatHandled(
                 targetUrl,
                 apiKey,
                 compactMessage,
@@ -3761,7 +3813,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     "Retrying direct summary with tiny sanitized payload after upstream status={0}",
                     new Object[]{response == null ? -1 : response.statusCode()});
 
-            response = workspaceClient.sendChat(
+                response = sendChatHandled(
                     targetUrl,
                     apiKey,
                     tinyMessage,
@@ -3788,13 +3840,13 @@ public class WidgetSyncServlet extends HttpServlet {
             String apiKey,
             String message,
             String requestId
-    ) throws IOException, InterruptedException {
+    ) {
         if (workspaceClient == null) {
-            throw new IOException("Workspace client unavailable for single-pass summary call.");
+            throw new IllegalStateException("Workspace client unavailable for single-pass summary call.");
         }
 
         String sessionId = "summary-single-" + UUID.randomUUID();
-        return workspaceClient.sendChatBearerCompat(
+        return sendChatBearerCompatHandled(
                 targetUrl,
                 apiKey,
                 defaultIfBlank(message, "Summarize today's chats."),
@@ -4031,14 +4083,14 @@ public class WidgetSyncServlet extends HttpServlet {
             String apiKey,
             List<SelectedEntry> entries,
             String requestId
-    ) throws IOException, InterruptedException {
+    ) {
         if (workspaceClient == null) {
-            throw new IOException("Workspace client unavailable for incremental summary fallback.");
+            throw new IllegalStateException("Workspace client unavailable for incremental summary fallback.");
         }
 
         String sessionId = "summary-stream-" + UUID.randomUUID();
 
-        WorkspaceResponse initResp = workspaceClient.sendChat(
+        WorkspaceResponse initResp = sendChatHandled(
                 targetUrl,
                 apiKey,
                 "You are preparing a daily chat summary. I will send chat batches. Reply only: OK.",
@@ -4059,7 +4111,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     + batches.get(i)
                     + "\nReply only: OK.";
 
-            WorkspaceResponse batchResp = workspaceClient.sendChat(
+                WorkspaceResponse batchResp = sendChatHandled(
                     targetUrl,
                     apiKey,
                     batchMessage,
@@ -4081,7 +4133,7 @@ public class WidgetSyncServlet extends HttpServlet {
             + "how well responses answered user intent, and concrete prioritized improvements and next steps. "
             + "Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, and Usage (0.0-5.0).";
 
-        return workspaceClient.sendChat(
+        return sendChatHandled(
                 targetUrl,
                 apiKey,
                 finalPrompt,
@@ -4727,17 +4779,12 @@ public class WidgetSyncServlet extends HttpServlet {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return "";
         }
-        String text = null;
+        String text;
         try {
-            text = rs.getObject(columnName, String.class);
+            text = rs.getString(columnName);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + columnName + ", falling back to getString", ex);
-            try {
-                text = rs.getString(columnName);
-            } catch (SQLException ex2) {
-                log.log(Level.FINE, "ResultSet#getString failed for column " + columnName, ex2);
-                text = null;
-            }
+            log.log(Level.FINE, "ResultSet#getString failed for column " + columnName, ex);
+            text = null;
         }
         if (text == null) {
             return "";
@@ -4780,7 +4827,65 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     void setDataSourceHolder(AppDataSourceHolder dsHolder) {
-        this.dsHolder = dsHolder;
+        WidgetSyncServlet.dsHolder = dsHolder;
+    }
+
+    private WorkspaceResponse sendChatHandled(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean allowLegacy,
+            jakarta.json.JsonArray priorMessages,
+            String requestId
+    ) {
+        try {
+            return workspaceClient.sendChat(
+                    targetUrl,
+                    apiKey,
+                    message,
+                    mode,
+                    sessionId,
+                    allowLegacy,
+                    priorMessages,
+                    requestId
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("Workspace chat request failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workspace chat request interrupted", e);
+        }
+    }
+
+    private WorkspaceResponse sendChatBearerCompatHandled(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean allowLegacy,
+            jakarta.json.JsonArray priorMessages,
+            String requestId
+    ) {
+        try {
+            return workspaceClient.sendChatBearerCompat(
+                    targetUrl,
+                    apiKey,
+                    message,
+                    mode,
+                    sessionId,
+                    allowLegacy,
+                    priorMessages,
+                    requestId
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("Workspace chat request failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workspace chat request interrupted", e);
+        }
     }
 
     private TermsStore termsStore() {

@@ -1,7 +1,9 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -74,7 +76,7 @@ public class AllSessionsServlet extends HttpServlet {
     private static final String PATH_CHATS = "/dashboard/sessions/chats";
     private static final String PATH_SELECT = "/dashboard/sessions/select";
 
-    AppDataSourceHolder dsHolder;
+    static volatile AppDataSourceHolder dsHolder;
 
     private static final class SessionSummary {
 
@@ -120,31 +122,16 @@ public class AllSessionsServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         String path = resolveRequestPath(req);
         if (PATH_CHATS.equals(path)) {
             handleChats(req, resp);
         } else {
             handleSummary(req, resp);
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         String path = resolveRequestPath(req);
         if (PATH_SELECT.equals(path)) {
             handleSelect(req, resp);
@@ -152,19 +139,6 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         writeError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method not allowed.");
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private void handleSummary(HttpServletRequest req, HttpServletResponse resp) {
@@ -786,8 +760,21 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (var reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES, 1024);
+
+        try (InputStream in = req.getInputStream();
+                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
+            byte[] buffer = new byte[2048];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    return "";
+                }
+                out.write(buffer, 0, read);
+            }
+            String normalized = ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
+            return normalized == null ? "" : normalized;
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read request body", e);
             return "";
@@ -800,18 +787,10 @@ public class AllSessionsServlet extends HttpServlet {
         }
         String value;
         try {
-            value = rs.getObject(column, String.class);
-            if (value != null) {
-                return safeDbText(value, maxLen);
-            }
+            value = rs.getString(column);
+            return safeDbText(value, maxLen);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object fallback", ex);
-        }
-        try {
-            Object raw = rs.getObject(column);
-            return safeDbText(raw == null ? null : String.valueOf(raw), maxLen);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
+            log.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
             return null;
         }
     }

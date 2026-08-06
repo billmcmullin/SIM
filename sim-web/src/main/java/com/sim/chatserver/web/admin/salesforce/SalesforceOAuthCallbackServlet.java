@@ -279,8 +279,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
     }
 
-    private void redirectWithMessage(HttpServletResponse resp, HttpServletRequest req, boolean ok, String message)
-            throws IOException, ServletException {
+    private void redirectWithMessage(HttpServletResponse resp, HttpServletRequest req, boolean ok, String message) {
         String status = ok ? "ok" : "error";
         String safeMessage = safe(message);
 
@@ -292,7 +291,11 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
 
         req.setAttribute("salesforceOAuthStatus", status);
         req.setAttribute("salesforceOAuthMessage", safeMessage);
-        req.getRequestDispatcher("/admin").forward(req, resp);
+        try {
+            req.getRequestDispatcher("/admin").forward(req, resp);
+        } catch (IOException | ServletException e) {
+            throw new IllegalStateException("Unable to forward OAuth callback response", e);
+        }
     }
 
     /**

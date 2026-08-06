@@ -279,17 +279,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, payload);
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
 
@@ -368,13 +360,18 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write dashboard topics JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
-                }
-            }
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+        }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Fallback sendError failed", ioe);
         }
     }
 

@@ -106,17 +106,9 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
 
@@ -172,17 +164,9 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doPost", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
 
@@ -419,13 +403,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, safe(message));
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write automatic-email error response", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(status, safe(message));
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
-                }
-            }
+            sendErrorSafe(resp, status, safe(message));
         }
     }
 
@@ -434,13 +412,18 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write automatic-email JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
-                }
-            }
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+        }
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, safe(message));
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Fallback sendError failed", ioe);
         }
     }
 }

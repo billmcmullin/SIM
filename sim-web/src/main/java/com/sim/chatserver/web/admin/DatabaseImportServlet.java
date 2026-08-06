@@ -101,7 +101,6 @@ public class DatabaseImportServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req)) {
             json(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
                     .add("status", "error")
@@ -121,19 +120,6 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("message", "Invalid action. Use action=precheck or action=run")
                     .build());
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private void handlePrecheck(HttpServletRequest req, HttpServletResponse resp) {
@@ -150,8 +136,8 @@ public class DatabaseImportServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = Database.getConnection()) {
-            Map<String, CsvTableData> zipTablesRaw = readZipTables(file.getInputStream());
+        try (Connection conn = getConnectionSafe()) {
+            Map<String, CsvTableData> zipTablesRaw = readZipTables(openPartInputStream(file, "precheck"));
             Map<String, CsvTableData> zipTables = normalizeZipWidgetTables(conn, zipTablesRaw);
 
             List<String> createdBaseline = ensureRequiredTables(conn);
@@ -178,7 +164,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
             json(resp, HttpServletResponse.SC_OK, result.build());
 
-        } catch (IOException | SQLException | IllegalArgumentException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Import precheck failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
@@ -203,11 +189,11 @@ public class DatabaseImportServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = Database.getConnection()) {
+        try (Connection conn = getConnectionSafe()) {
             conn.setAutoCommit(false);
 
             try {
-                Map<String, CsvTableData> zipTablesRaw = readZipTables(file.getInputStream());
+            Map<String, CsvTableData> zipTablesRaw = readZipTables(openPartInputStream(file, "run"));
                 Map<String, CsvTableData> zipTables = normalizeZipWidgetTables(conn, zipTablesRaw);
 
                 ensureRequiredTables(conn);
@@ -251,7 +237,7 @@ public class DatabaseImportServlet extends HttpServlet {
 
                 json(resp, HttpServletResponse.SC_OK, out.build());
 
-            } catch (IOException | SQLException | IllegalArgumentException e) {
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
                 try {
                     conn.rollback();
                 } catch (SQLException rb) {
@@ -268,7 +254,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     .add("rowNumber", ie.rowNumber)
                     .add("column", ie.column == null ? "" : ie.column)
                     .build());
-        } catch (IOException | SQLException | IllegalArgumentException e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.SEVERE, "Import run failed", e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
                     .add("status", "error")
@@ -354,6 +340,25 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
+    private Connection getConnectionSafe() {
+        try {
+            return Database.getConnection();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to obtain database connection", e);
+        }
+    }
+
+    private InputStream openPartInputStream(Part file, String phase) {
+        if (file == null) {
+            throw new IllegalStateException("Upload file is missing for phase " + safe(phase));
+        }
+        try {
+            return file.getInputStream();
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to open upload stream for phase " + safe(phase), e);
+        }
+    }
+
     private String truncate(String s) {
         if (s == null) {
             return "";
@@ -361,7 +366,7 @@ public class DatabaseImportServlet extends HttpServlet {
         return s.length() > 512 ? s.substring(0, 512) + "..." : s;
     }
 
-    private Map<String, CsvTableData> readZipTables(InputStream input) throws IOException {
+    private Map<String, CsvTableData> readZipTables(InputStream input) {
         Map<String, CsvTableData> out = new LinkedHashMap<>();
         try (ZipInputStream zis = new ZipInputStream(input, StandardCharsets.UTF_8)) {
             ZipEntry entry;
@@ -377,11 +382,13 @@ public class DatabaseImportServlet extends HttpServlet {
                 CsvTableData data = readCsv(new ByteArrayInputStream(csvBytes));
                 out.put(table, data);
             }
+            return out;
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read ZIP table data", e);
         }
-        return out;
     }
 
-    private CsvTableData readCsv(InputStream in) throws IOException {
+    private CsvTableData readCsv(InputStream in) {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setHeader()
                 .setSkipHeaderRecord(true)
@@ -400,12 +407,13 @@ public class DatabaseImportServlet extends HttpServlet {
                 }
                 rows.add(row);
             }
-
             return new CsvTableData(headers, rows);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read CSV table payload", e);
         }
     }
 
-    private List<String> ensureRequiredTables(Connection conn) throws SQLException {
+    private List<String> ensureRequiredTables(Connection conn) {
         List<String> created = new ArrayList<>();
         for (String t : REQUIRED_TABLES) {
             if (!tableExists(conn, t)) {
@@ -416,7 +424,7 @@ public class DatabaseImportServlet extends HttpServlet {
         return created;
     }
 
-    private List<String> ensureWidgetTables(Connection conn, List<String> widgetTables, Map<String, CsvTableData> zipTables) throws SQLException {
+    private List<String> ensureWidgetTables(Connection conn, List<String> widgetTables, Map<String, CsvTableData> zipTables) {
         List<String> created = new ArrayList<>();
         for (String t : widgetTables) {
             if (!tableExists(conn, t)) {
@@ -438,73 +446,77 @@ public class DatabaseImportServlet extends HttpServlet {
         return out;
     }
 
-    private int replaceTableData(Connection conn, String table, CsvTableData data) throws SQLException {
+    private int replaceTableData(Connection conn, String table, CsvTableData data) {
         if (data.headers.isEmpty()) {
             return 0;
         }
 
-        try (PreparedStatement ps = conn.prepareStatement("TRUNCATE TABLE " + q(table) + " RESTART IDENTITY CASCADE")) {
-            ps.execute();
-        }
+        try {
+            try (PreparedStatement ps = conn.prepareStatement("TRUNCATE TABLE " + q(table) + " RESTART IDENTITY CASCADE")) {
+                ps.execute();
+            }
 
-        Map<String, ColumnInfo> columnInfo = loadColumnInfo(conn, table);
+            Map<String, ColumnInfo> columnInfo = loadColumnInfo(conn, table);
 
-        List<String> insertHeaders = data.headers.stream()
-                .filter(h -> columnInfo.containsKey(h.toLowerCase()))
-                .toList();
+            List<String> insertHeaders = data.headers.stream()
+                    .filter(h -> columnInfo.containsKey(h.toLowerCase()))
+                    .toList();
 
-        if (insertHeaders.isEmpty()) {
-            throw new ImportException(
-                    "No matching columns between CSV and table '" + table + "'.",
-                    table, 1, null, null
-            );
-        }
+            if (insertHeaders.isEmpty()) {
+                throw new ImportException(
+                        "No matching columns between CSV and table '" + table + "'.",
+                        table, 1, null, null
+                );
+            }
 
-        String cols = String.join(", ", insertHeaders.stream().map(this::q).toList());
-        String qmarks = String.join(", ", Collections.nCopies(insertHeaders.size(), "?"));
-        String sql = "INSERT INTO " + q(table) + " (" + cols + ") VALUES (" + qmarks + ')';
+            String cols = String.join(", ", insertHeaders.stream().map(this::q).toList());
+            String qmarks = String.join(", ", Collections.nCopies(insertHeaders.size(), "?"));
+            String sql = "INSERT INTO " + q(table) + " (" + cols + ") VALUES (" + qmarks + ')';
 
-        int inserted = 0;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (int rowIndex = 0; rowIndex < data.rows.size(); rowIndex++) {
-                List<String> row = data.rows.get(rowIndex);
-                int csvRowNumber = rowIndex + 2;
+            int inserted = 0;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                for (int rowIndex = 0; rowIndex < data.rows.size(); rowIndex++) {
+                    List<String> row = data.rows.get(rowIndex);
+                    int csvRowNumber = rowIndex + 2;
 
-                for (int i = 0; i < insertHeaders.size(); i++) {
-                    int idx = i + 1;
-                    String column = insertHeaders.get(i);
+                    for (int i = 0; i < insertHeaders.size(); i++) {
+                        int idx = i + 1;
+                        String column = insertHeaders.get(i);
 
-                    int sourceIndex = data.headers.indexOf(column);
-                    String raw = (sourceIndex >= 0 && sourceIndex < row.size()) ? row.get(sourceIndex) : null;
+                        int sourceIndex = data.headers.indexOf(column);
+                        String raw = (sourceIndex >= 0 && sourceIndex < row.size()) ? row.get(sourceIndex) : null;
 
-                    ColumnInfo ci = columnInfo.getOrDefault(column.toLowerCase(), new ColumnInfo(Types.VARCHAR, true));
-                    String normalized = normalizeValueForColumn(table, column, raw, ci);
+                        ColumnInfo ci = columnInfo.getOrDefault(column.toLowerCase(), new ColumnInfo(Types.VARCHAR, true));
+                        String normalized = normalizeValueForColumn(table, column, raw, ci);
 
-                    try {
-                        bindTyped(ps, idx, normalized, ci.sqlType);
-                    } catch (SQLException bindErr) {
-                        throw new ImportException(
-                                "Import failed at table '" + table + "', row " + csvRowNumber + ", column '" + column + "': " + safe(bindErr.getMessage()),
-                                table, csvRowNumber, column, bindErr
-                        );
+                        try {
+                            bindTyped(ps, idx, normalized, ci.sqlType);
+                        } catch (IllegalStateException bindErr) {
+                            throw new ImportException(
+                                    "Import failed at table '" + table + "', row " + csvRowNumber + ", column '" + column + "': " + safe(bindErr.getMessage()),
+                                    table, csvRowNumber, column, bindErr
+                            );
+                        }
+                    }
+
+                    ps.addBatch();
+                    inserted++;
+
+                    if (inserted % 1000 == 0) {
+                        executeBatchWithContext(ps, table, csvRowNumber);
                     }
                 }
 
-                ps.addBatch();
-                inserted++;
-
-                if (inserted % 1000 == 0) {
-                    executeBatchWithContext(ps, table, csvRowNumber);
-                }
+                executeBatchWithContext(ps, table, data.rows.size() + 1);
             }
 
-            executeBatchWithContext(ps, table, data.rows.size() + 1);
+            return inserted;
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to replace table data for " + table, ex);
         }
-
-        return inserted;
     }
 
-    private void realignSequenceBackedColumns(Connection conn, String table) throws SQLException {
+    private void realignSequenceBackedColumns(Connection conn, String table) {
         String sequenceLookupSql = """
                 SELECT column_name,
                        pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name) AS seq_name
@@ -514,76 +526,83 @@ public class DatabaseImportServlet extends HttpServlet {
                  ORDER BY ordinal_position
                 """;
 
-        try (PreparedStatement ps = conn.prepareStatement(sequenceLookupSql)) {
-            ps.setString(1, table);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String column = readMetadataIdentifier(rs, "column_name");
-                    String sequenceName = readSafeDbText(rs, "seq_name", 256);
-                    if (column == null || sequenceName == null || sequenceName.isBlank()) {
-                        continue;
-                    }
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(sequenceLookupSql)) {
+                ps.setString(1, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String column = readMetadataIdentifier(rs, "column_name");
+                        String sequenceName = readSafeDbText(rs, "seq_name", 256);
+                        if (column == null || sequenceName == null || sequenceName.isBlank()) {
+                            continue;
+                        }
 
-                    if (!SQL_IDENTIFIER.matcher(column).matches()) {
-                        continue;
-                    }
+                        if (!SQL_IDENTIFIER.matcher(column).matches()) {
+                            continue;
+                        }
 
-                    String setSequenceSql = "SELECT setval(?::regclass, COALESCE((SELECT MAX(" + q(column) + ") FROM " + q(table) + "), 0) + 1, false)";
-                    try (PreparedStatement setPs = conn.prepareStatement(setSequenceSql)) {
-                        setPs.setString(1, sequenceName);
-                        setPs.execute();
+                        String setSequenceSql = "SELECT setval(?::regclass, COALESCE((SELECT MAX(" + q(column) + ") FROM " + q(table) + "), 0) + 1, false)";
+                        try (PreparedStatement setPs = conn.prepareStatement(setSequenceSql)) {
+                            setPs.setString(1, sequenceName);
+                            setPs.execute();
+                        }
                     }
                 }
             }
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to realign sequence-backed columns for " + table, ex);
         }
     }
 
-    private Map<String, ColumnInfo> loadColumnInfo(Connection conn, String table) throws SQLException {
+    private Map<String, ColumnInfo> loadColumnInfo(Connection conn, String table) {
         Map<String, ColumnInfo> info = new LinkedHashMap<>();
-        DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getColumns(null, "public", table, null)) {
-            while (rs.next()) {
-                String rawName = readMetadataIdentifier(rs, "COLUMN_NAME");
-                if (rawName == null) {
-                    continue;
-                }
-                String name = rawName.toLowerCase(Locale.ROOT);
-                Integer typeValue = readMetadataInt(rs, "DATA_TYPE");
-                if (typeValue == null) {
-                    continue;
-                }
-                int type = sanitizeSqlType(typeValue);
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getColumns(null, "public", table, null)) {
+                while (rs.next()) {
+                    String rawName = readMetadataIdentifier(rs, "COLUMN_NAME");
+                    if (rawName == null) {
+                        continue;
+                    }
+                    String name = rawName.toLowerCase(Locale.ROOT);
+                    Integer typeValue = readMetadataInt(rs, "DATA_TYPE");
+                    if (typeValue == null) {
+                        continue;
+                    }
+                    int type = sanitizeSqlType(typeValue);
 
-                Integer nullableValue = readMetadataInt(rs, "NULLABLE");
-                boolean nullable = nullableValue == null || nullableValue != ResultSetMetaData.columnNoNulls;
-                info.put(name, new ColumnInfo(type, nullable));
+                    Integer nullableValue = readMetadataInt(rs, "NULLABLE");
+                    boolean nullable = nullableValue == null || nullableValue != ResultSetMetaData.columnNoNulls;
+                    info.put(name, new ColumnInfo(type, nullable));
+                }
             }
+            return info;
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to load column metadata for " + table, ex);
         }
-        return info;
     }
 
     private Integer readMetadataInt(ResultSet rs, String columnName) {
         if (rs == null || columnName == null || columnName.isBlank()) {
             return null;
         }
-        Integer direct = null;
+        int direct;
         try {
-            direct = rs.getObject(columnName, Integer.class);
+            direct = rs.getInt(columnName);
+            if (!rs.wasNull()) {
+                return Integer.valueOf(direct);
+            }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Typed metadata integer read failed for column " + columnName, ex);
         }
-        if (direct != null) {
-            return direct;
-        }
 
-        Object fallbackObj;
+        String text;
         try {
-            fallbackObj = rs.getObject(columnName);
+            text = rs.getString(columnName);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Metadata object read failed for column " + columnName, ex);
+            log.log(Level.FINE, "Metadata text read failed for column " + columnName, ex);
             return null;
         }
-        String text = fallbackObj == null ? null : String.valueOf(fallbackObj);
         if (text == null) {
             return null;
         }
@@ -632,7 +651,7 @@ public class DatabaseImportServlet extends HttpServlet {
                 || sqlType == Types.LONGNVARCHAR;
     }
 
-    private void executeBatchWithContext(PreparedStatement ps, String table, int csvRowNumber) throws SQLException {
+    private void executeBatchWithContext(PreparedStatement ps, String table, int csvRowNumber) {
         try {
             ps.executeBatch();
         } catch (BatchUpdateException bue) {
@@ -644,26 +663,31 @@ public class DatabaseImportServlet extends HttpServlet {
                     "Batch insert failed at table '" + table + "' near CSV row " + csvRowNumber + ": " + safe(root.getMessage()),
                     table, csvRowNumber, null, bue
             );
+        } catch (SQLException ex) {
+            throw new ImportException(
+                    "Batch insert failed at table '" + table + "' near CSV row " + csvRowNumber + ": " + safe(ex.getMessage()),
+                    table, csvRowNumber, null, ex
+            );
         }
     }
 
-    private void bindTyped(PreparedStatement ps, int idx, String raw, int sqlType) throws SQLException {
+    private void bindTyped(PreparedStatement ps, int idx, String raw, int sqlType) {
         String v = raw == null ? null : raw.trim();
 
-        if (v == null) {
-            ps.setNull(idx, sqlType);
-            return;
-        }
-        if (v.isEmpty()) {
-            if (isTextType(sqlType)) {
-                ps.setString(idx, "");
-            } else {
-                ps.setNull(idx, sqlType);
-            }
-            return;
-        }
-
         try {
+            if (v == null) {
+                ps.setNull(idx, sqlType);
+                return;
+            }
+            if (v.isEmpty()) {
+                if (isTextType(sqlType)) {
+                    ps.setString(idx, "");
+                } else {
+                    ps.setNull(idx, sqlType);
+                }
+                return;
+            }
+
             switch (sqlType) {
                 case Types.BIGINT ->
                     ps.setLong(idx, Long.parseLong(v));
@@ -684,8 +708,8 @@ public class DatabaseImportServlet extends HttpServlet {
                 default ->
                     ps.setString(idx, v);
             }
-        } catch (IllegalArgumentException ex) {
-            throw new SQLException("Invalid value '" + v + "' for SQL type " + sqlType, ex);
+        } catch (SQLException | IllegalArgumentException ex) {
+            throw new IllegalStateException("Invalid value '" + v + "' for SQL type " + sqlType, ex);
         }
     }
 
@@ -708,12 +732,16 @@ public class DatabaseImportServlet extends HttpServlet {
         return null;
     }
 
-    private void bindTimestamp(PreparedStatement ps, int idx, String v) throws SQLException {
+    private void bindTimestamp(PreparedStatement ps, int idx, String v) {
         Timestamp ts = parseTimestampStrict(v);
         if (ts == null) {
-            throw new SQLException("Invalid timestamp format '" + v + '\'');
+            throw new IllegalStateException("Invalid timestamp format '" + v + '\'');
         }
-        ps.setTimestamp(idx, ts);
+        try {
+            ps.setTimestamp(idx, ts);
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to bind timestamp value", ex);
+        }
     }
 
     private java.sql.Date parseDateStrict(String v) {
@@ -747,12 +775,16 @@ public class DatabaseImportServlet extends HttpServlet {
         return null;
     }
 
-    private void bindDate(PreparedStatement ps, int idx, String v) throws SQLException {
+    private void bindDate(PreparedStatement ps, int idx, String v) {
         java.sql.Date d = parseDateStrict(v);
         if (d == null) {
-            throw new SQLException("Invalid date format '" + v + '\'');
+            throw new IllegalStateException("Invalid date format '" + v + '\'');
         }
-        ps.setDate(idx, d);
+        try {
+            ps.setDate(idx, d);
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to bind date value", ex);
+        }
     }
 
     private boolean tableExists(Connection conn, String tableName) {
@@ -767,7 +799,7 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
-    private void createKnownTable(Connection conn, String table) throws SQLException {
+    private void createKnownTable(Connection conn, String table) {
         String ddl = switch (table) {
             case "customer_identity" -> "CREATE TABLE IF NOT EXISTS " + q(table) + " ("
                     + "identity_id BIGSERIAL PRIMARY KEY, "
@@ -798,13 +830,17 @@ public class DatabaseImportServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(ddl)) {
             ps.execute();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to create required table " + table, ex);
         }
     }
 
-    private void createTableFromCsvHeader(Connection conn, String table, List<String> headers) throws SQLException {
+    private void createTableFromCsvHeader(Connection conn, String table, List<String> headers) {
         if (headers == null || headers.isEmpty()) {
             try (PreparedStatement ps = conn.prepareStatement("CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)")) {
                 ps.execute();
+            } catch (SQLException ex) {
+                throw new IllegalStateException("Unable to create fallback table " + table, ex);
             }
             return;
         }
@@ -820,6 +856,8 @@ public class DatabaseImportServlet extends HttpServlet {
 
         try (PreparedStatement ps = conn.prepareStatement(ddl.toString())) {
             ps.execute();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to create table from CSV header for " + table, ex);
         }
     }
 
@@ -840,7 +878,7 @@ public class DatabaseImportServlet extends HttpServlet {
         return normalized;
     }
 
-    private Map<String, String> buildWidgetIdToTableMap(Connection conn) throws SQLException {
+    private Map<String, String> buildWidgetIdToTableMap(Connection conn) {
         Map<String, String> out = new LinkedHashMap<>();
         if (!tableExists(conn, "widget_entries")) {
             return out;
@@ -855,11 +893,13 @@ public class DatabaseImportServlet extends HttpServlet {
                 }
                 out.put(widgetId, sanitizeWidgetTableName(widgetId));
             }
+            return out;
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to load widget ID table map", ex);
         }
-        return out;
     }
 
-    private Map<String, CsvTableData> normalizeZipWidgetTables(Connection conn, Map<String, CsvTableData> zipTables) throws SQLException {
+    private Map<String, CsvTableData> normalizeZipWidgetTables(Connection conn, Map<String, CsvTableData> zipTables) {
         Map<String, CsvTableData> normalized = new LinkedHashMap<>();
         Map<String, String> widgetIdToSanitized = buildWidgetIdToTableMap(conn);
 
@@ -960,23 +1000,11 @@ public class DatabaseImportServlet extends HttpServlet {
     }
 
     private String readSafeDbText(ResultSet rs, String columnName, int maxLen) {
-        String raw;
+        String raw = null;
         try {
-            raw = rs.getObject(columnName, String.class);
-            if (raw == null) {
-                Object rawObj = rs.getObject(columnName);
-                raw = rawObj == null ? null : String.valueOf(rawObj);
-            }
+            raw = rs.getString(columnName);
         } catch (SQLException ex) {
-            Object rawObj;
-            try {
-                rawObj = rs.getObject(columnName);
-                raw = rawObj == null ? null : String.valueOf(rawObj);
-            } catch (SQLException ex2) {
-                log.log(Level.FINE, "DB text read failed for column " + columnName, ex2);
-                raw = null;
-            }
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName + ", using object conversion", ex);
+            log.log(Level.FINE, "DB text read failed for column " + columnName, ex);
         }
         if (raw == null) {
             return null;
@@ -1127,7 +1155,7 @@ public class DatabaseImportServlet extends HttpServlet {
         }
     }
 
-    static final class ImportException extends SQLException {
+    static final class ImportException extends RuntimeException {
 
         private final transient String table;
         private final transient int rowNumber;
