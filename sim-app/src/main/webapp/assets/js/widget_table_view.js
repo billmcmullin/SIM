@@ -35,6 +35,10 @@
 
     const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
     const fmtDate = v => {
+        const sharedFormatter = window.DashboardCore?.formatHumanReadableTimestamp;
+        if (typeof sharedFormatter === 'function') {
+            return sharedFormatter(v, '');
+        }
         if (!v) {
             return '';
         }
@@ -77,6 +81,10 @@
     }
 
     function buildCustomerProfileUrl(sessionId, friendlyName) {
+        const sharedBuilder = window.DashboardCore?.buildCustomerProfileUrl;
+        if (typeof sharedBuilder === 'function') {
+            return sharedBuilder(contextPath, sessionId, friendlyName);
+        }
         const p = new URLSearchParams();
         const sid = (sessionId === null || sessionId === undefined) ? '' : String(sessionId).trim();
         const fname = (friendlyName === null || friendlyName === undefined) ? '' : String(friendlyName).trim();

@@ -45,7 +45,11 @@ public class WidgetReviewServlet extends HttpServlet {
         if (selectionId == null) {
             Object forwardedSelectionId = req.getAttribute("selectionId");
             if (forwardedSelectionId instanceof String forwarded) {
+                String sanitizedForwarded = sanitizeForLog(forwarded);
                 selectionId = ServletRequestParamUtil.normalizeValue(forwarded, 256, true, true);
+                if (selectionId == null) {
+                    log.log(Level.FINE, "Ignored invalid forwarded selectionId: {0}", sanitizedForwarded);
+                }
             }
         }
         if (selectionId == null) {
@@ -94,10 +98,10 @@ public class WidgetReviewServlet extends HttpServlet {
 
         // JS string literal safety (for placeholders used in inline script config)
         rendered = rendered
-                .replace("'${contextPath}'", "'" + escapeJs(contextPath) + "'")
-                .replace("'${selectionId}'", "'" + escapeJs(selectionId) + "'")
-                .replace("'${subjectLabel}'", "'" + escapeJs(subjectLabel) + "'")
-                .replace("'${subjectType}'", "'" + escapeJs(subjectType) + "'");
+            .replace("'${contextPath}'", '"' + escapeJs(contextPath) + '"')
+            .replace("'${selectionId}'", '"' + escapeJs(selectionId) + '"')
+            .replace("'${subjectLabel}'", '"' + escapeJs(subjectLabel) + '"')
+            .replace("'${subjectType}'", '"' + escapeJs(subjectType) + '"');
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html;charset=UTF-8");
@@ -105,7 +109,7 @@ public class WidgetReviewServlet extends HttpServlet {
             out.print(rendered);
         }
     
-        } catch (Exception e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger(getClass().getName())
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {

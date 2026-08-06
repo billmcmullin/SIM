@@ -6,11 +6,15 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -29,6 +33,33 @@ import static org.mockito.Mockito.when;
  */
 public class AdminTermServletTest
 {
+    private MockedStatic<CDI> cdiMock;
+
+    @AfterEach
+    void tearDownCdiMock()
+    {
+        if (cdiMock != null) {
+            cdiMock.close();
+            cdiMock = null;
+        }
+    }
+
+    private void mockTermsStoreCdi(TermsStore termsStoreValue)
+    {
+        if (cdiMock != null) {
+            cdiMock.close();
+        }
+        cdiMock = org.mockito.Mockito.mockStatic(CDI.class);
+
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<TermsStore> termsStoreInstance = mock(Instance.class);
+
+        when(cdi.select(TermsStore.class)).thenReturn(termsStoreInstance);
+        when(termsStoreInstance.get()).thenReturn(termsStoreValue);
+        cdiMock.when(CDI::current).thenReturn(cdi);
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for doDelete(HttpServletRequest, HttpServletResponse)
@@ -204,7 +235,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         boolean deleteTermResult = true; // UTA: configured value
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenReturn(deleteTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -237,7 +268,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         boolean deleteTermResult = false; // UTA: configured value
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenReturn(deleteTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -270,7 +301,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         boolean deleteTermResult = true; // UTA: configured value
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenReturn(deleteTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -304,7 +335,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         boolean deleteTermResult = false; // UTA: configured value
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenReturn(deleteTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -366,7 +397,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -428,7 +459,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.deleteTerm(nullable(Long.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -565,7 +596,7 @@ public class AdminTermServletTest
         TermDefinition item = mock(TermDefinition.class);
         listAllResult.add(item);
         doReturn(listAllResult).when(termsStoreValue).listAll();
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -597,7 +628,7 @@ public class AdminTermServletTest
         TermDefinition item = mock(TermDefinition.class);
         listAllResult.add(item);
         doReturn(listAllResult).when(termsStoreValue).listAll();
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -627,7 +658,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.listAll()).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -656,7 +687,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.listAll()).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -788,7 +819,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         TermDefinition createTermResult = null; // UTA: configured value
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(createTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -818,7 +849,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         TermDefinition createTermResult = null; // UTA: configured value
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(createTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -851,7 +882,7 @@ public class AdminTermServletTest
         Long getIdResult = 1L; // UTA: default value
         when(createTermResult.getId()).thenReturn(getIdResult);
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(createTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -883,7 +914,7 @@ public class AdminTermServletTest
         Long getIdResult = 1L; // UTA: default value
         when(createTermResult.getId()).thenReturn(getIdResult);
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(createTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -913,7 +944,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -942,7 +973,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.createTerm(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1074,7 +1105,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         TermDefinition updateTermResult = null; // UTA: configured value
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1104,7 +1135,7 @@ public class AdminTermServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         TermDefinition updateTermResult = null; // UTA: configured value
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1137,7 +1168,7 @@ public class AdminTermServletTest
         Long getIdResult = 1L; // UTA: default value
         when(updateTermResult.getId()).thenReturn(getIdResult);
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1169,7 +1200,7 @@ public class AdminTermServletTest
         Long getIdResult = 1L; // UTA: default value
         when(updateTermResult.getId()).thenReturn(getIdResult);
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateTermResult);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1199,7 +1230,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -1228,7 +1259,7 @@ public class AdminTermServletTest
         AdminTermServlet underTest = new AdminTermServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         when(termsStoreValue.updateTerm(nullable(Long.class), nullable(String.class), nullable(String.class), nullable(String.class), nullable(String.class))).thenThrow(SQLException.class);
-        underTest.termsStore = termsStoreValue;
+        mockTermsStoreCdi(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);

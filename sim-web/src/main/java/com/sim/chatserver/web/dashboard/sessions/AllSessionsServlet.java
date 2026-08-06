@@ -1,9 +1,7 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -174,7 +172,8 @@ public class AllSessionsServlet extends HttpServlet {
         Map<String, String> widgetNames = buildWidgetDisplayNameMap(widgets);
 
         if (!widgets.isEmpty()) {
-            try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+            Connection conn = openConnectionSafe();
+            try (conn) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
@@ -202,7 +201,8 @@ public class AllSessionsServlet extends HttpServlet {
             Map<String, SessionLabelStore.SessionLabel> allLabels = mapSessionLabels(sessionList);
             matchedSessionIds.addAll(gatherSessionIdsByLabelMatch(allLabels, search));
 
-            try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+            Connection conn = openConnectionSafe();
+            try (conn) {
                 for (WidgetEntry widget : widgets) {
                     if (widget == null || widget.getWidgetId() == null) {
                         continue;
@@ -334,7 +334,8 @@ public class AllSessionsServlet extends HttpServlet {
         List<ChatRow> rows = new ArrayList<>();
         String sid = sessionId;
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
@@ -348,7 +349,8 @@ public class AllSessionsServlet extends HttpServlet {
 
                 String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
                         + " WHERE session_id = ? ORDER BY created_at DESC";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = prepareStatementSafe(conn, sql);
+                try (ps) {
                     ps.setString(1, sid);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
@@ -435,7 +437,8 @@ public class AllSessionsServlet extends HttpServlet {
 
         List<TermChatSnapshot> snapshots = new ArrayList<>();
         List<WidgetEntry> widgets = listWidgets();
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
                     continue;
@@ -451,7 +454,8 @@ public class AllSessionsServlet extends HttpServlet {
                         + quoteIdentifier(tableName)
                         + " WHERE widget_chat_id = ?";
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = prepareStatementSafe(conn, sql);
+                try (ps) {
                     for (String chatId : selected) {
                         ps.setString(1, chatId);
                         try (ResultSet rs = ps.executeQuery()) {
@@ -590,7 +594,8 @@ public class AllSessionsServlet extends HttpServlet {
         Set<String> ids = new HashSet<>();
         String sql = "SELECT DISTINCT session_id FROM " + quoteIdentifier(tableName)
                 + " WHERE (prompt ILIKE ? OR response_text ILIKE ?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        PreparedStatement ps = prepareStatementSafe(conn, sql);
+        try (ps) {
             ps.setString(1, pattern);
             ps.setString(2, pattern);
             try (ResultSet rs = ps.executeQuery()) {
@@ -610,7 +615,8 @@ public class AllSessionsServlet extends HttpServlet {
     private void aggregateSessions(Connection conn, String tableName, Map<String, SessionSummary> sessions, String widgetId, Set<String> filter) {
         String sql = "SELECT session_id, COUNT(*) AS cnt, MIN(created_at) AS first_ts, MAX(created_at) AS last_ts FROM "
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+        PreparedStatement ps = prepareStatementSafe(conn, sql);
+        try (ps; ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
                 if (sid == null) {
@@ -708,7 +714,7 @@ public class AllSessionsServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {
@@ -723,7 +729,7 @@ public class AllSessionsServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON error response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, message == null ? "Request failed." : message);
                 } catch (IOException ioe) {
@@ -756,25 +762,40 @@ public class AllSessionsServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to open database connection", ex);
+        }
+    }
+
+    private PreparedStatement prepareStatementSafe(Connection conn, String sql) {
+        try {
+            return conn.prepareStatement(sql);
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to prepare SQL statement", ex);
+        }
+    }
+
     private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
             return "";
         }
 
-        try (InputStream in = req.getInputStream();
-                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
-            byte[] buffer = new byte[2048];
+        try (java.io.BufferedReader reader = req.getReader()) {
+            char[] buffer = new char[2048];
+            StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
             int total = 0;
             int read;
-            while ((read = in.read(buffer)) != -1) {
+            while ((read = reader.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_JSON_PAYLOAD_BYTES) {
                     return "";
                 }
-                out.write(buffer, 0, read);
+                builder.append(buffer, 0, read);
             }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
-            return normalized == null ? "" : normalized;
+            return ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read request body", e);
             return "";

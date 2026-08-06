@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public final class ServletRequestParamUtil {
 
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
+
     private ServletRequestParamUtil() {
         // utility
     }
@@ -36,15 +38,11 @@ public final class ServletRequestParamUtil {
         }
 
         String[] values = readParameterValues(request, name);
-        if ((values == null || values.length == 0) && readParameterMap(request) != null) {
-            values = readParameterMap(request).get(name);
-        }
-        if (values != null) {
-            for (String value : values) {
-                String normalized = normalizeParam(value, maxLen, stripNullByte, nullIfEmpty);
-                if (normalized != null) {
-                    return normalized;
-                }
+
+        for (String value : values) {
+            String normalized = normalizeParam(value, maxLen, stripNullByte, nullIfEmpty);
+            if (normalized != null) {
+                return normalized;
             }
         }
 
@@ -113,8 +111,7 @@ public final class ServletRequestParamUtil {
             body.append(buffer, 0, read);
         }
 
-        String normalized = normalizeBodyText(body.toString(), 0, false);
-        return normalized == null ? "" : normalized;
+        return normalizeBodyText(body.toString(), 0, false);
     }
 
     public static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
@@ -122,7 +119,7 @@ public final class ServletRequestParamUtil {
         return readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen, 2048);
     }
 
-    public static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
+    private static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
             int maxLen,
             int bufferSize) throws IOException {
         if (reader == null) {
@@ -141,8 +138,7 @@ public final class ServletRequestParamUtil {
             body.append(buffer, 0, read);
         }
 
-        String normalized = normalizeBodyText(body.toString(), 0, false);
-        return normalized == null ? "" : normalized;
+        return normalizeBodyText(body.toString(), 0, false);
     }
 
     private static String normalizeParam(String value,
@@ -171,48 +167,28 @@ public final class ServletRequestParamUtil {
     }
 
     private static String readParam(HttpServletRequest request, String name) {
-        String raw = request.getParameter(name);
-        if (raw == null) {
+        String[] values = readParameterValues(request, name);
+        if (values.length == 0) {
             return null;
         }
-        return raw.replace('\r', ' ').replace('\n', ' ');
+        return values[0];
     }
 
     private static String[] readParameterValues(HttpServletRequest request, String name) {
+        if (request == null || name == null || name.isBlank()) {
+            return EMPTY_STRING_ARRAY;
+        }
         String[] values = request.getParameterValues(name);
         if (values == null) {
-            return null;
+            return EMPTY_STRING_ARRAY;
         }
         String[] sanitized = new String[values.length];
         for (int i = 0; i < values.length; i++) {
             String value = values[i];
-            sanitized[i] = value == null ? null : value.replace('\r', ' ').replace('\n', ' ');
+            sanitized[i] = value == null
+                    ? null
+                    : value.replace('\u0000', ' ').replace('\r', ' ').replace('\n', ' ');
         }
         return sanitized;
-    }
-
-    private static java.util.Map<String, String[]> readParameterMap(HttpServletRequest request) {
-        java.util.Map<String, String[]> map = request.getParameterMap();
-        if (map == null || map.isEmpty()) {
-            return map;
-        }
-
-        java.util.Map<String, String[]> copy = new java.util.LinkedHashMap<>();
-        for (java.util.Map.Entry<String, String[]> entry : map.entrySet()) {
-            String key = entry.getKey();
-            String[] values = entry.getValue();
-            if (values == null) {
-                copy.put(key, null);
-                continue;
-            }
-
-            String[] sanitized = new String[values.length];
-            for (int i = 0; i < values.length; i++) {
-                String value = values[i];
-                sanitized[i] = value == null ? null : value.replace('\r', ' ').replace('\n', ' ');
-            }
-            copy.put(key, sanitized);
-        }
-        return copy;
     }
 }

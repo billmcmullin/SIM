@@ -64,15 +64,11 @@
             fd.append('file', file);
 
             try {
-                const resp = await fetch(`${this.contextPath}/admin/db/import`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    body: fd
-                });
-                const payload = await resp.json().catch(() => null);
+                const result = await postFormDataJson(`${this.contextPath}/admin/db/import`, fd);
+                const payload = result.payload;
 
-                if (!resp.ok || payload?.status !== 'ok' || payload?.readyForImport !== true) {
-                    this.setMessage(payload?.message || `Precheck failed (${resp.status}).`, '#b91c1c');
+                if (!result.ok || payload?.status !== 'ok' || payload?.readyForImport !== true) {
+                    this.setMessage(payload?.message || `Precheck failed (${result.status}).`, '#b91c1c');
                     this.renderSummary(null);
                     this.renderWidgetPreview([]);
                     return;
@@ -114,15 +110,11 @@
             fd.append('file', file);
 
             try {
-                const resp = await fetch(`${this.contextPath}/admin/db/import`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    body: fd
-                });
-                const payload = await resp.json().catch(() => null);
+                const result = await postFormDataJson(`${this.contextPath}/admin/db/import`, fd);
+                const payload = result.payload;
 
-                if (!resp.ok || payload?.status !== 'ok') {
-                    this.setMessage(payload?.message || `Import failed (${resp.status}).`, '#b91c1c');
+                if (!result.ok || payload?.status !== 'ok') {
+                    this.setMessage(payload?.message || `Import failed (${result.status}).`, '#b91c1c');
                     return;
                 }
 
@@ -189,6 +181,20 @@
             .replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&#39;');
+    }
+
+    async function postFormDataJson(url, formData) {
+        if (window.AdminPage?.Api?.postFormDataJson) {
+            return window.AdminPage.Api.postFormDataJson(url, formData);
+        }
+        const resp = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+            redirect: 'follow'
+        });
+        const payload = await resp.json().catch(() => null);
+        return { status: resp.status, ok: resp.ok, payload, response: resp };
     }
 
     window.AdminPage.DbImport = DbImport;

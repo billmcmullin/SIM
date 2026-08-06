@@ -47,6 +47,16 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     private static final Pattern SAFE_DB_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
     private static final Pattern SAFE_DB_USER = Pattern.compile("^[A-Za-z0-9_.@-]{1,128}$");
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     @Override
     public EmailConfig load() {
         final String sql = """

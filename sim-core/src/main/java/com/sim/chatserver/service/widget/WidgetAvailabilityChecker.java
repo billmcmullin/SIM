@@ -70,11 +70,11 @@ public class WidgetAvailabilityChecker {
             .version(HttpClient.Version.HTTP_1_1)
             .build();
 
-    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 

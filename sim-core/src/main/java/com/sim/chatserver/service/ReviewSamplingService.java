@@ -30,6 +30,16 @@ public class ReviewSamplingService {
 
     private final SecureRandom secureRandom = new SecureRandom();
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     final List<String> keywordTerms(String text, int maxTerms) {
         if (text == null || text.isBlank()) {
             return List.of();

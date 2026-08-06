@@ -36,11 +36,11 @@ public class SecurityHeadersFilter implements Filter {
 
     private static final String DYNAMIC_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
 
-    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 

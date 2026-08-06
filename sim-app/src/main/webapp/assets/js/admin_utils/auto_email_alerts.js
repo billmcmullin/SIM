@@ -42,7 +42,7 @@
             }
             this.termSuggestionsEl.innerHTML = Array.from(names)
                 .sort((a, b) => a.localeCompare(b))
-                .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+                .map((name) => `<option value="${esc(name)}"></option>`)
                 .join('');
         },
 
@@ -210,6 +210,9 @@
     }
 
     function formatDateLabel(value, fallback) {
+        if (window.AdminPage?.Utils?.formatHumanReadableTimestamp) {
+            return window.AdminPage.Utils.formatHumanReadableTimestamp(value, fallback);
+        }
         if (!value) {
             return fallback;
         }
@@ -228,7 +231,10 @@
         return formatted.endsWith('.') ? formatted : `${formatted}.`;
     }
 
-    function escapeHtml(input) {
+    function esc(input) {
+        if (window.AdminPage?.Utils?.escapeHtml) {
+            return window.AdminPage.Utils.escapeHtml(input);
+        }
         return String(input || '')
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')

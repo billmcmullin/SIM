@@ -350,57 +350,38 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        Object raw = rs.getObject(column);
-        if (raw instanceof Number number) {
-            return Math.max(0, number.intValue());
+        String text = readRawDbText(rs, column);
+        if (text == null || text.isBlank()) {
+            return 0;
         }
-        if (raw instanceof String text) {
-            try {
-                return Math.max(0, Integer.parseInt(text.trim()));
-            } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Invalid integer text for column " + column, ex);
-                return 0;
-            }
+        try {
+            return Math.max(0, Integer.parseInt(text.trim()));
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer text for column " + column, ex);
+            return 0;
         }
-        return 0;
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        Object raw = rs.getObject(column);
-        if (raw instanceof Number number) {
-            int value = number.intValue();
-            return value > 0 ? value : fallback;
-        }
-        if (raw instanceof String text) {
-            try {
-                int value = Integer.parseInt(text.trim());
-                return value > 0 ? value : fallback;
-            } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Invalid positive integer text for column " + column, ex);
-                return fallback;
-            }
-        }
-        if (raw == null) {
+        String text = readRawDbText(rs, column);
+        if (text == null || text.isBlank()) {
             return fallback;
         }
-        return fallback;
+        try {
+            int value = Integer.parseInt(text.trim());
+            return value > 0 ? value : fallback;
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid positive integer text for column " + column, ex);
+            return fallback;
+        }
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        String text = readRawDbText(rs, column);
+        if (text == null || text.isBlank()) {
             return fallback;
         }
-        if (raw instanceof Boolean boolValue) {
-            return boolValue;
-        }
-        if (raw instanceof Number number) {
-            return number.intValue() != 0;
-        }
-        String text = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
-        if (text.isEmpty()) {
-            return fallback;
-        }
+        text = text.trim().toLowerCase(Locale.ROOT);
         if ("true".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text)) {
             return true;
         }
@@ -416,17 +397,6 @@ public class WidgetHealthConfigStore {
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        Timestamp direct = rs.getTimestamp(column);
-        if (direct != null) {
-            try {
-                Instant instant = direct.toInstant();
-                return instant == null ? null : Timestamp.from(instant);
-            } catch (DateTimeException | IllegalArgumentException e) {
-                log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
-                return null;
-            }
-        }
-
         String text = readSanitizedDbText(rs, column, 128);
         if (text == null || text.isBlank()) {
             return null;
@@ -457,19 +427,11 @@ public class WidgetHealthConfigStore {
 
     private String readRawDbText(ResultSet rs, String column) throws java.sql.SQLException {
         try {
-            String typed = rs.getObject(column, String.class);
-            if (typed != null) {
-                return typed;
-            }
+            return rs.getString(column);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", using generic object conversion", ex);
-        }
-
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
             return null;
         }
-        return String.valueOf(raw);
     }
 
     private String sanitizeDbText(String s, int maxChars) {

@@ -3,10 +3,6 @@ package com.sim.chatserver.web.dashboard.inactiveusers;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -51,7 +47,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_SEARCH_LENGTH = 128;
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
@@ -149,83 +144,14 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             widgetNameById.put(id, name);
         }
 
-        List<Row> allRows = new ArrayList<>();
-
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            if ("widget".equalsIgnoreCase(scope)) {
-                if (!widgetIdFilter.isBlank() && widgetNameById.containsKey(widgetIdFilter)) {
-                    String table = sanitizeWidgetTableName(widgetIdFilter);
-                    if (tableExists(conn, table)) {
-                        List<Row> rows = loadWidgetRows(
-                                conn,
-                                widgetIdFilter,
-                                widgetNameById.getOrDefault(widgetIdFilter, widgetIdFilter),
-                                cutoff
-                        );
-                        hydrateFrustrationForRows(conn, table, rows);
-                        allRows.addAll(rows);
-                    }
-                }
-            } else {
-                Map<String, Row> agg = new LinkedHashMap<>();
-                for (String wid : widgetNameById.keySet()) {
-                    String table = sanitizeWidgetTableName(wid);
-                    if (!tableExists(conn, table)) {
-                        continue;
-                    }
-
-                    String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
-                            + quoteIdentifier(table)
-                            + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-
-                    try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String sid = rs.getString("session_id");
-                            Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                            if (sid == null || sid.isBlank() || last == null) {
-                                continue;
-                            }
-
-                            // parasoft-suppress OPT.LOOP "A new aggregate row is intentionally created once per unique session during map accumulation."
-                            Row r = agg.computeIfAbsent(sid.trim(), k -> {
-                                Row x = new Row();
-                                x.sessionId = k;
-                                x.widgetId = "ALL";
-                                x.widgetLabel = "All Widgets";
-                                x.frustrationDetected = false;
-                                x.frustrationScore = 0.0;
-                                x.frustrationReason = "";
-                                return x;
-                            });
-                            r.chatCount += rs.getLong("total");
-                            if (r.lastEntry == null || last.after(r.lastEntry)) {
-                                r.lastEntry = last;
-                            }
-
-                            try {
-                                List<String> prompts = loadRecentPromptsForSession(conn, table, sid.trim(), FRUSTRATION_PROMPT_SCAN_LIMIT);
-                                FrustrationResult fr = detectFrustration(prompts);
-                                if (fr.score > r.frustrationScore) {
-                                    r.frustrationScore = fr.score;
-                                    r.frustrationDetected = fr.detected;
-                                    r.frustrationReason = fr.reason;
-                                }
-                            } catch (IllegalArgumentException ex) {
-                                log.log(Level.FINE, "Frustration detection skipped for " + sid + " in " + table, ex);
-                            }
-                        }
-                    }
-                }
-
-                for (Row r : agg.values()) {
-                    if (r.lastEntry != null && r.lastEntry.toInstant().isBefore(cutoff)) {
-                        allRows.add(r);
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.SEVERE, "Unable to compute inactive users list", e);
-        }
+        List<Row> allRows = queryService().loadRows(
+                scope,
+                widgetIdFilter,
+                widgetNameById,
+                cutoff,
+                FRUSTRATION_PROMPT_SCAN_LIMIT,
+                this::detectFrustration
+        );
 
         Set<String> ids = allRows.stream().map(r -> r.sessionId).collect(Collectors.toSet());
         Map<String, SessionLabelStore.SessionLabel> labels = Map.of();
@@ -287,7 +213,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         resp.setContentType("text/html; charset=UTF-8");
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     
-        } catch (IOException | ServletException | RuntimeException e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -302,91 +228,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         } catch (IOException ioe) {
             log.log(Level.FINE, "Failed sending fallback server error.", ioe);
         }
-    }
-
-    private void hydrateFrustrationForRows(Connection conn, String table, List<Row> rows) {
-        for (Row r : rows) {
-            try {
-                List<String> prompts = loadRecentPromptsForSession(conn, table, r.sessionId, FRUSTRATION_PROMPT_SCAN_LIMIT);
-                FrustrationResult fr = detectFrustration(prompts);
-                r.frustrationDetected = fr.detected;
-                r.frustrationScore = fr.score;
-                r.frustrationReason = fr.reason;
-            } catch (IllegalArgumentException ex) {
-                r.frustrationDetected = false;
-                r.frustrationScore = 0.0;
-                r.frustrationReason = "";
-                log.log(Level.FINE, "Frustration detection skipped for session " + r.sessionId + " table " + table, ex);
-            }
-        }
-    }
-
-    private List<Row> loadWidgetRows(Connection conn, String widgetId, String widgetLabel, Instant cutoff) {
-        List<Row> rows = new ArrayList<>();
-        String table = sanitizeWidgetTableName(widgetId);
-        String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
-                + quoteIdentifier(table)
-                + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                String sid = rs.getString("session_id");
-                Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                if (sid == null || sid.isBlank() || last == null) {
-                    continue;
-                }
-                if (!last.toInstant().isBefore(cutoff)) {
-                    continue;
-                }
-
-                Row r = new Row();
-                r.sessionId = sid.trim();
-                r.widgetId = widgetId;
-                r.widgetLabel = widgetLabel;
-                r.chatCount = rs.getLong("total");
-                r.lastEntry = last;
-                r.frustrationDetected = false;
-                r.frustrationScore = 0.0;
-                r.frustrationReason = "";
-                rows.add(r);
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to load widget rows for " + table, e);
-        }
-        return rows;
-    }
-
-    private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
-        List<String> prompts = new ArrayList<>();
-        if (sessionId == null || sessionId.isBlank() || limit < 1) {
-            return prompts;
-        }
-
-        String[] cols = {"prompt", "prompt_text", "user_prompt"};
-        for (String col : cols) {
-            String sql = "SELECT " + quoteIdentifier(col) + " AS p FROM " + quoteIdentifier(table)
-                    + " WHERE session_id = ? AND " + quoteIdentifier(col) + " IS NOT NULL AND " + quoteIdentifier(col) + " <> ''"
-                    + " ORDER BY created_at DESC";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setString(1, sessionId);
-                ps.setMaxRows(limit);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String p = rs.getString("p");
-                        if (p != null && !p.isBlank()) {
-                            prompts.add(p);
-                        }
-                    }
-                    if (!prompts.isEmpty()) {
-                        return prompts;
-                    }
-                }
-            } catch (SQLException ex) {
-                log.log(Level.FINEST, "Prompt column unavailable for frustration scan: " + col, ex);
-                // try next candidate column
-            }
-        }
-        return prompts;
     }
 
     private FrustrationResult detectFrustration(List<String> prompts) {
@@ -632,43 +473,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         return normalized;
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        String normalized = widgetId == null ? "widget" : widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String s) {
-        if (s == null || !SAFE_SQL_IDENTIFIER.matcher(s).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + s.replace("\"", "\"\"") + '"';
-    }
-
     private int parseInt(String v, int fallback) {
         if (v == null) {
             return fallback;
@@ -683,6 +487,10 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private InactiveUsersListQueryService queryService() {
+        return new InactiveUsersListQueryService(dataSourceHolder(), log);
     }
 
     private String safeSessionUser(HttpSession session) {

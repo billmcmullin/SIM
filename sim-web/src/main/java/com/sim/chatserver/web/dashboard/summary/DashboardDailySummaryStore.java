@@ -50,6 +50,16 @@ public class DashboardDailySummaryStore {
 
     private final DataSource dataSource;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public DashboardDailySummaryStore(DataSource dataSource) {
         this.dataSource = dataSource;
     }
@@ -413,20 +423,20 @@ public class DashboardDailySummaryStore {
 
     private String readRawText(ResultSet rs, String column) throws SQLException {
         try {
-            String typed = rs.getObject(column, String.class);
-            if (typed != null) {
-                return typed;
-            }
+            return rs.getString(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", using generic conversion", ex);
+            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
+            return null;
         }
-        Object raw = rs.getObject(column);
-        return raw == null ? null : String.valueOf(raw);
     }
 
     private String readRawText(ResultSet rs, int column) throws SQLException {
-        Object raw = rs.getObject(column);
-        return raw == null ? null : String.valueOf(raw);
+        try {
+            return rs.getString(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
+            return null;
+        }
     }
 
     private String sanitizeText(String value, int maxLen) {
@@ -444,16 +454,19 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
-        Object rawObj = rs.getObject(column);
-        if (rawObj instanceof Number number) {
-            int value = number.intValue();
-            if (value < min) {
-                return min;
+        try {
+            int direct = rs.getInt(column);
+            if (!rs.wasNull()) {
+                if (direct < min) {
+                    return min;
+                }
+                if (direct > max) {
+                    return max;
+                }
+                return direct;
             }
-            if (value > max) {
-                return max;
-            }
-            return value;
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
         }
 
         String raw = sanitizeText(readRawText(rs, column), 64);

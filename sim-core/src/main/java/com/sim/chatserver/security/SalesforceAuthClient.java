@@ -40,6 +40,16 @@ public class SalesforceAuthClient {
 
     private final HttpClient httpClient;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public SalesforceAuthClient() {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(8))

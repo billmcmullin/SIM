@@ -3,12 +3,7 @@ package com.sim.chatserver.web.dashboard.topics;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -25,11 +20,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -50,112 +43,72 @@ public class DashboardTopicsServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
     private static final String EXCLUDED_TOPIC = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        String contextPath = ServletPathUtil.safeContextPathNoTrailingSlash(req.getContextPath());
-        HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
-            return;
-        }
-
-        String user = String.valueOf(session.getAttribute("user"));
-        boolean includeOther = parseBooleanFlag(ServletRequestParamUtil.firstParam(req, "includeOther", 256, false, false));
-
-        DateWindow window = resolveDateWindow(
-            ServletRequestParamUtil.firstParam(req, "day", 256, false, false),
-            ServletRequestParamUtil.firstParam(req, "start", 256, false, false),
-            ServletRequestParamUtil.firstParam(req, "end", 256, false, false)
-        );
-
-        List<WidgetEntry> widgets;
-        try {
-            widgets = WidgetStore.list(null);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to list widgets for topics dashboard", e);
-            widgets = List.of();
-        }
-
-        List<TermDefinition> terms;
-        try {
-            terms = termsStore().listAll();
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load term definitions for topics dashboard", e);
-            terms = List.of();
-        }
-
-        List<TopicPattern> activeTopics = buildActiveTopicPatterns(terms, includeOther);
-
-        Map<String, Integer> globalCounts = new LinkedHashMap<>();
-        Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
-
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            for (WidgetEntry w : widgets) {
-                if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = w.getWidgetId();
-                String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank())
-                        ? widgetId : w.getDisplayName();
-
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
-
-                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
-                    ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (ignoredTs == null) {
-                                // still allow topic matching from prompt text
-                            }
-
-                            String prompt = rs.getString("prompt");
-                            if (prompt == null || prompt.isBlank()) {
-                                continue;
-                            }
-
-                            Set<String> matchedTopics = matchTopics(prompt, activeTopics);
-                            for (String topic : matchedTopics) {
-                                globalCounts.merge(topic, 1, Integer::sum);
-                                widgetMap.merge(topic, 1, Integer::sum);
-                            }
-                        }
-                    }
-                }
+            String contextPath = ServletPathUtil.safeContextPathNoTrailingSlash(req.getContextPath());
+            HttpSession session = req.getSession(false);
+            if (session == null || session.getAttribute("user") == null) {
+                req.getRequestDispatcher("/login").forward(req, resp);
+                return;
             }
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to build popular topics report", e);
-            throw new ServletException("Unable to build popular topics report", e);
-        }
 
-        String globalRows = "";
-        String perWidgetTables = "";
+            String user = String.valueOf(session.getAttribute("user"));
+            boolean includeOther = parseBooleanFlag(ServletRequestParamUtil.firstParam(req, "includeOther", 256, false, false));
 
-        String template = loadTemplate(req, TEMPLATE_PATH);
-        String rendered = template
-                .replace("${contextPath}", escapeHtml(contextPath))
-                .replace("${user}", escapeHtml(user))
-                .replace("${globalTopicRows}", globalRows)
-                .replace("${perWidgetTopicTables}", perWidgetTables);
+            DateWindow window = resolveDateWindow(
+                    ServletRequestParamUtil.firstParam(req, "day", 256, false, false),
+                    ServletRequestParamUtil.firstParam(req, "start", 256, false, false),
+                    ServletRequestParamUtil.firstParam(req, "end", 256, false, false)
+            );
 
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
-        resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
-    
-        } catch (IOException | ServletException | RuntimeException e) {
+            List<WidgetEntry> widgets;
+            try {
+                widgets = WidgetStore.list(null);
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to list widgets for topics dashboard", e);
+                widgets = List.of();
+            }
+
+            List<TermDefinition> terms;
+            try {
+                terms = termsStore().listAll();
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to load term definitions for topics dashboard", e);
+                terms = List.of();
+            }
+
+            List<TopicPattern> activeTopics = buildActiveTopicPatterns(terms, includeOther);
+
+            DashboardTopicsQueryService.TopicCountResult counts;
+            try {
+                counts = queryService().collectTopicCounts(
+                        widgets,
+                        window.startInclusive,
+                        window.endExclusive,
+                        prompt -> matchTopics(prompt, activeTopics)
+                );
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to build popular topics report", e);
+                throw new ServletException("Unable to build popular topics report", e);
+            }
+
+            String globalRows = buildGlobalTopicRows(counts.globalCounts());
+            String perWidgetTables = buildPerWidgetTables(counts.byWidgetCounts());
+
+            String template = loadTemplate(req, TEMPLATE_PATH);
+            String rendered = template
+                    .replace("${contextPath}", escapeHtml(contextPath))
+                    .replace("${user}", escapeHtml(user))
+                    .replace("${globalTopicRows}", globalRows)
+                    .replace("${perWidgetTopicTables}", perWidgetTables);
+
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType("text/html; charset=UTF-8");
+            resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -271,52 +224,54 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
+    private String buildGlobalTopicRows(Map<String, Integer> counts) {
+        if (counts == null || counts.isEmpty()) {
+            return "<tr><td colspan=\"2\">No topic matches found for the selected range.</td></tr>";
         }
-        return false;
+
+        StringBuilder html = new StringBuilder();
+        counts.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(valueOrZero(b.getValue()), valueOrZero(a.getValue())))
+                .forEach(entry -> {
+                    String topic = escapeHtml(entry.getKey());
+                    int count = valueOrZero(entry.getValue());
+                    html.append("<tr><td>")
+                            .append(topic)
+                            .append("</td><td>")
+                            .append(count)
+                            .append("</td></tr>");
+                });
+        return html.toString();
     }
 
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
+    private String buildPerWidgetTables(Map<String, Map<String, Integer>> byWidgetCounts) {
+        if (byWidgetCounts == null || byWidgetCounts.isEmpty()) {
+            return "";
         }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
+
+        StringBuilder html = new StringBuilder();
+        byWidgetCounts.forEach((widgetName, topicCounts) -> {
+            html.append("<section class=\"widget-topic-table\">")
+                    .append("<h3>")
+                    .append(escapeHtml(widgetName))
+                    .append("</h3>")
+                    .append("<table><thead><tr><th>Topic</th><th>Count</th></tr></thead><tbody>")
+                    .append(buildGlobalTopicRows(topicCounts))
+                    .append("</tbody></table></section>");
+        });
+        return html.toString();
     }
 
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    private AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
+    private int valueOrZero(Integer value) {
+        return value == null ? 0 : value.intValue();
     }
 
     private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
+    }
+
+    private DashboardTopicsQueryService queryService() {
+        return CDI.current().select(DashboardTopicsQueryService.class).get();
     }
 
     private String escapeHtml(String input) {

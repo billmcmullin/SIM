@@ -32,8 +32,6 @@ public class AdminTermServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
 
-    TermsStore termsStore;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         if (!isAdmin(req, resp)) {
@@ -43,14 +41,18 @@ public class AdminTermServlet extends HttpServlet {
         try {
             List<TermDefinition> terms = termsStore().listAll();
             JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-            terms.forEach(term -> arrayBuilder.add(Json.createObjectBuilder()
-                    .add("id", term.getId() == null ? 0L : term.getId())
+            terms.forEach(term -> {
+                Long rawId = term.getId();
+                long termId = rawId == null ? 0L : rawId.longValue();
+                arrayBuilder.add(Json.createObjectBuilder()
+                    .add("id", termId)
                     .add("name", term.getName())
                     .add("description", term.getDescription())
                     .add("matchPattern", term.getMatchPattern())
                     .add("matchType", term.getMatchType())
                     .add("isSystem", term.isSystemFlag())
-                    .build()));
+                    .build());
+            });
             JsonObject response = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("terms", arrayBuilder)
@@ -70,7 +72,7 @@ public class AdminTermServlet extends HttpServlet {
 
         try {
             req.setCharacterEncoding("UTF-8");
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException e) {
             log.log(Level.FINE, "Unable to set request character encoding", e);
         }
 
@@ -109,7 +111,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", term.getId() == null ? 0L : term.getId())
+                        .add("id", term.getId() == null ? 0L : term.getId().longValue())
                             .add("name", term.getName())
                             .add("description", term.getDescription())
                             .add("matchPattern", term.getMatchPattern())
@@ -131,7 +133,7 @@ public class AdminTermServlet extends HttpServlet {
 
         try {
             req.setCharacterEncoding("UTF-8");
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException e) {
             log.log(Level.FINE, "Unable to set request character encoding", e);
         }
 
@@ -152,7 +154,14 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
-        Long idObj = payload.getJsonNumber("id") == null ? null : Long.valueOf(payload.getJsonNumber("id").toString());
+        Long idObj = null;
+        try {
+            idObj = payload.getJsonNumber("id") == null ? null : Long.valueOf(payload.getJsonNumber("id").toString());
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid term id payload", ex);
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid id.");
+            return;
+        }
         String name = payload.getString("name", "").trim();
         String description = payload.getString("description", "").trim();
         String pattern = payload.getString("matchPattern", "").trim();
@@ -162,10 +171,9 @@ public class AdminTermServlet extends HttpServlet {
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "id, name, and description are required.");
             return;
         }
-        long id = idObj;
 
         try {
-            TermDefinition updated = termsStore().updateTerm(id, name, description, pattern, type);
+            TermDefinition updated = termsStore().updateTerm(idObj, name, description, pattern, type);
             if (updated == null) {
                 writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be modified.");
                 return;
@@ -173,7 +181,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", updated.getId() == null ? 0L : updated.getId())
+                        .add("id", updated.getId() == null ? 0L : updated.getId().longValue())
                             .add("name", updated.getName())
                             .add("description", updated.getDescription())
                             .add("matchPattern", updated.getMatchPattern())
@@ -199,7 +207,7 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            long id = Long.parseLong(idParam);
+            Long id = Long.valueOf(idParam);
             boolean deleted = termsStore().deleteTerm(id);
             if (!deleted) {
                 writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be deleted or term not found.");
@@ -272,9 +280,6 @@ public class AdminTermServlet extends HttpServlet {
     }
 
     private TermsStore termsStore() {
-        if (termsStore != null) {
-            return termsStore;
-        }
         return CDI.current().select(TermsStore.class).get();
     }
 

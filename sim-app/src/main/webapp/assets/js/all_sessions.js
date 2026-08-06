@@ -65,6 +65,10 @@
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
 
     const fmt = ts => {
+        const sharedFormatter = window.DashboardCore?.formatHumanReadableTimestamp;
+        if (typeof sharedFormatter === 'function') {
+            return sharedFormatter(ts, '');
+        }
         if (!ts) {
             return '';
         }
@@ -88,6 +92,10 @@
     };
 
     function customerProfileUrl(sessionId, friendlyName) {
+        const sharedBuilder = window.DashboardCore?.buildCustomerProfileUrl;
+        if (typeof sharedBuilder === 'function') {
+            return sharedBuilder(APP, sessionId, friendlyName);
+        }
         const p = new URLSearchParams();
         if (sessionId) {
             p.set('sessionId', String(sessionId));

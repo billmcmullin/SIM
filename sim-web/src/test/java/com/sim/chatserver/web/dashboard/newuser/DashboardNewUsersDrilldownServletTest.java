@@ -7,10 +7,14 @@ import java.sql.Connection;
 
 import javax.sql.DataSource;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
@@ -32,6 +36,33 @@ import static org.mockito.Mockito.when;
  */
 public class DashboardNewUsersDrilldownServletTest
 {
+    private MockedStatic<CDI> cdiMock;
+
+    @AfterEach
+    void tearDownCdiMock()
+    {
+        if (cdiMock != null) {
+            cdiMock.close();
+            cdiMock = null;
+        }
+    }
+
+    private void mockDataSourceHolderCdi(AppDataSourceHolder dsHolderValue)
+    {
+        if (cdiMock != null) {
+            cdiMock.close();
+        }
+        cdiMock = org.mockito.Mockito.mockStatic(CDI.class);
+
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<AppDataSourceHolder> dsHolderInstance = mock(Instance.class);
+
+        when(cdi.select(AppDataSourceHolder.class)).thenReturn(dsHolderInstance);
+        when(dsHolderInstance.get()).thenReturn(dsHolderValue);
+        cdiMock.when(CDI::current).thenReturn(cdi);
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
@@ -103,7 +134,7 @@ public class DashboardNewUsersDrilldownServletTest
         DashboardNewUsersDrilldownServlet underTest = new DashboardNewUsersDrilldownServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
         when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
-        underTest.dsHolder = dsHolderValue;
+        mockDataSourceHolderCdi(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);

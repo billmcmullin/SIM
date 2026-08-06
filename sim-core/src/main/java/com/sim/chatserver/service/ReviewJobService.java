@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -42,6 +43,16 @@ public class ReviewJobService {
     private final Map<String, ReviewJobStatus> statuses = new ConcurrentHashMap<>();
     private final Map<String, Future<?>> futures = new ConcurrentHashMap<>();
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public ReviewJobService() {
         this(Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
     }
@@ -50,10 +61,14 @@ public class ReviewJobService {
         this.executor = Executors.newFixedThreadPool(Math.max(1, poolSize));
     }
 
+    private long nowEpochMillis() {
+        return Instant.now().toEpochMilli();
+    }
+
     public String submit(String requestId, int totalSelected, JobTask task) {
         String jobId = UUID.randomUUID().toString();
 
-        long now = System.currentTimeMillis();
+        long now = nowEpochMillis();
         ReviewJobStatus queued = ReviewJobStatus.builder()
                 .jobId(jobId)
                 .requestId(requestId)
@@ -99,7 +114,7 @@ public class ReviewJobService {
                         result.rawResponseBody(),
                         result.contentType()
                 );
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", ex);
                 failJob(jobId, 500, ex.getMessage() == null ? "Async job failed." : ex.getMessage());
             } finally {
@@ -127,7 +142,7 @@ public class ReviewJobService {
             return false;
         }
 
-        Future<?> f = futures.get(jobId);
+        Future<?> f = futures.remove(jobId);
         boolean cancelled = false;
         if (f != null) {
             cancelled = f.cancel(true);
@@ -135,7 +150,7 @@ public class ReviewJobService {
 
         ReviewJobStatus old = statuses.get(jobId);
         if (old != null) {
-            long now = System.currentTimeMillis();
+            long now = nowEpochMillis();
 
             List<String> allIds = normalizeIds(old.getAllSelectedChatIds());
             List<String> usedIds = normalizeIds(old.getUsedChatIds());
@@ -383,7 +398,7 @@ public class ReviewJobService {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        long now = nowEpochMillis();
 
         List<String> allIds = normalizeIds(old.getAllSelectedChatIds());
         List<String> usedIds = normalizeIds(old.getUsedChatIds());
@@ -488,7 +503,7 @@ public class ReviewJobService {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        long now = nowEpochMillis();
 
         List<String> allIds = !allSelectedChatIds.isEmpty() ? normalizeIds(allSelectedChatIds) : normalizeIds(old.getAllSelectedChatIds());
         List<String> usedIds = !usedChatIds.isEmpty() ? normalizeIds(usedChatIds) : normalizeIds(old.getUsedChatIds());
@@ -622,7 +637,7 @@ public class ReviewJobService {
                 .coveragePercent(cov)
                 .coverageComplete(complete)
                 .startedAtEpochMs(old.getStartedAtEpochMs())
-                .updatedAtEpochMs(System.currentTimeMillis())
+                .updatedAtEpochMs(nowEpochMillis())
                 .finishedAtEpochMs(0)
                 .httpStatus(0)
                 .message(message == null ? phase.name() : message)

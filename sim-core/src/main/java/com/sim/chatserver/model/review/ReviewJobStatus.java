@@ -121,7 +121,7 @@ public final class ReviewJobStatus {
         if (b.running == null) {
             this.running = !this.done;
         } else {
-            this.running = Boolean.TRUE.equals(b.running);
+            this.running = b.running.booleanValue();
         }
         this.batchProgressPercent = b.batchProgressPercent >= 0
                 ? clampPercent(b.batchProgressPercent)
@@ -699,9 +699,13 @@ public final class ReviewJobStatus {
             return List.of();
         }
         Set<Integer> out = new LinkedHashSet<>();
-        for (Integer i : src) {
-            if (i != null && i.compareTo(0) > 0) {
-                out.add(i);
+        for (Integer boxed : src) {
+            if (boxed == null) {
+                continue;
+            }
+            int value = boxed.intValue();
+            if (value > 0) {
+                out.add(Integer.valueOf(value));
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));
@@ -724,7 +728,7 @@ public final class ReviewJobStatus {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    b.add(Integer.parseInt(v.toString()));
+                    b.add(v.intValue());
                 }
             }
         }

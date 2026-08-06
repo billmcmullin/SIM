@@ -68,6 +68,16 @@ public class AutoEmailAlertScheduler {
     private final TermsStore termsStore;
     private final DbEmailConfigProvider dbEmailConfigProvider;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "auto-email-alerts");
         t.setDaemon(true);
@@ -79,7 +89,7 @@ public class AutoEmailAlertScheduler {
 
     private ScheduledFuture<?> future;
 
-    public AutoEmailAlertScheduler(
+    AutoEmailAlertScheduler(
             AutoEmailAlertConfigStore store,
             DataSource dataSource,
             WidgetAvailabilityChecker availabilityChecker,
@@ -93,7 +103,7 @@ public class AutoEmailAlertScheduler {
         this.dbEmailConfigProvider = dbEmailConfigProvider;
     }
 
-    public synchronized void start() {
+    synchronized void start() {
         if (!started.compareAndSet(false, true)) {
             return;
         }
@@ -101,7 +111,7 @@ public class AutoEmailAlertScheduler {
         log.info("Automatic email alert scheduler started.");
     }
 
-    public synchronized void stop() {
+    synchronized void stop() {
         if (!started.compareAndSet(true, false)) {
             return;
         }
@@ -301,7 +311,8 @@ public class AutoEmailAlertScheduler {
             for (Map.Entry<String, Integer> entry : counts.entrySet()) {
                 if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(target)) {
                     Integer value = entry.getValue();
-                    return value == null ? 0L : Math.max(0, value);
+                    long count = value == null ? 0L : value.longValue();
+                    return Math.max(0L, count);
                 }
             }
         }
@@ -350,31 +361,31 @@ public class AutoEmailAlertScheduler {
         StringBuilder sb = new StringBuilder();
         sb.append("SIM healthcheck alert\n\n");
         sb.append("Status: OFFLINE\n");
-        sb.append("Detected at: ").append(formatInstant(now)).append("\n");
+        sb.append("Detected at: ").append(formatInstant(now)).append('\n');
         if (offlineSince != null) {
-            sb.append("Offline since: ").append(formatInstant(offlineSince)).append("\n");
+            sb.append("Offline since: ").append(formatInstant(offlineSince)).append('\n');
         }
         if (result != null) {
-            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "DOWN")).append("\n");
-            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append("\n");
-            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append("\n");
+            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "DOWN")).append('\n');
+            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append('\n');
+            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append('\n');
             if (hasText(result.details())) {
-                sb.append("Details: ").append(result.details()).append("\n");
+                sb.append("Details: ").append(result.details()).append('\n');
             }
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append("\n").append(cfg.getHealthMessage()).append("\n");
+            sb.append('\n').append(cfg.getHealthMessage()).append('\n');
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("\nRunbook URL: ").append(runbookUrl).append("\n");
+            sb.append("\nRunbook URL: ").append(runbookUrl).append('\n');
         }
 
         String runbookAttachmentPath = cfg.getHealthRunbookAttachmentPath();
         if (hasText(runbookAttachmentPath)) {
-            sb.append("Runbook attachment path: ").append(runbookAttachmentPath).append("\n");
+            sb.append("Runbook attachment path: ").append(runbookAttachmentPath).append('\n');
         }
 
         sb.append("\nThis alert will resend based on the configured resend timer until healthcheck succeeds.");
@@ -393,27 +404,27 @@ public class AutoEmailAlertScheduler {
         StringBuilder sb = new StringBuilder();
         sb.append("SIM healthcheck recovery notification\n\n");
         sb.append("Status: ONLINE\n");
-        sb.append("Recovered at: ").append(formatInstant(now)).append("\n");
+        sb.append("Recovered at: ").append(formatInstant(now)).append('\n');
         if (offlineSince != null) {
-            sb.append("Offline since: ").append(formatInstant(offlineSince)).append("\n");
-            sb.append("Estimated outage duration: ").append(formatDuration(now, offlineSince)).append("\n");
+            sb.append("Offline since: ").append(formatInstant(offlineSince)).append('\n');
+            sb.append("Estimated outage duration: ").append(formatDuration(now, offlineSince)).append('\n');
         }
         if (result != null) {
-            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "UP")).append("\n");
-            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append("\n");
-            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append("\n");
+            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "UP")).append('\n');
+            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append('\n');
+            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append('\n');
             if (hasText(result.details())) {
-                sb.append("Details: ").append(result.details()).append("\n");
+                sb.append("Details: ").append(result.details()).append('\n');
             }
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append("\n").append(cfg.getHealthMessage()).append("\n");
+            sb.append('\n').append(cfg.getHealthMessage()).append('\n');
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("\nRunbook URL: ").append(runbookUrl).append("\n");
+            sb.append("\nRunbook URL: ").append(runbookUrl).append('\n');
         }
 
         return sb.toString();
@@ -553,14 +564,14 @@ public class AutoEmailAlertScheduler {
     private String buildTermBody(AutoEmailAlertConfig cfg, Instant now, long previousCount, long currentCount, long delta) {
         StringBuilder sb = new StringBuilder();
         sb.append("SIM term activity alert\n\n");
-        sb.append("Term: ").append(defaultIfBlank(cfg.getTermName(), "(not set)")).append("\n");
-        sb.append("Detected at: ").append(formatInstant(now)).append("\n");
-        sb.append("Previous count: ").append(previousCount).append("\n");
-        sb.append("Current count: ").append(currentCount).append("\n");
-        sb.append("Increase: ").append(delta).append("\n");
+        sb.append("Term: ").append(defaultIfBlank(cfg.getTermName(), "(not set)")).append('\n');
+        sb.append("Detected at: ").append(formatInstant(now)).append('\n');
+        sb.append("Previous count: ").append(previousCount).append('\n');
+        sb.append("Current count: ").append(currentCount).append('\n');
+        sb.append("Increase: ").append(delta).append('\n');
 
         if (hasText(cfg.getTermMessage())) {
-            sb.append("\n").append(cfg.getTermMessage()).append("\n");
+            sb.append('\n').append(cfg.getTermMessage()).append('\n');
         }
 
         return sb.toString();
@@ -613,7 +624,15 @@ public class AutoEmailAlertScheduler {
         long hours = seconds / 3600L;
         long minutes = (seconds % 3600L) / 60L;
         long secs = seconds % 60L;
-        return String.format(Locale.ROOT, "%02dh %02dm %02ds", hours, minutes, secs);
+        return twoDigit(hours) + "h " + twoDigit(minutes) + "m " + twoDigit(secs) + "s";
+    }
+
+    private String twoDigit(long value) {
+        long safe = Math.max(0L, value);
+        if (safe < 10L) {
+            return "0" + safe;
+        }
+        return Long.toString(safe);
     }
 
     private String normalizeTermName(String value) {
@@ -695,9 +714,9 @@ public class AutoEmailAlertScheduler {
             try {
                 writer.writeStartElement("p");
                 writer.writeStartElement("strong");
-                writer.writeCharacters((label == null ? "" : label) + ":");
+                writer.writeCharacters((label == null ? "" : label) + ':');
                 writer.writeEndElement();
-                writer.writeCharacters(" " + (value == null ? "" : value));
+                writer.writeCharacters(' ' + (value == null ? "" : value));
                 writer.writeEndElement();
             } catch (XMLStreamException e) {
                 throw new IllegalStateException("Unable to append labeled value", e);
@@ -708,9 +727,9 @@ public class AutoEmailAlertScheduler {
             try {
                 writer.writeStartElement("p");
                 writer.writeStartElement("strong");
-                writer.writeCharacters((label == null ? "" : label) + ":");
+                writer.writeCharacters((label == null ? "" : label) + ':');
                 writer.writeEndElement();
-                writer.writeCharacters(" ");
+                writer.writeCharacters(String.valueOf(' '));
                 writer.writeStartElement("a");
                 writer.writeAttribute("href", url == null ? "" : url);
                 writer.writeCharacters(url == null ? "" : url);

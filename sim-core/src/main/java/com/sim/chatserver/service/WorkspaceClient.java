@@ -62,6 +62,7 @@ public class WorkspaceClient {
     private final HttpClient httpClient;
     private final int maxRetries;
     private final Duration requestTimeout;
+    private static final JsonObject EMPTY_JSON_OBJECT = Json.createObjectBuilder().build();
 
     private enum AuthHeaderMode {
         CUSTOM_HEADER,
@@ -82,6 +83,16 @@ public class WorkspaceClient {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.maxRetries = Math.max(0, maxRetries);
         this.requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
+    }
+
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
     }
 
     public WorkspaceResponse sendChat(
@@ -148,10 +159,12 @@ public class WorkspaceClient {
         boolean includeSessionId = shouldIncludeSessionId(sessionId);
         JsonObject payload = buildPayload(safeMessage, safeMode, sessionId, includeSessionId, reset, safeAttachments);
         String body = payload.toString();
+        StringBuilder authAttemptTrace = new StringBuilder();
 
         int attempt = 0;
         while (true) {
             attempt++;
+            authAttemptTrace.setLength(0);
 
             try {
                 if (attempt == 1) {
@@ -202,7 +215,6 @@ public class WorkspaceClient {
                 HttpResponse<String> response = null;
                 AuthHeaderMode usedMode = AuthHeaderMode.AUTH_BEARER;
                 String usedAuthSource = "";
-                StringBuilder authAttemptTrace = new StringBuilder();
 
                 if (bearerCompatOnly) {
                     ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(0);
@@ -454,17 +466,18 @@ public class WorkspaceClient {
         }
 
         JsonObject json = parseJsonObject(body);
-        if (json != null) {
-            String merged = (safeLower(json.getString("message", "")) + " "
-                    + safeLower(json.getString("error", "")) + " "
-                    + safeLower(json.getString("detail", "")) + " "
-                    + safeLower(json.getString("code", "")) + " "
-                    + safeLower(json.getString("type", "")) + " "
-                    + safeLower(json.getString("reason", ""))).trim();
+        String merged = new StringBuilder(256)
+                .append(safeLower(json.getString("message", ""))).append(' ')
+                .append(safeLower(json.getString("error", ""))).append(' ')
+                .append(safeLower(json.getString("detail", ""))).append(' ')
+                .append(safeLower(json.getString("code", ""))).append(' ')
+                .append(safeLower(json.getString("type", ""))).append(' ')
+                .append(safeLower(json.getString("reason", "")))
+                .toString()
+                .trim();
 
-            if (containsContextLimitPhrase(merged)) {
-                return true;
-            }
+        if (containsContextLimitPhrase(merged)) {
+            return true;
         }
 
         return false;
@@ -550,7 +563,7 @@ public class WorkspaceClient {
             if (token == null || token.isBlank()) {
                 continue;
             }
-            String key = token + "|" + safe(candidate.preferredHeaderName());
+            String key = token + '|' + safe(candidate.preferredHeaderName());
             unique.putIfAbsent(key, candidate);
         }
         return new ArrayList<>(unique.values());
@@ -585,19 +598,25 @@ public class WorkspaceClient {
         }
 
         URLConnection rawConn = targetUri.toURL().openConnection();
-        HttpURLConnection conn;
         String scheme = targetUri.getScheme() == null ? "" : targetUri.getScheme().toLowerCase(Locale.ROOT);
         if ("https".equals(scheme)) {
             if (!(rawConn instanceof HttpsURLConnection httpsConn)) {
                 throw new IOException("Expected HTTPS connection for secure target URI.");
             }
-            conn = httpsConn;
+            return sendViaHttpConnection(httpsConn, body, auth);
         } else {
-            if (!(rawConn instanceof HttpURLConnection httpConn)) {
+            if (!(rawConn instanceof HttpURLConnection)) {
                 throw new IOException("Unsupported URL connection type.");
             }
-            conn = httpConn;
+            return sendViaHttpConnection((HttpURLConnection) rawConn, body, auth);
         }
+    }
+
+    private WorkspaceResponse sendViaHttpConnection(
+            HttpURLConnection conn,
+            String body,
+            ApiAuthResolver.ResolvedApiAuth auth
+    ) throws IOException {
         byte[] bytes = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
         try {
             conn.setRequestMethod("POST");
@@ -611,7 +630,8 @@ public class WorkspaceClient {
 
             conn.getOutputStream().write(bytes);
 
-            int status = sanitizeStatusCode(conn.getResponseCode());
+            int rawStatus = conn.getResponseCode();
+            int status = sanitizeStatusCode(rawStatus);
             String contentType = sanitizeHeaderValue(conn.getHeaderField("Content-Type"));
 
             InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
@@ -714,13 +734,13 @@ public class WorkspaceClient {
 
     private JsonObject parseJsonObject(String body) {
         if (body == null || body.isBlank()) {
-            return null;
+            return EMPTY_JSON_OBJECT;
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             return reader.readObject();
         } catch (JsonException | ClassCastException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to parse workspace response as JSON.", ex);
-            return null;
+            return EMPTY_JSON_OBJECT;
         }
     }
 

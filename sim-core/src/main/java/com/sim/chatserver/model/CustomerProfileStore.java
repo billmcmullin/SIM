@@ -95,7 +95,7 @@ public final class CustomerProfileStore {
         dsHolder = holder;
     }
 
-    public static void ensureTable() throws SQLException {
+    private static void ensureTable() throws SQLException {
         try (Connection conn = getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement(CREATE_TABLE_SQL)) {
             ps.execute();
         }
@@ -180,7 +180,7 @@ public final class CustomerProfileStore {
         try (ResultSet columns = meta.getColumns(null, null, TABLE_NAME, columnName)) {
             if (!columns.next()) {
                 try (PreparedStatement alter = conn.prepareStatement(
-                        "ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + columnName + " " + columnType)) {
+                        "ALTER TABLE " + TABLE_NAME + ' ' + "ADD COLUMN " + columnName + ' ' + columnType)) {
                     alter.execute();
                 }
             }
@@ -214,7 +214,7 @@ public final class CustomerProfileStore {
 
             return ENC_PREFIX
                     + Base64.getEncoder().encodeToString(iv)
-                    + ":"
+                    + ':'
                     + Base64.getEncoder().encodeToString(encrypted);
         } catch (GeneralSecurityException e) {
             throw new SQLException("Unable to encrypt customer profile value", e);
@@ -326,15 +326,11 @@ public final class CustomerProfileStore {
 
     private static String readDbRawText(ResultSet rs, String column) throws SQLException {
         try {
-            String typed = rs.getObject(column, String.class);
-            if (typed != null) {
-                return typed;
-            }
+            return rs.getString(column);
         } catch (SQLException ex) {
-            LOG.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object conversion", ex);
+            LOG.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
+            return null;
         }
-        Object raw = rs.getObject(column);
-        return raw == null ? null : String.valueOf(raw);
     }
 
     private static String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
@@ -351,26 +347,19 @@ public final class CustomerProfileStore {
 
     private static Timestamp readDbTimestamp(ResultSet rs, String column) throws SQLException {
         try {
-            Timestamp typed = rs.getObject(column, Timestamp.class);
+            Timestamp typed = rs.getTimestamp(column);
             if (typed != null) {
                 return typed;
             }
         } catch (SQLException ex) {
-            LOG.log(Level.FINE, "Typed DB timestamp read failed for column " + column + ", using object conversion", ex);
+            LOG.log(Level.FINE, "Typed DB timestamp read failed for column " + column + ", using text parsing", ex);
         }
-
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        String raw = readDbText(rs, column, 128);
+        if (raw == null || raw.isBlank()) {
             return null;
         }
-        if (raw instanceof Timestamp ts) {
-            return ts;
-        }
-        if (raw instanceof java.sql.Date date) {
-            return new Timestamp(date.getTime());
-        }
         try {
-            return Timestamp.valueOf(String.valueOf(raw).trim().replace('T', ' '));
+            return Timestamp.valueOf(raw.trim().replace('T', ' '));
         } catch (IllegalArgumentException ex) {
             LOG.log(Level.FINE, "Unable to parse timestamp for customer profile column " + column, ex);
             return null;

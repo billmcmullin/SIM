@@ -10,14 +10,13 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Level;
@@ -51,6 +50,8 @@ public class DatabaseBackupServlet extends HttpServlet {
     private static final String SESSION_ROLE = "role";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
+        private static final DateTimeFormatter BACKUP_TS_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.US)
+            .withZone(java.time.ZoneOffset.UTC);
     private static final int MAX_CELL_TEXT_LENGTH = 65535;
     private static final int MAX_BINARY_BYTES = 2 * 1024 * 1024;
 
@@ -63,11 +64,15 @@ public class DatabaseBackupServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         if (!isAdmin(req)) {
-            resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Admin authentication required.");
+            try {
+                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Admin authentication required.");
+            } catch (IOException ioe) {
+                log.log(Level.FINE, "Unable to send unauthorized response", ioe);
+            }
             return;
         }
 
-        String ts = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
+        String ts = BACKUP_TS_FMT.format(Instant.now());
         String fileName = "chatserver-data-backup-" + ts + ".zip";
 
         resp.setStatus(HttpServletResponse.SC_OK);
@@ -99,11 +104,15 @@ public class DatabaseBackupServlet extends HttpServlet {
             log.log(Level.SEVERE, "Data backup export failed", e);
             if (!resp.isCommitted()) {
                 resp.reset();
-                resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Data export failed.");
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Data export failed.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Unable to send backup export error response", ioe);
+                }
             }
         }
     
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger(getClass().getName())
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
@@ -141,16 +150,18 @@ public class DatabaseBackupServlet extends HttpServlet {
                  ORDER BY tablename
                 """;
 
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                String table = readValidatedIdentifier(rs, 1);
-                if (table == null || table.isBlank()) {
-                    continue;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String table = readValidatedIdentifier(rs, 1);
+                    if (table == null || table.isBlank()) {
+                        continue;
+                    }
+                    if (EXCLUDED_TABLES.contains(table)) {
+                        continue;
+                    }
+                    out.add(table);
                 }
-                if (EXCLUDED_TABLES.contains(table)) {
-                    continue;
-                }
-                out.add(table);
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to list exportable tables.", e);
@@ -170,7 +181,6 @@ public class DatabaseBackupServlet extends HttpServlet {
 
             try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 ps.setFetchSize(1000);
-
                 try (ResultSet rs = ps.executeQuery()) {
                     ResultSetMetaData md = rs.getMetaData();
                     int cols = md.getColumnCount();
@@ -185,7 +195,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                         }
                         w.write(csvEscape(md.getColumnLabel(i)));
                     }
-                    w.write("\n");
+                    w.write('\n');
 
                     // Data rows
                     while (rs.next()) {
@@ -195,7 +205,7 @@ public class DatabaseBackupServlet extends HttpServlet {
                             }
                             w.write(csvEscape(readCellAsText(rs, md, i)));
                         }
-                        w.write("\n");
+                        w.write('\n');
                     }
 
                     w.flush();
@@ -290,137 +300,56 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) {
-        String typed;
         try {
-            typed = rs.getObject(columnIndex, String.class);
-            if (typed != null) {
-                return sanitizeCellText(typed);
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Typed text read failed; falling back to generic object conversion.", e);
-        }
-
-        Object rawValue;
-        try {
-            rawValue = rs.getObject(columnIndex);
+            return sanitizeCellText(rs.getString(columnIndex));
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read text cell value.", e);
         }
-        String raw = rawValue == null ? null : String.valueOf(rawValue);
-        return sanitizeCellText(raw);
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
-        byte[] typed;
         try {
-            typed = rs.getObject(columnIndex, byte[].class);
-            if (typed != null) {
-                return sanitizeBinary(typed);
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Typed binary read failed; falling back to generic object conversion.", e);
-        }
-
-        Object rawValue;
-        try {
-            rawValue = rs.getObject(columnIndex);
+            return sanitizeBinary(rs.getBytes(columnIndex));
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read binary cell value.", e);
         }
-        if (rawValue instanceof byte[] bytes) {
-            return sanitizeBinary(bytes);
-        }
-
-        String fallback = rawValue == null ? null : String.valueOf(rawValue);
-        byte[] fallbackBytes = fallback == null ? null : fallback.getBytes(StandardCharsets.UTF_8);
-        return sanitizeBinary(fallbackBytes);
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
-        Timestamp typed;
+        String rawFallback;
         try {
-            typed = rs.getObject(columnIndex, Timestamp.class);
+            Timestamp typed = rs.getTimestamp(columnIndex);
             if (typed != null) {
-                try {
-                    java.time.Instant instant = typed.toInstant();
-                    return instant == null ? null : Timestamp.from(instant);
-                } catch (DateTimeException | IllegalArgumentException ex) {
-                    log.log(Level.FINE, "Ignoring invalid typed timestamp cell", ex);
-                }
+                return normalizeTimestamp(typed);
             }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Typed timestamp read failed; falling back to generic object conversion.", e);
-        }
-
-        Object rawValue;
-        try {
-            rawValue = rs.getObject(columnIndex);
+            rawFallback = rs.getString(columnIndex);
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read timestamp cell value.", e);
         }
-        if (rawValue instanceof Timestamp value) {
-            try {
-                java.time.Instant instant = value.toInstant();
-                return instant == null ? null : Timestamp.from(instant);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
-            }
-        }
 
-        if (rawValue instanceof java.util.Date value) {
-            try {
-                java.time.Instant instant = value.toInstant();
-                return instant == null ? null : Timestamp.from(instant);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
-            }
-        }
-
-        String raw = sanitizeCellText(rawValue == null ? null : String.valueOf(rawValue));
+        String raw = sanitizeCellText(rawFallback);
         if (raw == null || raw.isBlank()) {
             return null;
         }
 
         Timestamp parsed = parseTimestamp(raw);
-        if (parsed == null) {
-            return null;
-        }
-
-        try {
-            java.time.Instant instant = parsed.toInstant();
-            return instant == null ? null : Timestamp.from(instant);
-        } catch (DateTimeException | IllegalArgumentException ex) {
-            log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
-            return null;
-        }
+        return normalizeTimestamp(parsed);
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) {
-        Object rawValue;
+        String rawFallback;
         try {
-            rawValue = rs.getObject(columnIndex);
+            java.sql.Date typedDate = rs.getDate(columnIndex);
+            if (typedDate != null) {
+                LocalDate localDate = typedDate.toLocalDate();
+                return localDate == null ? null : java.sql.Date.valueOf(localDate);
+            }
+            rawFallback = rs.getString(columnIndex);
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read date cell value.", e);
         }
-        if (rawValue instanceof java.sql.Date date) {
-            try {
-                LocalDate localDate = date.toLocalDate();
-                return localDate == null ? null : java.sql.Date.valueOf(localDate);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Ignoring invalid date cell", ex);
-            }
-        }
 
-        if (rawValue instanceof java.util.Date dateTimeValue) {
-            try {
-                LocalDate localDate = dateTimeValue.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
-                return localDate == null ? null : java.sql.Date.valueOf(localDate);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Ignoring invalid date cell", ex);
-            }
-        }
-
-        String raw = sanitizeCellText(rawValue == null ? null : String.valueOf(rawValue));
+        String raw = sanitizeCellText(rawFallback);
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -434,6 +363,19 @@ public class DatabaseBackupServlet extends HttpServlet {
             return localDate == null ? null : java.sql.Date.valueOf(localDate);
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Ignoring invalid date cell", ex);
+            return null;
+        }
+    }
+
+    private Timestamp normalizeTimestamp(Timestamp candidate) {
+        if (candidate == null) {
+            return null;
+        }
+        try {
+            java.time.Instant instant = candidate.toInstant();
+            return instant == null ? null : Timestamp.from(instant);
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
             return null;
         }
     }

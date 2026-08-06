@@ -168,20 +168,20 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
                             if (!matchedRealTopics.isEmpty()) {
                                 for (String topic : matchedRealTopics) {
-                                    globalCounts.merge(topic, 1, Integer::sum);
+                                    incrementTopicCount(globalCounts, topic);
                                     globalChatIdsByTopic.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
 
-                                    widgetMap.merge(topic, 1, Integer::sum);
+                                    incrementTopicCount(widgetMap, topic);
                                     widgetTopicChatIds.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
 
                                     totalMentions++;
                                 }
                                 allMatchedChatIds.add(chatId);
                             } else if (includeOther) {
-                                globalCounts.merge(OTHER_LABEL, 1, Integer::sum);
+                                incrementTopicCount(globalCounts, OTHER_LABEL);
                                 globalChatIdsByTopic.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
 
-                                widgetMap.merge(OTHER_LABEL, 1, Integer::sum);
+                                incrementTopicCount(widgetMap, OTHER_LABEL);
                                 widgetTopicChatIds.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
 
                                 totalMentions++;
@@ -210,6 +210,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         for (Map.Entry<String, Integer> e : globalSorted) {
             String topic = e.getKey();
             Set<String> ids = globalChatIdsByTopic.getOrDefault(topic, Set.of());
+            Integer mentionsValue = e.getValue();
+            int mentions = mentionsValue == null ? 0 : mentionsValue.intValue();
 
             JsonArrayBuilder idsArray = Json.createArrayBuilder();
             for (String id : ids) {
@@ -219,7 +221,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             globalArray.add(Json.createObjectBuilder()
                     .add("rank", rank++)
                     .add("topic", topic)
-                    .add("mentions", e.getValue())
+                    .add("mentions", mentions)
                     .add("selectedChatIds", idsArray));
         }
 
@@ -245,6 +247,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             for (Map.Entry<String, Integer> t : sorted) {
                 String topic = t.getKey();
                 Set<String> ids = topicChats.getOrDefault(topic, Set.of());
+                Integer mentionsValue = t.getValue();
+                int mentions = mentionsValue == null ? 0 : mentionsValue.intValue();
 
                 JsonArrayBuilder idsArray = Json.createArrayBuilder();
                 for (String id : ids) {
@@ -254,7 +258,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 topicsArray.add(Json.createObjectBuilder()
                         .add("rank", widgetRank++)
                         .add("topic", topic)
-                        .add("mentions", t.getValue())
+                    .add("mentions", mentions)
                         .add("selectedChatIds", idsArray));
             }
 
@@ -314,6 +318,15 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         return new DateWindow(today, today.plusDays(1), today.format(DATE_FMT));
+    }
+
+    private void incrementTopicCount(Map<String, Integer> counts, String topic) {
+        if (counts == null || topic == null || topic.isBlank()) {
+            return;
+        }
+        Integer current = counts.get(topic);
+        int next = current == null ? 1 : current.intValue() + 1;
+        counts.put(topic, Integer.valueOf(next));
     }
 
     private Optional<LocalDate> parseLocalDate(String value) {

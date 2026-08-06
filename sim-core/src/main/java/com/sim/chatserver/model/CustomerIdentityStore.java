@@ -477,78 +477,50 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String typed;
         try {
-            typed = rs.getObject(column, String.class);
-            if (typed != null) {
-                return sanitizeDbText(typed, maxChars);
-            }
+            return sanitizeDbText(rs.getString(column), maxChars);
         } catch (SQLException e) {
-            log.log(Level.FINE, "Typed text read failed for column " + column + ", using object conversion", e);
+            log.log(Level.FINE, "Text read failed for column " + column, e);
+            return null;
         }
-
-        Object rawValue = rs.getObject(column);
-        String raw = rawValue == null ? null : String.valueOf(rawValue);
-        return sanitizeDbText(raw, maxChars);
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        Long typed;
         try {
-            typed = rs.getObject(column, Long.class);
-            if (typed != null) {
+            long typed = rs.getLong(column);
+            if (!rs.wasNull()) {
                 return typed < 0L ? 0L : typed;
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Typed long read failed for column " + column + ", using object conversion", e);
+            log.log(Level.FINE, "Typed long read failed for column " + column + ", using text fallback", e);
         }
 
-        Object raw = rs.getObject(column);
-        if (raw == null) {
+        String text = readSanitizedDbText(rs, column, 64);
+        if (text == null || text.isBlank()) {
             return 0L;
         }
 
         long value;
-        if (raw instanceof Number n) {
-            value = n.longValue();
-        } else {
-            String text = String.valueOf(raw).trim();
-            if (text.isEmpty()) {
-                return 0L;
-            }
-            try {
-                value = Long.parseLong(text);
-            } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
-                return 0L;
-            }
+        try {
+            value = Long.parseLong(text.trim());
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
+            return 0L;
         }
         return value < 0L ? 0L : value;
     }
 
     private static Timestamp readSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        Timestamp typed;
         try {
-            typed = rs.getObject(column, Timestamp.class);
+            Timestamp typed = rs.getTimestamp(column);
             if (typed != null) {
                 return typed;
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Typed timestamp read failed for column " + column + ", using object conversion", e);
+            log.log(Level.FINE, "Typed timestamp read failed for column " + column + ", using text fallback", e);
         }
 
-        Object raw = rs.getObject(column);
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof Timestamp ts) {
-            return ts;
-        }
-        if (raw instanceof java.sql.Date date) {
-            return new Timestamp(date.getTime());
-        }
-
-        String text = String.valueOf(raw).trim();
+        String text = readSanitizedDbText(rs, column, 128);
         if (text.isEmpty()) {
             return null;
         }
