@@ -105,8 +105,8 @@ public class WidgetTableViewServlet extends HttpServlet {
             return;
         }
 
-        String userName = String.valueOf(session.getAttribute("user"));
-        String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
+        String userName = safeSessionAttribute(session, "user", "");
+        String role = safeSessionAttribute(session, "role", "USER");
 
         String rendered = template
                 .replace("${user}", escapeHtml(userName))
@@ -168,6 +168,18 @@ public class WidgetTableViewServlet extends HttpServlet {
             }
         }
         return escaped.toString();
+    }
+
+    private String safeSessionAttribute(HttpSession session, String name, String fallback) {
+        if (session == null || name == null || name.isBlank()) {
+            return fallback == null ? "" : fallback;
+        }
+        Object value = session.getAttribute(name);
+        if (value instanceof String text) {
+            String trimmed = text.trim();
+            return trimmed.isEmpty() ? (fallback == null ? "" : fallback) : trimmed;
+        }
+        return fallback == null ? "" : fallback;
     }
 
     private String sanitizeForLog(String value) {

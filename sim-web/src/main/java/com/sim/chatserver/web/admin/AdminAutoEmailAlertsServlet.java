@@ -135,15 +135,15 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         JsonObject payload;
         try {
             String requestBody = readRequestBody(req);
+            if (requestBody == null) {
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+                return;
+            }
             try (JsonReader reader = Json.createReader(new StringReader(requestBody))) {
                 payload = reader.readObject();
             }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid automatic alert payload.", e);
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
-        } catch (IOException e) {
-            log.log(Level.FINE, "Unable to read automatic alert payload.", e);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -250,7 +250,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         return json.build();
     }
 
-    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -276,7 +276,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
+        String contentType = readContentType(req);
         if (contentType == null || contentType.isBlank()) {
             return false;
         }
@@ -293,12 +293,27 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readContentType(HttpServletRequest req) {
+        if (req == null) {
+            return null;
+        }
+        String value = req.getContentType();
+        if (value == null) {
+            return null;
+        }
+        String normalized = ServletRequestParamUtil.normalizeValue(value, 128, true, true);
+        return normalized == null ? null : normalized;
+    }
+
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null || !isValidJsonRequest(req)) {
-            throw new IOException("Invalid JSON payload.");
+            return null;
         }
         try (var reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read automatic alert payload.", e);
+            return null;
         }
     }
 
@@ -399,11 +414,33 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, safe(message));
+    private void writeError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, safe(message));
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write automatic-email error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, safe(message));
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write automatic-email JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 }

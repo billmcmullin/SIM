@@ -18,6 +18,9 @@ import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.enterprise.inject.spi.CDI;
+import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonObjectBuilder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -37,38 +40,35 @@ public class WidgetTableServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        if (!authorizeAdmin(req, resp)) {
-            return;
-        }
-        // support either single widgetId or bulk ids (comma-separated widgetIds)
-        String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
-        String widgetId = firstParam(req, "widgetId");
+            if (!authorizeAdmin(req, resp)) {
+                return;
+            }
+            // support either single widgetId or bulk ids (comma-separated widgetIds)
+            String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
+            String widgetId = firstParam(req, "widgetId");
 
-        if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
-            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
-            return;
-        }
+            if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
+                jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
+                return;
+            }
 
-        if (idsParam != null && !idsParam.isBlank()) {
-            // bulk mode
-            List<String> widgetIds = Arrays.stream(idsParam.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isBlank())
-                    .collect(Collectors.toList());
-            handleBulkCheck(resp, widgetIds);
-        } else {
-            handleCheck(req, resp);
-        }
-    
+            if (idsParam != null && !idsParam.isBlank()) {
+                // bulk mode
+                List<String> widgetIds = Arrays.stream(idsParam.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .collect(Collectors.toList());
+                handleBulkCheck(resp, widgetIds);
+            } else {
+                handleCheck(req, resp);
+            }
         } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            log.log(Level.WARNING, "I/O failure in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
@@ -77,27 +77,24 @@ public class WidgetTableServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        if (!authorizeAdmin(req, resp)) {
-            return;
-        }
-        // Support creating a table for a widget via POST widgetId=...
-        handleCreate(req, resp);
-    
+            if (!authorizeAdmin(req, resp)) {
+                return;
+            }
+            // Support creating a table for a widget via POST widgetId=...
+            handleCreate(req, resp);
         } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            log.log(Level.WARNING, "I/O failure in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
     }
 
-    private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -112,7 +109,7 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     // Handle single widget check (existing behavior, extended to include count when exists)
-    private void handleCheck(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleCheck(HttpServletRequest req, HttpServletResponse resp) {
         String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
@@ -126,18 +123,18 @@ public class WidgetTableServlet extends HttpServlet {
         }
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
-            String countJson = "null";
+            Long count = null;
             if (status.exists) {
-                try {
-                    countJson = Long.toString(countRows(conn, tableName));
-                } catch (SQLException e) {
-                    log.log(Level.WARNING, "Unable to count rows for table {0}: {1}",
-                            new Object[]{tableName, e.getMessage()});
-                    // continue and return exists=true but count=null
-                }
+                count = Long.valueOf(countRows(conn, tableName));
             }
-            resp.setContentType("application/json");
-            resp.getWriter().write(buildSingleResponse(widgetId, tableName, status.exists, countJson, status.message, false));
+            writeSingleResponse(resp,
+                    HttpServletResponse.SC_OK,
+                    widgetId,
+                    tableName,
+                    status.exists,
+                    count,
+                    status.message,
+                    false);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to check widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
@@ -146,61 +143,49 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     // Handle bulk checks: return JSON array of statuses
-    private void handleBulkCheck(HttpServletResponse resp, List<String> widgetIds) throws IOException {
-        resp.setContentType("application/json");
-        StringBuilder out = new StringBuilder();
-        out.append("{\"status\":\"ok\",\"statuses\":[");
-        boolean first = true;
+    private void handleBulkCheck(HttpServletResponse resp, List<String> widgetIds) {
+        JsonArrayBuilder statuses = Json.createArrayBuilder();
 
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (String wid : widgetIds) {
-                if (!first) {
-                    out.append(',');
-                }
-                first = false;
-
                 String tableName = sanitizeWidgetId(wid);
                 if (!isSafeIdentifier(tableName)) {
-                    out.append('{');
-                    out.append("\"widgetId\":\"").append(escapeJson(wid)).append("\",");
-                    out.append("\"tableName\":\"").append(escapeJson(tableName)).append("\",");
-                    out.append("\"tableExists\":false,");
-                    out.append("\"count\":null,");
-                    out.append("\"message\":\"Invalid widget identifier.\"");
-                    out.append('}');
+                    JsonObjectBuilder statusBody = Json.createObjectBuilder()
+                            .add("widgetId", wid == null ? "" : wid)
+                            .add("tableName", tableName)
+                            .add("tableExists", false)
+                            .addNull("count")
+                            .add("message", "Invalid widget identifier.");
+                    statuses.add(statusBody);
                     continue;
                 }
+
                 boolean exists = false;
-                String countJson = "null";
+                Long count = null;
                 String message = "";
 
-                try {
-                    exists = tableExists(conn, tableName);
-                    if (exists) {
-                        try {
-                            countJson = Long.toString(countRows(conn, tableName));
-                        } catch (SQLException sqle) {
-                            message = "Unable to count rows: " + sqle.getMessage();
-                            log.log(Level.WARNING, "Count rows error for table {0}: {1}",
-                                    new Object[]{tableName, sqle.getMessage()});
-                        }
-                    }
-                } catch (SQLException e) {
-                    message = "Error checking table: " + e.getMessage();
-                    log.log(Level.WARNING, "Table check error for {0}: {1}",
-                            new Object[]{tableName, e.getMessage()});
+                exists = tableExists(conn, tableName);
+                if (exists) {
+                    count = Long.valueOf(countRows(conn, tableName));
                 }
 
-                out.append('{');
-                out.append("\"widgetId\":\"").append(escapeJson(wid)).append("\",");
-                out.append("\"tableName\":\"").append(escapeJson(tableName)).append("\",");
-                out.append("\"tableExists\":").append(exists ? "true" : "false").append(",");
-                out.append("\"count\":").append(countJson).append(',');
-                out.append("\"message\":\"").append(escapeJson(message)).append("\"");
-                out.append('}');
+                JsonObjectBuilder statusBody = Json.createObjectBuilder()
+                        .add("widgetId", wid == null ? "" : wid)
+                        .add("tableName", tableName)
+                        .add("tableExists", exists)
+                        .add("message", message == null ? "" : message);
+                if (count == null) {
+                    statusBody.addNull("count");
+                } else {
+                    statusBody.add("count", count.longValue());
+                }
+                statuses.add(statusBody);
             }
-            out.append("]}");
-            resp.getWriter().write(out.toString());
+
+                JsonObjectBuilder payload = Json.createObjectBuilder()
+                    .add("status", "ok")
+                    .add("statuses", statuses);
+                writeJson(resp, HttpServletResponse.SC_OK, payload.build());
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to check widget tables (bulk)", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
@@ -213,7 +198,7 @@ public class WidgetTableServlet extends HttpServlet {
      * already exists, returns created=false and message. If created
      * successfully, returns created=true.
      */
-    private void handleCreate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private void handleCreate(HttpServletRequest req, HttpServletResponse resp) {
         String widgetId = firstParam(req, "widgetId");
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
@@ -228,11 +213,14 @@ public class WidgetTableServlet extends HttpServlet {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             TableStatus status = determineTableStatus(conn, tableName);
             if (status.exists) {
-                resp.setContentType("application/json");
-                resp.getWriter().write(buildSingleResponse(widgetId, tableName, true,
-                        // include current count if possible
-                    Long.toString(countRowsSafe(conn, tableName)),
-                        "Table already exists.", false));
+                writeSingleResponse(resp,
+                        HttpServletResponse.SC_OK,
+                        widgetId,
+                        tableName,
+                        true,
+                        Long.valueOf(countRowsSafe(conn, tableName)),
+                        "Table already exists.",
+                        false);
                 return;
             }
 
@@ -242,10 +230,15 @@ public class WidgetTableServlet extends HttpServlet {
             // get count after creation (should be 0)
             Long count = countRowsSafe(conn, tableName);
 
-            resp.setContentType("application/json");
-            resp.getWriter().write(buildSingleResponse(widgetId, tableName, true,
-                    Long.toString(count), "Table created successfully.", true));
-        } catch (SQLException e) {
+                writeSingleResponse(resp,
+                    HttpServletResponse.SC_OK,
+                    widgetId,
+                    tableName,
+                    true,
+                    count,
+                    "Table created successfully.",
+                    true);
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to create widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to create the table.");
@@ -253,42 +246,40 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private long countRowsSafe(Connection conn, String tableName) {
-        try {
-            return countRows(conn, tableName);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "countRowsSafe failed for {0}: {1}",
-                    new Object[]{tableName, e.getMessage()});
-            return 0L;
-        }
+        return countRows(conn, tableName);
     }
 
-    private TableStatus determineTableStatus(Connection conn, String tableName) throws SQLException {
+    private TableStatus determineTableStatus(Connection conn, String tableName) {
         if (tableExists(conn, tableName)) {
             return new TableStatus(true, "Table is accessible.");
         }
         return new TableStatus(false, "Table does not exist.");
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
+    private boolean tableExists(Connection conn, String tableName) {
         if (tableExistsByMetadata(conn, tableName)) {
             return true;
         }
         return tableExistsByProbe(conn, tableName);
     }
 
-    private boolean tableExistsByMetadata(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExistsByMetadata(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Metadata table check failed for " + tableName, ex);
         }
         return false;
     }
 
-    private boolean tableExistsByProbe(Connection conn, String tableName) throws SQLException {
+    private boolean tableExistsByProbe(Connection conn, String tableName) {
         String sql = "SELECT 1 FROM " + quoteIdentifier(tableName) + " WHERE 1 = 0";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.execute();
@@ -297,7 +288,8 @@ public class WidgetTableServlet extends HttpServlet {
             if (isMissingRelationSqlState(ex)) {
                 return false;
             }
-            throw ex;
+            log.log(Level.FINE, "Probe table check failed for " + tableName, ex);
+            return false;
         }
     }
 
@@ -306,7 +298,7 @@ public class WidgetTableServlet extends HttpServlet {
         return "42P01".equals(sqlState) || "42S02".equals(sqlState);
     }
 
-    private long countRows(Connection conn, String tableName) throws SQLException {
+    private long countRows(Connection conn, String tableName) {
         // Quote identifier to avoid SQL injection; tableName is sanitized earlier.
         String sql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName);
         try (PreparedStatement stmt = conn.prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
@@ -314,14 +306,19 @@ public class WidgetTableServlet extends HttpServlet {
                 return rs.getLong(1);
             }
             return 0L;
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Count rows failed for " + tableName, ex);
+            return 0L;
         }
     }
 
-    private void createTable(Connection conn, String tableName) throws SQLException {
+    private void createTable(Connection conn, String tableName) {
         String sql = "CREATE TABLE " + quoteIdentifier(tableName)
                 + " (id BIGSERIAL PRIMARY KEY, payload TEXT, created_at TIMESTAMPTZ DEFAULT now())";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.execute();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to create table " + tableName, ex);
         }
     }
 
@@ -371,28 +368,57 @@ public class WidgetTableServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private void jsonError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, message);
-    }
-
-    private String buildSingleResponse(String widgetId, String tableName, boolean exists, String countJson, String message,
-            boolean created) {
-        return "{\"status\":\"ok\",\"widgetId\":\"" + escapeJson(widgetId)
-                + "\",\"tableName\":\"" + escapeJson(tableName)
-                + "\",\"tableExists\":" + exists
-                + ",\"count\":" + (countJson == null ? "null" : countJson)
-                + ",\"created\":" + created
-                + ",\"message\":\"" + escapeJson(message) + "\"}";
-    }
-
-    private String escapeJson(String value) {
-        if (value == null) {
-            return "";
+    private void jsonError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
         }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", " ");
+    }
+
+    private void writeJson(HttpServletResponse resp, int status, jakarta.json.JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
+    }
+
+    private void writeSingleResponse(HttpServletResponse resp,
+            int status,
+            String widgetId,
+            String tableName,
+            boolean exists,
+            Long count,
+            String message,
+            boolean created) {
+        JsonObjectBuilder body = Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("widgetId", widgetId == null ? "" : widgetId)
+                .add("tableName", tableName == null ? "" : tableName)
+                .add("tableExists", exists)
+                .add("created", created)
+                .add("message", message == null ? "" : message);
+        if (count == null) {
+            body.addNull("count");
+        } else {
+            body.add("count", count.longValue());
+        }
+        writeJson(resp, status, body.build());
     }
 
     private static final class TableStatus {

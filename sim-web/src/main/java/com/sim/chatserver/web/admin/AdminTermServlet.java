@@ -1,8 +1,6 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -38,7 +36,6 @@ public class AdminTermServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -63,24 +60,10 @@ public class AdminTermServlet extends HttpServlet {
             log.log(Level.SEVERE, "Unable to list terms", e);
             writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load term definitions.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -138,24 +121,10 @@ public class AdminTermServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to create term", e);
             writeErrorSafe(resp, HttpServletResponse.SC_CONFLICT, "Term already exists or could not be inserted.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
     protected void doPut(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -216,24 +185,10 @@ public class AdminTermServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to update term", e);
             writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to update term.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPut", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
     protected void doDelete(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -258,19 +213,6 @@ public class AdminTermServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to delete term", e);
             writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to delete term.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
@@ -291,7 +233,7 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+        try (java.io.Reader reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
         } catch (IOException e) {
             log.log(Level.WARNING, "Failed reading request body", e);

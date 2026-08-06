@@ -290,6 +290,16 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) {
+        String typed;
+        try {
+            typed = rs.getObject(columnIndex, String.class);
+            if (typed != null) {
+                return sanitizeCellText(typed);
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed text read failed; falling back to generic object conversion.", e);
+        }
+
         Object rawValue;
         try {
             rawValue = rs.getObject(columnIndex);
@@ -301,6 +311,16 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
+        byte[] typed;
+        try {
+            typed = rs.getObject(columnIndex, byte[].class);
+            if (typed != null) {
+                return sanitizeBinary(typed);
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed binary read failed; falling back to generic object conversion.", e);
+        }
+
         Object rawValue;
         try {
             rawValue = rs.getObject(columnIndex);
@@ -317,6 +337,21 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
+        Timestamp typed;
+        try {
+            typed = rs.getObject(columnIndex, Timestamp.class);
+            if (typed != null) {
+                try {
+                    java.time.Instant instant = typed.toInstant();
+                    return instant == null ? null : Timestamp.from(instant);
+                } catch (DateTimeException | IllegalArgumentException ex) {
+                    log.log(Level.FINE, "Ignoring invalid typed timestamp cell", ex);
+                }
+            }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Typed timestamp read failed; falling back to generic object conversion.", e);
+        }
+
         Object rawValue;
         try {
             rawValue = rs.getObject(columnIndex);

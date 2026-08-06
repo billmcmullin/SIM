@@ -401,7 +401,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return new QueryParts(sql);
     }
 
-    private LocalDate parseDate(String raw, HttpServletResponse resp) throws IOException {
+    private LocalDate parseDate(String raw, HttpServletResponse resp) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -415,7 +415,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
     }
 
-    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -447,7 +447,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return widgetId;
     }
 
-    private boolean tableExistsCached(Connection conn, String tableName) throws SQLException {
+    private boolean tableExistsCached(Connection conn, String tableName) {
         String cached = tableExistsCache.get(tableName);
         if (cached != null) {
             return "1".equals(cached);
@@ -458,14 +458,18 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return exists;
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -560,9 +564,17 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return source != null && needle != null && source.toLowerCase(Locale.ROOT).contains(needle);
     }
 
-    private String nullable(ResultSet rs, String column) throws SQLException {
-        String value = rs.getString(column);
-        return value == null ? "" : value;
+    private String nullable(ResultSet rs, String column) {
+        if (rs == null || column == null || column.isBlank()) {
+            return "";
+        }
+        try {
+            String value = rs.getString(column);
+            return value == null ? "" : value;
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to read DB column " + column, e);
+            return "";
+        }
     }
 
     private String formatTimestamp(Timestamp ts) {
@@ -658,18 +670,40 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return b.toString();
     }
 
-    private void writeJson(HttpServletResponse resp, String body) throws IOException {
-        resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType(JSON_UTF8);
-        resp.getWriter().write(body);
+    private void writeJson(HttpServletResponse resp, String body) {
+        try {
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.setContentType(JSON_UTF8);
+            resp.getWriter().write(body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON text response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
-    private void writeJson(HttpServletResponse resp, JsonObject body) throws IOException {
+    private void writeJson(HttpServletResponse resp, JsonObject body) {
         int status = resp.getStatus();
         if (status <= 0) {
             status = HttpServletResponse.SC_OK;
         }
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON object response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private static final class QueryParts {

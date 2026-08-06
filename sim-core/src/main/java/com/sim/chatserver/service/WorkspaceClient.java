@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.net.HttpURLConnection;
+import java.net.URLConnection;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -22,6 +23,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.net.ssl.HttpsURLConnection;
 
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 
@@ -54,7 +57,7 @@ public class WorkspaceClient {
     private static final int MAX_ERROR_LOG_CHARS = 2000;
     private static final int MAX_LOG_MESSAGE_PREVIEW_CHARS = 800;
     private static final String VERBOSE_WILDFLY_ENV = "SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG";
-    private static final boolean VERBOSE_WILDFLY_LOGS = isTruthy(System.getenv(VERBOSE_WILDFLY_ENV));
+    private static final boolean VERBOSE_WILDFLY_LOGS = isTruthy(readEnvSanitized(VERBOSE_WILDFLY_ENV));
 
     private final HttpClient httpClient;
     private final int maxRetries;
@@ -581,7 +584,20 @@ public class WorkspaceClient {
             throw new IOException("Workspace API key is required.");
         }
 
-        HttpURLConnection conn = (HttpURLConnection) targetUri.toURL().openConnection();
+        URLConnection rawConn = targetUri.toURL().openConnection();
+        HttpURLConnection conn;
+        String scheme = targetUri.getScheme() == null ? "" : targetUri.getScheme().toLowerCase(Locale.ROOT);
+        if ("https".equals(scheme)) {
+            if (!(rawConn instanceof HttpsURLConnection httpsConn)) {
+                throw new IOException("Expected HTTPS connection for secure target URI.");
+            }
+            conn = httpsConn;
+        } else {
+            if (!(rawConn instanceof HttpURLConnection httpConn)) {
+                throw new IOException("Unsupported URL connection type.");
+            }
+            conn = httpConn;
+        }
         byte[] bytes = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
         try {
             conn.setRequestMethod("POST");
@@ -595,8 +611,8 @@ public class WorkspaceClient {
 
             conn.getOutputStream().write(bytes);
 
-            int status = conn.getResponseCode();
-            String contentType = safe(conn.getHeaderField("Content-Type"));
+            int status = sanitizeStatusCode(conn.getResponseCode());
+            String contentType = sanitizeHeaderValue(conn.getHeaderField("Content-Type"));
 
             InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             String responseBody = "";
@@ -636,6 +652,7 @@ public class WorkspaceClient {
                     .header("Authorization", "Bearer " + token)
                     .header("X-API-Key", token);
             case AUTH_BEARER -> requestBuilder.header("Authorization", "Bearer " + token);
+            default -> requestBuilder.header("Authorization", "Bearer " + token);
         }
 
         return requestBuilder.build();
@@ -701,7 +718,8 @@ public class WorkspaceClient {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             return reader.readObject();
-        } catch (JsonException | ClassCastException | IllegalStateException ignored) {
+        } catch (JsonException | ClassCastException | IllegalStateException ex) {
+            log.log(Level.FINE, "Unable to parse workspace response as JSON.", ex);
             return null;
         }
     }
@@ -759,8 +777,36 @@ public class WorkspaceClient {
             String path = u.getPath() == null ? "" : u.getPath();
             return host + path;
         } catch (IllegalArgumentException e) {
+            log.log(Level.FINE, "Invalid target URL while preparing safe target text.", e);
             return "(invalid-target)";
         }
+    }
+
+    private int sanitizeStatusCode(int status) {
+        if (status < 100 || status > 599) {
+            return 500;
+        }
+        return status;
+    }
+
+    private String sanitizeHeaderValue(String headerValue) {
+        if (headerValue == null) {
+            return "";
+        }
+        String normalized = headerValue.replace('\r', ' ').replace('\n', ' ').trim();
+        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
+    private static String readEnvSanitized(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        String raw = System.getenv().get(key);
+        if (raw == null) {
+            return null;
+        }
+        String normalized = raw.replace('\r', ' ').replace('\n', ' ').trim();
+        return normalized.length() > 64 ? normalized.substring(0, 64) : normalized;
     }
 
     private static boolean isTruthy(String value) {
@@ -784,7 +830,7 @@ public class WorkspaceClient {
         private final String body;
         private final String contentType;
 
-        public WorkspaceResponse(int statusCode, String body, String contentType) {
+        WorkspaceResponse(int statusCode, String body, String contentType) {
             this.statusCode = statusCode;
             this.body = body == null ? "" : body;
             this.contentType = contentType == null ? "" : contentType;

@@ -100,6 +100,10 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             }
 
             String body = readRequestBody(req);
+            if (body == null) {
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
+                return;
+            }
             JsonObject in = parseJson(body);
 
             WidgetHealthConfig cfg = new WidgetHealthConfig();
@@ -198,7 +202,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson("Authentication required."));
@@ -330,16 +334,30 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
-            throw new IOException("Missing request");
+            return null;
         }
         try (BufferedReader reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read widget health config request body", e);
+            return null;
         }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write widget health config JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 }

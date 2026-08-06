@@ -133,7 +133,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, ok);
-        } catch (java.sql.SQLException | IllegalArgumentException | IllegalStateException e) {
+        } catch (Exception e) {
             throw new ServletException("Unable to sync customer profile from Salesforce", e);
         }
     

@@ -208,14 +208,18 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -244,12 +248,15 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
             return "";
         }
         try (BufferedReader reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read topics-select request body", e);
+            return "";
         }
     }
 
@@ -260,8 +267,25 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        Object raw = rs.getObject(column);
+    private String readDbText(ResultSet rs, String column, int maxChars) {
+        String typed;
+        try {
+            typed = rs.getObject(column, String.class);
+            if (typed != null) {
+                String normalizedTyped = ServletRequestParamUtil.normalizeBodyText(typed, maxChars, true);
+                return normalizedTyped;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed DB text read failed for column " + column + ", using object fallback", ex);
+        }
+
+        Object raw;
+        try {
+            raw = rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
+            return null;
+        }
         if (raw == null) {
             return null;
         }
@@ -272,11 +296,33 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return normalized;
     }
 
-    private void writeError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, message);
+    private void writeError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write topics-select error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write topics-select JSON response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 }

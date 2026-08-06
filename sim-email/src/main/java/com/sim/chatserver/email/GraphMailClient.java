@@ -8,6 +8,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -37,7 +38,9 @@ public class GraphMailClient {
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
+    private static final String ENV_JBOSS_LOG_DIR = "JBOSS_SERVER_LOG_DIR";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
+    private static final int MAX_CONFIG_VALUE_LEN = 512;
 
     private static volatile boolean warnedDiagFailure;
 
@@ -234,8 +237,8 @@ public class GraphMailClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
-        String dirRaw = trimToNull(System.getenv(ENV_DIR));
+        String enabledRaw = readValidatedEnv(ENV_ENABLED);
+        String dirRaw = readValidatedPathEnv(ENV_DIR);
         if (enabledRaw == null) {
             return dirRaw != null;
         }
@@ -243,16 +246,16 @@ public class GraphMailClient {
     }
 
     private Path resolveDiagnosticsDir() {
-        String configured = trimToNull(System.getenv(ENV_DIR));
+        String configured = readValidatedPathEnv(ENV_DIR);
         if (configured != null) {
-            return Paths.get(configured);
+            return Paths.get(configured).normalize();
         }
 
-        String jbossLogDir = trimToNull(System.getProperty("jboss.server.log.dir"));
+        String jbossLogDir = readValidatedPathEnv(ENV_JBOSS_LOG_DIR);
         if (jbossLogDir != null) {
-            return Paths.get(jbossLogDir, DEFAULT_DIR_NAME);
+            return Paths.get(jbossLogDir, DEFAULT_DIR_NAME).normalize();
         }
-        return Paths.get(DEFAULT_DIR_NAME);
+        return Paths.get(DEFAULT_DIR_NAME).toAbsolutePath().normalize();
     }
 
     private boolean isTruthy(String value) {
@@ -295,5 +298,34 @@ public class GraphMailClient {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String readValidatedEnv(String name) {
+        return sanitizeConfigValue(System.getenv(name));
+    }
+
+    private String readValidatedPathEnv(String name) {
+        String raw = readValidatedEnv(name);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            String normalized = Paths.get(raw).normalize().toString();
+            return trimToNull(normalized);
+        } catch (InvalidPathException ex) {
+            LOG.log(Level.WARNING, "Ignoring invalid diagnostics path from env {0}", name);
+            return null;
+        }
+    }
+
+    private String sanitizeConfigValue(String value) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        if (trimmed.length() > MAX_CONFIG_VALUE_LEN) {
+            return trimmed.substring(0, MAX_CONFIG_VALUE_LEN);
+        }
+        return trimmed;
     }
 }

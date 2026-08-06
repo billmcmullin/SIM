@@ -349,7 +349,7 @@ public class WidgetAvailabilityChecker {
     }
 
     private boolean isFailureDebugEnabled() {
-        String prop = trimToNull(System.getProperty(DEBUG_FAILURES_PROP));
+        String prop = readLegacyPropertyEnv(DEBUG_FAILURES_PROP, 16);
         if (prop != null) {
             return isTruthy(prop);
         }
@@ -358,7 +358,7 @@ public class WidgetAvailabilityChecker {
     }
 
     private boolean isHttpsRequiredWithAuth() {
-        String prop = trimToNull(System.getProperty(REQUIRE_HTTPS_WITH_AUTH_PROP));
+        String prop = readLegacyPropertyEnv(REQUIRE_HTTPS_WITH_AUTH_PROP, 16);
         if (prop != null) {
             if (isTruthy(prop)) {
                 return true;
@@ -883,6 +883,14 @@ public class WidgetAvailabilityChecker {
         return t.isEmpty() ? null : t;
     }
 
+    private String readLegacyPropertyEnv(String propertyName, int maxLen) {
+        if (propertyName == null || propertyName.isBlank()) {
+            return null;
+        }
+        String envName = propertyName.toUpperCase(Locale.ROOT).replace('.', '_');
+        return readEnvCanonical(envName, maxLen);
+    }
+
     private boolean isHttpsUrl(String value) {
         String t = trimToNull(value);
         if (t == null) {
@@ -902,6 +910,10 @@ public class WidgetAvailabilityChecker {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(cfg.url))
                 .timeout(Duration.ofMillis(cfg.timeoutMs));
+
+        if (builder == null) {
+            throw new IllegalStateException("Unable to initialize HTTP request builder");
+        }
 
         applyApiKeyHeader(builder, cfg, apiKeyHeaderOverride);
 
@@ -1136,7 +1148,7 @@ public class WidgetAvailabilityChecker {
         final Instant checkedAt;
         final WidgetAvailabilityResult result;
 
-        CachedHealthResult(String configFingerprint, Instant checkedAt, WidgetAvailabilityResult result) {
+        private CachedHealthResult(String configFingerprint, Instant checkedAt, WidgetAvailabilityResult result) {
             this.configFingerprint = configFingerprint;
             this.checkedAt = checkedAt;
             this.result = result;
@@ -1148,16 +1160,16 @@ public class WidgetAvailabilityChecker {
         final boolean ok;
         final String reason;
 
-        SseValidationResult(boolean ok, String reason) {
+        private SseValidationResult(boolean ok, String reason) {
             this.ok = ok;
             this.reason = reason;
         }
 
-        static SseValidationResult ok() {
+        private static SseValidationResult ok() {
             return new SseValidationResult(true, null);
         }
 
-        static SseValidationResult fail(String reason) {
+        private static SseValidationResult fail(String reason) {
             return new SseValidationResult(false, reason);
         }
     }

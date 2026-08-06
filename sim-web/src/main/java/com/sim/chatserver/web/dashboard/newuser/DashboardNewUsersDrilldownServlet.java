@@ -124,7 +124,15 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                 allRows.add(new Row(display, firstSeen, totalChats, chatUrl));
             }
         } catch (SQLException e) {
-            throw new ServletException("Failed to load newest users drilldown", e);
+            log.log(Level.WARNING, "Failed to load newest users drilldown", e);
+            if (!resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load newest users drilldown.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Unable to send drilldown error response", ioe);
+                }
+            }
+            return;
         }
 
         int total = allRows.size();
@@ -205,7 +213,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return Base64.getEncoder().encodeToString(utf8);
     }
 
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
+    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) {
         Map<String, Timestamp> earliest = new LinkedHashMap<>();
         for (WidgetEntry w : widgets) {
             if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -232,12 +240,14 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                         earliest.put(sid, ts);
                     }
                 }
+            } catch (SQLException e) {
+                log.log(Level.FINE, "Unable to query earliest sessions for table " + table, e);
             }
         }
         return earliest;
     }
 
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) throws SQLException {
+    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) {
         Map<String, Integer> totals = new LinkedHashMap<>();
         for (WidgetEntry w : widgets) {
             if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
@@ -261,6 +271,8 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                     Integer existing = totals.get(sid);
                     totals.put(sid, existing == null ? count : existing + count);
                 }
+            } catch (SQLException e) {
+                log.log(Level.FINE, "Unable to query total chats for table " + table, e);
             }
         }
         return totals;
@@ -291,14 +303,18 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }
@@ -324,10 +340,14 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) throws IOException {
+    private String loadTemplate(HttpServletRequest req, String path) {
+        if (req == null || req.getServletContext() == null || path == null || path.isBlank()) {
+            return "";
+        }
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.log(Level.WARNING, "Template not found: {0}", path);
+                return "";
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();
@@ -337,6 +357,9 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load template " + path, e);
+            return "";
         }
     }
 

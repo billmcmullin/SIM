@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -377,29 +378,21 @@ public class TermsStore {
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject failed for column " + column + ", falling back to getLong", ex);
-        }
-
-        long numeric = rs.getLong(column);
-        if (rs.wasNull()) {
+            log.log(Level.FINE, "ResultSet#getObject failed for column " + column, ex);
             return 0L;
         }
-        return Math.max(0L, numeric);
+        return 0L;
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = rs.getString(column);
-        if (value == null) {
-            try {
-                String typed = rs.getObject(column, String.class);
-                if (typed != null) {
-                    value = typed;
-                }
-            } catch (SQLException ignored) {
-                Object raw = rs.getObject(column);
-                if (raw != null) {
-                    value = String.valueOf(raw);
-                }
+        String value = null;
+        try {
+            value = rs.getObject(column, String.class);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", using generic object conversion", ex);
+            Object raw = rs.getObject(column);
+            if (raw != null) {
+                value = String.valueOf(raw);
             }
         }
         if (value == null) {
@@ -419,11 +412,15 @@ public class TermsStore {
                 return value;
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(Boolean) failed for column " + column + ", falling back to getBoolean", ex);
+            log.log(Level.FINE, "ResultSet#getObject(Boolean) failed for column " + column + ", falling back to text parsing", ex);
         }
 
-        boolean value = rs.getBoolean(column);
-        return !rs.wasNull() && value;
+        String text = readSafeDbText(rs, column, 16);
+        if (text.isBlank()) {
+            return false;
+        }
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        return "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized) || "y".equals(normalized);
     }
 
     private static String normalizeMatchType(String type) {

@@ -232,10 +232,21 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
     }
 
-    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            try {
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            } catch (IOException e) {
+                log.log(Level.FINE, "Unable to write auth error response", e);
+                if (resp != null && !resp.isCommitted()) {
+                    try {
+                        resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                    } catch (IOException ioe) {
+                        log.log(Level.FINEST, "Fallback sendError failed", ioe);
+                    }
+                }
+            }
             return false;
         }
         return true;
@@ -308,16 +319,20 @@ public class WidgetTableDataServlet extends HttpServlet {
         return "asc".equalsIgnoreCase(direction) ? "ASC" : "DESC";
     }
 
-    private int bindParams(PreparedStatement ps, List<Object> params) throws SQLException {
+    private int bindParams(PreparedStatement ps, List<Object> params) {
         int idx = 1;
-        for (Object p : params) {
-            if (p instanceof String s) {
-                ps.setString(idx++, s); 
-            }else if (p instanceof Timestamp ts) {
-                ps.setTimestamp(idx++, ts); 
-            }else {
-                ps.setObject(idx++, p);
+        try {
+            for (Object p : params) {
+                if (p instanceof String s) {
+                    ps.setString(idx++, s); 
+                } else if (p instanceof Timestamp ts) {
+                    ps.setTimestamp(idx++, ts); 
+                } else {
+                    ps.setObject(idx++, p);
+                }
             }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to bind SQL parameters", e);
         }
         return idx;
     }
@@ -343,14 +358,18 @@ public class WidgetTableDataServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

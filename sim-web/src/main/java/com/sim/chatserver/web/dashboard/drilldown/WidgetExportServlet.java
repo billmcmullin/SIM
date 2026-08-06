@@ -3,8 +3,6 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -328,7 +326,7 @@ public class WidgetExportServlet extends HttpServlet {
         return idx == null ? Integer.MAX_VALUE : idx.value;
     }
 
-    private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) throws IOException {
+    private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/csv; charset=UTF-8");
         try (OutputStream out = resp.getOutputStream()) {
             out.write("sessionId,sessionIdDisplay,createdAt,prompt,response\n".getBytes(StandardCharsets.UTF_8));
@@ -341,10 +339,12 @@ public class WidgetExportServlet extends HttpServlet {
                 }).getBytes(StandardCharsets.UTF_8));
                 out.write('\n');
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write CSV export", e);
         }
     }
 
-    private void writeJson(HttpServletResponse resp, List<TermChatSnapshot> exportRows) throws IOException {
+    private void writeJson(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("application/json; charset=UTF-8");
         try (OutputStream out = resp.getOutputStream()) {
             JsonArrayBuilder ab = Json.createArrayBuilder();
@@ -358,10 +358,12 @@ public class WidgetExportServlet extends HttpServlet {
                         .add("response", safe(row.getResponse())));
             }
             Json.createWriter(out).writeArray(ab.build());
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write JSON export", e);
         }
     }
 
-    private void writeText(HttpServletResponse resp, List<TermChatSnapshot> exportRows) throws IOException {
+    private void writeText(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/plain; charset=UTF-8");
         try (OutputStream out = resp.getOutputStream()) {
             for (TermChatSnapshot row : exportRows) {
@@ -378,10 +380,12 @@ public class WidgetExportServlet extends HttpServlet {
                 out.write(("----------------------------------------").getBytes(StandardCharsets.UTF_8));
                 out.write('\n');
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write text export", e);
         }
     }
 
-    private void writePdf(HttpServletResponse resp, List<TermChatSnapshot> rows, String selectionId, String reportMarkdown) throws IOException {
+    private void writePdf(HttpServletResponse resp, List<TermChatSnapshot> rows, String selectionId, String reportMarkdown) {
         try {
             byte[] pdfBytes = buildPdf(reportMarkdown, rows, selectionId);
             resp.setContentType("application/pdf");
@@ -389,7 +393,7 @@ public class WidgetExportServlet extends HttpServlet {
             try (OutputStream out = resp.getOutputStream()) {
                 out.write(pdfBytes);
             }
-        } catch (IOException | IllegalStateException t) {
+        } catch (RuntimeException | IOException t) {
             log.log(Level.WARNING, "PDF generation failed; falling back to text export.", t);
             resp.setContentType("text/plain; charset=UTF-8");
             try (OutputStream out = resp.getOutputStream()) {
@@ -397,11 +401,13 @@ public class WidgetExportServlet extends HttpServlet {
                         ? reportMarkdown
                         : buildFallbackText(rows, selectionId);
                 out.write(fallback.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException ioe) {
+                log.log(Level.WARNING, "Unable to write fallback text export", ioe);
             }
         }
     }
 
-    private byte[] buildPdf(String reportMarkdown, List<TermChatSnapshot> rows, String selectionId) throws IOException, DocumentException {
+    private byte[] buildPdf(String reportMarkdown, List<TermChatSnapshot> rows, String selectionId) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 50, 50, 50, 50);
 
@@ -433,6 +439,8 @@ public class WidgetExportServlet extends HttpServlet {
                 addSection(doc, h2, normal, "Chat Export Report", "No synthesized report was provided. Showing selected chat rows.");
                 addRowsTable(doc, rows, normal);
             }
+        } catch (DocumentException ex) {
+            throw new IllegalStateException("Failed to generate PDF content", ex);
         } finally {
             if (doc.isOpen()) {
                 doc.close();
@@ -474,7 +482,7 @@ public class WidgetExportServlet extends HttpServlet {
                 sub.setSpacingAfter(2);
                 doc.add(sub);
             } else if (t.startsWith("- ")) {
-                Paragraph bullet = new Paragraph("• " + t.substring(2).trim(), normal);
+                Paragraph bullet = new Paragraph("â€¢ " + t.substring(2).trim(), normal);
                 bullet.setIndentationLeft(14f);
                 bullet.setSpacingAfter(2);
                 doc.add(bullet);
@@ -737,18 +745,41 @@ public class WidgetExportServlet extends HttpServlet {
         return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (req == null) {
             return "";
         }
-        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+        try (java.io.Reader reader = req.getReader()) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read export request body", e);
+            return "";
         }
     }
 
-    private String readDbText(ResultSet rs, String columnName, int maxLen) throws SQLException {
-        Object raw = rs.getObject(columnName);
-        String value = raw == null ? null : String.valueOf(raw);
+    private String readDbText(ResultSet rs, String columnName, int maxLen) {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return "";
+        }
+        String value;
+        try {
+            value = rs.getObject(columnName, String.class);
+            if (value != null) {
+                String normalizedTyped = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+                return normalizedTyped.length() > maxLen ? normalizedTyped.substring(0, maxLen) : normalizedTyped;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed DB text read failed for column " + columnName + ", using fallback conversion", ex);
+        }
+
+        Object raw;
+        try {
+            raw = rs.getObject(columnName);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object DB text read failed for column " + columnName, ex);
+            return "";
+        }
+        value = raw == null ? null : String.valueOf(raw);
         if (value == null) {
             return "";
         }
@@ -759,12 +790,26 @@ public class WidgetExportServlet extends HttpServlet {
         return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
     }
 
-    private Timestamp readDbTimestamp(ResultSet rs, String columnName) throws SQLException {
-        Timestamp ts = rs.getTimestamp(columnName);
+    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return null;
+        }
+        Timestamp ts;
+        try {
+            ts = rs.getObject(columnName, Timestamp.class);
+        } catch (SQLException ex) {
+            ts = null;
+        }
         if (ts != null) {
             return ts;
         }
-        Object raw = rs.getObject(columnName);
+        Object raw;
+        try {
+            raw = rs.getObject(columnName);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to read timestamp object for column " + columnName, ex);
+            return null;
+        }
         String text = raw == null ? null : String.valueOf(raw);
         if (text == null) {
             return null;
@@ -788,11 +833,22 @@ public class WidgetExportServlet extends HttpServlet {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
-    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.setHeader("Cache-Control", "no-store");
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            try {
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            } catch (IOException e) {
+                log.log(Level.FINE, "Unable to write auth error response", e);
+                if (resp != null && !resp.isCommitted()) {
+                    try {
+                        resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                    } catch (IOException ioe) {
+                        log.log(Level.FINEST, "Fallback sendError failed", ioe);
+                    }
+                }
+            }
             return false;
         }
         return true;
@@ -805,14 +861,18 @@ public class WidgetExportServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        java.sql.DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            java.sql.DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
         }
         return false;
     }

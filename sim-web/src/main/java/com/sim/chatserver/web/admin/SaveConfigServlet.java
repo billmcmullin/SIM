@@ -157,7 +157,7 @@ public class SaveConfigServlet extends HttpServlet {
             EncryptedDbConfigStore.save(config);
             writeJson(resp, HttpServletResponse.SC_OK,
                     Json.createObjectBuilder().add("status", "ok").build());
-        } catch (SQLException e) {
+        } catch (Exception e) {
             throw new ServletException("Unable to save server configuration", e);
         }
     

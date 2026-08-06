@@ -254,24 +254,32 @@ public class DashboardTopicsServlet extends HttpServlet {
         return matched;
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) throws IOException {
+    private String loadTemplate(HttpServletRequest req, String path) {
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                log.log(Level.WARNING, "Template not found: {0}", path);
+                return "";
             }
             byte[] bytes = stream.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load topics template: " + path, e);
+            return "";
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

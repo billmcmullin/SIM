@@ -410,7 +410,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), allIds, List.of(),
-                                "Map round " + round + '/' + totalRounds + " started • remaining=" + remainingBeforeRound
+                                "Map round " + round + '/' + totalRounds + " started â€¢ remaining=" + remainingBeforeRound
                         );
                     }
 
@@ -445,7 +445,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
                                 "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
-                                + " • " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
+                                + " â€¢ " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
                                 + " complete"
                         );
                     }
@@ -474,7 +474,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                     Math.max(liveFailedBatches.get(), 0),
                                     0,
                                     allIds, List.of(), List.of(), List.of(),
-                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " • summaries=" + chunkSize
+                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " â€¢ summaries=" + chunkSize
                             );
                             return;
                         }
@@ -486,8 +486,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Synthesis L" + level + " • chunk " + chunkIndex + '/' + totalChunksAtLevel
-                                + " • size=" + chunkSize + " • cfg=" + currentChunkSizeConfig
+                                "Synthesis L" + level + " â€¢ chunk " + chunkIndex + '/' + totalChunksAtLevel
+                                + " â€¢ size=" + chunkSize + " â€¢ cfg=" + currentChunkSizeConfig
                         );
                     }
 
@@ -517,7 +517,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Synthesis level " + level + " complete • chunks=" + totalChunksAtLevel + " • summaries=" + producedSummaries
+                                "Synthesis level " + level + " complete â€¢ chunks=" + totalChunksAtLevel + " â€¢ summaries=" + producedSummaries
                         );
                     }
 
@@ -792,7 +792,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return new MapReduceExecutionResult(finalResp, orchestration);
     }
 
-    private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) throws IOException {
+    private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) {
         resp.setStatus(remote.statusCode());
 
         String contentType = remote.contentType();
@@ -807,8 +807,19 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         byte[] bytes = remote.body() == null ? new byte[0] : remote.body().getBytes(StandardCharsets.UTF_8);
-        resp.getOutputStream().write(bytes);
-        resp.getOutputStream().flush();
+        try {
+            resp.getOutputStream().write(bytes);
+            resp.getOutputStream().flush();
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to mirror workspace response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Unable to stream workspace response.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private String extractPrimaryText(String body) {
@@ -1136,11 +1147,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
+    private String readRequestBody(HttpServletRequest req) {
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            throw new IOException("Invalid JSON request payload.");
+            return "";
         }
-        try (var reader = req.getReader()) {
+        try (java.io.InputStream in = req.getInputStream(); java.io.InputStreamReader reader = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)) {
             if (reader == null) {
                 return "";
             }
@@ -1151,15 +1162,18 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             while ((read = reader.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IOException("Payload exceeds allowed size.");
+                    return "";
                 }
                 builder.append(buffer, 0, read);
             }
             String body = builder.toString();
             if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
-                throw new IOException("Payload exceeds allowed size.");
+                return "";
             }
             return canonicalizeForValidation(body);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to read manual-message request body", e);
+            return "";
         }
     }
 
@@ -1176,6 +1190,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         normalized = ServletRequestParamUtil.normalizeBodyText(normalized, 0, false);
+        if (normalized == null) {
+            return "";
+        }
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
             return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
         }
@@ -1197,17 +1214,28 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
-    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            respondWithError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
             return false;
         }
         return true;
     }
 
-    private void respondWithError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, message);
+    private void respondWithError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write manual-message error response", e);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, message == null ? "Request failed." : message);
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private String trimTo(String value, int maxChars) {
