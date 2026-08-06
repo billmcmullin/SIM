@@ -1,5 +1,11 @@
 package com.sim.chatserver.web.dashboard.summary;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -11,6 +17,7 @@ import java.time.LocalDate;
 import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,6 +85,14 @@ class DashboardDailySummaryStoreTest {
     }
 
     @Test
+    void ensureTable_sqlExceptionPath_throwsIllegalStateException() throws Exception {
+        when(dataSource.getConnection()).thenThrow(new java.sql.SQLException("sql down"));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> store.ensureTable());
+        assertEquals("Unable to ensure dashboard_daily_summary table", ex.getMessage());
+    }
+
+    @Test
     void upsertProgress_bindsNormalizedClampedAndDefaultValues() throws Exception {
         LocalDate day = LocalDate.of(2026, 1, 10);
 
@@ -125,6 +140,31 @@ class DashboardDailySummaryStoreTest {
     }
 
     @Test
+    void upsertSummary_blankSuggested_derivesFromSignals() throws Exception {
+        LocalDate day = LocalDate.of(2026, 2, 3);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+
+        store.upsertSummary(day, 1, "success", 85, "msg", "overall", "low quality", "ok", "ok", "   ", 2, false, false);
+
+        verify(preparedStatement).setString(10,
+                "Review low-quality conversations first and tighten prompt instructions/guardrails for affected widgets.");
+    }
+
+    @Test
+    void upsertSummary_providedSuggested_isTrimmedAndUsed() throws Exception {
+        LocalDate day = LocalDate.of(2026, 2, 4);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+
+        store.upsertSummary(day, 1, "success", 85, "msg", "overall", "ok", "ok", "ok", "  use this action  ", 2, false, false);
+
+        verify(preparedStatement).setString(10, "use this action");
+    }
+
+    @Test
     void upsert_throwsIllegalStateOnSqlFailure() throws Exception {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenThrow(new RuntimeException("sql fail"));
@@ -158,7 +198,6 @@ class DashboardDailySummaryStoreTest {
         when(exactResultSet.getTimestamp("started_at")).thenReturn(started);
         when(exactResultSet.getTimestamp("generated_at")).thenReturn(generated);
         when(exactResultSet.getTimestamp("updated_at")).thenReturn(updated);
-        when(exactResultSet.getDate("summary_day")).thenReturn(Date.valueOf(day));
         when(exactResultSet.getInt("slot")).thenReturn(2);
 
         JsonObject out = store.fetchExactOrLatest(day, 2);
@@ -205,7 +244,6 @@ class DashboardDailySummaryStoreTest {
         when(latestResultSet.getTimestamp("started_at")).thenReturn(null);
         when(latestResultSet.getTimestamp("generated_at")).thenReturn(null);
         when(latestResultSet.getTimestamp("updated_at")).thenReturn(null);
-        when(latestResultSet.getDate("summary_day")).thenReturn(Date.valueOf(latestDay));
         when(latestResultSet.getInt("slot")).thenReturn(3);
 
         JsonObject out = store.fetchExactOrLatest(requestedDay, 1);
@@ -241,6 +279,16 @@ class DashboardDailySummaryStoreTest {
     void fetchExactOrLatest_returnsErrorPayload_whenExceptionOccurs() throws Exception {
         when(dataSource.getConnection()).thenThrow(new RuntimeException("db error"));
         assertThrows(RuntimeException.class, () -> store.fetchExactOrLatest(LocalDate.now(), 0));
+    }
+
+    @Test
+    void fetchExactOrLatest_whenConnectionThrowsSQLException_returnsErrorPayload() throws Exception {
+        when(dataSource.getConnection()).thenThrow(new java.sql.SQLException("db sql error"));
+
+        JsonObject out = store.fetchExactOrLatest(LocalDate.now(), 0);
+
+        assertEquals("error", out.getString("status"));
+        assertEquals("Unable to load summary.", out.getString("message"));
     }
 
     @Test
@@ -288,7 +336,6 @@ class DashboardDailySummaryStoreTest {
         when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
         when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
         when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
-        when(exactResultSet.getDate("summary_day")).thenReturn(Date.valueOf(day));
         when(exactResultSet.getInt("slot")).thenReturn(1);
 
         JsonObject out = store.fetchExactOrLatest(day, 1);
@@ -297,4 +344,168 @@ class DashboardDailySummaryStoreTest {
         assertEquals("Summary generation in progress.", out.getJsonObject("summary").getString("overall"));
         assertEquals(false, out.getJsonObject("meta").getBoolean("inProgress"));
     }
+
+    @Test
+    void fetchExactOrLatest_derivesSuggestedActionFromQualityWhenMissing() throws Exception {
+        LocalDate day = LocalDate.of(2026, 8, 1);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(org.mockito.ArgumentMatchers.startsWith("SELECT summary_day, slot, status")))
+                .thenReturn(exactPreparedStatement, latestPreparedStatement);
+
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getInt("progress_pct")).thenReturn(100);
+        when(exactResultSet.getString("message")).thenReturn("done");
+        when(exactResultSet.getString("summary_overall")).thenReturn("Overall complete");
+        when(exactResultSet.getString("summary_quality")).thenReturn("low confidence response quality");
+        when(exactResultSet.getString("summary_response")).thenReturn("ok");
+        when(exactResultSet.getString("summary_usage")).thenReturn("ok");
+        when(exactResultSet.getString("suggested_next_action")).thenReturn("");
+        when(exactResultSet.getInt("entry_count")).thenReturn(3);
+        when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("started_at")).thenReturn(null);
+        when(exactResultSet.getString("generated_at")).thenReturn(null);
+        when(exactResultSet.getString("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("summary_day")).thenReturn(day.toString());
+        when(exactResultSet.getInt("slot")).thenReturn(1);
+
+        JsonObject out = store.fetchExactOrLatest(day, 1);
+
+        String suggested = out.getJsonObject("summary").getString("suggestedNextAction");
+        assertEquals(true, suggested.contains("tighten prompt instructions/guardrails"));
+    }
+
+    @Test
+    void fetchExactOrLatest_derivesSuggestedActionFromResponseLatencyWhenMissing() throws Exception {
+        LocalDate day = LocalDate.of(2026, 8, 2);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(org.mockito.ArgumentMatchers.startsWith("SELECT summary_day, slot, status")))
+                .thenReturn(exactPreparedStatement, latestPreparedStatement);
+
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getInt("progress_pct")).thenReturn(100);
+        when(exactResultSet.getString("message")).thenReturn("done");
+        when(exactResultSet.getString("summary_overall")).thenReturn("Overall complete");
+        when(exactResultSet.getString("summary_quality")).thenReturn("good");
+        when(exactResultSet.getString("summary_response")).thenReturn("slow latency observed");
+        when(exactResultSet.getString("summary_usage")).thenReturn("ok");
+        when(exactResultSet.getString("suggested_next_action")).thenReturn("");
+        when(exactResultSet.getInt("entry_count")).thenReturn(5);
+        when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("started_at")).thenReturn(null);
+        when(exactResultSet.getString("generated_at")).thenReturn(null);
+        when(exactResultSet.getString("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("summary_day")).thenReturn(day.toString());
+        when(exactResultSet.getInt("slot")).thenReturn(2);
+
+        JsonObject out = store.fetchExactOrLatest(day, 2);
+
+        String suggested = out.getJsonObject("summary").getString("suggestedNextAction");
+        assertEquals(true, suggested.contains("Investigate response latency"));
+    }
+
+    @Test
+    void fetchExactOrLatest_derivesSuggestedActionFromUsageWhenMissing() throws Exception {
+        LocalDate day = LocalDate.of(2026, 8, 3);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(org.mockito.ArgumentMatchers.startsWith("SELECT summary_day, slot, status")))
+                .thenReturn(exactPreparedStatement, latestPreparedStatement);
+
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getInt("progress_pct")).thenReturn(100);
+        when(exactResultSet.getString("message")).thenReturn("done");
+        when(exactResultSet.getString("summary_overall")).thenReturn("Overall complete");
+        when(exactResultSet.getString("summary_quality")).thenReturn("good");
+        when(exactResultSet.getString("summary_response")).thenReturn("ok");
+        when(exactResultSet.getString("summary_usage")).thenReturn("decline in usage");
+        when(exactResultSet.getString("suggested_next_action")).thenReturn("");
+        when(exactResultSet.getInt("entry_count")).thenReturn(6);
+        when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("started_at")).thenReturn(null);
+        when(exactResultSet.getString("generated_at")).thenReturn(null);
+        when(exactResultSet.getString("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("summary_day")).thenReturn(day.toString());
+        when(exactResultSet.getInt("slot")).thenReturn(3);
+
+        JsonObject out = store.fetchExactOrLatest(day, 3);
+
+        String suggested = out.getJsonObject("summary").getString("suggestedNextAction");
+        assertEquals(true, suggested.contains("Promote underused high-value widgets"));
+    }
+
+    @Test
+    void fetchExactOrLatest_parsesInstantTimestampFallback_andInvalidDayBecomesEmpty() throws Exception {
+        LocalDate day = LocalDate.of(2026, 8, 4);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(org.mockito.ArgumentMatchers.startsWith("SELECT summary_day, slot, status")))
+                .thenReturn(exactPreparedStatement, latestPreparedStatement);
+
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getInt("progress_pct")).thenReturn(100);
+        when(exactResultSet.getString("message")).thenReturn("done");
+        when(exactResultSet.getString("summary_overall")).thenReturn("Overall complete");
+        when(exactResultSet.getString("summary_quality")).thenReturn("ok");
+        when(exactResultSet.getString("summary_response")).thenReturn("ok");
+        when(exactResultSet.getString("summary_usage")).thenReturn("ok");
+        when(exactResultSet.getString("suggested_next_action")).thenReturn("next step");
+        when(exactResultSet.getInt("entry_count")).thenReturn(2);
+        when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
+        when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("started_at")).thenReturn("2026-08-04T09:10:11Z");
+        when(exactResultSet.getString("generated_at")).thenReturn("");
+        when(exactResultSet.getString("updated_at")).thenReturn("");
+        when(exactResultSet.getString("summary_day")).thenReturn("invalid-day");
+        when(exactResultSet.getInt("slot")).thenReturn(0);
+
+        JsonObject out = store.fetchExactOrLatest(day, 0);
+
+        assertEquals("", out.getJsonObject("meta").getString("day"));
+        assertEquals(true, out.getJsonObject("meta").getString("startedAt").contains("2026-08-04"));
+    }
+
+        @Test
+        void serializationGuards_throwNotSerializableException() throws Exception {
+        Method writeObject = DashboardDailySummaryStore.class
+            .getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+
+        Method readObject = DashboardDailySummaryStore.class
+            .getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(bos);
+        InvocationTargetException writeThrown = assertThrows(
+            InvocationTargetException.class,
+            () -> writeObject.invoke(store, out));
+        assertTrue(writeThrown.getCause() instanceof java.io.NotSerializableException);
+
+        ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(new byte[] {(byte) 0xAC, (byte) 0xED, 0x00, 0x05}));
+        InvocationTargetException readThrown = assertThrows(
+            InvocationTargetException.class,
+            () -> readObject.invoke(store, in));
+        assertTrue(readThrown.getCause() instanceof java.io.NotSerializableException);
+        }
 }

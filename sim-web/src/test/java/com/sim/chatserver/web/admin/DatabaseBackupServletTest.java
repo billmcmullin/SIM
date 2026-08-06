@@ -267,7 +267,7 @@ public class DatabaseBackupServletTest
         ResultSetMetaData md = mock(ResultSetMetaData.class);
 
         when(md.getColumnType(1)).thenReturn(Types.DATE);
-        when(rs.getObject(1)).thenReturn(Date.valueOf("2026-05-20"));
+        when(rs.getDate(1)).thenReturn(Date.valueOf("2026-05-20"));
 
         String value = (String) readCellAsText.invoke(underTest, rs, md, 1);
 

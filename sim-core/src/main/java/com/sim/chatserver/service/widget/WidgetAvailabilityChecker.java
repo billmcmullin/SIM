@@ -887,6 +887,13 @@ public class WidgetAvailabilityChecker {
         if (propertyName == null || propertyName.isBlank()) {
             return null;
         }
+        String propValue = System.getProperty(propertyName);
+        if (propValue != null) {
+            String normalized = canonicalizeInput(propValue, maxLen);
+            if (!normalized.isBlank()) {
+                return normalized;
+            }
+        }
         String envName = propertyName.toUpperCase(Locale.ROOT).replace('.', '_');
         return readEnvCanonical(envName, maxLen);
     }

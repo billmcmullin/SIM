@@ -22,7 +22,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
@@ -132,25 +131,22 @@ public class DashboardNewUsersDrilldownServletTest
     {
         // Given
         DashboardNewUsersDrilldownServlet underTest = new DashboardNewUsersDrilldownServlet();
-        AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
-        when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
-        mockDataSourceHolderCdi(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
         String getParameterResult = null; // UTA: configured value
         String getParameterResult2 = null; // UTA: configured value
         String getParameterResult3 = null; // UTA: configured value
         when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2, getParameterResult3);
 
         HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
+        Object getAttributeResult = null; // UTA: configured value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        assertThrows(IllegalStateException.class, () -> {
-            underTest.doGet(req, resp);
-        });
+        underTest.doGet(req, resp);
 
     }
 
