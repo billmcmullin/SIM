@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +37,16 @@ public class DashboardSessionService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 
     public SessionOverview buildSessionOverview(
             Connection conn,
@@ -229,7 +240,7 @@ public class DashboardSessionService {
 
         Map<String, List<Integer>> countsBySession = new LinkedHashMap<>();
         for (String sessionId : sessionIds) {
-            countsBySession.put(sessionId, new ArrayList<>(Collections.nCopies(labels.size(), 0)));
+            countsBySession.put(sessionId, new ArrayList<>(Collections.nCopies(labels.size(), Integer.valueOf(0))));
         }
 
         if (sessionIds.isEmpty() || widgets == null || widgets.isEmpty() || labels.isEmpty()) {
@@ -266,9 +277,9 @@ public class DashboardSessionService {
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         String sessionId = rs.getString("session_id");
-                        java.sql.Date daySql = rs.getDate("day_value");
+                        LocalDate entryDate = readLocalDateColumn(rs, "day_value");
                         int dayCount = rs.getInt("day_count");
-                        if (sessionId == null || daySql == null) {
+                        if (sessionId == null || entryDate == null) {
                             continue;
                         }
 
@@ -277,14 +288,15 @@ public class DashboardSessionService {
                             continue;
                         }
 
-                        LocalDate entryDate = daySql.toLocalDate();
                         long dayIndex = ChronoUnit.DAYS.between(rangeStart, entryDate);
                         if (dayIndex < 0 || dayIndex >= bucket.size()) {
                             continue;
                         }
 
                         int position = (int) dayIndex;
-                        bucket.set(position, bucket.get(position) + dayCount);
+                        Integer currentValue = bucket.get(position);
+                        int current = currentValue == null ? 0 : currentValue.intValue();
+                        bucket.set(position, Integer.valueOf(current + dayCount));
                     }
                 }
             }
@@ -305,7 +317,7 @@ public class DashboardSessionService {
             List<Integer> values = overview.getTimeline().getCountsBySession().get(session.getSessionId());
             if (values != null) {
                 for (Integer value : values) {
-                    countsBuilder.add(value == null ? 0 : value);
+                    countsBuilder.add(value == null ? 0 : value.intValue());
                 }
             } else {
                 for (int i = 0; i < overview.getTimeline().getLabels().size(); i++) {
@@ -336,6 +348,23 @@ public class DashboardSessionService {
                 .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
                 .build();
         return payload.toString();
+    }
+
+    private LocalDate readLocalDateColumn(ResultSet rs, String column) throws SQLException {
+        String dayText = rs.getString(column);
+        if (dayText != null && !dayText.isBlank()) {
+            try {
+                return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
+            } catch (DateTimeParseException ignored) {
+                // Fall back to timestamp coercion when driver format differs.
+            }
+        }
+
+        Timestamp ts = SqlTimeUtil.safeTimestamp(rs, column);
+        if (ts == null) {
+            return null;
+        }
+        return ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
     }
 
     public String formatTimestamp(Timestamp ts) {

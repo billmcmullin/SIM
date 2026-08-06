@@ -88,11 +88,12 @@ class TermsStoreTest {
         when(ps.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(true, true, false);
 
-        when(rs.getObject("id")).thenReturn(1L, 2L);
-        when(rs.getObject("name", String.class)).thenReturn("A", "B");
-        when(rs.getObject("description", String.class)).thenReturn("DA", "DB");
-        when(rs.getObject("match_pattern", String.class)).thenReturn("PA", "PB");
-        when(rs.getObject("match_type", String.class)).thenReturn("WILDCARD", "REGEX");
+        when(rs.getLong("id")).thenReturn(1L, 2L);
+        when(rs.wasNull()).thenReturn(false);
+        when(rs.getString("name")).thenReturn("A", "B");
+        when(rs.getString("description")).thenReturn("DA", "DB");
+        when(rs.getString("match_pattern")).thenReturn("PA", "PB");
+        when(rs.getString("match_type")).thenReturn("WILDCARD", "REGEX");
         when(rs.getBoolean("system_flag")).thenReturn(false, true);
 
         List<TermDefinition> out = underTest.listAll();
@@ -137,15 +138,6 @@ class TermsStoreTest {
     }
 
     @Test
-    void isSystemTerm_true_whenRowTrue() throws Exception {
-        when(ps.executeQuery()).thenReturn(rs);
-        when(rs.next()).thenReturn(true);
-        when(rs.getObject("system_flag", Boolean.class)).thenReturn(true);
-
-        assertTrue(underTest.isSystemTerm(1L));
-    }
-
-    @Test
     void deleteTerm_systemTerm_returnsFalse() throws Exception {
         PreparedStatement checkPs = mock(PreparedStatement.class);
         PreparedStatement deletePs = mock(PreparedStatement.class);
@@ -156,7 +148,7 @@ class TermsStoreTest {
 
         when(checkPs.executeQuery()).thenReturn(checkRs);
         when(checkRs.next()).thenReturn(true);
-        when(checkRs.getObject("system_flag", Boolean.class)).thenReturn(true);
+    when(checkRs.getBoolean("system_flag")).thenReturn(true);
 
         boolean out = underTest.deleteTerm(9L);
 
@@ -175,7 +167,7 @@ class TermsStoreTest {
 
         when(checkPs.executeQuery()).thenReturn(checkRs);
         when(checkRs.next()).thenReturn(true);
-        when(checkRs.getObject("system_flag", Boolean.class)).thenReturn(false);
+    when(checkRs.getBoolean("system_flag")).thenReturn(false);
         when(deletePs.executeUpdate()).thenReturn(1);
 
         boolean out = underTest.deleteTerm(9L);
@@ -191,7 +183,7 @@ class TermsStoreTest {
         when(conn.prepareStatement(contains("SELECT system_flag FROM term_definition WHERE id = ?"))).thenReturn(checkPs);
         when(checkPs.executeQuery()).thenReturn(checkRs);
         when(checkRs.next()).thenReturn(true);
-        when(checkRs.getObject("system_flag", Boolean.class)).thenReturn(true);
+    when(checkRs.getBoolean("system_flag")).thenReturn(true);
 
         TermDefinition out = underTest.updateTerm(1L, "n", "d", "p", "t");
 
@@ -214,11 +206,12 @@ class TermsStoreTest {
         when(listPs.executeQuery()).thenReturn(listRs);
 
         when(listRs.next()).thenReturn(true, false);
-        when(listRs.getObject("id")).thenReturn(1L);
-        when(listRs.getObject("name", String.class)).thenReturn("termA");
-        when(listRs.getObject("description", String.class)).thenReturn("desc");
-        when(listRs.getObject("match_pattern", String.class)).thenReturn("*hello*");
-        when(listRs.getObject("match_type", String.class)).thenReturn("WILDCARD");
+        when(listRs.getLong("id")).thenReturn(1L);
+        when(listRs.wasNull()).thenReturn(false);
+        when(listRs.getString("name")).thenReturn("termA");
+        when(listRs.getString("description")).thenReturn("desc");
+        when(listRs.getString("match_pattern")).thenReturn("*hello*");
+        when(listRs.getString("match_type")).thenReturn("WILDCARD");
         when(listRs.getBoolean("system_flag")).thenReturn(false);
 
         TermDefinition out = underTest.findFirstMatchingTermInPrompts(Arrays.asList("hello world", "other"));

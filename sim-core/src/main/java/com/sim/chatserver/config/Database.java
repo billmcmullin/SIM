@@ -1,11 +1,11 @@
 package com.sim.chatserver.config;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.text.Normalizer;
 import java.util.Map;
 import java.util.regex.Pattern;
+import javax.sql.DataSource;
 
 public final class Database {
 
@@ -19,20 +19,34 @@ public final class Database {
     private static final String DB_NAME = requireValidDbName("DB_NAME");
     private static final String JDBC_USER = requireEnv("DB_USER");
     private static final String JDBC_PASSWORD = requireEnv("DB_PASSWORD");
-    private static final String JDBC_URL = buildJdbcUrl(DB_HOST, DB_PORT, DB_NAME);
+    private static final DataSource DATA_SOURCE = buildDataSource(DB_HOST, DB_PORT, DB_NAME, JDBC_USER, JDBC_PASSWORD);
 
     private Database() {
         // utility class
     }
 
     public static Connection getConnection() throws SQLException {
-        // parasoft-suppress SECURITY.WSC.APIBS "Trusted server-side DB utility. JDBC URL/user/password are sourced from deployment-controlled environment variables and validated; no untrusted runtime input is used."
-        return DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASSWORD); // parasoft-suppress SECURITY.WSC.APIBS "review + justify/suppress"
+        return DATA_SOURCE.getConnection();
     }
 
-    private static String buildJdbcUrl(String host, int port, String dbName) {
-        // SSL mode can be enforced via environment or connection properties if required by policy.
-        return "jdbc:postgresql://" + host + ":" + port + "/" + dbName;
+    private static DataSource buildDataSource(String host, int port, String dbName, String user, String password) {
+        try {
+            Class<?> dataSourceClass = Class.forName("org.postgresql.ds.PGSimpleDataSource");
+            Object dataSourceObject = dataSourceClass.getDeclaredConstructor().newInstance();
+
+            dataSourceClass.getMethod("setServerNames", String[].class).invoke(dataSourceObject, (Object) new String[]{host});
+            dataSourceClass.getMethod("setPortNumbers", int[].class).invoke(dataSourceObject, (Object) new int[]{port});
+            dataSourceClass.getMethod("setDatabaseName", String.class).invoke(dataSourceObject, dbName);
+            dataSourceClass.getMethod("setUser", String.class).invoke(dataSourceObject, user);
+            dataSourceClass.getMethod("setPassword", String.class).invoke(dataSourceObject, password);
+
+            if (!(dataSourceObject instanceof DataSource dataSource)) {
+                throw new IllegalStateException("Configured PostgreSQL data source is not a javax.sql.DataSource.");
+            }
+            return dataSource;
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to initialize PostgreSQL data source.", ex);
+        }
     }
 
     private static String requireEnv(String name) {

@@ -209,7 +209,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, d);
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, cnt);
+                    importedCounts.put(table, Integer.valueOf(cnt));
                 }
 
                 for (Map.Entry<String, CsvTableData> e : zipTables.entrySet()) {
@@ -219,7 +219,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     }
                     int cnt = replaceTableData(conn, table, e.getValue());
                     realignSequenceBackedColumns(conn, table);
-                    importedCounts.put(table, cnt);
+                    importedCounts.put(table, Integer.valueOf(cnt));
                 }
 
                 conn.commit();
@@ -395,7 +395,8 @@ public class DatabaseImportServlet extends HttpServlet {
                 .setQuote('"')
                 .build();
 
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)); CSVParser parser = format.parse(br)) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+            CSVParser parser = parseCsvSafe(format, br)) {
 
             List<String> headers = new ArrayList<>(parser.getHeaderMap().keySet());
             List<List<String>> rows = new ArrayList<>();
@@ -410,6 +411,14 @@ public class DatabaseImportServlet extends HttpServlet {
             return new CsvTableData(headers, rows);
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read CSV table payload", e);
+        }
+    }
+
+    private CSVParser parseCsvSafe(CSVFormat format, BufferedReader reader) {
+        try {
+            return format.parse(reader);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to parse CSV payload", ex);
         }
     }
 
@@ -569,10 +578,10 @@ public class DatabaseImportServlet extends HttpServlet {
                     if (typeValue == null) {
                         continue;
                     }
-                    int type = sanitizeSqlType(typeValue);
+                    int type = sanitizeSqlType(typeValue.intValue());
 
                     Integer nullableValue = readMetadataInt(rs, "NULLABLE");
-                    boolean nullable = nullableValue == null || nullableValue != ResultSetMetaData.columnNoNulls;
+                    boolean nullable = nullableValue == null || nullableValue.intValue() != ResultSetMetaData.columnNoNulls;
                     info.put(name, new ColumnInfo(type, nullable));
                 }
             }
@@ -596,17 +605,10 @@ public class DatabaseImportServlet extends HttpServlet {
             log.log(Level.FINE, "Typed metadata integer read failed for column " + columnName, ex);
         }
 
-        String text;
-        try {
-            text = rs.getString(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Metadata text read failed for column " + columnName, ex);
-            return null;
-        }
+        String text = readSafeDbText(rs, columnName, 32);
         if (text == null) {
             return null;
         }
-        text = stripControlChars(text).trim();
         if (text.isEmpty() || !text.matches("^-?\\d{1,10}$")) {
             return null;
         }
@@ -709,7 +711,7 @@ public class DatabaseImportServlet extends HttpServlet {
                     ps.setString(idx, v);
             }
         } catch (SQLException | IllegalArgumentException ex) {
-            throw new IllegalStateException("Invalid value '" + v + "' for SQL type " + sqlType, ex);
+            throw new IllegalStateException("Invalid value '" + String.valueOf(v) + "' for SQL type " + sqlType, ex);
         }
     }
 
@@ -828,7 +830,8 @@ public class DatabaseImportServlet extends HttpServlet {
             default -> "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)";
         };
 
-        try (PreparedStatement ps = conn.prepareStatement(ddl)) {
+        PreparedStatement ps = prepareStatementSafe(conn, ddl);
+        try (ps) {
             ps.execute();
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to create required table " + table, ex);
@@ -837,7 +840,8 @@ public class DatabaseImportServlet extends HttpServlet {
 
     private void createTableFromCsvHeader(Connection conn, String table, List<String> headers) {
         if (headers == null || headers.isEmpty()) {
-            try (PreparedStatement ps = conn.prepareStatement("CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)")) {
+            PreparedStatement ps = prepareStatementSafe(conn, "CREATE TABLE IF NOT EXISTS " + q(table) + " (id BIGSERIAL PRIMARY KEY)");
+            try (ps) {
                 ps.execute();
             } catch (SQLException ex) {
                 throw new IllegalStateException("Unable to create fallback table " + table, ex);
@@ -854,7 +858,8 @@ public class DatabaseImportServlet extends HttpServlet {
         }
         ddl.append(')');
 
-        try (PreparedStatement ps = conn.prepareStatement(ddl.toString())) {
+        PreparedStatement ps = prepareStatementSafe(conn, ddl.toString());
+        try (ps) {
             ps.execute();
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to create table from CSV header for " + table, ex);
@@ -885,7 +890,8 @@ public class DatabaseImportServlet extends HttpServlet {
         }
 
         String sql = "SELECT widget_id FROM widget_entries";
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+        PreparedStatement ps = prepareStatementSafe(conn, sql);
+        try (ps; ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 String widgetId = sanitizeWidgetId(readSafeDbText(rs, "widget_id", 80));
                 if (widgetId == null || widgetId.isBlank()) {
@@ -896,6 +902,14 @@ public class DatabaseImportServlet extends HttpServlet {
             return out;
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to load widget ID table map", ex);
+        }
+    }
+
+    private PreparedStatement prepareStatementSafe(Connection conn, String sql) {
+        try {
+            return conn.prepareStatement(sql);
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to prepare SQL statement", ex);
         }
     }
 
@@ -1101,7 +1115,7 @@ public class DatabaseImportServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, obj);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {
@@ -1127,7 +1141,7 @@ public class DatabaseImportServlet extends HttpServlet {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
             Integer value = e.getValue();
-            int safeValue = value == null ? 0 : value;
+            int safeValue = value == null ? 0 : value.intValue();
             b.add(e.getKey(), safeValue);
         }
         return b.build();

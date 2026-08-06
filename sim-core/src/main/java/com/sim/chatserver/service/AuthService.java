@@ -29,6 +29,16 @@ public class AuthService {
     @Inject
     UserService userService;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public UserAccount authenticate(String username, String password) {
         // Avoid work if FINE is disabled
         if (log.isLoggable(Level.FINE)) {

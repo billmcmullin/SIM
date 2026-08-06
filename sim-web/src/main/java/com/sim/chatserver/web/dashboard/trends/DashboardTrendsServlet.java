@@ -60,7 +60,7 @@ public class DashboardTrendsServlet extends HttpServlet {
 
         Map<LocalDate, Integer> totalDaily = new LinkedHashMap<>();
         for (int i = 0; i < days; i++) {
-            totalDaily.put(start.plusDays(i), 0);
+            totalDaily.put(start.plusDays(i), Integer.valueOf(0));
         }
 
         Map<String, Map<LocalDate, Integer>> widgetDaily = new LinkedHashMap<>();
@@ -87,7 +87,7 @@ public class DashboardTrendsServlet extends HttpServlet {
 
                 Map<LocalDate, Integer> series = new LinkedHashMap<>();
                 for (LocalDate d : totalDaily.keySet()) {
-                    series.put(d, 0);
+                    series.put(d, Integer.valueOf(0));
                 }
 
                 String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
@@ -109,8 +109,13 @@ public class DashboardTrendsServlet extends HttpServlet {
                                 continue;
                             }
 
-                            totalDaily.put(entryDate, totalDaily.get(entryDate) + 1);
-                            series.put(entryDate, series.get(entryDate) + 1);
+                            Integer totalCurrent = totalDaily.get(entryDate);
+                            int totalValue = totalCurrent == null ? 0 : totalCurrent.intValue();
+                            totalDaily.put(entryDate, Integer.valueOf(totalValue + 1));
+
+                            Integer seriesCurrent = series.get(entryDate);
+                            int seriesValue = seriesCurrent == null ? 0 : seriesCurrent.intValue();
+                            series.put(entryDate, Integer.valueOf(seriesValue + 1));
                         }
                     }
                 }
@@ -126,7 +131,9 @@ public class DashboardTrendsServlet extends HttpServlet {
         JsonArrayBuilder values = Json.createArrayBuilder();
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
-            values.add(entry.getValue());
+            Integer dayCount = entry.getValue();
+            int safeCount = dayCount == null ? 0 : dayCount.intValue();
+            values.add(safeCount);
         }
 
         JsonArrayBuilder widgetSeries = Json.createArrayBuilder();
@@ -137,7 +144,8 @@ public class DashboardTrendsServlet extends HttpServlet {
             JsonArrayBuilder widgetValues = Json.createArrayBuilder();
             int widgetTotal = 0;
             for (LocalDate d : totalDaily.keySet()) {
-                int count = entry.getValue().getOrDefault(d, 0);
+                Integer rawCount = entry.getValue().get(d);
+                int count = rawCount == null ? 0 : rawCount.intValue();
                 widgetValues.add(count);
                 widgetTotal += count;
             }
@@ -152,7 +160,10 @@ public class DashboardTrendsServlet extends HttpServlet {
                     .add("avgPerDay", widgetAverage));
         }
 
-        int grandTotal = totalDaily.values().stream().mapToInt(Integer::intValue).sum();
+        int grandTotal = 0;
+        for (Integer value : totalDaily.values()) {
+            grandTotal += value == null ? 0 : value.intValue();
+        }
         double averagePostsPerDay = days > 0 ? (double) grandTotal / days : 0.0;
 
         JsonObject trendData = Json.createObjectBuilder()

@@ -256,7 +256,8 @@ public class WidgetExportServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         Map<String, OrderIndex> order = indexByOrder(selectedChatIds);
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             if (!tableExists(conn, tableName)) {
                 return exportRows;
             }
@@ -328,7 +329,8 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/csv; charset=UTF-8");
-        try (OutputStream out = resp.getOutputStream()) {
+        OutputStream out = openOutputStreamSafe(resp, "csv");
+        try (out) {
             out.write("sessionId,sessionIdDisplay,createdAt,prompt,response\n".getBytes(StandardCharsets.UTF_8));
             for (TermChatSnapshot row : exportRows) {
                 String sessionId = safe(row.getSessionId());
@@ -346,7 +348,8 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeJson(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("application/json; charset=UTF-8");
-        try (OutputStream out = resp.getOutputStream()) {
+        OutputStream out = openOutputStreamSafe(resp, "json");
+        try (out) {
             JsonArrayBuilder ab = Json.createArrayBuilder();
             for (TermChatSnapshot row : exportRows) {
                 String sid = safe(row.getSessionId());
@@ -365,7 +368,8 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeText(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/plain; charset=UTF-8");
-        try (OutputStream out = resp.getOutputStream()) {
+        OutputStream out = openOutputStreamSafe(resp, "text");
+        try (out) {
             for (TermChatSnapshot row : exportRows) {
                 String sessionId = safe(row.getSessionId());
                 String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
@@ -404,7 +408,8 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeTextPayload(HttpServletResponse resp, String payload) {
         resp.setContentType("text/plain; charset=UTF-8");
-        try (OutputStream out = resp.getOutputStream()) {
+        OutputStream out = openOutputStreamSafe(resp, "text-fallback");
+        try (out) {
             out.write(safe(payload).getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write fallback text export", e);
@@ -766,19 +771,19 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
-        try (InputStream in = req.getInputStream();
-                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
-            byte[] buffer = new byte[2048];
+        try (java.io.BufferedReader reader = req.getReader()) {
+            char[] buffer = new char[2048];
+            StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
             int total = 0;
             int read;
-            while ((read = in.read(buffer)) != -1) {
+            while ((read = reader.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_JSON_PAYLOAD_BYTES) {
                     return "";
                 }
-                out.write(buffer, 0, read);
+                builder.append(buffer, 0, read);
             }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
+            String normalized = ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
             return normalized == null ? "" : normalized;
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read export request body", e);
@@ -793,22 +798,11 @@ public class WidgetExportServlet extends HttpServlet {
         String value;
         try {
             value = rs.getString(columnName);
-            if (value != null) {
-                String normalizedTyped = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
-                return normalizedTyped.length() > maxLen ? normalizedTyped.substring(0, maxLen) : normalizedTyped;
-            }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
             return "";
         }
-        if (value == null) {
-            return "";
-        }
-        if (value.isEmpty()) {
-            return "";
-        }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+        return sanitizeDbText(value, maxLen);
     }
 
     private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
@@ -824,18 +818,8 @@ public class WidgetExportServlet extends HttpServlet {
         if (ts != null) {
             return ts;
         }
-        String text;
-        try {
-            text = rs.getString(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read timestamp text for column " + columnName, ex);
-            return null;
-        }
-        if (text == null) {
-            return null;
-        }
-        text = text.trim();
-        if (text.isEmpty()) {
+        String text = readDbText(rs, columnName, 128);
+        if (text.isBlank()) {
             return null;
         }
         try {
@@ -843,6 +827,30 @@ public class WidgetExportServlet extends HttpServlet {
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Falling back to SQL timestamp parsing", ex);
             return Timestamp.valueOf(text.replace('T', ' '));
+        }
+    }
+
+    private String sanitizeDbText(String value, int maxLen) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+    }
+
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to open export database connection", ex);
+        }
+    }
+
+    private OutputStream openOutputStreamSafe(HttpServletResponse resp, String context) {
+        try {
+            return resp.getOutputStream();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to open " + context + " response stream", ex);
         }
     }
 

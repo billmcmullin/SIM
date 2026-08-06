@@ -32,6 +32,16 @@ public class UserService {
     @Deprecated
     AppDataSourceHolder dsHolder;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     /**
      * Legacy compatibility setter retained for older tests.
      * Runtime wiring is now container-managed through @PersistenceContext.

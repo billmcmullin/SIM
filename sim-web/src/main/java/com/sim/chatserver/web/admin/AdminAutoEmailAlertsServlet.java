@@ -37,60 +37,35 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Object INIT_LOCK = new Object();
-
-    private static volatile AutoEmailAlertConfigStore store;
-    private static volatile AutoEmailAlertScheduler scheduler;
+    private static final String STORE_ATTR = AdminAutoEmailAlertsServlet.class.getName() + ".store";
+    private static final String SCHEDULER_ATTR = AdminAutoEmailAlertsServlet.class.getName() + ".scheduler";
 
     @Override
     public void init() throws ServletException {
         super.init();
         synchronized (INIT_LOCK) {
-            if (store != null && scheduler != null) {
+            if (lookupConfigStore() != null && lookupScheduler() != null) {
                 return;
             }
-            try {
-                AppDataSourceHolder dsHolder = dataSourceHolder();
-                WidgetAvailabilityChecker availabilityChecker = availabilityChecker();
-                TermsStore termsStore = termsStore();
-                DbEmailConfigProvider dbEmailConfigProvider = dbEmailConfigProvider();
-
-                AutoEmailAlertConfigStore initializedStore = new AutoEmailAlertConfigStore(dsHolder.getDataSource());
-                initializedStore.ensureTable();
-                initializedStore.ensureDefaultRow();
-
-                AutoEmailAlertScheduler initializedScheduler = new AutoEmailAlertScheduler(
-                        initializedStore,
-                        dsHolder.getDataSource(),
-                        availabilityChecker,
-                        termsStore,
-                        dbEmailConfigProvider
-                );
-                initializedScheduler.start();
-
-                store = initializedStore;
-                scheduler = initializedScheduler;
-            } catch (SQLException | IllegalStateException e) {
-                log.log(Level.SEVERE, "Failed to initialize automatic email alert infrastructure.", e);
-                throw new ServletException("Unable to initialize automatic email alerts.", e);
-            }
+            initializeInfrastructure();
         }
     }
 
     @Override
     public void destroy() {
         synchronized (INIT_LOCK) {
-            if (scheduler != null) {
-                scheduler.stop();
-                scheduler = null;
+            AutoEmailAlertScheduler configuredScheduler = lookupScheduler();
+            if (configuredScheduler != null) {
+                configuredScheduler.stop();
             }
-            store = null;
+            getServletContext().removeAttribute(SCHEDULER_ATTR);
+            getServletContext().removeAttribute(STORE_ATTR);
         }
         super.destroy();
     }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -105,16 +80,10 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             log.log(Level.WARNING, "Automatic email alert config store is not initialized.", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
-    
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-        }
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         if (!isAdmin(req, resp)) {
             return;
         }
@@ -163,10 +132,33 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             log.log(Level.WARNING, "Automatic email alert config store is not initialized.", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Automatic email alert configuration is not initialized.");
         }
-    
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "Unhandled exception in doPost", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+    }
+
+    private void initializeInfrastructure() throws ServletException {
+        try {
+            AppDataSourceHolder dsHolder = dataSourceHolder();
+            WidgetAvailabilityChecker availabilityChecker = availabilityChecker();
+            TermsStore termsStore = termsStore();
+            DbEmailConfigProvider dbEmailConfigProvider = dbEmailConfigProvider();
+
+            AutoEmailAlertConfigStore initializedStore = new AutoEmailAlertConfigStore(dsHolder.getDataSource());
+            initializedStore.ensureTable();
+            initializedStore.ensureDefaultRow();
+
+            AutoEmailAlertScheduler initializedScheduler = new AutoEmailAlertScheduler(
+                    initializedStore,
+                    dsHolder.getDataSource(),
+                    availabilityChecker,
+                    termsStore,
+                    dbEmailConfigProvider
+            );
+            initializedScheduler.start();
+
+            getServletContext().setAttribute(STORE_ATTR, initializedStore);
+            getServletContext().setAttribute(SCHEDULER_ATTR, initializedScheduler);
+        } catch (SQLException | IllegalStateException e) {
+            log.log(Level.SEVERE, "Failed to initialize automatic email alert infrastructure.", e);
+            throw new ServletException("Unable to initialize automatic email alerts.", e);
         }
     }
 
@@ -302,7 +294,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
     }
 
     private AutoEmailAlertConfigStore configStore() {
-        AutoEmailAlertConfigStore configuredStore = store;
+        AutoEmailAlertConfigStore configuredStore = lookupConfigStore();
         if (configuredStore == null) {
             throw new IllegalStateException("Automatic email alert config store is not initialized.");
         }
@@ -310,11 +302,27 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
     }
 
     private AutoEmailAlertScheduler scheduler() {
-        AutoEmailAlertScheduler configuredScheduler = scheduler;
+        AutoEmailAlertScheduler configuredScheduler = lookupScheduler();
         if (configuredScheduler == null) {
             throw new IllegalStateException("Automatic email alert scheduler is not initialized.");
         }
         return configuredScheduler;
+    }
+
+    private AutoEmailAlertConfigStore lookupConfigStore() {
+        Object value = getServletContext().getAttribute(STORE_ATTR);
+        if (value instanceof AutoEmailAlertConfigStore configuredStore) {
+            return configuredStore;
+        }
+        return null;
+    }
+
+    private AutoEmailAlertScheduler lookupScheduler() {
+        Object value = getServletContext().getAttribute(SCHEDULER_ATTR);
+        if (value instanceof AutoEmailAlertScheduler configuredScheduler) {
+            return configuredScheduler;
+        }
+        return null;
     }
 
     private AppDataSourceHolder dataSourceHolder() {

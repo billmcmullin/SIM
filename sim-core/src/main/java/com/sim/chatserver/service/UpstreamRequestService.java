@@ -54,6 +54,16 @@ public class UpstreamRequestService {
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     /**
      * Backward-compatible overload. If upstreamUrl is full endpoint, used
      * as-is. If it's origin-only, workspace is unknown and will fail fast.
@@ -209,7 +219,7 @@ public class UpstreamRequestService {
                     .append("://")
                     .append(host.toLowerCase(Locale.ROOT));
             if (port > 0) {
-                b.append(":").append(port);
+                b.append(':').append(port);
             }
 
             return b.toString();
@@ -395,7 +405,7 @@ public class UpstreamRequestService {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
                     "code=" + safe(e.code()) + "\nmessage=" + safe(e.getMessage()) + "\nurl=" + safe(url), e);
             throw e;
-        } catch (RuntimeException e) {
+        } catch (SecurityException | IllegalStateException e) {
             LOG.log(Level.WARNING, "[upstream][" + requestId + "] unexpected client exception", e);
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
                     "code=UPSTREAM_RUNTIME\nmessage=Unexpected upstream HTTP client failure\nurl=" + safe(url), e);
@@ -449,7 +459,7 @@ public class UpstreamRequestService {
 
     public static class UpstreamConnectivityException extends IOException {
 
-        private final String code;
+        private final transient String code;
 
         public UpstreamConnectivityException(String code, String message, Throwable cause) {
             super(message, cause);
@@ -457,7 +467,7 @@ public class UpstreamRequestService {
         }
 
         public String code() {
-            return code;
+            return code == null ? "" : code;
         }
     }
 }

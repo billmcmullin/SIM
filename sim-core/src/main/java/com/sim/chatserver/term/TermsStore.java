@@ -21,9 +21,6 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class TermsStore {
-    // parasoft-suppress SECURITY.WSC.DSER "This CDI store is intentionally non-serializable and blocks Java deserialization entry points."
-    // parasoft-suppress SECURITY.WSC.SER "This CDI store is intentionally non-serializable and blocks Java serialization entry points."
-
     private static final Logger log = Logger.getLogger(TermsStore.class.getName());
 
     private static final String DEFAULT_OTHER = "Other Parasoft Match";
@@ -35,12 +32,12 @@ public class TermsStore {
     }
 
     @SuppressWarnings("unused")
-    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
     @SuppressWarnings("unused")
-    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
@@ -280,7 +277,7 @@ public class TermsStore {
         }
     }
 
-    boolean isSystemTerm(long id) throws SQLException {
+    private boolean isSystemTerm(long id) throws SQLException {
         if (id <= 0L) {
             return false;
         }
@@ -365,35 +362,32 @@ public class TermsStore {
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
         try {
-            Object value = rs.getObject(column);
-            if (value instanceof Number number) {
-                return Math.max(0L, number.longValue());
-            }
-            if (value instanceof String text) {
-                try {
-                    return Math.max(0L, Long.parseLong(text.trim()));
-                } catch (NumberFormatException ex) {
-                    log.log(Level.FINE, "Invalid numeric text in column " + column, ex);
-                    return 0L;
-                }
+            long value = rs.getLong(column);
+            if (!rs.wasNull()) {
+                return Math.max(0L, value);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getLong failed for column " + column + ", falling back to text parsing", ex);
+        }
+
+        String text = readSafeDbText(rs, column, 64);
+        if (text.isBlank()) {
             return 0L;
         }
-        return 0L;
+        try {
+            return Math.max(0L, Long.parseLong(text.trim()));
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid numeric text in column " + column, ex);
+            return 0L;
+        }
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         String value = null;
         try {
-            value = rs.getObject(column, String.class);
+            value = rs.getString(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", using generic object conversion", ex);
-            Object raw = rs.getObject(column);
-            if (raw != null) {
-                value = String.valueOf(raw);
-            }
+            log.log(Level.FINE, "ResultSet#getString failed for column " + column, ex);
         }
         if (value == null) {
             return "";
@@ -407,12 +401,12 @@ public class TermsStore {
 
     private boolean readSafeDbBoolean(ResultSet rs, String column) throws SQLException {
         try {
-            Boolean value = rs.getObject(column, Boolean.class);
-            if (value != null) {
+            boolean value = rs.getBoolean(column);
+            if (!rs.wasNull()) {
                 return value;
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(Boolean) failed for column " + column + ", falling back to text parsing", ex);
+            log.log(Level.FINE, "ResultSet#getBoolean failed for column " + column + ", falling back to text parsing", ex);
         }
 
         String text = readSafeDbText(rs, column, 16);

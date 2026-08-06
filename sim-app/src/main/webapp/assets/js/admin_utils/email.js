@@ -23,6 +23,31 @@
         return document.getElementById(id)?.value?.trim() || '';
     }
 
+    async function apiFetchJson(url, options = {}) {
+        if (window.AdminPage?.Api?.fetchJson) {
+            return window.AdminPage.Api.fetchJson(url, options);
+        }
+        const response = await fetch(url, options);
+        const payload = await response.json().catch(() => null);
+        return {
+            ok: response.ok,
+            status: response.status,
+            payload,
+            response
+        };
+    }
+
+    async function apiPostJson(url, payload) {
+        if (window.AdminPage?.Api?.postJson) {
+            return window.AdminPage.Api.postJson(url, payload);
+        }
+        return apiFetchJson(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    }
+
     function fillSmtpForm(eff) {
         if (!eff) {
             return;
@@ -62,10 +87,10 @@
 
     async function loadSmtpConfig(contextPath) {
         try {
-            const r = await fetch(`${contextPath}/admin/email/config`, { method: 'GET' });
-            const body = await r.json();
+            const result = await apiFetchJson(`${contextPath}/admin/email/config`, { method: 'GET' });
+            const body = result.payload;
 
-            if (!r.ok || body?.status !== 'ok') {
+            if (!result.ok || body?.status !== 'ok') {
                 setMsg('smtpConfigResult', body?.message || 'Failed to load SMTP config.', false);
                 return;
             }
@@ -96,14 +121,10 @@
         }
 
         try {
-            const r = await fetch(`${contextPath}/admin/email/config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const body = await r.json();
+            const result = await apiPostJson(`${contextPath}/admin/email/config`, payload);
+            const body = result.payload;
 
-            if (r.ok && body?.status === 'ok') {
+            if (result.ok && body?.status === 'ok') {
                 setMsg('smtpConfigResult', body.message || 'SMTP config saved.', true);
                 const pw = document.getElementById('smtpPassword');
                 if (pw) {
@@ -139,14 +160,10 @@
         }
 
         try {
-            const r = await fetch(`${contextPath}/admin/email/config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const body = await r.json();
+            const result = await apiPostJson(`${contextPath}/admin/email/config`, payload);
+            const body = result.payload;
 
-            if (r.ok && body?.status === 'ok') {
+            if (result.ok && body?.status === 'ok') {
                 setMsg('smtpTestResult', body.message || 'SMTP test sent.', true);
             } else {
                 setMsg('smtpTestResult', body?.message || 'SMTP test failed.', false);
@@ -170,14 +187,10 @@
         };
 
         try {
-            const r = await fetch(`${contextPath}/admin/email/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const body = await r.json();
-            result.textContent = body.message || (r.ok ? 'Email sent' : 'Failed');
-            result.style.color = r.ok ? '#047857' : '#b91c1c';
+            const response = await apiPostJson(`${contextPath}/admin/email/send`, payload);
+            const body = response.payload;
+            result.textContent = body?.message || (response.ok ? 'Email sent' : 'Failed');
+            result.style.color = response.ok ? '#047857' : '#b91c1c';
         } catch (e) {
             result.textContent = `Send error: ${e.message}`;
             result.style.color = '#b91c1c';

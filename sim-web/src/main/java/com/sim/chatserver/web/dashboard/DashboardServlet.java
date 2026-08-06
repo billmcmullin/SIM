@@ -401,10 +401,11 @@ public class DashboardServlet extends HttpServlet {
             LocalDate rangeStart,
             LocalDate rangeEnd
     ) {
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             List<TermDefinition> terms = termService.loadAllTerms();
             return termService.buildTermSummary(conn, widgets, terms, rangeStart, rangeEnd);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute term summary", e);
             return null;
         }
@@ -417,9 +418,10 @@ public class DashboardServlet extends HttpServlet {
             LocalDate rangeEnd,
             int activeDays
     ) {
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             return sessionService.buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute session overview", e);
             return null;
         }
@@ -431,10 +433,11 @@ public class DashboardServlet extends HttpServlet {
 
         Map<LocalDate, Integer> totalDaily = new LinkedHashMap<>();
         for (int i = 0; i < 5; i++) {
-            totalDaily.put(start.plusDays(i), 0);
+            totalDaily.put(start.plusDays(i), Integer.valueOf(0));
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             List<WidgetEntry> sourceWidgets = widgets == null ? List.of() : widgets;
 
             for (WidgetEntry widget : sourceWidgets) {
@@ -466,12 +469,14 @@ public class DashboardServlet extends HttpServlet {
                                 continue;
                             }
 
-                            totalDaily.put(entryDate, totalDaily.get(entryDate) + 1);
+                            Integer existing = totalDaily.get(entryDate);
+                            int currentCount = existing == null ? 0 : existing.intValue();
+                            totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
                         }
                     }
                 }
             }
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load 5-day trend data", e);
         }
 
@@ -479,7 +484,9 @@ public class DashboardServlet extends HttpServlet {
         JsonArrayBuilder values = Json.createArrayBuilder();
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
-            values.add(entry.getValue());
+            Integer dayCount = entry.getValue();
+            int safeCount = dayCount == null ? 0 : dayCount.intValue();
+            values.add(safeCount);
         }
 
         return Json.createObjectBuilder()
@@ -541,6 +548,14 @@ public class DashboardServlet extends HttpServlet {
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to open dashboard data connection", ex);
+        }
     }
 
     private TermsStore termsStore() {
@@ -655,7 +670,8 @@ public class DashboardServlet extends HttpServlet {
                 continue;
             }
             Integer value = e.getValue();
-            out.put(e.getKey(), Math.max(0, value == null ? 0 : value));
+            int safeValue = value == null ? 0 : value.intValue();
+            out.put(e.getKey(), Math.max(0, safeValue));
         }
         return out;
     }
@@ -665,7 +681,8 @@ public class DashboardServlet extends HttpServlet {
         if (increaseMap != null) {
             for (Map.Entry<String, Integer> e : increaseMap.entrySet()) {
                 String k = e.getKey();
-                int v = e.getValue() == null ? 0 : Math.max(0, e.getValue());
+                Integer rawValue = e.getValue();
+                int v = rawValue == null ? 0 : Math.max(0, rawValue.intValue());
                 if (k != null) {
                     obj.add(k, v);
                 }
@@ -679,7 +696,8 @@ public class DashboardServlet extends HttpServlet {
         if (totalMap != null) {
             for (Map.Entry<String, Integer> e : totalMap.entrySet()) {
                 String k = e.getKey();
-                int v = e.getValue() == null ? 0 : Math.max(0, e.getValue());
+                Integer rawValue = e.getValue();
+                int v = rawValue == null ? 0 : Math.max(0, rawValue.intValue());
                 if (k != null) {
                     obj.add(k, v);
                 }

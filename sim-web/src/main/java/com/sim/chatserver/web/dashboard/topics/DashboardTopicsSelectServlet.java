@@ -1,11 +1,7 @@
 package com.sim.chatserver.web.dashboard.topics;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -111,7 +107,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to load widget list for topics selection", ex);
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = openConnectionSafe();
+        try (conn) {
             List<String> idList = new ArrayList<>(requestedIds);
 
             for (Map.Entry<String, WidgetEntry> e : widgetById.entrySet()) {
@@ -241,19 +238,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             return "";
         }
 
-        try (InputStream in = req.getInputStream();
-                ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(4096, MAX_JSON_PAYLOAD_BYTES))) {
-            byte[] buffer = new byte[2048];
-            int total = 0;
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
-                out.write(buffer, 0, read);
-            }
-            return ServletRequestParamUtil.normalizeBodyText(out.toString(StandardCharsets.UTF_8), MAX_JSON_PAYLOAD_BYTES, false);
+        try (java.io.BufferedReader reader = req.getReader()) {
+            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read topics-select request body", e);
             return "";
@@ -265,6 +251,14 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             return dsHolder;
         }
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private Connection openConnectionSafe() {
+        try {
+            return dataSourceHolder().getDataSource().getConnection();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to open dashboard topics connection", ex);
+        }
     }
 
     private String readDbText(ResultSet rs, String column, int maxChars) {
@@ -290,7 +284,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write topics-select error response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, message == null ? "Request failed." : message);
                 } catch (IOException ioe) {
@@ -305,7 +299,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write topics-select JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {

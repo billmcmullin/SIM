@@ -12,6 +12,16 @@ import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
 
 public class CustomerIdentityService {
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public CustomerIdentity resolveOrCreateBySessionId(String sessionId) throws SQLException {
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("sessionId is required");

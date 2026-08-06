@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -34,6 +35,11 @@ public final class ServerDiagnosticsLog {
     private static final Object LOCK = new Object();
     private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
     private static final Pattern SAFE_DIR_TOKEN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
+        private static final Map<String, String> ENV_VALUES = System.getenv();
+        private static final String ENABLED_ENV_VALUE = readValidatedEnvValue(ENV_ENABLED, SAFE_BOOL_TEXT,
+            "Ignoring unsafe diagnostics config from env {0}");
+        private static final String DIR_ENV_VALUE = readValidatedEnvValue(ENV_DIR, SAFE_DIR_TOKEN,
+            "Ignoring unsafe diagnostics directory token from env {0}");
 
     private static volatile boolean warnedWriteFailure;
 
@@ -116,8 +122,8 @@ public final class ServerDiagnosticsLog {
     }
 
     private static boolean isEnabled() {
-        String enabledRaw = readValidatedBooleanEnv(ENV_ENABLED);
-        String dirRaw = readValidatedDirectoryTokenEnv(ENV_DIR);
+        String enabledRaw = ENABLED_ENV_VALUE;
+        String dirRaw = DIR_ENV_VALUE;
 
         if (enabledRaw == null) {
             return dirRaw != null;
@@ -126,9 +132,14 @@ public final class ServerDiagnosticsLog {
     }
 
     private static Path resolveLogDirectory() {
-        String configured = readValidatedDirectoryTokenEnv(ENV_DIR);
+        String configured = DIR_ENV_VALUE;
         String dirName = configured == null ? DEFAULT_DIR_NAME : configured;
-        return Paths.get(dirName).toAbsolutePath().normalize();
+        Path base = Paths.get("").toAbsolutePath().normalize();
+        Path resolved = base.resolve(dirName).normalize();
+        if (!resolved.startsWith(base)) {
+            return base.resolve(DEFAULT_DIR_NAME).normalize();
+        }
+        return resolved;
     }
 
     private static boolean isTruthy(String value) {
@@ -173,25 +184,13 @@ public final class ServerDiagnosticsLog {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private static String readValidatedBooleanEnv(String name) {
-        String sanitized = sanitizeConfigValue(System.getenv(name));
+    private static String readValidatedEnvValue(String name, Pattern pattern, String warningMessage) {
+        String sanitized = sanitizeConfigValue(ENV_VALUES.get(name));
         if (sanitized == null) {
             return null;
         }
-        if (!SAFE_BOOL_TEXT.matcher(sanitized).matches()) {
-            log.log(Level.WARNING, "Ignoring unsafe diagnostics config from env {0}", name);
-            return null;
-        }
-        return sanitized;
-    }
-
-    private static String readValidatedDirectoryTokenEnv(String name) {
-        String sanitized = sanitizeConfigValue(System.getenv(name));
-        if (sanitized == null) {
-            return null;
-        }
-        if (!SAFE_DIR_TOKEN.matcher(sanitized).matches()) {
-            log.log(Level.WARNING, "Ignoring unsafe diagnostics directory token from env {0}", name);
+        if (!pattern.matcher(sanitized).matches()) {
+            log.log(Level.WARNING, warningMessage, name);
             return null;
         }
         return sanitized;

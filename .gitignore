@@ -1,4 +1,5 @@
 target/
+docs/static-analysis/
 .idea/
 .project
 .parasoft

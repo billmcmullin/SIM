@@ -6,10 +6,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -27,9 +23,7 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -52,14 +46,16 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    AppDataSourceHolder dsHolder;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+            try {
+                req.getRequestDispatcher("/login").forward(req, resp);
+            } catch (ServletException | IOException e) {
+                log.log(Level.WARNING, "Unable to forward unauthenticated user to login.", e);
+                sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            }
             return;
         }
 
@@ -75,64 +71,52 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         List<Row> allRows = new ArrayList<>();
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            List<WidgetEntry> widgets;
-            try {
-                widgets = WidgetStore.list(null);
-            } catch (SQLException e) {
-                log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
-                widgets = List.of();
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
-                widgets = List.of();
-            }
-
-            Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
-            Map<String, Integer> totalChatsBySession = findTotalChatsBySession(conn, widgets);
-
-            List<Map.Entry<String, Timestamp>> sorted = new ArrayList<>(earliestBySession.entrySet());
-            sorted.sort(Map.Entry.<String, Timestamp>comparingByValue(Comparator.reverseOrder()));
-
-            Set<String> ids = new LinkedHashSet<>();
-            for (Map.Entry<String, Timestamp> e : sorted) {
-                ids.add(e.getKey());
-            }
-
-            Map<String, SessionLabelStore.SessionLabel> labels;
-            try {
-                labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
-            } catch (IllegalArgumentException | IllegalStateException ex) {
-                log.log(Level.WARNING, "Unable to resolve session display labels", ex);
-                labels = Map.of();
-            }
-
-            for (Map.Entry<String, Timestamp> e : sorted) {
-                String sid = e.getKey();
-                Timestamp ts = e.getValue();
-
-                LocalDate firstSeenDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                if (dayFilter != null && !firstSeenDate.equals(dayFilter)) {
-                    continue;
-                }
-
-                String display = SessionLabelStore.resolveDisplayLabel(sid, labels.get(sid));
-                String firstSeen = TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()));
-                int totalChats = totalChatsBySession.getOrDefault(sid, 0);
-                String chatUrl = contextPath + "/dashboard/sessions/drilldown/session-review?sessionId="
-                        + java.net.URLEncoder.encode(sid, StandardCharsets.UTF_8);
-
-                allRows.add(new Row(display, firstSeen, totalChats, chatUrl));
-            }
+        List<WidgetEntry> widgets;
+        try {
+            widgets = WidgetStore.list(null);
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Failed to load newest users drilldown", e);
-            if (!resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load newest users drilldown.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Unable to send drilldown error response", ioe);
-                }
+            log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
+            widgets = List.of();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
+            widgets = List.of();
+        }
+
+        Map<String, Timestamp> earliestBySession = queryService().findEarliestBySession(widgets);
+        Map<String, Integer> totalChatsBySession = queryService().findTotalChatsBySession(widgets);
+
+        List<Map.Entry<String, Timestamp>> sorted = new ArrayList<>(earliestBySession.entrySet());
+        sorted.sort(Map.Entry.<String, Timestamp>comparingByValue(Comparator.reverseOrder()));
+
+        Set<String> ids = new LinkedHashSet<>();
+        for (Map.Entry<String, Timestamp> entry : sorted) {
+            ids.add(entry.getKey());
+        }
+
+        Map<String, SessionLabelStore.SessionLabel> labels;
+        try {
+            labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
+        } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+            log.log(Level.WARNING, "Unable to resolve session display labels", ex);
+            labels = Map.of();
+        }
+
+        for (Map.Entry<String, Timestamp> entry : sorted) {
+            String sid = entry.getKey();
+            Timestamp ts = entry.getValue();
+
+            LocalDate firstSeenDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            if (dayFilter != null && !firstSeenDate.equals(dayFilter)) {
+                continue;
             }
-            return;
+
+            String display = SessionLabelStore.resolveDisplayLabel(sid, labels.get(sid));
+            String firstSeen = TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()));
+            int totalChats = safeInt(totalChatsBySession.get(sid));
+            String chatUrl = contextPath + "/dashboard/sessions/drilldown/session-review?sessionId="
+                    + java.net.URLEncoder.encode(sid, StandardCharsets.UTF_8);
+
+            allRows.add(new Row(display, firstSeen, totalChats, chatUrl));
         }
 
         int total = allRows.size();
@@ -182,19 +166,9 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         resp.setContentType("text/html; charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
-        }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to render newest users drilldown page", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
 
@@ -211,71 +185,6 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
         byte[] utf8 = builder.build().toString().getBytes(StandardCharsets.UTF_8);
         return Base64.getEncoder().encodeToString(utf8);
-    }
-
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, Timestamp> earliest = new LinkedHashMap<>();
-        for (WidgetEntry w : widgets) {
-            if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                continue;
-            }
-            String table = sanitizeWidgetTableName(w.getWidgetId());
-            if (!tableExists(conn, table)) {
-                continue;
-            }
-
-            String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM " + quoteIdentifier(table)
-                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
-                    if (sid == null || sid.isBlank() || ts == null) {
-                        continue;
-                    }
-                    sid = sid.trim();
-
-                    Timestamp old = earliest.get(sid);
-                    if (old == null || ts.before(old)) {
-                        earliest.put(sid, ts);
-                    }
-                }
-            } catch (SQLException e) {
-                log.log(Level.FINE, "Unable to query earliest sessions for table " + table, e);
-            }
-        }
-        return earliest;
-    }
-
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, Integer> totals = new LinkedHashMap<>();
-        for (WidgetEntry w : widgets) {
-            if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                continue;
-            }
-            String table = sanitizeWidgetTableName(w.getWidgetId());
-            if (!tableExists(conn, table)) {
-                continue;
-            }
-
-            String sql = "SELECT session_id, COUNT(*) AS c FROM " + quoteIdentifier(table)
-                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    if (sid == null || sid.isBlank()) {
-                        continue;
-                    }
-                    sid = sid.trim();
-                    int count = rs.getInt("c");
-                    Integer existing = totals.get(sid);
-                    totals.put(sid, existing == null ? count : existing + count);
-                }
-            } catch (SQLException e) {
-                log.log(Level.FINE, "Unable to query total chats for table " + table, e);
-            }
-        }
-        return totals;
     }
 
     private int parsePositiveIntOrDefault(String value, int fallback) {
@@ -301,43 +210,6 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             log.log(Level.FINE, "Invalid day parameter for new users drilldown: {0}", sanitizeForLog(value));
             return null;
         }
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String n = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (n.isEmpty()) {
-            n = "widget";
-        }
-        if (!Character.isLetter(n.charAt(0))) {
-            n = "w_" + n;
-        }
-        if (n.length() > 60) {
-            n = n.substring(0, 60);
-        }
-        return n;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private String loadTemplate(HttpServletRequest req, String path) {
@@ -367,23 +239,38 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        // parasoft-suppress SECURITY.WSC.STREP "Explicit fixed-character escaping is intentional for server template interpolation in this endpoint."
-        return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder escaped = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                case '&' -> escaped.append("&amp;");
+                case '<' -> escaped.append("&lt;");
+                case '>' -> escaped.append("&gt;");
+                case '\"' -> escaped.append("&quot;");
+                case '\'' -> escaped.append("&#39;");
+                default -> escaped.append(ch);
+            }
+        }
+        return escaped.toString();
     }
 
     private String urlEncode(String s) {
         return java.net.URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
+    private DashboardNewUsersDrilldownQueryService queryService() {
+        return new DashboardNewUsersDrilldownQueryService(CDI.current().select(com.sim.chatserver.startup.AppDataSourceHolder.class).get(), log);
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
         }
-        return CDI.current().select(AppDataSourceHolder.class).get();
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+        }
     }
 
     private String sanitizeForLog(String value) {
@@ -396,6 +283,10 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
     private String safeJsonText(String value) {
         return value == null ? "" : value;
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value.intValue();
     }
 
     private static final class Row {

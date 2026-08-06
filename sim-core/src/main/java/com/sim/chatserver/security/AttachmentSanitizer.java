@@ -36,6 +36,16 @@ public class AttachmentSanitizer {
     private final int maxContentChars;
     private final boolean validateBase64Payload;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public AttachmentSanitizer() {
         this(
                 DEFAULT_MAX_ATTACHMENT_COUNT,

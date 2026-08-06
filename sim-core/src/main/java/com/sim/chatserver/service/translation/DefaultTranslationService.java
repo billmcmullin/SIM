@@ -67,6 +67,16 @@ public class DefaultTranslationService implements TranslationService {
     private final String detectUrl;
     private final String apiKey;
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public DefaultTranslationService() {
         this.translateUrl = envOrDefault("SIM_TRANSLATE_URL", DEFAULT_TRANSLATE_URL);
         this.detectUrl = toDetectUrl(this.translateUrl);

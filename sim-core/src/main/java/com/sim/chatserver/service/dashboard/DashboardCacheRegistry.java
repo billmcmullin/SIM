@@ -36,6 +36,16 @@ public class DashboardCacheRegistry {
         return t;
     });
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     // TTLs (shorter for day-sensitive metrics)
     private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
     private static final long TERM_SUMMARY_TTL_MILLIS = Duration.ofSeconds(30).toMillis();

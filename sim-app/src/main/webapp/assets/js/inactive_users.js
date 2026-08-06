@@ -47,6 +47,10 @@
     }
 
     function fmt(ts) {
+        const sharedFormatter = window.DashboardCore?.formatHumanReadableTimestamp;
+        if (typeof sharedFormatter === 'function') {
+            return sharedFormatter(ts, '—');
+        }
         if (!ts) {
             return '—';
         }

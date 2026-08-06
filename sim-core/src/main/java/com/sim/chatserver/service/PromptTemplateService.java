@@ -17,6 +17,16 @@ public class PromptTemplateService {
     private static final Pattern CONTROL_CHARS
             = Pattern.compile("[\\p{Cntrl}&&[^\r\n\t]]");
 
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public String addReportRubricIfMissing(String message) {
         String m = safe(message);
         if (m.isBlank()) {

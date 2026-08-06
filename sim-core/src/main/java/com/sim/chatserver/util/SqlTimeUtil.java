@@ -42,33 +42,7 @@ public final class SqlTimeUtil {
             // Fall back to tolerant parsing for legacy/imported timestamp values.
         }
 
-        Object rawValue = rs.getObject(column);
-        if (rawValue == null) {
-            return null;
-        }
-        if (rawValue instanceof Timestamp ts) {
-            return ts;
-        }
-        if (rawValue instanceof Instant instant) {
-            return Timestamp.from(instant);
-        }
-        if (rawValue instanceof OffsetDateTime offsetDateTime) {
-            return Timestamp.from(offsetDateTime.toInstant());
-        }
-        if (rawValue instanceof ZonedDateTime zonedDateTime) {
-            return Timestamp.from(zonedDateTime.toInstant());
-        }
-        if (rawValue instanceof LocalDateTime localDateTime) {
-            return Timestamp.valueOf(localDateTime);
-        }
-        if (rawValue instanceof LocalDate localDate) {
-            return Timestamp.valueOf(localDate.atStartOfDay());
-        }
-        if (rawValue instanceof java.sql.Date date) {
-            return new Timestamp(date.getTime());
-        }
-
-        String raw = String.valueOf(rawValue).trim();
+        String raw = safeReadRawText(rs, column);
         if (raw.isBlank()) {
             return null;
         }
@@ -89,6 +63,20 @@ public final class SqlTimeUtil {
         // Keep this null-return behavior: returning null prevents a single malformed
         // timestamp value from breaking dashboard computations after deployment/import.
         return null;
+    }
+
+    private static String safeReadRawText(ResultSet rs, String column) throws SQLException {
+        try {
+            String value = rs.getString(column);
+            return value == null ? "" : value.trim();
+        } catch (SQLException primaryEx) {
+            try {
+                String value = rs.getNString(column);
+                return value == null ? "" : value.trim();
+            } catch (SQLException secondaryEx) {
+                return "";
+            }
+        }
     }
 
     private static Timestamp parseTimestampString(String raw) {

@@ -30,6 +30,10 @@ const bootLoading = (window.PageBootLoading && typeof window.PageBootLoading.beg
 let labeledOnly = false;
 
 function buildCustomerProfileUrl(sessionId, fallbackFriendlyName) {
+    const sharedBuilder = window.DashboardCore?.buildCustomerProfileUrl;
+    if (typeof sharedBuilder === 'function') {
+        return sharedBuilder(contextPath, sessionId, fallbackFriendlyName);
+    }
     const params = new URLSearchParams();
     const sid = (sessionId || '').trim();
     const fname = (fallbackFriendlyName || '').trim();

@@ -118,6 +118,20 @@
         return formatted.endsWith('.') ? formatted : `${formatted}.`;
     }
 
+    function buildCustomerProfileUrl(contextPath, sessionId, friendlyName) {
+        const params = new URLSearchParams();
+        const sid = (sessionId === null || sessionId === undefined) ? '' : String(sessionId).trim();
+        const fname = (friendlyName === null || friendlyName === undefined) ? '' : String(friendlyName).trim();
+        if (sid) {
+            params.set('sessionId', sid);
+        } else if (fname) {
+            params.set('friendlyName', fname);
+        } else {
+            return '';
+        }
+        return `${contextPath || ''}/customer-profile?${params.toString()}`;
+    }
+
     window.DashboardCore = {
         parseSlices,
         parseObject,
@@ -126,6 +140,7 @@
         esc,
         toYmd,
         getTodayYesterday,
-        formatHumanReadableTimestamp
+        formatHumanReadableTimestamp,
+        buildCustomerProfileUrl
     };
 })();

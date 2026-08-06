@@ -17,7 +17,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
@@ -40,16 +40,7 @@ import jakarta.servlet.http.Part;
         maxFileSize = 1024 * 1024 * 5, // 5MB
         maxRequestSize = 1024 * 1024 * 10) // 10MB
 public class TermsCsvServlet extends HttpServlet {
-    // parasoft-suppress SERVLET.IF "CDI-managed TermsStore dependency is required and does not retain mutable request state."
-    // parasoft-suppress SECURITY.ESD.SIF "Injected TermsStore is framework-managed and not a serialized secret payload."
-    // parasoft-suppress SECURITY.IBA.VRD "Redirect targets are constrained to same-context admin path via safeRedirectTarget before redirect."
-    // parasoft-suppress OWASP2025.A1.VRD "Redirect targets are constrained to same-context admin path via safeRedirectTarget before redirect."
-    // parasoft-suppress CWE.601.VRD "Redirect targets are constrained to same-context admin path via safeRedirectTarget before redirect."
-
     private static final Logger log = Logger.getLogger(TermsCsvServlet.class.getName());
-
-    @Inject
-    private TermsStore termsStore;
 
     private static final String[] CSV_HEADER = new String[]{"name", "description", "match_pattern", "match_type", "system_flag"};
 
@@ -63,7 +54,7 @@ public class TermsCsvServlet extends HttpServlet {
         }
 
         try {
-            List<TermDefinition> terms = termsStore.listAll();
+            List<TermDefinition> terms = termsStore().listAll();
 
             // Build CSV into a UTF-8 byte stream so client fetch receives correct bytes.
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -96,16 +87,14 @@ public class TermsCsvServlet extends HttpServlet {
             log.log(Level.WARNING, "Failed to export terms", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to export terms.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
@@ -190,16 +179,14 @@ public class TermsCsvServlet extends HttpServlet {
             msg.append("&errors=").append(URLEncoder.encode(String.join("; ", errors), StandardCharsets.UTF_8));
         }
         sendRedirectSafe(resp, safeRedirectTarget(req, msg.toString()));
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+
+        } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }
@@ -253,7 +240,7 @@ public class TermsCsvServlet extends HttpServlet {
         TermDefinition existing = null;
         List<TermDefinition> all;
         try {
-            all = termsStore.listAll();
+            all = termsStore().listAll();
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to load existing terms", e);
         }
@@ -273,18 +260,19 @@ public class TermsCsvServlet extends HttpServlet {
 
             // Overwrite non-system entries using CSV columns (name, description, pattern, type)
             Long existingId = existing.getId();
-            if (existingId == null || existingId <= 0L) {
+            long existingIdValue = existingId == null ? -1L : existingId.longValue();
+            if (existingIdValue <= 0L) {
                 throw new IllegalStateException("Failed to update term with invalid id");
             }
             TermDefinition updated;
             try {
-                updated = termsStore.updateTerm(existingId, name, description, matchPattern, matchType);
+                updated = termsStore().updateTerm(Long.valueOf(existingIdValue), name, description, matchPattern, matchType);
             } catch (SQLException e) {
-                throw new IllegalStateException("Failed to update term with id " + existingId, e);
+                throw new IllegalStateException("Failed to update term with id " + existingIdValue, e);
             }
             if (updated == null) {
                 // If updateTerm returns null (unexpected for non-system), treat as failure.
-                throw new IllegalStateException("Failed to update term with id " + existingId);
+                throw new IllegalStateException("Failed to update term with id " + existingIdValue);
             }
 
             // Note: we do not toggle existing system-ness here even if CSV's system_flag is true.
@@ -294,7 +282,7 @@ public class TermsCsvServlet extends HttpServlet {
             // No existing term found â€” create new term using CSV columns.
             TermDefinition created;
             try {
-                created = termsStore.createTerm(name, description, matchPattern, matchType);
+                created = termsStore().createTerm(name, description, matchPattern, matchType);
             } catch (SQLException e) {
                 throw new IllegalStateException("Failed to create term " + name, e);
             }
@@ -341,12 +329,26 @@ public class TermsCsvServlet extends HttpServlet {
     }
 
     private void sendRedirectSafe(HttpServletResponse resp, String target) {
+        String safeTarget = isSafeRedirectTarget(target) ? target : "/admin/terms";
         try {
-            resp.sendRedirect(target == null ? "/admin/terms" : target);
+            resp.sendRedirect(safeTarget);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to redirect after CSV import", ex);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "CSV import completed but redirect failed.");
         }
+    }
+
+    private boolean isSafeRedirectTarget(String target) {
+        if (target == null || target.isBlank()) {
+            return false;
+        }
+        if (target.contains("\r") || target.contains("\n")) {
+            return false;
+        }
+        if (target.contains("://")) {
+            return false;
+        }
+        return target.startsWith("/");
     }
 
     // Minimal CSV parser supporting quoted fields ("" -> ")
@@ -405,5 +407,9 @@ public class TermsCsvServlet extends HttpServlet {
         }
         Object role = req.getSession(false) == null ? null : req.getSession(false).getAttribute("role");
         return role != null && "ADMIN".equalsIgnoreCase(String.valueOf(role));
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
     }
 }

@@ -145,11 +145,10 @@ public final class WidgetStore {
      * callers to create(...) / update(...), then remove this method.
      */
     @Deprecated(forRemoval = true)
-    // parasoft-suppress CWE.400.ABUB "Compatibility shim intentionally accepts nullable Integer id from legacy callers."
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        int resolvedId = id == null ? 0 : id;
+        int resolvedId = id == null ? 0 : id.intValue();
         if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
@@ -249,14 +248,11 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        Object raw = rs.getObject(column);
-        if (raw == null) {
-            return 0;
+        int value = rs.getInt(column);
+        if (!rs.wasNull()) {
+            return Math.max(0, value);
         }
-        if (raw instanceof Number number) {
-            return Math.max(0, number.intValue());
-        }
-        String text = sanitizeDbText(String.valueOf(raw), 32);
+        String text = readSanitizedDbText(rs, column, 32);
         if (text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
         }
@@ -268,37 +264,33 @@ public final class WidgetStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value;
         try {
-            value = rs.getObject(column, String.class);
-            if (value != null) {
-                return sanitizeDbText(value, maxChars);
-            }
+            return sanitizeDbText(rs.getString(column), maxChars);
         } catch (SQLException ex) {
-            // Fall back to generic object conversion when typed extraction is unavailable.
+            return "";
         }
-        Object raw = rs.getObject(column);
-        value = raw == null ? null : String.valueOf(raw);
-        return sanitizeDbText(value, maxChars);
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
         Timestamp timestamp;
         try {
-            timestamp = rs.getObject("created_at", Timestamp.class);
+            timestamp = rs.getTimestamp("created_at");
         } catch (SQLException ex) {
             timestamp = null;
         }
         if (timestamp != null) {
             return timestamp.toInstant();
         }
-        Object raw = rs.getObject("created_at");
-        String text = raw == null ? null : String.valueOf(raw);
+        String text = readSanitizedDbText(rs, "created_at", 128);
         if (text != null && !text.isBlank()) {
             try {
                 return Instant.parse(text.trim());
             } catch (DateTimeException e) {
-                throw new SQLException("Unsupported created_at text value", e);
+                try {
+                    return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
+                } catch (IllegalArgumentException ex) {
+                    throw new SQLException("Unsupported created_at text value", ex);
+                }
             }
         }
         throw new SQLException("created_at timestamp must not be null");

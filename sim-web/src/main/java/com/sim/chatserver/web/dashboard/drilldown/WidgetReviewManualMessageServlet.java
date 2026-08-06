@@ -269,7 +269,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         + " selected=" + selectedEntries.size()
                         + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
                 log.info(completionLog);
-        } catch (RuntimeException ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
             }
@@ -277,10 +277,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to process manual message.");
         }
     
-        } catch (Exception e) {
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger(getClass().getName())
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -1203,10 +1203,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             return "";
         }
-        try (java.io.InputStream in = req.getInputStream(); java.io.InputStreamReader reader = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)) {
-            if (reader == null) {
-                return "";
-            }
+        try (java.io.BufferedReader reader = req.getReader()) {
             char[] buffer = new char[4096];
             StringBuilder builder = new StringBuilder();
             int total = 0;

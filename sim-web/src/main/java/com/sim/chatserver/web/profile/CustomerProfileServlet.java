@@ -81,8 +81,9 @@ public class CustomerProfileServlet extends HttpServlet {
             if (sessionId != null) {
                 CustomerIdentityService identityService = identityService();
                 identity = identityService.resolveOrCreateBySessionId(sessionId);
-                Long identityId = identity == null ? null : identity.getIdentityId();
-                if (identityId != null) {
+                Long identityIdObject = identity == null ? null : identity.getIdentityId();
+                if (identityIdObject != null) {
+                    long identityId = identityIdObject.longValue();
                     linkedSessions = identityService.listLinkedSessions(identityId);
                 }
             }
@@ -129,15 +130,13 @@ public class CustomerProfileServlet extends HttpServlet {
             throw new ServletException("Unable to load customer profile.", e);
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+        } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
+            LOGGER.log(Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    LOGGER.log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
         }

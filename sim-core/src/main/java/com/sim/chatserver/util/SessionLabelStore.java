@@ -100,8 +100,7 @@ public final class SessionLabelStore {
         if (rs == null || column == null || column.isBlank()) {
             return "";
         }
-        Object raw = rs.getObject(column);
-        String value = raw == null ? "" : String.valueOf(raw);
+        String value = rs.getString(column);
         return sanitizeDbText(value, maxChars);
     }
 

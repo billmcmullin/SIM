@@ -16,8 +16,6 @@ import java.util.logging.Logger;
 /**
  * DB-backed singleton configuration/state for automatic admin email alerts.
  */
-// parasoft-suppress SECURITY.WSC.DSER "This class is not used for Java native deserialization; configuration is loaded from JDBC rows only."
-// parasoft-suppress SECURITY.WSC.SER "This class is not used for Java native serialization; data transfer is handled via explicit JSON/DB mapping."
 public final class AutoEmailAlertConfigStore {
 
     private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getName());
@@ -28,6 +26,16 @@ public final class AutoEmailAlertConfigStore {
     private static final int MAX_INTERVAL_SECONDS = 86_400;
 
     private final DataSource dataSource;
+
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 
     AutoEmailAlertConfigStore(DataSource dataSource) {
         this.dataSource = dataSource;
@@ -339,7 +347,8 @@ public final class AutoEmailAlertConfigStore {
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
             Integer value = readSafeInteger(rs, column);
-            return value == null ? 0 : Math.max(0, value);
+            int normalized = value == null ? 0 : value.intValue();
+            return Math.max(0, normalized);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read integer column " + column, e);
             return 0;
@@ -414,24 +423,19 @@ public final class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Object raw = rs.getObject(column);
-            if (raw instanceof Timestamp ts) {
-                return ts.toInstant();
+            Timestamp timestampValue;
+            try {
+                timestampValue = rs.getTimestamp(column);
+            } catch (SQLException ex) {
+                log.log(Level.FINE, "ResultSet#getTimestamp failed for column " + column, ex);
+                timestampValue = null;
             }
 
-            if (raw instanceof Instant instantValue) {
-                return instantValue;
+            if (timestampValue != null) {
+                return timestampValue.toInstant();
             }
 
-            if (raw instanceof java.time.OffsetDateTime odt) {
-                return odt.toInstant();
-            }
-
-            if (raw instanceof java.util.Date dateValue) {
-                return dateValue.toInstant();
-            }
-
-            String text = sanitizeText(raw == null ? null : String.valueOf(raw), 128);
+            String text = readSafeText(rs, column, 128);
             if (text == null) {
                 return null;
             }
@@ -445,7 +449,7 @@ public final class AutoEmailAlertConfigStore {
                 log.log(Level.FINE, "Falling back to SQL timestamp parse for column " + column, ex);
                 return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
             }
-        } catch (SQLException | DateTimeException e) {
+        } catch (DateTimeException e) {
             log.log(Level.FINE, "Unable to read timestamp column " + column, e);
             return null;
         }
@@ -453,8 +457,13 @@ public final class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            Object value = rs.getObject(column);
-            String text = value == null ? null : String.valueOf(value);
+            String text;
+            try {
+                text = rs.getString(column);
+            } catch (SQLException ex) {
+                log.log(Level.FINE, "ResultSet#getString failed for column " + column + ", trying getNString", ex);
+                text = rs.getNString(column);
+            }
             return sanitizeText(text, maxChars);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);
