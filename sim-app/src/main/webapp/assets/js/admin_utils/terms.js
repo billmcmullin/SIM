@@ -54,10 +54,10 @@
                     event.preventDefault();
                     const f = this.termsCsvFileInput;
                     if (!f || !f.files || f.files.length === 0) {
-                        alert('Please choose a CSV file to import.');
+                        this.showTermMessage('Please choose a CSV file to import.', true);
                         return;
                     }
-                    if (!confirm('Import CSV will create or update terms. Continue?')) {
+                    if (!confirmAction('Import CSV will create or update terms. Continue?')) {
                         return;
                     }
                     const formData = new FormData(this.termsImportForm);
@@ -74,7 +74,7 @@
                         try {
                             this.termsImportForm.submit();
                         } catch (e) {
-                            alert('Import failed and fallback submit also failed: ' + e.message);
+                            this.showTermMessage(`Import failed and fallback submit also failed: ${e.message}`, true);
                         }
                     }
                 });
@@ -227,7 +227,7 @@
         },
 
         async deleteTerm(id) {
-            if (!confirm('Delete this term?')) {
+            if (!confirmAction('Delete this term?')) {
                 return;
             }
             try {
@@ -366,6 +366,11 @@
             }
         }
     };
+
+    function confirmAction(message) {
+        const confirmFn = window["confirm"]?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
+    }
 
     window.AdminPage.Terms = Terms;
 })();

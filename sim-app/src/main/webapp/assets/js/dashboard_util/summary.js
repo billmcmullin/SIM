@@ -57,7 +57,7 @@
         }
 
         buttonEl.style.display = '';
-        buttonEl.disabled = manualSummaryRetryInFlight || !!inProgress;
+        buttonEl.disabled = manualSummaryRetryInFlight || Boolean(inProgress);
     }
 
     function wireManualSummaryRetryButton(contextPath) {
@@ -315,7 +315,7 @@
             }
 
             const data = await resp.json();
-            const disabled = !!(data && data.status === 'ok' && data.summaryAutoEnabled === false);
+            const disabled = Boolean(data && data.status === 'ok' && data.summaryAutoEnabled === false);
             if (!disabled) {
                 return false;
             }
@@ -329,7 +329,7 @@
         }
     }
 
-    function applySummaryPayload(data, contextPath) {
+    function applySummaryPayload(data) {
         const bodyEl = document.getElementById('dailySummaryBody');
         const metaEl = document.getElementById('dailySummaryMeta');
         const copyEl = document.getElementById('dailySummaryCopyText');
@@ -351,7 +351,7 @@
 
         const s = data.summary || {};
         const m = data.meta || {};
-        const inProgress = !!m.inProgress;
+        const inProgress = Boolean(m.inProgress);
         const isError = String(m.statusText || '').toLowerCase() === 'error';
         const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
         const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
@@ -405,8 +405,8 @@
         wireManualSummaryRetryButton(contextPath);
         ensureSummaryProgressUi();
 
-        const result = applySummaryPayload(bootstrapSummary, contextPath);
-        return !!result.accepted;
+        const result = applySummaryPayload(bootstrapSummary);
+        return Boolean(result.accepted);
     }
 
     async function loadDailySummary(contextPath, seedSummary) {
@@ -425,7 +425,7 @@
         }
 
         if (seedSummary && typeof seedSummary === 'object') {
-            const seeded = applySummaryPayload(seedSummary, contextPath);
+            const seeded = applySummaryPayload(seedSummary);
             if (seeded.accepted && !seeded.inProgress) {
                 return seeded.ok;
             }
@@ -474,7 +474,7 @@
                 return false;
             }
 
-            const applied = applySummaryPayload(data, contextPath);
+            const applied = applySummaryPayload(data);
 
             if (!applied.accepted) {
                 return false;

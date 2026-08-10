@@ -111,7 +111,10 @@
 
         // If user is configuring OAuth refresh, login URL + client ID are required
         const anyOauthFieldProvided =
-            !!salesforceLoginUrl || !!salesforceClientId || !!salesforceClientSecret || !!salesforceRefreshToken;
+            Boolean(salesforceLoginUrl)
+            || Boolean(salesforceClientId)
+            || Boolean(salesforceClientSecret)
+            || Boolean(salesforceRefreshToken);
 
         if (anyOauthFieldProvided && (!salesforceLoginUrl || !salesforceClientId)) {
             setResult(resultEl, 'Salesforce Login URL and Client ID are required for OAuth refresh setup.', false);
@@ -120,7 +123,7 @@
 
         // If user is configuring username/password + API token auth, require all three plus login URL.
         const anyApiTokenFieldProvided =
-            !!salesforceUsername || !!salesforcePassword || !!salesforceApiToken;
+            Boolean(salesforceUsername) || Boolean(salesforcePassword) || Boolean(salesforceApiToken);
         if (anyApiTokenFieldProvided && (!salesforceLoginUrl || !salesforceUsername || !salesforcePassword || !salesforceApiToken)) {
             setResult(resultEl, 'Salesforce Login URL, Username, Password, and API Token are required for token-based auth setup.', false);
             return;

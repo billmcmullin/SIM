@@ -21,6 +21,11 @@
         <!--<junit.version>6.1.2</junit.version>-->
         <playwright.version>1.61.0</playwright.version>
         <failsafe.version>3.5.5</failsafe.version>
+        <coverage.integration.version>1.0.0-SNAPSHOT</coverage.integration.version>
+
+        <!-- Keep extension auto-detection opt-in to avoid forcing CTP connectivity locally -->
+        <junit.jupiter.extensions.autodetection.enabled>false</junit.jupiter.extensions.autodetection.enabled>
+        <parasoft.coverage.baggageHeader></parasoft.coverage.baggageHeader>
 
         <!-- UI test runtime defaults -->
         <baseUrl>http://localhost:8080/chat-server</baseUrl>
@@ -45,6 +50,20 @@
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
             <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.parasoft</groupId>
+            <artifactId>coverage-integration-junit5</artifactId>
+            <version>${coverage.integration.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.parasoft</groupId>
+            <artifactId>coverage-integration-playwright</artifactId>
+            <version>${coverage.integration.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -77,6 +96,8 @@
                                 <baseUrl>${baseUrl}</baseUrl>
                                 <headless>${headless}</headless>
                                 <ignoreHttpsErrors>${ignoreHttpsErrors}</ignoreHttpsErrors>
+                                <junit.jupiter.extensions.autodetection.enabled>${junit.jupiter.extensions.autodetection.enabled}</junit.jupiter.extensions.autodetection.enabled>
+                                <parasoft.coverage.baggageHeader>${parasoft.coverage.baggageHeader}</parasoft.coverage.baggageHeader>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

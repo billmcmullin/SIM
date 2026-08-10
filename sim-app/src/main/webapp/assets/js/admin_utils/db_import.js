@@ -99,7 +99,7 @@
                 return;
             }
 
-            if (!window.confirm('This will replace current table data with backup data. Continue?')) {
+            if (!confirmAction('This will replace current table data with backup data. Continue?')) {
                 return;
             }
 
@@ -181,6 +181,11 @@
             .replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&#39;');
+    }
+
+    function confirmAction(message) {
+        const confirmFn = window["confirm"]?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
     }
 
     async function postFormDataJson(url, formData) {

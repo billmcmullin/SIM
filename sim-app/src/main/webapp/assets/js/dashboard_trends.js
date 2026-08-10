@@ -73,7 +73,7 @@
             }
         } catch (err) {
             console.error(err);
-            alert(`Unable to open review for selected day: ${err.message}`);
+            console.warn(`Unable to open review for selected day: ${err.message}`);
         }
     }
 

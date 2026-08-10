@@ -124,7 +124,7 @@
         if (!homeBtn) {
             return;
         }
-        homeBtn.classList.toggle('active', !!active);
+        homeBtn.classList.toggle('active', Boolean(active));
         homeBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
 
@@ -178,7 +178,8 @@
         document.addEventListener = function patchedAddEventListener(type, listener, options) {
             if (type === 'DOMContentLoaded') {
                 try {
-                    const evt = new Event('DOMContentLoaded');
+                    const EventCtor = window.Event;
+                    const evt = typeof EventCtor === 'function' ? new EventCtor('DOMContentLoaded') : null;
                     if (typeof listener === 'function') {
                         listener.call(document, evt);
                     } else if (listener && typeof listener.handleEvent === 'function') {
@@ -187,11 +188,12 @@
                 } catch {
                     // ignore callback failures and continue loading
                 }
-                return;
+                return undefined;
             }
 
             injectedEventListeners.push({ target: document, type, listener, options });
-            return originalAddEventListener(type, listener, options);
+            originalAddEventListener(type, listener, options);
+            return undefined;
         };
 
         window.addEventListener = function patchedWindowAddEventListener(type, listener, options) {
@@ -294,7 +296,11 @@
         }
 
         const html = await res.text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const DomParserCtor = window.DOMParser;
+        if (typeof DomParserCtor !== 'function') {
+            throw new Error('DOMParser is unavailable in this browser runtime.');
+        }
+        const doc = new DomParserCtor().parseFromString(html, 'text/html');
 
         const fetchedContainer = doc.querySelector('.container');
         if (!fetchedContainer) {

@@ -4,7 +4,9 @@ const role = (profileConfig.role || '').toUpperCase();
 
 (function () {
     if (role !== 'ADMIN') {
-        document.querySelectorAll('[data-admin-link]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[data-admin-link]').forEach(el => {
+            el.style.display = 'none';
+        });
     }
 })();
 

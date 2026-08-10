@@ -44,15 +44,15 @@
             return;
         }
         if (typeof data === 'undefined') {
-            logger('[WidgetHealthcheck] ' + message);
+            logger(`[WidgetHealthcheck] ${message}`);
         } else {
-            logger('[WidgetHealthcheck] ' + message, data);
+            logger(`[WidgetHealthcheck] ${message}`, data);
         }
     }
 
     function readForm() {
         const base = currentConfig && typeof currentConfig === 'object' ? currentConfig : {};
-        const hasHealthcheckUrlField = !!$('whcHealthcheckUrl');
+        const hasHealthcheckUrlField = Boolean($('whcHealthcheckUrl'));
         const healthcheckUrl = hasHealthcheckUrlField
             ? toNullIfBlank($('whcHealthcheckUrl')?.value)
             : toNullIfBlank(base.healthcheckUrl);
@@ -72,11 +72,11 @@
         }
 
         const payload = {
-            healthcheckUrl: healthcheckUrl,
+            healthcheckUrl,
             healthcheckEnabled: typeof base.healthcheckEnabled === 'boolean' ? base.healthcheckEnabled : true,
-            checkIntervalMinutes: checkIntervalMinutes,
+            checkIntervalMinutes,
             method: String(base.method || 'GET').trim().toUpperCase(),
-            timeoutMs: timeoutMs,
+            timeoutMs,
             expectJsonField: toNullIfBlank(base.expectJsonField),
             expectJsonValue: toNullIfBlank(base.expectJsonValue),
             widgetId: toNullIfBlank(base.widgetId),
@@ -180,14 +180,14 @@
             }
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error('Load failed (' + res.status + '): ' + text);
+                throw new Error(`Load failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
             fillForm(data);
             setMessage('Widget health config loaded.', false);
         } catch (err) {
-            setMessage('Failed to load widget health config: ' + (err?.message || err), true);
+            setMessage(`Failed to load widget health config: ${err?.message || err}`, true);
         }
     }
 
@@ -217,7 +217,7 @@
             }
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error('Save failed (' + res.status + '): ' + text);
+                throw new Error(`Save failed (${res.status}): ${text}`);
             }
 
             const saved = await res.json();
@@ -225,15 +225,16 @@
 
             const meta = [];
             if (saved.updatedBy) {
-                meta.push('updatedBy=' + saved.updatedBy);
+                meta.push(`updatedBy=${saved.updatedBy}`);
             }
             if (saved.updatedAt) {
-                meta.push('updatedAt=' + saved.updatedAt);
+                meta.push(`updatedAt=${saved.updatedAt}`);
             }
 
-            setMessage('Widget health config saved.' + (meta.length ? ' (' + meta.join(', ') + ')' : ''), false);
+            const metadataText = meta.length ? ` (${meta.join(', ')})` : '';
+            setMessage(`Widget health config saved.${metadataText}`, false);
         } catch (err) {
-            setMessage('Failed to save widget health config: ' + (err?.message || err), true);
+            setMessage(`Failed to save widget health config: ${err?.message || err}`, true);
         }
     }
 
@@ -268,27 +269,27 @@
             if (!res.ok) {
                 const text = await res.text();
                 logHealthDebug('error', 'Availability test HTTP error body', text);
-                throw new Error('Test failed (' + res.status + '): ' + text);
+                throw new Error(`Test failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
             logHealthDebug('info', 'Availability test payload', data);
-            const ok = !!data.available;
+            const ok = Boolean(data.available);
             const status = String(data && data.status ? data.status : '').toUpperCase();
             const detail = data && data.details ? ` Details: ${data.details}` : '';
             const latency = (data && typeof data.latencyMs !== 'undefined') ? ` Latency: ${data.latencyMs}ms.` : '';
             const checked = data && data.checkedAt ? ` Checked: ${data.checkedAt}.` : '';
 
             if (status === 'DISABLED') {
-                setMessage('Availability test was not executed because healthcheck service is disabled.' + checked + detail, true);
+                setMessage(`Availability test was not executed because healthcheck service is disabled.${checked}${detail}`, true);
             } else if (ok) {
-                setMessage('Availability test passed.' + latency + checked + detail, false);
+                setMessage(`Availability test passed.${latency}${checked}${detail}`, false);
             } else {
-                setMessage('Availability test failed.' + latency + checked + detail, true);
+                setMessage(`Availability test failed.${latency}${checked}${detail}`, true);
             }
         } catch (err) {
             logHealthDebug('error', 'Availability test request failed', err);
-            setMessage('Availability test error: ' + (err?.message || err), true);
+            setMessage(`Availability test error: ${err?.message || err}`, true);
         }
     }
 
@@ -298,19 +299,19 @@
         const testBtn = $('testWidgetHealthConfigBtn');
 
         if (loadBtn) {
-            loadBtn.addEventListener('click', function () {
+            loadBtn.addEventListener('click', () => {
                 loadWidgetHealthConfig();
             });
         }
 
         if (saveBtn) {
-            saveBtn.addEventListener('click', function () {
+            saveBtn.addEventListener('click', () => {
                 saveWidgetHealthConfig();
             });
         }
 
         if (testBtn) {
-            testBtn.addEventListener('click', function () {
+            testBtn.addEventListener('click', () => {
                 testWidgetHealthNow();
             });
         }

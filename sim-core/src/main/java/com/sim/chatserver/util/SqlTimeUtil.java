@@ -12,8 +12,15 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 public final class SqlTimeUtil {
+
+    private static final Logger LOG = Logger.getLogger(SqlTimeUtil.class.getName());
+    private static final int MAX_TIMESTAMP_TEXT_LENGTH = 96;
+    private static final Pattern SAFE_TIMESTAMP_TEXT = Pattern.compile("^[0-9TtZz:\\-+\\. ]{1,96}$");
 
     private static final DateTimeFormatter FLEX_TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
             .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
@@ -67,16 +74,33 @@ public final class SqlTimeUtil {
 
     private static String safeReadRawText(ResultSet rs, String column) throws SQLException {
         try {
-            String value = rs.getString(column);
-            return value == null ? "" : value.trim();
+            return sanitizeTimestampCandidate(rs.getString(column));
         } catch (SQLException primaryEx) {
+            LOG.log(Level.FINER, "Timestamp text fallback to getNString for column {0}", column);
             try {
-                String value = rs.getNString(column);
-                return value == null ? "" : value.trim();
+                return sanitizeTimestampCandidate(rs.getNString(column));
             } catch (SQLException secondaryEx) {
+                LOG.log(Level.FINER, "Timestamp text read failed for column " + column, secondaryEx);
                 return "";
             }
         }
+    }
+
+    private static String sanitizeTimestampCandidate(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        if (trimmed.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
+            trimmed = trimmed.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
+        }
+        if (!SAFE_TIMESTAMP_TEXT.matcher(trimmed).matches()) {
+            return "";
+        }
+        return trimmed;
     }
 
     private static Timestamp parseTimestampString(String raw) {

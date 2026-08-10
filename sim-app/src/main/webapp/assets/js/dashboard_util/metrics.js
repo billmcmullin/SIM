@@ -126,7 +126,7 @@
                         window.location.href = fallbackHref;
                     }
                 } else {
-                    alert('Unable to open chat review for this metric right now.');
+                    console.warn('Unable to open chat review for this metric right now.');
                 }
             } finally {
                 a.dataset.loading = '0';
@@ -239,7 +239,6 @@
         const termVals = parseTermsFromServerRenderedDom();
         if (Number.isFinite(termVals.today) && Number.isFinite(termVals.yesterday)) {
             const d = computeDelta(termVals.today, termVals.yesterday);
-            const dates = core.getTodayYesterday();
 
             setConditionalMetricLink(
                 todayTermsEl,

@@ -482,7 +482,7 @@
             reviewSelectedBtn.addEventListener('click', async () => {
                 const selected = Array.from(state.selectedChatIds).filter(Boolean);
                 if (!selected.length) {
-                    alert('Select at least one chat to review.');
+                    setStatus('Select at least one chat to review.', false);
                     return;
                 }
 
@@ -490,7 +490,7 @@
                     const selectionId = await createSelection(selected);
                     window.location.href = `${reviewPageEndpoint}?selectionId=${encodeURIComponent(selectionId)}`;
                 } catch (err) {
-                    alert(err.message || 'Unable to open review page.');
+                    setStatus(err.message || 'Unable to open review page.', false);
                 }
             });
         }
@@ -498,7 +498,7 @@
         if (reviewAllBtn) {
             reviewAllBtn.addEventListener('click', async () => {
                 if (!state.chatRows.length) {
-                    alert('No chats available for review.');
+                    setStatus('No chats available for review.', false);
                     return;
                 }
 
@@ -509,14 +509,14 @@
                     const selectionId = await createSelection(allIds);
                     window.location.href = `${reviewPageEndpoint}?selectionId=${encodeURIComponent(selectionId)}`;
                 } catch (err) {
-                    alert(err.message || 'Unable to open review page.');
+                    setStatus(err.message || 'Unable to open review page.', false);
                 }
             });
         }
 
         if (selectAllVisible) {
             selectAllVisible.addEventListener('change', () => {
-                const checked = !!selectAllVisible.checked;
+                const checked = Boolean(selectAllVisible.checked);
                 getCurrentChatPageRows().forEach((row) => {
                     const chatId = String(row.chatId || '');
                     if (!chatId) {

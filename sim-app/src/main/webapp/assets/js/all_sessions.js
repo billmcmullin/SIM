@@ -1,9 +1,9 @@
 (function () {
     const APP = window.APP_CONTEXT_PATH || '';
-    const API_BASE = APP + '/dashboard/sessions';
-    const DATA_URL = API_BASE + '/data';
-    const CHATS_URL = API_BASE + '/chats';
-    const SELECT_URL = API_BASE + '/select';
+    const API_BASE = `${APP}/dashboard/sessions`;
+    const DATA_URL = `${API_BASE}/data`;
+    const CHATS_URL = `${API_BASE}/chats`;
+    const SELECT_URL = `${API_BASE}/select`;
     const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
     let page = 1;
@@ -23,7 +23,7 @@
 
     // Inactive is handled by dedicated page
     if (activityFilter === 'inactive') {
-        window.location.href = APP + '/dashboard/inactive-users';
+        window.location.href = `${APP}/dashboard/inactive-users`;
         return;
     }
     if (!['all', 'active'].includes(activityFilter)) {
@@ -91,6 +91,19 @@
         }
     };
 
+    function confirmAction(message) {
+        const confirmFn = window["confirm"]?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
+    }
+
+    function notifyUser(message) {
+        const text = String(message || '');
+        if (summaryEl) {
+            summaryEl.textContent = text;
+        }
+        console.warn(text);
+    }
+
     function customerProfileUrl(sessionId, friendlyName) {
         const sharedBuilder = window.DashboardCore?.buildCustomerProfileUrl;
         if (typeof sharedBuilder === 'function') {
@@ -104,7 +117,7 @@
         } else {
             return '';
         }
-        return APP + '/customer-profile?' + p.toString();
+        return `${APP}/customer-profile?${p.toString()}`;
     }
 
     function appendProfileLink(container, text, sessionId, friendlyName) {
@@ -146,7 +159,7 @@
         const res = await fetch(url, opts);
         if (!res.ok) {
             const txt = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status} ${res.statusText} ${txt ? '- ' + txt.slice(0, 300) : ''}`);
+            throw new Error(`HTTP ${res.status} ${res.statusText} ${txt ? `- ${txt.slice(0, 300)}` : ''}`);
         }
         const ct = res.headers.get('content-type') || '';
         const text = await res.text();
@@ -232,10 +245,8 @@
     }
 
     function setActivityFilter(next) {
-        if (!['all', 'active'].includes(next)) {
-            next = 'all';
-        }
-        activityFilter = next;
+        const normalizedNext = ['all', 'active'].includes(next) ? next : 'all';
+        activityFilter = normalizedNext;
 
         syncFiltersToUrl();
         page = 1;
@@ -244,7 +255,7 @@
     }
 
     function setLabeledOnly(next) {
-        labeledOnly = !!next;
+        labeledOnly = Boolean(next);
 
         syncFiltersToUrl();
         page = 1;
@@ -275,7 +286,7 @@
         }
 
         try {
-            const json = await safeFetchJson(DATA_URL + '?' + params.toString(), { credentials: 'same-origin' });
+            const json = await safeFetchJson(`${DATA_URL}?${params.toString()}`, { credentials: 'same-origin' });
             widgetNamesMap = json.widgetNames || {};
             totalSessions = json.totalSessions || 0;
             totalPages = json.totalPages || 1;
@@ -462,7 +473,7 @@
         sessionRow.parentNode.insertBefore(loadingRow, sessionRow.nextSibling);
         btn.textContent = 'Collapse';
 
-        safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+        safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
             .then(json => renderChatsIntoTd(tdMain, json.rows || []))
             .catch(err => {
                 tdMain.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
@@ -482,7 +493,7 @@
         chatsEl.innerHTML = '<div class="small-note">Loading chats…</div>';
         chatsEl.style.display = 'block';
         btn.textContent = 'Collapse';
-        safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' })
+        safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
             .then(json => renderChatsIntoDiv(chatsEl, json.rows || []))
             .catch(err => {
                 chatsEl.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
@@ -625,7 +636,7 @@
     }
 
     async function selectAllInSession(sessionId, contextElement) {
-        if (!confirm('Select all chats in this session for review?')) {
+        if (!confirmAction('Select all chats in this session for review?')) {
             return;
         }
         let loading;
@@ -635,7 +646,7 @@
             contextElement.appendChild(loading);
         }
         try {
-            const json = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(sessionId), { credentials: 'same-origin' });
+            const json = await safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' });
             (json.rows || []).forEach(r => {
                 if (r && r.chatId) {
                     selectedChatIds.add(String(r.chatId));
@@ -648,9 +659,9 @@
                 }
             });
             updateSelectionInfo();
-            alert(`Selected ${json.rows ? json.rows.length : 0} chats from session.`);
+            notifyUser(`Selected ${json.rows ? json.rows.length : 0} chats from session.`);
         } catch (err) {
-            alert('Unable to select session chats: ' + err.message);
+            notifyUser(`Unable to select session chats: ${err.message}`);
             console.error(err);
         } finally {
             if (loading && loading.parentNode) {
@@ -660,7 +671,7 @@
     }
 
     async function selectAllAcrossAllSessions() {
-        if (!confirm('Select ALL chats from currently filtered sessions? This may take a while. Continue?')) {
+        if (!confirmAction('Select ALL chats from currently filtered sessions? This may take a while. Continue?')) {
             return;
         }
         if (selectAllAllSessionsBtn) {
@@ -677,11 +688,11 @@
                 p.set('search', searchInput.value.trim());
             }
 
-            const sesRes = await safeFetchJson(DATA_URL + '?' + p.toString(), { credentials: 'same-origin' });
+            const sesRes = await safeFetchJson(`${DATA_URL}?${p.toString()}`, { credentials: 'same-origin' });
             const sessions = sesRes.sessions || [];
             for (const s of sessions) {
                 try {
-                    const j = await safeFetchJson(CHATS_URL + '?sessionId=' + encodeURIComponent(s.sessionId), { credentials: 'same-origin' });
+                    const j = await safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(s.sessionId)}`, { credentials: 'same-origin' });
                     (j.rows || []).forEach(r => {
                         if (r && r.chatId) {
                             selectedChatIds.add(String(r.chatId));
@@ -698,9 +709,9 @@
                 }
             });
             updateSelectionInfo();
-            alert(`Selected ${selectedChatIds.size} chats across ${sessions.length} sessions.`);
+            notifyUser(`Selected ${selectedChatIds.size} chats across ${sessions.length} sessions.`);
         } catch (err) {
-            alert('Unable to select all sessions: ' + err.message);
+            notifyUser(`Unable to select all sessions: ${err.message}`);
             console.error(err);
         } finally {
             if (selectAllAllSessionsBtn) {
@@ -881,7 +892,7 @@
             reviewSelectedBtn.addEventListener('click', async () => {
                 const selected = Array.from(selectedChatIds);
                 if (!selected.length) {
-                    alert('No chats selected.');
+                    notifyUser('No chats selected.');
                 } else {
                     try {
                         const res = await fetch(SELECT_URL, {
@@ -896,12 +907,12 @@
                         }
                         const json = await res.json();
                         if (json.status === 'ok' && json.selectionId) {
-                            window.location.href = APP + '/dashboard/widgets/drilldown/review?selectionId=' + encodeURIComponent(json.selectionId);
+                            window.location.href = `${APP}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(json.selectionId)}`;
                         } else {
                             throw new Error(json.message || 'Unable to create selection');
                         }
                     } catch (err) {
-                        alert('Unable to create selection: ' + err.message);
+                        notifyUser(`Unable to create selection: ${err.message}`);
                         console.error(err);
                     }
                 }

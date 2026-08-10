@@ -5,9 +5,9 @@
     const widgetDisplayName = cfg.widgetName || '';
     const selectedDate = (cfg.selectedDate || '').trim(); // NEW
 
-    const API_DATA = contextPath + '/dashboard/widgets/drilldown/view/data';
-    const API_SELECT_IDS = contextPath + '/dashboard/widgets/view/select-ids';
-    const API_REVIEW_START = contextPath + '/dashboard/widgets/review/start';
+    const API_DATA = `${contextPath}/dashboard/widgets/drilldown/view/data`;
+    const API_SELECT_IDS = `${contextPath}/dashboard/widgets/view/select-ids`;
+    const API_REVIEW_START = `${contextPath}/dashboard/widgets/review/start`;
 
     const state = {
         limit: 10,
@@ -64,7 +64,7 @@
         if (!text) {
             return '';
         }
-        return text.length <= 220 ? text : text.slice(0, 217) + '…';
+        return text.length <= 220 ? text : `${text.slice(0, 217)}…`;
     };
 
     function formatSessionDisplay(row) {
@@ -371,7 +371,7 @@
                         params.append('filterResponse', state.filters.response);
                     }
 
-                    const res = await safeFetchJson(API_SELECT_IDS + '?' + params.toString());
+                    const res = await safeFetchJson(`${API_SELECT_IDS}?${params.toString()}`);
                     if (!res.status || res.status !== 'ok') {
                         throw new Error(res.message || 'Unable to collect IDs');
                     }
@@ -485,7 +485,7 @@
                 params.append('filterResponse', state.filters.response);
             }
 
-            const res = await safeFetchJson(API_DATA + '?' + params.toString());
+            const res = await safeFetchJson(`${API_DATA}?${params.toString()}`);
             if (res.status !== 'ok') {
                 throw new Error(res.message || 'Unable to load data');
             }

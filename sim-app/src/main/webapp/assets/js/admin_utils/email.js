@@ -16,7 +16,7 @@
     }
 
     function boolVal(id) {
-        return !!document.getElementById(id)?.checked;
+        return Boolean(document.getElementById(id)?.checked);
     }
 
     function val(id) {
@@ -59,13 +59,13 @@
             document.getElementById('smtpPort').value = eff.port || '';
         }
         if (document.getElementById('smtpAuth')) {
-            document.getElementById('smtpAuth').checked = !!eff.auth;
+            document.getElementById('smtpAuth').checked = Boolean(eff.auth);
         }
         if (document.getElementById('smtpStartTls')) {
-            document.getElementById('smtpStartTls').checked = !!eff.starttls;
+            document.getElementById('smtpStartTls').checked = Boolean(eff.starttls);
         }
         if (document.getElementById('smtpSsl')) {
-            document.getElementById('smtpSsl').checked = !!eff.ssl;
+            document.getElementById('smtpSsl').checked = Boolean(eff.ssl);
         }
         if (document.getElementById('smtpUsername')) {
             document.getElementById('smtpUsername').value = eff.username || '';

@@ -79,7 +79,7 @@
         const totalEl = document.getElementById('totalSessions');
         const activeCountLink = document.getElementById('activeSessionsLink');
         const inactiveCountLink = document.getElementById('inactiveSessionsLink');
-        const preserveExisting = !!options.preserveExisting;
+        const preserveExisting = Boolean(options.preserveExisting);
 
         if (!listEl || !totalEl) {
             return false;

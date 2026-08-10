@@ -389,7 +389,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private static volatile TrustedUrlValidator trustedUrlValidator;
     private static volatile ReviewOutputValidator reviewOutputValidator;
     private static volatile AppDataSourceHolder dsHolder;
-    private TermsStore termsStore;
+    private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getName() + ".termsStore.override";
 
     private static ScheduledExecutorService createScheduler() {
         return Executors.newSingleThreadScheduledExecutor(r -> {
@@ -4916,14 +4916,24 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private TermsStore termsStore() {
-        if (termsStore != null) {
-            return termsStore;
+        if (getServletContext() != null) {
+            Object override = getServletContext().getAttribute(TERMS_STORE_OVERRIDE_ATTR);
+            if (override instanceof TermsStore store) {
+                return store;
+            }
         }
         return CDI.current().select(TermsStore.class).get();
     }
 
     void setTermsStore(TermsStore termsStore) {
-        this.termsStore = termsStore;
+        if (getServletContext() == null) {
+            return;
+        }
+        if (termsStore == null) {
+            getServletContext().removeAttribute(TERMS_STORE_OVERRIDE_ATTR);
+            return;
+        }
+        getServletContext().setAttribute(TERMS_STORE_OVERRIDE_ATTR, termsStore);
     }
 
     private String stripControlCharacters(String input) {
