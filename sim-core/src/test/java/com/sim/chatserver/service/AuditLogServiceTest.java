@@ -6,6 +6,13 @@ import com.sim.chatserver.service.AuditLogService.ManualMessageAuditEvent;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.logging.Level;
 /**
  * Parasoft Jtest UTA: Test class for AuditLogService
  *
@@ -1987,4 +1994,52 @@ public class AuditLogServiceTest
         underTest.logValidationFailure(requestId, username, clientIp, reason);
 
     }
+
+
+    // Merged from AuditLogServiceBranchTest
+    @Test
+        void toLevel_returnsInfoForStatusBelow400() throws Exception {
+            AuditLogService service = new AuditLogService(AuditLogServiceTest.class);
+            Method toLevel = AuditLogService.class.getDeclaredMethod("toLevel", int.class);
+            toLevel.setAccessible(true);
+    
+            Level level = (Level) toLevel.invoke(service, 200);
+    
+            assertEquals(Level.INFO, level);
+        }
+    
+        @Test
+        void truncate_returnsEmptyForNullOrNonPositiveMax() throws Exception {
+            AuditLogService service = new AuditLogService(AuditLogServiceTest.class);
+            Method truncate = AuditLogService.class.getDeclaredMethod("truncate", String.class, int.class);
+            truncate.setAccessible(true);
+    
+            assertEquals("", truncate.invoke(service, null, 10));
+            assertEquals("", truncate.invoke(service, "value", 0));
+        }
+    
+        @Test
+        void readObject_throwsNotSerializableException() throws Exception {
+            AuditLogService service = new AuditLogService(AuditLogServiceTest.class);
+            Method readObject = AuditLogService.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+            readObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> readObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(AuditLogService.class.getName(), cause.getMessage());
+        }
+    
+        @Test
+        void writeObject_throwsNotSerializableException() throws Exception {
+            AuditLogService service = new AuditLogService(AuditLogServiceTest.class);
+            Method writeObject = AuditLogService.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+            writeObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> writeObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(AuditLogService.class.getName(), cause.getMessage());
+        }
 }
+

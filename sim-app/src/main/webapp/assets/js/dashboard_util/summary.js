@@ -329,12 +329,91 @@
         }
     }
 
-    async function loadDailySummary(contextPath) {
+    function applySummaryPayload(data, contextPath) {
         const bodyEl = document.getElementById('dailySummaryBody');
         const metaEl = document.getElementById('dailySummaryMeta');
         const copyEl = document.getElementById('dailySummaryCopyText');
+
         if (!bodyEl) {
-            return;
+            return { accepted: false, inProgress: false, ok: false };
+        }
+
+        if (!data || data.status !== 'ok' || !data.summary) {
+            bodyEl.innerHTML = `<p style="margin:0;">${DEFAULT_NO_SUMMARY_MESSAGE}</p>`;
+            if (metaEl) {
+                metaEl.textContent = 'Awaiting first summary output.';
+            }
+            setManualSummaryRetryVisibility(false, false);
+            setSummaryProgress(0, 'not produced yet');
+            hideSummaryProgressIfDone(false);
+            return { accepted: true, inProgress: false, ok: false };
+        }
+
+        const s = data.summary || {};
+        const m = data.meta || {};
+        const inProgress = !!m.inProgress;
+        const isError = String(m.statusText || '').toLowerCase() === 'error';
+        const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
+        const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
+
+        setManualSummaryRetryVisibility(isError && !inProgress, inProgress);
+        if (isError && m.message) {
+            setManualSummaryRetryStatus(String(m.message));
+        }
+
+        setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
+
+        bodyEl.innerHTML = `
+            <div>
+                <h4 style="margin:0 0 6px 0;">Overall</h4>
+                <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.overall || '—')}</p>
+
+                <h4 style="margin:0 0 6px 0;">Quality</h4>
+                <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.quality || '—')}</p>
+
+                <h4 style="margin:0 0 6px 0;">Response</h4>
+                <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.response || '—')}</p>
+
+                <h4 style="margin:0 0 6px 0;">Usage</h4>
+                <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.usage || '—')}</p>
+
+                <h4 style="margin:0 0 6px 0;">Suggested Next Action</h4>
+                <p style="margin:0; white-space:pre-wrap;">${core.esc(suggested || '—')}</p>
+            </div>
+        `;
+
+        if (copyEl) {
+            copyEl.value = buildCopySummaryText(s, m, suggested);
+        }
+
+        const entryCount = Number.isFinite(Number(s.entryCount)) ? Number(s.entryCount) : 0;
+        const generatedAt = fmtTs(m.generatedAt, '—');
+        const slot = Number.isFinite(Number(m.slot)) ? Number(m.slot) : 0;
+        if (metaEl) {
+            metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt}${inProgress ? ' • updating…' : ''}`;
+        }
+
+        hideSummaryProgressIfDone(inProgress);
+        return { accepted: true, inProgress, ok: true };
+    }
+
+    function hydrateFromBootstrap(contextPath, bootstrapSummary) {
+        if (!bootstrapSummary || typeof bootstrapSummary !== 'object') {
+            return false;
+        }
+
+        wireManualSummaryRetryButton(contextPath);
+        ensureSummaryProgressUi();
+
+        const result = applySummaryPayload(bootstrapSummary, contextPath);
+        return !!result.accepted;
+    }
+
+    async function loadDailySummary(contextPath, seedSummary) {
+        const bodyEl = document.getElementById('dailySummaryBody');
+        const metaEl = document.getElementById('dailySummaryMeta');
+        if (!bodyEl) {
+            return false;
         }
 
         wireManualSummaryRetryButton(contextPath);
@@ -342,7 +421,14 @@
         const summaryDisabled = await renderSummaryAutoStatus(contextPath);
         setSummaryDisabledView(summaryDisabled);
         if (summaryDisabled) {
-            return;
+            return false;
+        }
+
+        if (seedSummary && typeof seedSummary === 'object') {
+            const seeded = applySummaryPayload(seedSummary, contextPath);
+            if (seeded.accepted && !seeded.inProgress) {
+                return seeded.ok;
+            }
         }
 
         bodyEl.innerHTML = '<p style="margin:0;">Loading latest summary…</p>';
@@ -372,7 +458,7 @@
                     setManualSummaryRetryVisibility(false, false);
                     setSummaryProgress(0, 'error');
                     hideSummaryProgressIfDone(false);
-                    return;
+                    return false;
                 }
 
                 data = await resp.json();
@@ -385,68 +471,17 @@
                 setManualSummaryRetryVisibility(false, false);
                 setSummaryProgress(0, 'request failed');
                 hideSummaryProgressIfDone(false);
-                return;
+                return false;
             }
 
-            if (!data || data.status !== 'ok' || !data.summary) {
-                bodyEl.innerHTML = `<p style="margin:0;">${DEFAULT_NO_SUMMARY_MESSAGE}</p>`;
-                if (metaEl) {
-                    metaEl.textContent = 'Awaiting first summary output.';
-                }
-                setManualSummaryRetryVisibility(false, false);
-                setSummaryProgress(0, 'not produced yet');
-                hideSummaryProgressIfDone(false);
-                return;
+            const applied = applySummaryPayload(data, contextPath);
+
+            if (!applied.accepted) {
+                return false;
             }
 
-            const s = data.summary || {};
-            const m = data.meta || {};
-            const inProgress = !!m.inProgress;
-            const isError = String(m.statusText || '').toLowerCase() === 'error';
-            const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
-            const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
-
-            setManualSummaryRetryVisibility(isError && !inProgress, inProgress);
-            if (isError && m.message) {
-                setManualSummaryRetryStatus(String(m.message));
-            }
-
-            setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
-
-            bodyEl.innerHTML = `
-                <div>
-                    <h4 style="margin:0 0 6px 0;">Overall</h4>
-                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.overall || '—')}</p>
-
-                    <h4 style="margin:0 0 6px 0;">Quality</h4>
-                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.quality || '—')}</p>
-
-                    <h4 style="margin:0 0 6px 0;">Response</h4>
-                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.response || '—')}</p>
-
-                    <h4 style="margin:0 0 6px 0;">Usage</h4>
-                    <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.usage || '—')}</p>
-
-                    <h4 style="margin:0 0 6px 0;">Suggested Next Action</h4>
-                    <p style="margin:0; white-space:pre-wrap;">${core.esc(suggested || '—')}</p>
-                </div>
-            `;
-
-            if (copyEl) {
-                copyEl.value = buildCopySummaryText(s, m, suggested);
-            }
-
-            const entryCount = Number.isFinite(Number(s.entryCount)) ? Number(s.entryCount) : 0;
-            const generatedAt = fmtTs(m.generatedAt, '—');
-            const slot = Number.isFinite(Number(m.slot)) ? Number(m.slot) : 0;
-            if (metaEl) {
-                metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt}${inProgress ? ' • updating…' : ''}`;
-            }
-
-            hideSummaryProgressIfDone(inProgress);
-
-            if (!inProgress) {
-                return;
+            if (!applied.inProgress) {
+                return applied.ok;
             }
             await new Promise(r => setTimeout(r, 2000));
         }
@@ -454,9 +489,11 @@
         if (metaEl) {
             metaEl.textContent = 'Summary is still generating. Please refresh shortly.';
         }
+        return true;
     }
 
     window.DashboardSummary = {
+        hydrateFromBootstrap,
         wireSummaryCopyButton,
         loadDailySummary
     };

@@ -3,6 +3,10 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -13,11 +17,17 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.service.dashboard.DashboardTermService;
+import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
+import com.sim.chatserver.widget.WidgetEntry;
+import com.sim.chatserver.widget.WidgetStore;
 
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletException;
@@ -77,12 +87,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
 
         if (allSnapshotsByTerm == null || allSnapshotsByTerm.isEmpty()) {
-            if (wantsJson(req)) {
-                writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
-            } else {
-                sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
-            }
-            return;
+            allSnapshotsByTerm = loadSnapshotsForRange(null, LocalDate.now(ZoneId.systemDefault()));
+            storeSnapshotsOnSession(session, TERM_SNAPSHOT_SESSION_KEY, allSnapshotsByTerm);
         }
 
         List<TermChatSnapshot> snapshots;
@@ -94,12 +100,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                     = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_INCREASE_SNAPSHOT_SESSION_KEY);
 
             if (increasedSnapshotsByTerm == null || increasedSnapshotsByTerm.isEmpty()) {
-                if (wantsJson(req)) {
-                    writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
-                } else {
-                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
-                }
-                return;
+                LocalDate today = LocalDate.now(ZoneId.systemDefault());
+                increasedSnapshotsByTerm = loadSnapshotsForRange(today, today);
+                storeSnapshotsOnSession(session, TERM_INCREASE_SNAPSHOT_SESSION_KEY, increasedSnapshotsByTerm);
             }
 
             snapshots = findSnapshotsByTerm(increasedSnapshotsByTerm, normalizedTerm);
@@ -119,6 +122,14 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                         return;
                     }
                 } else {
+                    if (increasedSnapshotsByTerm == null || increasedSnapshotsByTerm.isEmpty()) {
+                        if (wantsJson(req)) {
+                            writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
+                        } else {
+                            sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No increased term data available.");
+                        }
+                        return;
+                    }
                     log.fine(() -> "No increase snapshots for term=" + '\'' + rawTerm + '\''
                             + " normalized=" + '\'' + normalizedTerm + '\'');
                     if (wantsJson(req)) {
@@ -137,16 +148,21 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                     = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_YESTERDAY_SNAPSHOT_SESSION_KEY);
 
             if (yesterdaySnapshotsByTerm == null || yesterdaySnapshotsByTerm.isEmpty()) {
-                if (wantsJson(req)) {
-                    writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
-                } else {
-                    sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
-                }
-                return;
+                LocalDate yesterday = LocalDate.now(ZoneId.systemDefault()).minusDays(1);
+                yesterdaySnapshotsByTerm = loadSnapshotsForRange(yesterday, yesterday);
+                storeSnapshotsOnSession(session, TERM_YESTERDAY_SNAPSHOT_SESSION_KEY, yesterdaySnapshotsByTerm);
             }
 
             snapshots = findSnapshotsByTerm(yesterdaySnapshotsByTerm, normalizedTerm);
             if (snapshots.isEmpty()) {
+                if (yesterdaySnapshotsByTerm == null || yesterdaySnapshotsByTerm.isEmpty()) {
+                    if (wantsJson(req)) {
+                        writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
+                    } else {
+                        sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No yesterday term data available.");
+                    }
+                    return;
+                }
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for that term yesterday.");
                 } else {
@@ -158,6 +174,14 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         } else {
             snapshots = findSnapshotsByTerm(allSnapshotsByTerm, normalizedTerm);
             if (snapshots.isEmpty()) {
+                if (allSnapshotsByTerm == null || allSnapshotsByTerm.isEmpty()) {
+                    if (wantsJson(req)) {
+                        writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
+                    } else {
+                        sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "No term data available.");
+                    }
+                    return;
+                }
                 if (wantsJson(req)) {
                     writeJsonError(resp, HttpServletResponse.SC_NOT_FOUND, "No chats found for the selected term.");
                 } else {
@@ -259,6 +283,59 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     private String normalizeKey(String s) {
         return normalize(s).toLowerCase(Locale.ROOT);
+    }
+
+    private Map<String, List<TermChatSnapshot>> loadSnapshotsForRange(LocalDate rangeStart, LocalDate rangeEnd) {
+        List<WidgetEntry> widgets = listWidgets();
+        if (widgets.isEmpty()) {
+            return Map.of();
+        }
+
+        DashboardTermService termService = new DashboardTermService(termsStore());
+        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+            var summary = termService.buildTermSummary(
+                    conn,
+                    widgets,
+                    termService.loadAllTerms(),
+                    rangeStart,
+                    rangeEnd
+            );
+            if (summary == null) {
+                return Map.of();
+            }
+            return summary.copyTermSnapshots();
+        } catch (SQLException | IllegalStateException ex) {
+            log.log(Level.WARNING, "Unable to rebuild term snapshots on demand", ex);
+            return Map.of();
+        }
+    }
+
+    private void storeSnapshotsOnSession(HttpSession session, String key, Map<String, List<TermChatSnapshot>> snapshots) {
+        if (session == null || key == null || key.isBlank()) {
+            return;
+        }
+        if (snapshots == null || snapshots.isEmpty()) {
+            return;
+        }
+        session.setAttribute(key, snapshots);
+    }
+
+    private List<WidgetEntry> listWidgets() {
+        try {
+            List<WidgetEntry> widgets = WidgetStore.list(null);
+            return widgets == null ? List.of() : widgets;
+        } catch (SQLException | IllegalStateException ex) {
+            log.log(Level.WARNING, "Unable to list widgets for term selection", ex);
+            return List.of();
+        }
+    }
+
+    private AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private TermsStore termsStore() {
+        return CDI.current().select(TermsStore.class).get();
     }
 
     private void forwardSafe(HttpServletRequest req, HttpServletResponse resp, String path, int fallbackStatus) {

@@ -9,6 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for CustomerIdentity
  *
@@ -1389,4 +1394,32 @@ public class CustomerIdentityTest
         });
 
     }
+
+
+    // Merged from CustomerIdentitySerializationGuardTest
+    
+    
+        @Test
+        void readObject_throwsNotSerializableException() throws Exception {
+            CustomerIdentity value = new CustomerIdentity();
+            Method readObject = CustomerIdentity.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+            readObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> readObject.invoke(value, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(CustomerIdentity.class.getName(), cause.getMessage());
+        }
+    
+        @Test
+        void writeObject_throwsNotSerializableException() throws Exception {
+            CustomerIdentity value = new CustomerIdentity();
+            Method writeObject = CustomerIdentity.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+            writeObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> writeObject.invoke(value, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(CustomerIdentity.class.getName(), cause.getMessage());
+        }
 }

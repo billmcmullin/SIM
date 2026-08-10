@@ -1,6 +1,8 @@
 package com.sim.chatserver.util;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for TextBudgetUtil
  *
@@ -671,4 +673,17 @@ public class TextBudgetUtilTest
         String result = TextBudgetUtil.trimTo(value, maxChars);
 
     }
+
+
+    // Merged from TextBudgetUtilBranchTest
+    @Test
+        void appendWithinLimit_appendsWholeTextWhenRoomIsSufficient() {
+            StringBuilder sb = new StringBuilder("a");
+    
+            boolean appendedAll = TextBudgetUtil.appendWithinLimit(sb, "bc", 3);
+    
+            assertTrue(appendedAll);
+            assertEquals("abc", sb.toString());
+        }
 }
+

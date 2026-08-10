@@ -14,6 +14,10 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import static org.mockito.ArgumentMatchers.anyString;
 /**
  * Parasoft Jtest UTA: Test class for DashboardTemplateRenderer
  *
@@ -283,4 +287,28 @@ public class DashboardTemplateRendererTest
         String result = DashboardTemplateRenderer.renderTemplate(template, values);
 
     }
+
+
+    // Merged from DashboardTemplateRendererBranchTest
+    
+    
+        @Test
+        void loadTemplateCached_loadsAndThenReturnsCachedValue() throws Exception {
+            DashboardTemplateRenderer.clearTemplateCache();
+    
+            ServletContext firstContext = mock(ServletContext.class);
+            InputStream stream = new ByteArrayInputStream("line1\nline2".getBytes(StandardCharsets.UTF_8));
+            when(firstContext.getResourceAsStream(anyString())).thenReturn(stream);
+    
+            String loaded = DashboardTemplateRenderer.loadTemplateCached(firstContext, "/dashboard.html");
+            assertEquals("line1\nline2\n", loaded);
+    
+            ServletContext secondContext = mock(ServletContext.class);
+            when(secondContext.getResourceAsStream(anyString())).thenReturn(null);
+    
+            String cached = DashboardTemplateRenderer.loadTemplateCached(secondContext, "/dashboard.html");
+            assertEquals(loaded, cached);
+    
+            DashboardTemplateRenderer.clearTemplateCache();
+        }
 }

@@ -1,6 +1,12 @@
 package com.sim.chatserver.service;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for PromptTemplateService
  *
@@ -494,4 +500,51 @@ public class PromptTemplateServiceTest
         String result = underTest.withPromptInjectionGuardrails(message, enforceMarkdownOnly);
 
     }
+
+
+    // Merged from PromptTemplateServiceBranchTest
+    @Test
+        void addReportRubricIfMissing_returnsInputWhenAlreadyStructured() {
+            PromptTemplateService service = new PromptTemplateService();
+            String structured = "## Executive Summary\nAlready structured";
+    
+            String result = service.addReportRubricIfMissing(structured);
+    
+            assertEquals(structured, result);
+        }
+    
+        @Test
+        void addReportRubricIfMissing_overloadReturnsInputWhenAlreadyStructured() {
+            PromptTemplateService service = new PromptTemplateService();
+            String structured = "## Executive Summary\nAlready structured";
+    
+            String result = service.addReportRubricIfMissing(structured, true);
+    
+            assertEquals(structured, result);
+        }
+    
+        @Test
+        void readObject_throwsNotSerializableException() throws Exception {
+            PromptTemplateService service = new PromptTemplateService();
+            Method readObject = PromptTemplateService.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+            readObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> readObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(PromptTemplateService.class.getName(), cause.getMessage());
+        }
+    
+        @Test
+        void writeObject_throwsNotSerializableException() throws Exception {
+            PromptTemplateService service = new PromptTemplateService();
+            Method writeObject = PromptTemplateService.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+            writeObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> writeObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(PromptTemplateService.class.getName(), cause.getMessage());
+        }
 }
+

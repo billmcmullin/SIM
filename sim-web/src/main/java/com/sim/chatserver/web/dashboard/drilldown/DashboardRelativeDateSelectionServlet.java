@@ -97,8 +97,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
 
         String selectionLabel = requestedTerm.isBlank()
-                ? (termEntriesOnly ? ("Date " + date + " â€¢ Term Entries") : ("Date " + date))
-                : ("Date " + date + " â€¢ " + requestedTerm);
+            ? (termEntriesOnly ? ("Date " + date + " - Term Entries") : ("Date " + date))
+            : ("Date " + date + " - " + requestedTerm);
 
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,

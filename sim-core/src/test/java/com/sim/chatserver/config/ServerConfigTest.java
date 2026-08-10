@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for ServerConfig
  *
@@ -959,4 +964,32 @@ public class ServerConfigTest
         });
 
     }
+
+
+    // Merged from ServerConfigSerializationGuardTest
+    
+    
+        @Test
+        void readObject_throwsNotSerializableException() throws Exception {
+            ServerConfig value = new ServerConfig();
+            Method readObject = ServerConfig.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+            readObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> readObject.invoke(value, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(ServerConfig.class.getName(), cause.getMessage());
+        }
+    
+        @Test
+        void writeObject_throwsNotSerializableException() throws Exception {
+            ServerConfig value = new ServerConfig();
+            Method writeObject = ServerConfig.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+            writeObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> writeObject.invoke(value, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(ServerConfig.class.getName(), cause.getMessage());
+        }
 }

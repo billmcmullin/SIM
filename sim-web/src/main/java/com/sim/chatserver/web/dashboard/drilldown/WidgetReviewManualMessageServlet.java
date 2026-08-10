@@ -410,7 +410,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), allIds, List.of(),
-                                "Map round " + round + '/' + totalRounds + " started â€¢ remaining=" + remainingBeforeRound
+                                "Map round " + round + '/' + totalRounds + " started - remaining=" + remainingBeforeRound
                         );
                     }
 
@@ -445,7 +445,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
                                 "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
-                                + " â€¢ " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
+                                + " - " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
                                 + " complete"
                         );
                     }
@@ -474,7 +474,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                     Math.max(liveFailedBatches.get(), 0),
                                     0,
                                     allIds, List.of(), List.of(), List.of(),
-                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " â€¢ summaries=" + chunkSize
+                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " - summaries=" + chunkSize
                             );
                             return;
                         }
@@ -486,8 +486,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Synthesis L" + level + " â€¢ chunk " + chunkIndex + '/' + totalChunksAtLevel
-                                + " â€¢ size=" + chunkSize + " â€¢ cfg=" + currentChunkSizeConfig
+                                "Synthesis L" + level + " - chunk " + chunkIndex + '/' + totalChunksAtLevel
+                                + " - size=" + chunkSize + " - cfg=" + currentChunkSizeConfig
                         );
                     }
 
@@ -517,7 +517,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                                 Math.max(liveFailedBatches.get(), 0),
                                 0,
                                 allIds, List.of(), List.of(), List.of(),
-                                "Synthesis level " + level + " complete â€¢ chunks=" + totalChunksAtLevel + " â€¢ summaries=" + producedSummaries
+                                "Synthesis level " + level + " complete - chunks=" + totalChunksAtLevel + " - summaries=" + producedSummaries
                         );
                     }
 

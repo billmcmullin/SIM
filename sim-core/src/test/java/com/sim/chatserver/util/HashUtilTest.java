@@ -1,6 +1,11 @@
 package com.sim.chatserver.util;
 
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 /**
  * Parasoft Jtest UTA: Test class for HashUtil
  *
@@ -68,5 +73,16 @@ public class HashUtilTest
         String value = null; // UTA: configured value
         String result = HashUtil.sha256Hex(value);
 
+    }
+
+    @Test
+    public void testDigestHex_invalidAlgorithm_returnsErrorToken() throws Throwable
+    {
+        Method digestHex = HashUtil.class.getDeclaredMethod("digestHex", String.class, String.class);
+        digestHex.setAccessible(true);
+
+        String result = (String) digestHex.invoke(null, "SHA-999", "value");
+
+        assertEquals("sha-999_error", result);
     }
 }

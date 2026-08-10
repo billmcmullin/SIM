@@ -14,6 +14,13 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
+import com.sim.chatserver.model.DashboardViewModels.CacheValue;
+import static org.mockito.ArgumentMatchers.any;
 /**
  * Parasoft Jtest UTA: Test class for DashboardDbUtil
  *
@@ -479,4 +486,78 @@ public class DashboardDbUtilTest
 
     }
 
+
+
+    // Merged from DashboardDbUtilBranchTest
+    
+    
+        @Test
+        void sanitizeWidgetTableName_truncatesToMaxLength() {
+            String widgetId = "a" + "b".repeat(100);
+    
+            String result = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
+    
+            assertEquals(60, result.length());
+        }
+    
+        @Test
+        void tableExists_returnsFalseForInvalidInput() throws Exception {
+            assertFalse(DashboardDbUtil.tableExists(null, "table"));
+        }
+    
+        @Test
+        void tableExistsCached_returnsFalseForInvalidInput() throws Exception {
+            assertFalse(DashboardDbUtil.tableExistsCached(null, "table", new HashMap<>()));
+        }
+    
+        @Test
+        void tableExistsCached_initializesRequestCacheWhenNull() throws Exception {
+            Connection conn = mock(Connection.class);
+            when(conn.getCatalog()).thenReturn("cat");
+    
+            DatabaseMetaData meta = mock(DatabaseMetaData.class);
+            when(conn.getMetaData()).thenReturn(meta);
+    
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.next()).thenReturn(false);
+            when(meta.getTables(any(), any(), any(), any())).thenReturn(rs);
+    
+            boolean exists = DashboardDbUtil.tableExistsCached(conn, "table_x", null);
+    
+            assertFalse(exists);
+        }
+    
+        @SuppressWarnings("unchecked")
+        @Test
+        void tableExistsCached_evictsOldestWhenCacheExceedsLimit() throws Exception {
+            Field cacheField = DashboardDbUtil.class.getDeclaredField("GLOBAL_TABLE_EXISTS_CACHE");
+            cacheField.setAccessible(true);
+            Map<String, CacheValue<Boolean>> cache = (Map<String, CacheValue<Boolean>>) cacheField.get(null);
+    
+            synchronized (cache) {
+                cache.clear();
+                for (int i = 0; i < 512; i++) {
+                    cache.put("k" + i, new CacheValue<>(Boolean.TRUE, Long.MAX_VALUE));
+                }
+            }
+    
+            Connection conn = mock(Connection.class);
+            when(conn.getCatalog()).thenReturn("cat");
+    
+            DatabaseMetaData meta = mock(DatabaseMetaData.class);
+            when(conn.getMetaData()).thenReturn(meta);
+    
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.next()).thenReturn(false);
+            when(meta.getTables(any(), any(), any(), any())).thenReturn(rs);
+    
+            DashboardDbUtil.tableExistsCached(conn, "table_target", new LinkedHashMap<>());
+    
+            synchronized (cache) {
+                assertEquals(512, cache.size());
+                assertFalse(cache.containsKey("k0"));
+                assertTrue(cache.containsKey("cat|table_target"));
+                cache.clear();
+            }
+        }
 }

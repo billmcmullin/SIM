@@ -491,7 +491,7 @@ public class WidgetExportServlet extends HttpServlet {
                 sub.setSpacingAfter(2);
                 addDocumentElement(doc, sub);
             } else if (t.startsWith("- ")) {
-                Paragraph bullet = new Paragraph("â€¢ " + t.substring(2).trim(), normal);
+                Paragraph bullet = new Paragraph("- " + t.substring(2).trim(), normal);
                 bullet.setIndentationLeft(14f);
                 bullet.setSpacingAfter(2);
                 addDocumentElement(doc, bullet);

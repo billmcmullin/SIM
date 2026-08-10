@@ -10,6 +10,13 @@ import com.sim.chatserver.model.SelectedEntry;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for ReviewSamplingService
  *
@@ -1400,4 +1407,63 @@ public class ReviewSamplingServiceTest
         List<SelectedEntry> result = underTest.topRelevant(entries, terms, n);
 
     }
+
+
+    // Merged from ReviewSamplingServiceBranchTest
+    @Test
+        void scoreEntry_incrementsWhenTermIsPresent() {
+            ReviewSamplingService service = new ReviewSamplingService();
+            SelectedEntry entry = new SelectedEntry("id", "contains alpha", "", "", "");
+    
+            int score = service.scoreEntry(entry, List.of("alpha"));
+    
+            assertEquals(1, score);
+        }
+    
+        @Test
+        void matchedTerms_addsMatchedTerm() {
+            ReviewSamplingService service = new ReviewSamplingService();
+            SelectedEntry entry = new SelectedEntry("id", "alpha found", "", "", "");
+    
+            Set<String> matched = service.matchedTerms(entry, List.of("alpha", "beta"));
+    
+            assertTrue(matched.contains("alpha"));
+        }
+    
+        @Test
+        void dedupeByChatId_skipsNullEntry() {
+            ReviewSamplingService service = new ReviewSamplingService();
+            List<SelectedEntry> entries = new ArrayList<>();
+            entries.add(null);
+            entries.add(new SelectedEntry("chat-1", "p", "r", "t", "s"));
+    
+            List<SelectedEntry> deduped = service.dedupeByChatId(entries);
+    
+            assertEquals(1, deduped.size());
+        }
+    
+        @Test
+        void readObject_throwsNotSerializableException() throws Exception {
+            ReviewSamplingService service = new ReviewSamplingService();
+            Method readObject = ReviewSamplingService.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+            readObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> readObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(ReviewSamplingService.class.getName(), cause.getMessage());
+        }
+    
+        @Test
+        void writeObject_throwsNotSerializableException() throws Exception {
+            ReviewSamplingService service = new ReviewSamplingService();
+            Method writeObject = ReviewSamplingService.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+            writeObject.setAccessible(true);
+    
+            InvocationTargetException ex = assertThrows(InvocationTargetException.class,
+                    () -> writeObject.invoke(service, new Object[] { null }));
+            NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
+            assertEquals(ReviewSamplingService.class.getName(), cause.getMessage());
+        }
 }
+
