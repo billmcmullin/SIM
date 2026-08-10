@@ -37,11 +37,7 @@ async function toHttpError(res, method, url) {
     const data = await parseBody(res);
     const requestId = data?.requestId || "";
     const messageText = data?.message || data?.error || "";
-    const err = new Error(
-        `${method} ${url} failed with ${res.status}`
-        + (requestId ? ` [${requestId}]` : "")
-        + (messageText ? `: ${messageText}` : "")
-    );
+    const err = new Error(`${method} ${url} failed with ${res.status}${requestId ? ` [${requestId}]` : ""}${messageText ? `: ${messageText}` : ""}`);
     err.status = res.status;
     err.data = data;
     err.requestId = requestId;
@@ -203,11 +199,7 @@ export async function postForDownload(url, payload = {}, options = {}) {
         let data = {};
         try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
 
-        const err = new Error(
-            `POST ${url} failed with ${res.status}`
-            + (data?.requestId ? ` [${data.requestId}]` : "")
-            + (data?.message ? `: ${data.message}` : (text ? `: ${text}` : ""))
-        );
+        const err = new Error(`POST ${url} failed with ${res.status}${data?.requestId ? ` [${data.requestId}]` : ""}${data?.message ? `: ${data.message}` : (text ? `: ${text}` : "")}`);
         err.status = res.status;
         err.data = data;
         err.requestId = data?.requestId || "";

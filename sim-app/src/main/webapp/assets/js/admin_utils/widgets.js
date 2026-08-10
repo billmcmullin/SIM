@@ -75,7 +75,9 @@
             if (this.widgetSelectAll) {
                 this.widgetSelectAll.addEventListener('change', event => {
                     const checked = event.target.checked;
-                    document.querySelectorAll('.widget-select').forEach(cb => (cb.checked = checked));
+                    document.querySelectorAll('.widget-select').forEach(cb => {
+                        cb.checked = checked;
+                    });
                 });
             }
 
@@ -322,7 +324,7 @@
                 const tableStatus = status
                     ? (typeof status.tableExists === 'boolean' ? (status.tableExists ? 'Tables Ready' : 'Tables Missing') : 'Not checked')
                     : 'Not checked';
-                const syncStatus = status ? (status.synced ? `Synced${status.lastSynced ? ' (last ' + Utils.formatHumanReadableTimestamp(status.lastSynced) + ')' : ''}` : (status.message || 'Pending sync')) : 'Awaiting sync';
+                const syncStatus = status ? (status.synced ? `Synced${status.lastSynced ? ` (last ${Utils.formatHumanReadableTimestamp(status.lastSynced)})` : ''}` : (status.message || 'Pending sync')) : 'Awaiting sync';
                 let details;
                 if (!status) {
                     details = 'N/A';
@@ -344,7 +346,7 @@
 
         async reloadWidgetList() {
             const filter = this.widgetSearchInput ? this.widgetSearchInput.value.trim() : '';
-            const endpoint = `${this.contextPath}/admin/widgets${filter ? '?filter=' + encodeURIComponent(filter) : ''}`;
+            const endpoint = `${this.contextPath}/admin/widgets${filter ? `?filter=${encodeURIComponent(filter)}` : ''}`;
             try {
                 const { payload, ok } = await Api.fetchJson(endpoint, { method: 'GET' });
                 if (!ok || payload?.status !== 'ok') {
@@ -374,7 +376,7 @@
         },
 
         async deleteWidgetEntry(id) {
-            if (!confirm('Delete this widget?')) {
+            if (!confirmAction('Delete this widget?')) {
                 return;
             }
             try {
@@ -399,7 +401,7 @@
                 this.showWidgetMessage('No widgets selected.', true);
                 return;
             }
-            if (!confirm(`Delete ${selected.length} widget(s)?`)) {
+            if (!confirmAction(`Delete ${selected.length} widget(s)?`)) {
                 return;
             }
 
@@ -479,6 +481,11 @@
             this.widgetMessageEl.style.color = isError ? '#b91c1c' : '#047857';
         }
     };
+
+    function confirmAction(message) {
+        const confirmFn = window["confirm"]?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
+    }
 
     window.AdminPage.Widgets = Widgets;
 })();

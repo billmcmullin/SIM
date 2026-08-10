@@ -88,7 +88,7 @@
             const h2 = section.querySelector('h2');
             const title = h2 ? (h2.textContent || '').trim() : '';
             return { section, idx, title };
-        }).filter((entry) => !!entry.title);
+        }).filter((entry) => Boolean(entry.title));
 
         const byTitle = new Map();
         sectionEntries.forEach((entry) => {

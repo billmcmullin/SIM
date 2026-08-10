@@ -152,7 +152,7 @@
             }
 
             const autoEnabled = payload.summaryAutoEnabled !== false;
-            const paused = !!payload.summaryAutoPaused;
+            const paused = Boolean(payload.summaryAutoPaused);
             const reason = (payload.summaryAutoPausedReason || '').trim();
             const lastRunAt = Utils.formatHumanReadableTimestamp(payload.summaryLastRunAt);
             const nextRunAt = Utils.formatHumanReadableTimestamp(payload.summaryNextRunAt);

@@ -48,7 +48,7 @@ if (form && result) {
                 result.textContent = `Login failed (${response.status}): ${text}`;
             }
         } catch (err) {
-            result.textContent = "Network error: " + err.message;
+            result.textContent = `Network error: ${err.message}`;
         }
     });
 }

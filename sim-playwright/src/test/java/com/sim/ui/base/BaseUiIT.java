@@ -1,5 +1,8 @@
 package com.sim.ui.base;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,8 +18,29 @@ import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.options.RequestOptions;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.parasoft.coverage.integration.playwright.PlaywrightCoverageIntegration;
 
+/**
+ * Shared Playwright base fixture for SIM UI integration tests.
+ *
+ * Responsibilities:
+ * - Starts and stops shared Playwright/Chromium resources for the test class lifecycle.
+ * - Creates a fresh browser context/page per test with common defaults.
+ * - Applies Parasoft coverage integration settings for CTP/DTP correlation.
+ * - Optionally overrides the outgoing Baggage header when explicitly configured.
+ *
+ * Coverage behavior:
+ * - Default path: Parasoft coverage integration drives header propagation.
+ * - Manual override path: if a non-blank override is provided via system property
+ *   or environment variable, it replaces only the Baggage header value.
+ * - Fallback path: if override is null/empty, tests run normally and keep the
+ *   default Parasoft coverage behavior.
+ */
 public abstract class BaseUiIT {
+
+    private static final String BAGGAGE_HEADER_NAME = "Baggage";
+    private static final String BAGGAGE_OVERRIDE_PROPERTY = "parasoft.coverage.baggageHeader";
+    private static final String BAGGAGE_OVERRIDE_ENV = "PARASOFT_COVERAGE_BAGGAGE_HEADER";
 
     protected static Playwright playwright;
     protected static Browser browser;
@@ -57,9 +81,17 @@ public abstract class BaseUiIT {
         headless = Boolean.parseBoolean(System.getProperty("headless", "true"));
         ignoreHttpsErrors = Boolean.parseBoolean(System.getProperty("ignoreHttpsErrors", "true"));
 
-        context = browser.newContext(new Browser.NewContextOptions()
-                .setViewportSize(1440, 900)
-                .setIgnoreHTTPSErrors(ignoreHttpsErrors));
+        Browser.NewContextOptions contextOptions = new Browser.NewContextOptions()
+            .setViewportSize(1440, 900)
+            .setIgnoreHTTPSErrors(ignoreHttpsErrors);
+
+        // Adds Parasoft coverage baggage-header propagation when available.
+        PlaywrightCoverageIntegration.updateBrowserContextOptions(contextOptions);
+
+        // Optional manual override for troubleshooting or explicit correlation flows.
+        applyBaggageHeaderOverride(contextOptions);
+
+        context = browser.newContext(contextOptions);
 
         // Avoid external CDN dependency during UI tests; chart rendering behavior is validated by app JS wiring.
         context.route("**/cdn.jsdelivr.net/npm/chart.js**", route -> route.fulfill(
@@ -202,5 +234,24 @@ public abstract class BaseUiIT {
         String safeUsername = username == null ? "" : username.replace("\\", "\\\\").replace("\"", "\\\"");
         String safePassword = password == null ? "" : password.replace("\\", "\\\\").replace("\"", "\\\"");
         return "{\"username\":\"" + safeUsername + "\",\"password\":\"" + safePassword + "\"}";
+    }
+
+    private void applyBaggageHeaderOverride(Browser.NewContextOptions contextOptions) {
+        String manualBaggageHeader = System.getProperty(BAGGAGE_OVERRIDE_PROPERTY);
+        if (manualBaggageHeader == null || manualBaggageHeader.isBlank()) {
+            manualBaggageHeader = System.getenv(BAGGAGE_OVERRIDE_ENV);
+        }
+
+        if (manualBaggageHeader == null || manualBaggageHeader.isBlank()) {
+            // No manual override: keep Parasoft's default CTP/DTP header propagation.
+            return;
+        }
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (contextOptions.extraHTTPHeaders != null) {
+            headers.putAll(contextOptions.extraHTTPHeaders);
+        }
+        headers.put(BAGGAGE_HEADER_NAME, manualBaggageHeader.trim());
+        contextOptions.setExtraHTTPHeaders(headers);
     }
 }

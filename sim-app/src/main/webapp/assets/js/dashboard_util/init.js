@@ -23,7 +23,8 @@
     }
 
     async function fetchDashboardBootstrap(contextPath) {
-        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const AbortControllerCtor = window.AbortController;
+        const controller = typeof AbortControllerCtor === 'function' ? new AbortControllerCtor() : null;
         let timeoutId = null;
         if (controller) {
             timeoutId = window.setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
@@ -59,22 +60,22 @@
         let sessionsHydrated = false;
         if (sections.sessions && sections.sessions.status === 'ok' && window.DashboardSessions
                 && typeof window.DashboardSessions.hydrateTopSessions === 'function') {
-            sessionsHydrated = !!window.DashboardSessions.hydrateTopSessions(contextPath, sections.sessions.data);
+            sessionsHydrated = Boolean(window.DashboardSessions.hydrateTopSessions(contextPath, sections.sessions.data));
         }
 
         if (!sessionsHydrated && window.DashboardSessions && typeof window.DashboardSessions.loadTopSessions === 'function') {
-            sessionsHydrated = !!(await window.DashboardSessions.loadTopSessions(contextPath, { preserveExisting: true }));
+            sessionsHydrated = Boolean(await window.DashboardSessions.loadTopSessions(contextPath, { preserveExisting: true }));
         }
         setSectionLoadState('sessions', sessionsHydrated ? 'ready' : 'stale', sessionsHydrated ? '' : 'fallback');
 
         let summarySeeded = false;
         if (sections.summary && sections.summary.status === 'ok' && window.DashboardSummary
                 && typeof window.DashboardSummary.hydrateFromBootstrap === 'function') {
-            summarySeeded = !!window.DashboardSummary.hydrateFromBootstrap(contextPath, sections.summary.data);
+            summarySeeded = Boolean(window.DashboardSummary.hydrateFromBootstrap(contextPath, sections.summary.data));
         }
 
         if (window.DashboardSummary && typeof window.DashboardSummary.loadDailySummary === 'function') {
-            const summaryOk = !!(await window.DashboardSummary.loadDailySummary(
+            const summaryOk = Boolean(await window.DashboardSummary.loadDailySummary(
                 contextPath,
                 summarySeeded && sections.summary ? sections.summary.data : null
             ));

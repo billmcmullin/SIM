@@ -83,7 +83,7 @@
         },
 
         async deleteUser(id) {
-            if (!confirm('Delete this user?')) {
+            if (!confirmAction('Delete this user?')) {
                 return;
             }
             try {
@@ -99,6 +99,11 @@
             }
         }
     };
+
+    function confirmAction(message) {
+        const confirmFn = window["confirm"]?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
+    }
 
     window.AdminPage.Users = Users;
 })();

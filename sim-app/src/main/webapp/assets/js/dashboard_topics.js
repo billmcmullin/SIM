@@ -100,7 +100,7 @@
         }
 
         if (useRangeCheckbox) {
-            useRangeCheckbox.checked = !!(start && end);
+            useRangeCheckbox.checked = Boolean(start && end);
         }
 
         includeOtherEnabled = includeOther === '1' || includeOther === 'true' || includeOther === 'yes' || includeOther === 'on';
@@ -112,7 +112,7 @@
         const day = (dayInput?.value || '').trim();
         const start = (startInput?.value || '').trim();
         const end = (endInput?.value || '').trim();
-        const useRange = !!(useRangeCheckbox && useRangeCheckbox.checked);
+        const useRange = Boolean(useRangeCheckbox && useRangeCheckbox.checked);
 
         // default always all topics
         params.set('limit', 'all');
@@ -153,7 +153,7 @@
     function getDateParams() {
         const params = new URLSearchParams();
 
-        const useRange = !!(useRangeCheckbox && useRangeCheckbox.checked);
+        const useRange = Boolean(useRangeCheckbox && useRangeCheckbox.checked);
         const day = (dayInput?.value || '').trim();
         const start = (startInput?.value || '').trim();
         const end = (endInput?.value || '').trim();
@@ -211,7 +211,7 @@
             window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
         } catch (err) {
             console.error(err);
-            alert(`Unable to open review: ${err.message}`);
+            console.warn(`Unable to open review: ${err.message}`);
         }
     }
 

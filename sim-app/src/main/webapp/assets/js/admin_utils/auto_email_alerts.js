@@ -122,7 +122,7 @@
         },
 
         fillForm(data) {
-            setChecked('aeHealthEnabled', !!data.healthEnabled);
+            setChecked('aeHealthEnabled', Boolean(data.healthEnabled));
             setValue('aeHealthCheckIntervalMinutes', safeNumber(data.healthCheckIntervalMinutes, 5));
             setValue('aeHealthOfflineDelayMinutes', safeNumber(data.healthOfflineDelayMinutes, 5));
             setValue('aeHealthResendIntervalMinutes', safeNumber(data.healthResendIntervalMinutes, 30));
@@ -132,7 +132,7 @@
             setValue('aeHealthRunbookUrl', data.healthRunbookUrl || '');
             setValue('aeHealthRunbookAttachmentPath', data.healthRunbookAttachmentPath || '');
 
-            setChecked('aeTermEnabled', !!data.termEnabled);
+            setChecked('aeTermEnabled', Boolean(data.termEnabled));
             setValue('aeTermCheckIntervalMinutes', safeNumber(data.termCheckIntervalMinutes, 10));
             setValue('aeTermName', data.termName || '');
             setValue('aeTermRecipients', data.termRecipients || '');
@@ -166,26 +166,26 @@
     function setValue(id, val) {
         const el = document.getElementById(id);
         if (el) {
-            el.value = val == null ? '' : String(val);
+            el.value = val === null || val === undefined ? '' : String(val);
         }
     }
 
     function checked(id) {
         const el = document.getElementById(id);
-        return !!(el && el.checked);
+            return Boolean(el && el.checked);
     }
 
     function setChecked(id, val) {
         const el = document.getElementById(id);
         if (el) {
-            el.checked = !!val;
+                el.checked = Boolean(val);
         }
     }
 
     function setText(id, text) {
         const el = document.getElementById(id);
         if (el) {
-            el.textContent = text == null ? '' : String(text);
+            el.textContent = text === null || text === undefined ? '' : String(text);
         }
     }
 
@@ -201,22 +201,22 @@
         return Math.max(0, n);
     }
 
-    function safeNumber(value, fallback) {
-        const n = Number(value);
+    function safeNumber(numericValue, fallback) {
+        const n = Number(numericValue);
         if (!Number.isFinite(n)) {
             return fallback;
         }
         return n;
     }
 
-    function formatDateLabel(value, fallback) {
+    function formatDateLabel(rawValue, fallback) {
         if (window.AdminPage?.Utils?.formatHumanReadableTimestamp) {
-            return window.AdminPage.Utils.formatHumanReadableTimestamp(value, fallback);
+            return window.AdminPage.Utils.formatHumanReadableTimestamp(rawValue, fallback);
         }
-        if (!value) {
+        if (!rawValue) {
             return fallback;
         }
-        const d = new Date(value);
+        const d = new Date(rawValue);
         if (Number.isNaN(d.getTime())) {
             return fallback;
         }

@@ -190,7 +190,7 @@ export async function sendManualMessage({
             selected: cleanEntries.length,
             estimatedTokens: estimateTokens(message || ""),
             endpoint: DEFAULTS.manualMessageEndpoint,
-            async: !!async
+            async: Boolean(async)
         });
 
         const res = await fetch(DEFAULTS.manualMessageEndpoint, {
@@ -215,11 +215,7 @@ export async function sendManualMessage({
         if (!res.ok) {
             const requestId = data?.requestId || "";
             const messageText = data?.message || data?.error || "";
-            const err = new Error(
-                `POST ${DEFAULTS.manualMessageEndpoint} failed with ${res.status}`
-                + (requestId ? ` [${requestId}]` : "")
-                + (messageText ? `: ${messageText}` : "")
-            );
+            const err = new Error(`POST ${DEFAULTS.manualMessageEndpoint} failed with ${res.status}${requestId ? ` [${requestId}]` : ""}${messageText ? `: ${messageText}` : ""}`);
             err.status = res.status;
             err.data = data;
             err.requestId = requestId;
@@ -295,10 +291,19 @@ function setQuickPdfVisibility({ show, enabled }) {
     btn.disabled = !enabled;
 }
 
+function notifyUser(message) {
+    const statusEl = byId("manualMessageStatus");
+    const text = String(message || "");
+    if (statusEl) {
+        statusEl.textContent = text;
+    }
+    console.warn(text);
+}
+
 export async function exportSelected(format = "csv") {
     const selected = getSelectedEntries();
     if (!selected.length) {
-        alert("Select at least one chat to export.");
+        notifyUser("Select at least one chat to export.");
         return;
     }
 
@@ -329,7 +334,7 @@ export async function exportSelected(format = "csv") {
         endpoint: DEFAULTS.exportEndpoint,
         format: payload.format,
         count: selectedChatIds.length,
-        hasReportMarkdown: !!payload.reportMarkdown
+        hasReportMarkdown: Boolean(payload.reportMarkdown)
     });
 
     const { blob, filename } = await postForDownload(DEFAULTS.exportEndpoint, payload, {
@@ -462,7 +467,7 @@ function wireBasicUi() {
 
     if (selectAllVisible) {
         selectAllVisible.addEventListener("change", () => {
-            const checked = !!selectAllVisible.checked;
+            const checked = Boolean(selectAllVisible.checked);
             for (const r of getCurrentPageRows()) {
                 const key = rowKey(r);
                 if (checked) {
@@ -497,7 +502,7 @@ function wireBasicUi() {
                 await exportSelected("csv");
             } catch (e) {
                 error("csv export failed", e);
-                alert(e.message || "CSV export failed.");
+                notifyUser(e.message || "CSV export failed.");
             }
         });
     }
@@ -507,7 +512,7 @@ function wireBasicUi() {
                 await exportSelected("json");
             } catch (e) {
                 error("json export failed", e);
-                alert(e.message || "JSON export failed.");
+                notifyUser(e.message || "JSON export failed.");
             }
         });
     }
@@ -517,7 +522,7 @@ function wireBasicUi() {
                 await exportSelected("text");
             } catch (e) {
                 error("text export failed", e);
-                alert(e.message || "Text export failed.");
+                notifyUser(e.message || "Text export failed.");
             }
         });
     }
@@ -532,7 +537,7 @@ function wireBasicUi() {
                 await exportSelected(f);
             } catch (e) {
                 error("export failed", e);
-                alert(e.message || "Export failed.");
+                notifyUser(e.message || "Export failed.");
             }
         });
     }
@@ -556,7 +561,7 @@ function wireManualMessageUi() {
         section.setAttribute("aria-hidden", "false");
         state.manualSectionOpen = true;
         updateManualSelectedCount();
-        setQuickPdfVisibility({ show: true, enabled: !!getCurrentReportMarkdown() });
+        setQuickPdfVisibility({ show: true, enabled: Boolean(getCurrentReportMarkdown()) });
     };
     const closeSection = () => {
         section.hidden = true;
@@ -611,7 +616,7 @@ function wireManualMessageUi() {
                 await exportSelected("pdf");
             } catch (e) {
                 error("quick pdf export failed", e);
-                alert(e.message || "PDF export failed.");
+                notifyUser(e.message || "PDF export failed.");
             }
         });
     }
@@ -706,14 +711,12 @@ async function onManualMessageSend() {
         if (statusEl) {
             statusEl.textContent = "Finished.";
         }
-        setQuickPdfVisibility({ show: true, enabled: !!String(responseText || "").trim() });
+        setQuickPdfVisibility({ show: true, enabled: Boolean(String(responseText || "").trim()) });
     } catch (e) {
         const requestId = e?.data?.requestId || e?.requestId || "";
         const backendMessage = e?.data?.message || e?.data?.error || "";
         if (statusEl) {
-            statusEl.textContent =
-                `Analyze failed${e?.status ? ` (HTTP ${e.status})` : ""}${requestId ? ` [${requestId}]` : ""}`
-                + (backendMessage ? `: ${backendMessage}` : ".");
+            statusEl.textContent = `Analyze failed${e?.status ? ` (HTTP ${e.status})` : ""}${requestId ? ` [${requestId}]` : ""}${backendMessage ? `: ${backendMessage}` : "."}`;
         }
         setQuickPdfVisibility({ show: true, enabled: false });
         error("manual analyze failed", e);
@@ -794,8 +797,8 @@ function applyJobStatusToUi(payload) {
     showProgressBlock(true);
 
     const phase = String(progress?.phase || job.phase || "UNKNOWN");
-    const done = !!(progress?.done ?? job.done);
-    const success = !!(progress?.success ?? job.success);
+    const done = Boolean(progress?.done ?? job.done);
+    const success = Boolean(progress?.success ?? job.success);
     const activity = String(progress?.activity || progress?.message || job.activity || job.message || "").trim();
 
     const totalBatches = Number(progress?.totalBatches ?? job.totalBatches ?? 0);
@@ -821,7 +824,7 @@ function applyJobStatusToUi(payload) {
         ?? (total > 0 ? Math.round((usedCount * 100) / total) : 0)
     );
     const coverage = Number.isFinite(derivedCoverage) ? Math.max(0, Math.min(100, derivedCoverage)) : 0;
-    const coverageComplete = !!(coverageObj?.coverageCompleteDerived ?? (missingCount === 0));
+    const coverageComplete = Boolean(coverageObj?.coverageCompleteDerived ?? (missingCount === 0));
 
     const warnings = Array.isArray(progress?.warnings)
         ? progress.warnings.map((w) => String(w || "").toLowerCase())
@@ -872,19 +875,29 @@ function applyJobStatusToUi(payload) {
         : "";
 
     if (progressText) {
-        progressText.textContent =
-            `Status: ${humanizePhase(phase)}`
-            + batchSegment
-            + ` • Progress: ${progressPercent}%`
-            + (failedBatches > 0 ? ` • Failed: ${failedBatches}` : "")
-            + (activity ? ` • ${activity}` : "");
+        const progressParts = [`Status: ${humanizePhase(phase)}`];
+        if (batchSegment) {
+            progressParts.push(batchSegment.replace(/^\s*•\s*/, ""));
+        }
+        progressParts.push(`Progress: ${progressPercent}%`);
+        if (failedBatches > 0) {
+            progressParts.push(`Failed: ${failedBatches}`);
+        }
+        if (activity) {
+            progressParts.push(activity);
+        }
+        progressText.textContent = progressParts.join(" • ");
     }
 
     if (coverageText) {
-        coverageText.textContent =
-            `Coverage: ${coverage}%${coverageComplete ? " (complete)" : " (in progress)"}`
-            + ` • Used: ${usedCount}/${Math.max(0, total)}`
-            + (metadataMismatch ? " • Coverage metadata mismatch detected" : "");
+        const coverageParts = [
+            `Coverage: ${coverage}%${coverageComplete ? " (complete)" : " (in progress)"}`,
+            `Used: ${usedCount}/${Math.max(0, total)}`
+        ];
+        if (metadataMismatch) {
+            coverageParts.push("Coverage metadata mismatch detected");
+        }
+        coverageText.textContent = coverageParts.join(" • ");
     }
 
     if (missingText) {
@@ -940,31 +953,46 @@ function applyJobStatusToUi(payload) {
             ? (coverageComplete && success ? "Finished" : "Finished with issues")
             : "In progress";
 
-        statusEl.textContent =
-            `${tone} • ${humanizePhase(phase)}`
-            + (activity ? ` • ${activity}` : "")
-            + ` • Progress: ${progressPercent}%`
-            + ` • Coverage: ${coverage}%`
-            + (metadataMismatch ? " • Coverage metadata mismatch" : "");
+        const statusParts = [`${tone} • ${humanizePhase(phase)}`];
+        if (activity) {
+            statusParts.push(activity);
+        }
+        statusParts.push(`Progress: ${progressPercent}%`);
+        statusParts.push(`Coverage: ${coverage}%`);
+        if (metadataMismatch) {
+            statusParts.push("Coverage metadata mismatch");
+        }
+        statusEl.textContent = statusParts.join(" • ");
     }
 
     if (done) {
         const finalReport = job?.finalReport || job?.rawResponseBody || "";
         if (success && coverageComplete && !metadataMismatch) {
             setReportMarkdown(reorderReportSections(String(finalReport || "Analysis completed successfully.")));
-            setQuickPdfVisibility({ show: true, enabled: !!String(finalReport || "").trim() });
+            setQuickPdfVisibility({ show: true, enabled: Boolean(String(finalReport || "").trim()) });
             return;
         }
 
         const title = coverageComplete ? "## Finished with Issues" : "## Finished with Partial Coverage";
-        const detail =
-            `${title}\n\n`
-            + `- Coverage: **${coverage}%**\n`
-            + `- Used: **${usedCount}/${Math.max(0, total)}**\n`
-            + (showBatchCounts ? `- Batches: **${Math.max(0, completedBatches)}/${Math.max(0, totalBatches)}**\n` : "")
-            + (metadataMismatch ? `- Warning: **Coverage metadata mismatch detected**\n` : "")
-            + (job.errorMessage ? `- Error: ${job.errorMessage}\n` : "")
-            + (finalReport ? `\n---\n\n${finalReport}` : "");
+        const detailLines = [
+            `${title}`,
+            "",
+            `- Coverage: **${coverage}%**`,
+            `- Used: **${usedCount}/${Math.max(0, total)}**`
+        ];
+        if (showBatchCounts) {
+            detailLines.push(`- Batches: **${Math.max(0, completedBatches)}/${Math.max(0, totalBatches)}**`);
+        }
+        if (metadataMismatch) {
+            detailLines.push("- Warning: **Coverage metadata mismatch detected**");
+        }
+        if (job.errorMessage) {
+            detailLines.push(`- Error: ${job.errorMessage}`);
+        }
+        if (finalReport) {
+            detailLines.push("", "---", "", finalReport);
+        }
+        const detail = detailLines.join("\n");
 
         setReportMarkdown(reorderReportSections(detail));
         setQuickPdfVisibility({ show: true, enabled: true });

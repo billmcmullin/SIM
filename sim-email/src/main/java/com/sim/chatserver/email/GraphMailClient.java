@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -37,11 +36,8 @@ public class GraphMailClient {
     private static final Object DIAG_LOCK = new Object();
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
-    private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
-    private static final int MAX_CONFIG_VALUE_LEN = 512;
-    private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
-    private static final Pattern SAFE_DIR_TOKEN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
+    private static final String PROP_ENABLED = "sim.server.diagnostic.log.enabled";
 
     private static volatile boolean warnedDiagFailure;
 
@@ -230,7 +226,7 @@ public class GraphMailClient {
                 if (!warnedDiagFailure) {
                     warnedDiagFailure = true;
                     LOG.log(Level.WARNING,
-                            "Failed writing graph mail diagnostics log. Disable with " + ENV_ENABLED + "=false or fix " + ENV_DIR,
+                            "Failed writing graph mail diagnostics log. Disable with " + ENV_ENABLED + "=false",
                             ex);
                 }
             }
@@ -238,18 +234,12 @@ public class GraphMailClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = readValidatedBooleanEnv(ENV_ENABLED);
-        String dirRaw = readValidatedDirectoryTokenEnv(ENV_DIR);
-        if (enabledRaw == null) {
-            return dirRaw != null;
-        }
+        String enabledRaw = trimToNull(System.getProperty(PROP_ENABLED));
         return isTruthy(enabledRaw);
     }
 
     private Path resolveDiagnosticsDir() {
-        String configured = readValidatedDirectoryTokenEnv(ENV_DIR);
-        String dirName = configured == null ? DEFAULT_DIR_NAME : configured;
-        return Paths.get(dirName).toAbsolutePath().normalize();
+        return Paths.get(DEFAULT_DIR_NAME).toAbsolutePath().normalize();
     }
 
     private boolean isTruthy(String value) {
@@ -294,50 +284,4 @@ public class GraphMailClient {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private String readValidatedBooleanEnv(String name) {
-        String sanitized = sanitizeConfigValue(System.getenv(name));
-        if (sanitized == null) {
-            return null;
-        }
-        if (!SAFE_BOOL_TEXT.matcher(sanitized).matches()) {
-            LOG.log(Level.WARNING, "Ignoring unsafe diagnostics config from env {0}", name);
-            return null;
-        }
-        return sanitized;
-    }
-
-    private String readValidatedDirectoryTokenEnv(String name) {
-        String sanitized = sanitizeConfigValue(System.getenv(name));
-        if (sanitized == null) {
-            return null;
-        }
-        if (!SAFE_DIR_TOKEN.matcher(sanitized).matches()) {
-            LOG.log(Level.WARNING, "Ignoring unsafe diagnostics directory token from env {0}", name);
-            return null;
-        }
-        return sanitized;
-    }
-
-    private String sanitizeConfigValue(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        StringBuilder cleaned = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (!Character.isISOControl(c)) {
-                cleaned.append(c);
-            }
-        }
-
-        String trimmed = trimToNull(cleaned.toString());
-        if (trimmed == null) {
-            return null;
-        }
-        if (trimmed.length() > MAX_CONFIG_VALUE_LEN) {
-            return trimmed.substring(0, MAX_CONFIG_VALUE_LEN);
-        }
-        return trimmed;
-    }
 }

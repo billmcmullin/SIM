@@ -128,7 +128,7 @@
                 }
             } catch (e) {
                 console.warn('Unable to open term review:', e);
-                alert(e?.message || 'Unable to open chat review for this term right now.');
+                console.warn(e?.message || 'Unable to open chat review for this term right now.');
             }
         }
 
@@ -410,7 +410,7 @@
                     }
                 } catch (e) {
                     console.warn('Unable to open term review:', e);
-                    alert(e?.message || 'Unable to open chat review for this term right now.');
+                    console.warn(e?.message || 'Unable to open chat review for this term right now.');
                 }
             });
         }

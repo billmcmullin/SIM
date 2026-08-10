@@ -352,17 +352,18 @@ public class TestConnectionServlet extends HttpServlet {
         }
 
         String token = auth == null ? null : auth.token();
+        String safeToken = token == null ? "" : token;
         String rawValue = auth == null ? null : auth.rawValue();
         String preferredHeader = auth == null ? null : auth.preferredHeaderName();
 
         switch (mode) {
-            case CUSTOM_HEADER -> applyPreferredHeader(builder, preferredHeader, rawValue, token);
-            case AUTH_RAW -> builder.header("Authorization", normalizeRawAuthorizationValue(rawValue, token));
-            case X_API_KEY -> builder.header("X-API-Key", token);
+            case CUSTOM_HEADER -> applyPreferredHeader(builder, preferredHeader, rawValue, safeToken);
+            case AUTH_RAW -> builder.header("Authorization", normalizeRawAuthorizationValue(rawValue, safeToken));
+            case X_API_KEY -> builder.header("X-API-Key", safeToken);
             case AUTH_BEARER_AND_X_API_KEY -> builder
-                    .header("Authorization", "Bearer " + token)
-                    .header("X-API-Key", token);
-            case AUTH_BEARER -> builder.header("Authorization", "Bearer " + token);
+                .header("Authorization", "Bearer " + safeToken)
+                .header("X-API-Key", safeToken);
+            case AUTH_BEARER -> builder.header("Authorization", "Bearer " + safeToken);
         }
 
         return builder.build();
@@ -428,7 +429,7 @@ public class TestConnectionServlet extends HttpServlet {
         StringBuilder sb = new StringBuilder();
         for (ApiAuthResolver.ResolvedApiAuth auth : authCandidates) {
             if (sb.length() > 0) {
-                sb.append(",");
+                sb.append(',');
             }
             sb.append(safe(auth.source()))
               .append('|')
@@ -577,7 +578,7 @@ public class TestConnectionServlet extends HttpServlet {
             throw new IllegalArgumentException("Invalid host");
         }
 
-        String normalizedHost = host == null ? "" : host.trim();
+        String normalizedHost = host.trim();
         String scheme = extractScheme(normalizedHost);
         if (scheme == null) {
             scheme = (portNumber == 443 || portNumber == 8443) ? "https" : "http";
@@ -639,7 +640,7 @@ public class TestConnectionServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write test-connection JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {
