@@ -2,6 +2,88 @@
     'use strict';
 
     const FIRST_LOAD_WAIT_MS = 3500;
+    const SESSIONS_HYDRATE_DELAY_MS = 450;
+    const BOOTSTRAP_TIMEOUT_MS = 1800;
+
+    function setSectionLoadState(section, state, message) {
+        const target = section === 'sessions'
+            ? document.getElementById('topSessionList')
+            : section === 'summary'
+                ? document.getElementById('dailySummaryBody')
+                : null;
+        if (!target) {
+            return;
+        }
+        target.dataset.loadState = String(state || 'idle');
+        if (message) {
+            target.dataset.loadMessage = String(message);
+        } else {
+            delete target.dataset.loadMessage;
+        }
+    }
+
+    async function fetchDashboardBootstrap(contextPath) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        let timeoutId = null;
+        if (controller) {
+            timeoutId = window.setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
+        }
+
+        try {
+            const resp = await fetch(`${contextPath}/dashboard/bootstrap.json`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+                signal: controller ? controller.signal : undefined
+            });
+            if (!resp.ok) {
+                return null;
+            }
+            const data = await resp.json();
+            return data && data.status === 'ok' ? data : null;
+        } catch {
+            return null;
+        } finally {
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    async function bootDeferredSections(contextPath) {
+        setSectionLoadState('sessions', 'refreshing', 'bootstrap');
+        setSectionLoadState('summary', 'refreshing', 'bootstrap');
+
+        const bootstrap = await fetchDashboardBootstrap(contextPath);
+        const sections = bootstrap && bootstrap.sections ? bootstrap.sections : {};
+
+        let sessionsHydrated = false;
+        if (sections.sessions && sections.sessions.status === 'ok' && window.DashboardSessions
+                && typeof window.DashboardSessions.hydrateTopSessions === 'function') {
+            sessionsHydrated = !!window.DashboardSessions.hydrateTopSessions(contextPath, sections.sessions.data);
+        }
+
+        if (!sessionsHydrated && window.DashboardSessions && typeof window.DashboardSessions.loadTopSessions === 'function') {
+            sessionsHydrated = !!(await window.DashboardSessions.loadTopSessions(contextPath, { preserveExisting: true }));
+        }
+        setSectionLoadState('sessions', sessionsHydrated ? 'ready' : 'stale', sessionsHydrated ? '' : 'fallback');
+
+        let summarySeeded = false;
+        if (sections.summary && sections.summary.status === 'ok' && window.DashboardSummary
+                && typeof window.DashboardSummary.hydrateFromBootstrap === 'function') {
+            summarySeeded = !!window.DashboardSummary.hydrateFromBootstrap(contextPath, sections.summary.data);
+        }
+
+        if (window.DashboardSummary && typeof window.DashboardSummary.loadDailySummary === 'function') {
+            const summaryOk = !!(await window.DashboardSummary.loadDailySummary(
+                contextPath,
+                summarySeeded && sections.summary ? sections.summary.data : null
+            ));
+            setSectionLoadState('summary', summaryOk ? 'ready' : 'stale', summaryOk ? '' : 'fallback');
+            return;
+        }
+
+        setSectionLoadState('summary', summarySeeded ? 'ready' : 'stale', summarySeeded ? '' : 'missing');
+    }
 
     function runSafely(label, fn) {
         try {
@@ -141,14 +223,6 @@
         }
 
         const criticalTasks = [];
-        if (window.DashboardSessions) {
-            criticalTasks.push(
-                Promise.resolve(
-                    runSafely('loadTopSessions', () => window.DashboardSessions.loadTopSessions(contextPath))
-                )
-            );
-        }
-
         criticalTasks.push(
             Promise.resolve(
                 runSafely('bootCharts', () => bootCharts(contextPath, chartJsUrl))
@@ -167,9 +241,9 @@
         }
 
         afterFirstPaint(() => {
-            if (window.DashboardSummary) {
-                window.DashboardSummary.loadDailySummary(contextPath);
-            }
+            window.setTimeout(() => {
+                void runSafely('bootDeferredSections', () => bootDeferredSections(contextPath));
+            }, SESSIONS_HYDRATE_DELAY_MS);
         });
     }
 

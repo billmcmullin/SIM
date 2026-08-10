@@ -230,7 +230,8 @@
                     <div
                         style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                         <h3 style="margin:0 0 8px 0;">Latest 5 "Other Parasoft Match"</h3>
-                        <a class="metric-link"
+                        <a id="otherParasoftShowAllLink" class="metric-link metric-dynamic-link"
+                            data-term="Other Parasoft Match"
                             href="${contextPath}/dashboard/term-review?term=Other%20Parasoft%20Match">Show
                             all</a>
                     </div>
@@ -478,6 +479,21 @@
         <script src="${contextPath}/assets/js/dashboard_util/sessions.js"></script>
         <script src="${contextPath}/assets/js/dashboard_util/init.js"></script>
         <script src="${contextPath}/assets/js/dashboard.js"></script>
+
+        <script>
+            (function () {
+                const link = document.getElementById('otherParasoftShowAllLink');
+                if (!link || !window.DashboardTermReview || typeof window.DashboardTermReview.buildTermReviewSelectionLink !== 'function') {
+                    return;
+                }
+
+                link.__buildHref = () => {
+                    const contextPath = (window.dashboardConfig && window.dashboardConfig.contextPath) || '';
+                    const term = (link.dataset && link.dataset.term) || 'Other Parasoft Match';
+                    return window.DashboardTermReview.buildTermReviewSelectionLink(contextPath, term, false);
+                };
+            })();
+        </script>
 
     </body>
 

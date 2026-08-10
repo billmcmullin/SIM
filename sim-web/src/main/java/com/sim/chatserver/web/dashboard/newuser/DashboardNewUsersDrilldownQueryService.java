@@ -62,9 +62,7 @@ final class DashboardNewUsersDrilldownQueryService {
                         while (rs.next()) {
                             String sid = rs.getString("session_id");
                             Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
-                            if (sid == null || sid.isBlank() || ts == null) {
-                                continue;
-                            }
+                            if (sid == null || sid.isBlank() || ts == null) continue;
                             sid = sid.trim();
 
                             Timestamp existing = earliest.get(sid);
@@ -158,9 +156,6 @@ final class DashboardNewUsersDrilldownQueryService {
             return "widget";
         }
         String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
         if (!Character.isLetter(normalized.charAt(0))) {
             normalized = "w_" + normalized;
         }

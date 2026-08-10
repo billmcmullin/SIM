@@ -1,6 +1,13 @@
 package com.sim.chatserver.salesforce;
 
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * Parasoft Jtest UTA: Test class for SalesforceCustomerMatch
  *
@@ -319,5 +326,23 @@ public class SalesforceCustomerMatchTest
         // When
         String result = underTest.toString();
 
+    }
+
+    @Test
+    public void testSerializationGuards_throwNotSerializableException() throws Throwable
+    {
+        SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
+
+        Method readObject = SalesforceCustomerMatch.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+        InvocationTargetException readEx = assertThrows(InvocationTargetException.class,
+                () -> readObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, readEx.getCause().getClass());
+
+        Method writeObject = SalesforceCustomerMatch.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+        InvocationTargetException writeEx = assertThrows(InvocationTargetException.class,
+                () -> writeObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, writeEx.getCause().getClass());
     }
 }

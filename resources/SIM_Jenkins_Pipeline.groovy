@@ -82,7 +82,8 @@ pipeline {
                                 -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
                                 -Dmaven.test.failure.ignore=true \
                                 -Dmaven.test.error.ignore=true \
-                                -DautoUpdate=false
+                                -DautoUpdate=false \
+                                -s /home/jenkins/agent/conf/settings.xml
                         '''
                     }
                 }
@@ -198,9 +199,10 @@ pipeline {
                             set -e
                             mkdir -p "$DC_DATA_DIR"
 
-                            $MAVEN_HOME/mvn org.owasp:dependency-check-maven:12.2.2:aggregate \
+                            $MAVEN_HOME/mvn install org.owasp:dependency-check-maven:12.2.2:aggregate \
                                 -DnvdApiKey="$NVD_API_KEY" \
-                                -DdataDirectory="$DC_DATA_DIR"
+                                -DdataDirectory="$DC_DATA_DIR" \
+                                -DskipTests=true
 
                             $DEPENDENCY_CHECK/dependencycheck.sh \
                                 -results.file "${WORKSPACE}/target/dependency-check-report.xml" \

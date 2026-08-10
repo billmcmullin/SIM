@@ -521,7 +521,7 @@ public final class CustomerIdentityStore {
         }
 
         String text = readSanitizedDbText(rs, column, 128);
-        if (text.isEmpty()) {
+        if (text == null || text.isEmpty()) {
             return null;
         }
         try {

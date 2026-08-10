@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for ErrorResponseUtil
  *
@@ -457,4 +459,16 @@ public class ErrorResponseUtilTest
 
     }
 
+
+
+    // Merged from ErrorResponseUtilBranchTest
+    @Test
+        void trimTo_returnsEmptyWhenValueNullOrMaxNonPositive() throws Exception {
+            Method trimTo = ErrorResponseUtil.class.getDeclaredMethod("trimTo", String.class, int.class);
+            trimTo.setAccessible(true);
+    
+            assertEquals("", trimTo.invoke(null, null, 10));
+            assertEquals("", trimTo.invoke(null, "abc", 0));
+        }
 }
+

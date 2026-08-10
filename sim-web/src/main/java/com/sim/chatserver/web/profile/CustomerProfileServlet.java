@@ -108,6 +108,7 @@ public class CustomerProfileServlet extends HttpServlet {
                     .replace("${contextPath}", contextPath)
                     .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
                     .replace("${sessionId}", escapeHtml(nullToDash(resolvedSessionId)))
+                    .replace("${rawSessionId}", escapeHtml(nullToEmpty(sessionId)))
                     .replace("${friendlyName}", escapeHtml(nullToDash(friendlyName)))
                     .replace("${email}", escapeHtml(nullToDash(profile != null ? profile.getEmail() : (identity != null ? identity.getCanonicalEmail() : null))))
                     .replace("${phone}", escapeHtml(nullToDash(profile != null ? profile.getPhone() : null)))

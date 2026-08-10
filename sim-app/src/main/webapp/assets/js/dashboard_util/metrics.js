@@ -118,11 +118,20 @@
                 }
             } catch (e) {
                 console.warn('Unable to open review selection:', e);
-                alert('Unable to open chat review for this metric right now.');
+                const fallbackHref = (a.getAttribute('href') || '').trim();
+                if (fallbackHref && fallbackHref !== '#') {
+                    if (window.DashboardInlineView && typeof window.DashboardInlineView.openOrNavigate === 'function') {
+                        window.DashboardInlineView.openOrNavigate(fallbackHref, 'Review Data');
+                    } else {
+                        window.location.href = fallbackHref;
+                    }
+                } else {
+                    alert('Unable to open chat review for this metric right now.');
+                }
             } finally {
                 a.dataset.loading = '0';
             }
-        });
+        }, true);
     }
 
     function applyDeltaClasses(scope = document) {

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for TermChatSnapshot
  *
@@ -445,4 +446,43 @@ public class TermChatSnapshotTest
         });
 
     }
+
+
+    // Merged from TermChatSnapshotEqualityBranchTest
+    @Test
+        void equals_returnsTrueForSameInstance() {
+            TermChatSnapshot snapshot = new TermChatSnapshot(
+                    "term",
+                    "widget",
+                    "chat",
+                    "prompt",
+                    "response",
+                    new Timestamp(1L),
+                    "session");
+    
+            assertTrue(snapshot.equals(snapshot));
+        }
+    
+        @Test
+        void equals_returnsTrueWhenIdentityFieldsMatch() {
+            TermChatSnapshot left = new TermChatSnapshot(
+                    "term",
+                    "widget",
+                    "chat",
+                    "left prompt",
+                    "left response",
+                    new Timestamp(1L),
+                    "left");
+            TermChatSnapshot right = new TermChatSnapshot(
+                    "term",
+                    "widget",
+                    "chat",
+                    "right prompt",
+                    "right response",
+                    new Timestamp(2L),
+                    "right");
+    
+            assertTrue(left.equals(right));
+        }
 }
+

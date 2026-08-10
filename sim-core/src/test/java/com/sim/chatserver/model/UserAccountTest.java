@@ -1,5 +1,8 @@
 package com.sim.chatserver.model;
 
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
@@ -8,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for UserAccount
@@ -586,5 +590,23 @@ public class UserAccountTest
             assertNull(underTest.getCreatedAt());
         });
 
+    }
+
+    @Test
+    public void testSerializationGuards_throwNotSerializableException() throws Throwable
+    {
+        UserAccount underTest = new UserAccount();
+
+        Method readObject = UserAccount.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+        InvocationTargetException readEx = assertThrows(InvocationTargetException.class,
+                () -> readObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, readEx.getCause().getClass());
+
+        Method writeObject = UserAccount.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+        InvocationTargetException writeEx = assertThrows(InvocationTargetException.class,
+                () -> writeObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, writeEx.getCause().getClass());
     }
 }

@@ -119,9 +119,6 @@ public class DashboardTopicsQueryService {
             return "widget";
         }
         String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
         if (!Character.isLetter(normalized.charAt(0))) {
             normalized = "w_" + normalized;
         }

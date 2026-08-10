@@ -50,7 +50,15 @@
                     </tr>
                 </tbody>
             </table>
-            <input type="hidden" id="cpSessionIdInput" value="${sessionId}">
+            <input type="hidden" id="cpSessionIdInput" value="${rawSessionId}">
+
+            <form id="cpFriendlyNameForm" class="customer-profile-actions" style="margin-top:14px;">
+                <label for="cpFriendlyNameInput" style="margin:0; font-weight:600; color:#334155;">Add or update friendly name</label>
+                <input type="text" id="cpFriendlyNameInput" name="displayName" maxlength="128"
+                    placeholder="Enter friendly name" style="min-width:280px;">
+                <button type="submit" id="cpFriendlyNameSaveBtn">Save Name</button>
+                <div id="cpFriendlyNameStatus" class="helper-note" aria-live="polite"></div>
+            </form>
         </section>
 
         <section class="section">
@@ -113,12 +121,109 @@
                 </table>
             </div>
         </section>
+
+        <section class="section">
+            <h2>Submitted Chats</h2>
+            <p class="helper-note" id="cpChatsScopeNote">Reviewing chats for this session.</p>
+
+            <div class="widget-view-controls" style="align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+                <div style="flex:1; display:flex; gap:12px; align-items:center; min-width:320px; flex-wrap:wrap;">
+                    <input id="cpChatSearchInput" type="search" placeholder="Search prompt text or chat ID"
+                        style="flex:1; min-width:240px; padding:10px; border-radius:8px; border:1px solid #cbd5f5;">
+                    <button id="cpChatSearchBtn" class="ghost-btn" type="button">Search</button>
+                    <button id="cpChatClearSearchBtn" class="ghost-btn" type="button">Clear</button>
+                </div>
+
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button id="cpChatSelectVisibleBtn" class="ghost-btn" type="button">Select visible</button>
+                    <button id="cpChatDeselectBtn" class="ghost-btn" type="button">Deselect all</button>
+                    <button id="cpChatReviewSelectedBtn" class="ghost-btn" type="button" disabled>Review selected</button>
+                    <button id="cpChatReviewAllBtn" class="ghost-btn" type="button">Review all chats</button>
+                    <span id="cpChatSelectionInfo" class="helper-note" style="font-weight:600;"></span>
+                </div>
+            </div>
+
+            <div id="cpChatsStatus" class="helper-note" style="margin-bottom:10px;" aria-live="polite">Loading chats...</div>
+
+            <div class="widget-review-table">
+                <table class="session-table" aria-label="Submitted chats table">
+                    <colgroup>
+                        <col style="width:56px;">
+                        <col style="width:220px;">
+                        <col style="width:220px;">
+                        <col>
+                        <col style="width:180px;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="select-column">
+                                <input type="checkbox" id="cpChatsSelectAllVisible" aria-label="Select all visible chats">
+                            </th>
+                            <th>Chat ID</th>
+                            <th>Session ID</th>
+                            <th>Prompt (summary)</th>
+                            <th>Created At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cpSubmittedChatsBody">
+                        <tr>
+                            <td colspan="5" class="empty-row">Loading submitted chats...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-wrapper" style="margin-top:12px;">
+                <div class="pagination-controls">
+                    <button type="button" id="cpChatPrevBtn">Previous</button>
+                    <button type="button" id="cpChatNextBtn">Next</button>
+                    <div class="page-info" id="cpChatPageInfo"></div>
+                </div>
+            </div>
+
+            <div class="detail-card" id="cpDetailCard" style="display:none; margin-top:14px;" aria-live="polite">
+                <div class="summary-label" id="cpDetailTitle">Selected Chat Details</div>
+                <div>
+                    <strong>Prompt</strong>
+                    <pre id="cpDetailPrompt"></pre>
+                </div>
+
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <label for="cpTranslateTargetLang" style="margin:0;">Translate To:</label>
+                    <select id="cpTranslateTargetLang" style="width:auto;">
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                    </select>
+                </div>
+
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" id="cpTranslatePromptBtn" class="ghost-btn">Detect and Translate Prompt</button>
+                </div>
+                <div id="cpPromptTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                <pre id="cpPromptTranslationOutput" style="display:none; margin-top:8px;"></pre>
+
+                <div style="margin-top:12px;">
+                    <strong>Response</strong>
+                    <pre id="cpDetailResponse"></pre>
+                </div>
+
+                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" id="cpTranslateResponseBtn" class="ghost-btn">Detect and Translate Response</button>
+                </div>
+                <div id="cpResponseTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                <pre id="cpResponseTranslationOutput" style="display:none; margin-top:8px;"></pre>
+            </div>
+        </section>
     </div>
 
     <script>
         window.customerProfileConfig = {
             contextPath: '${contextPath}',
-            sessionId: '${sessionId}',
+            sessionId: '${rawSessionId}',
+            displaySessionId: '${sessionId}',
             friendlyName: '${friendlyName}'
         };
     </script>

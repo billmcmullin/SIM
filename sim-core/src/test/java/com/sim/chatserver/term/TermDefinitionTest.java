@@ -1,10 +1,15 @@
 package com.sim.chatserver.term;
 
+import java.io.NotSerializableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * Parasoft Jtest UTA: Test class for TermDefinition
  *
@@ -246,5 +251,23 @@ public class TermDefinitionTest
             assertEquals("matchType", underTest.getMatchType());
         });
 
+    }
+
+    @Test
+    public void testSerializationGuards_throwNotSerializableException() throws Throwable
+    {
+        TermDefinition underTest = new TermDefinition(1L, "name", "desc", "pattern", "type", true);
+
+        Method readObject = TermDefinition.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+        InvocationTargetException readEx = assertThrows(InvocationTargetException.class,
+                () -> readObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, readEx.getCause().getClass());
+
+        Method writeObject = TermDefinition.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+        InvocationTargetException writeEx = assertThrows(InvocationTargetException.class,
+                () -> writeObject.invoke(underTest, new Object[]{null}));
+        assertEquals(NotSerializableException.class, writeEx.getCause().getClass());
     }
 }

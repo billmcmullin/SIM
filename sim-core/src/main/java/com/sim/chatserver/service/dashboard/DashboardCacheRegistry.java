@@ -338,22 +338,37 @@ public class DashboardCacheRegistry {
             Supplier<T> loader
     ) {
         submitRefreshTask(() -> {
-            T fresh = safeLoad(loader, null);
-            long now = System.currentTimeMillis();
-
+            T fallback;
             synchronized (lock) {
-                Entry<T> current = getter.get();
-                if (current == null) {
-                    setter.accept(Entry.of(
-                            fresh,
-                            now + ttlMillis,
-                            now + ttlMillis + STALE_GRACE_MILLIS
-                    ));
-                } else {
-                    current.value = fresh;
-                    current.expiresAt = now + ttlMillis;
-                    current.staleUntil = now + ttlMillis + STALE_GRACE_MILLIS;
-                    current.refreshing = false;
+                Entry<T> snapshot = getter.get();
+                fallback = snapshot == null ? null : snapshot.value;
+            }
+
+            try {
+                T fresh = safeLoad(loader, fallback);
+                long now = System.currentTimeMillis();
+
+                synchronized (lock) {
+                    Entry<T> current = getter.get();
+                    if (current == null) {
+                        setter.accept(Entry.of(
+                                fresh,
+                                now + ttlMillis,
+                                now + ttlMillis + STALE_GRACE_MILLIS
+                        ));
+                    } else {
+                        current.value = fresh;
+                        current.expiresAt = now + ttlMillis;
+                        current.staleUntil = now + ttlMillis + STALE_GRACE_MILLIS;
+                        current.refreshing = false;
+                    }
+                }
+            } finally {
+                synchronized (lock) {
+                    Entry<T> current = getter.get();
+                    if (current != null) {
+                        current.refreshing = false;
+                    }
                 }
             }
         });
@@ -361,23 +376,38 @@ public class DashboardCacheRegistry {
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
         submitRefreshTask(() -> {
-            SessionOverview fresh = safeLoad(loader, null);
-            long now = System.currentTimeMillis();
-
+            SessionOverview fallback;
             synchronized (sessionLock) {
-                Entry<SessionOverview> current = sessionOverviewCache.get(key);
-                if (current == null) {
-                    sessionOverviewCache.put(key, Entry.of(
-                            fresh,
-                            now + SESSION_OVERVIEW_TTL_MILLIS,
-                            now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
-                    ));
-                    evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
-                } else {
-                    current.value = fresh;
-                    current.expiresAt = now + SESSION_OVERVIEW_TTL_MILLIS;
-                    current.staleUntil = now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS;
-                    current.refreshing = false;
+                Entry<SessionOverview> snapshot = sessionOverviewCache.get(key);
+                fallback = snapshot == null ? null : snapshot.value;
+            }
+
+            try {
+                SessionOverview fresh = safeLoad(loader, fallback);
+                long now = System.currentTimeMillis();
+
+                synchronized (sessionLock) {
+                    Entry<SessionOverview> current = sessionOverviewCache.get(key);
+                    if (current == null) {
+                        sessionOverviewCache.put(key, Entry.of(
+                                fresh,
+                                now + SESSION_OVERVIEW_TTL_MILLIS,
+                                now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
+                        ));
+                        evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
+                    } else {
+                        current.value = fresh;
+                        current.expiresAt = now + SESSION_OVERVIEW_TTL_MILLIS;
+                        current.staleUntil = now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS;
+                        current.refreshing = false;
+                    }
+                }
+            } finally {
+                synchronized (sessionLock) {
+                    Entry<SessionOverview> current = sessionOverviewCache.get(key);
+                    if (current != null) {
+                        current.refreshing = false;
+                    }
                 }
             }
         });
@@ -404,7 +434,7 @@ public class DashboardCacheRegistry {
         try {
             T value = loader.get();
             return value != null ? value : fallback;
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (RuntimeException ex) {
             log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", ex);
             return fallback;
         }

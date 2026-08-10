@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
@@ -192,18 +191,6 @@ public class WidgetReviewServlet extends HttpServlet {
         }
         String t = value.trim();
         return t.isEmpty() ? null : t;
-    }
-
-    private String urlDecode(String value) {
-        if (value == null) {
-            return "";
-        }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid URL encoding in query parameter", ex);
-            return value;
-        }
     }
 
     private String sanitizeForLog(String value) {

@@ -389,6 +389,12 @@
                 return;
             }
 
+            // Dynamic metric links resolve their destination at click-time.
+            // Let the dedicated metric handler run first.
+            if (anchor.classList && anchor.classList.contains('metric-dynamic-link')) {
+                return;
+            }
+
             if (anchor.target && anchor.target !== '_self') {
                 return;
             }
