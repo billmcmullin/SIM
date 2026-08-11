@@ -1,12 +1,11 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -44,10 +43,11 @@ public class WidgetReviewServlet extends HttpServlet {
         if (selectionId == null) {
             Object forwardedSelectionId = req.getAttribute("selectionId");
             if (forwardedSelectionId instanceof String forwarded) {
-                String sanitizedForwarded = sanitizeForLog(forwarded);
-                selectionId = ServletRequestParamUtil.normalizeValue(forwarded, 256, true, true);
-                if (selectionId == null) {
-                    log.log(Level.FINE, "Ignored invalid forwarded selectionId: {0}", sanitizedForwarded);
+                String candidate = ServletRequestParamUtil.normalizeValue(forwarded, 256, true, true);
+                if (candidate != null && isValidSelectionId(candidate)) {
+                    selectionId = candidate;
+                } else {
+                    log.log(Level.FINE, "Ignored invalid forwarded selectionId.");
                 }
             }
         }
@@ -122,19 +122,14 @@ public class WidgetReviewServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                throw new IllegalStateException("Template not found: " + path);
             }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
-                }
-                return builder.toString();
-            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to load template: " + path, ex);
         }
     }
 
@@ -142,11 +137,18 @@ public class WidgetReviewServlet extends HttpServlet {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder out = new StringBuilder(input.length() + 16);
+        for (char c : input.toCharArray()) {
+            switch (c) {
+                case '&' -> out.append("&amp;");
+                case '<' -> out.append("&lt;");
+                case '>' -> out.append("&gt;");
+                case '"' -> out.append("&quot;");
+                case '\'' -> out.append("&#39;");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     private String escapeJs(String input) {
@@ -199,6 +201,15 @@ public class WidgetReviewServlet extends HttpServlet {
         }
         String normalized = value.replace('\r', '_').replace('\n', '_');
         return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+    }
+
+    private boolean isValidSelectionId(String value) {
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private String urlEncode(String value) {

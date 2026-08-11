@@ -1,11 +1,14 @@
 package com.sim.chatserver.web.dashboard.inactiveusers;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,8 +20,6 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
-import com.sim.chatserver.util.SqlTimeUtil;
-
 final class InactiveUsersListQueryService {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
@@ -89,17 +90,17 @@ final class InactiveUsersListQueryService {
 
                     try (ResultSet rs = queryResult) {
                         while (rs.next()) {
-                            String sid = rs.getString("session_id");
-                            Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                            if (sid == null || sid.isBlank() || last == null) {
+                            String sid = readSafeDbText(rs, "session_id", 256);
+                            Instant last = readSafeInstant(rs, "last_entry");
+                            if (sid.isBlank() || last == null) {
                                 continue;
                             }
 
                             String normalizedSessionId = sid.trim();
                             InactiveUsersListPageServlet.Row row = getOrCreateAggregateRow(aggregateRows, normalizedSessionId);
-                            row.chatCount += rs.getLong("total");
-                            if (row.lastEntry == null || last.after(row.lastEntry)) {
-                                row.lastEntry = last;
+                            row.chatCount += readNonNegativeLong(rs, "total");
+                            if (row.lastEntry == null || last.isAfter(row.lastEntry.toInstant())) {
+                                row.lastEntry = Timestamp.from(last);
                             }
 
                             InactiveUsersListPageServlet.FrustrationResult frustrationResult = detectFrustrationForSession(
@@ -143,6 +144,7 @@ final class InactiveUsersListQueryService {
         if (table == null || table.isBlank()) {
             return rows;
         }
+        String safeTable = table;
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                 + quoteIdentifier(table)
                 + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
@@ -151,7 +153,7 @@ final class InactiveUsersListQueryService {
         try {
             preparedStatement = conn.prepareStatement(sql);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to prepare widget-row query for table " + table, ex);
+            log.log(Level.FINE, "Unable to prepare widget-row query for table " + safeTable, ex);
             return rows;
         }
 
@@ -160,20 +162,26 @@ final class InactiveUsersListQueryService {
             try {
                 queryResult = ps.executeQuery();
             } catch (SQLException ex) {
-                log.log(Level.FINE, "Unable to execute widget-row query for table " + table, ex);
+                log.log(Level.FINE, "Unable to execute widget-row query for table " + safeTable, ex);
                 return rows;
             }
 
             try (ResultSet rs = queryResult) {
                 while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                    if (sid == null || sid.isBlank() || last == null || !last.toInstant().isBefore(cutoff)) {
+                        String sid = readSafeDbText(rs, "session_id", 256);
+                        Instant last = readSafeInstant(rs, "last_entry");
+                        if (sid.isBlank() || last == null || !last.isBefore(cutoff)) {
                         continue;
                     }
 
                     String normalizedSessionId = sid.trim();
-                    InactiveUsersListPageServlet.Row row = createWidgetRow(normalizedSessionId, widgetId, widgetLabel, last, rs.getLong("total"));
+                        InactiveUsersListPageServlet.Row row = createWidgetRow(
+                                normalizedSessionId,
+                                widgetId,
+                                widgetLabel,
+                                Timestamp.from(last),
+                                readNonNegativeLong(rs, "total")
+                        );
                     InactiveUsersListPageServlet.FrustrationResult frustrationResult = detectFrustrationForSession(
                             conn,
                             table,
@@ -188,7 +196,7 @@ final class InactiveUsersListQueryService {
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to load widget rows for " + table, ex);
+            log.log(Level.FINE, "Unable to load widget rows for " + safeTable, ex);
         }
         return rows;
     }
@@ -203,14 +211,15 @@ final class InactiveUsersListQueryService {
             List<String> prompts = loadRecentPromptsForSession(conn, table, sessionId, promptScanLimit);
             return frustrationAnalyzer.apply(prompts);
         } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Frustration detection skipped for session " + sessionId + " in " + table, ex);
+            String safeTable = table == null ? "<unknown>" : table;
+            log.log(Level.FINE, "Frustration detection skipped for session " + sessionId + " in " + safeTable, ex);
             return emptyFrustrationResult();
         }
     }
 
     private List<String> loadRecentPromptsForSession(Connection conn, String table, String sessionId, int limit) {
         List<String> prompts = new ArrayList<>();
-        if (sessionId == null || sessionId.isBlank() || limit < 1) {
+        if (sessionId == null || sessionId.isBlank() || table == null || table.isBlank() || limit < 1) {
             return prompts;
         }
 
@@ -242,8 +251,8 @@ final class InactiveUsersListQueryService {
 
                 try (ResultSet rs = queryResult) {
                     while (rs.next()) {
-                        String prompt = rs.getString("p");
-                        if (prompt != null && !prompt.isBlank()) {
+                        String prompt = readSafeDbText(rs, "p", 12000);
+                        if (!prompt.isBlank()) {
                             prompts.add(prompt);
                         }
                     }
@@ -323,6 +332,68 @@ final class InactiveUsersListQueryService {
             log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
         }
         return false;
+    }
+
+    private long readNonNegativeLong(ResultSet rs, String column) {
+        String text = readSafeDbText(rs, column, 32);
+        if (text.isBlank() || !text.matches("^-?\\d{1,18}$")) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(text));
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid numeric text in column " + column, ex);
+            return 0L;
+        }
+    }
+
+    private Instant readSafeInstant(ResultSet rs, String column) {
+        String text = readSafeDbText(rs, column, 128);
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(text);
+        } catch (DateTimeException ex) {
+            try {
+                return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
+            } catch (IllegalArgumentException secondEx) {
+                log.log(Level.FINE, "Invalid timestamp text in column " + column, secondEx);
+                return null;
+            }
+        }
+    }
+
+    private String readSafeDbText(ResultSet rs, String column, int maxChars) {
+        try (Reader reader = rs.getCharacterStream(column)) {
+            if (reader == null) {
+                return "";
+            }
+            char[] buffer = new char[256];
+            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxChars > 0 && total > maxChars) {
+                    int remaining = Math.max(0, maxChars - (total - read));
+                    if (remaining > 0) {
+                        value.append(buffer, 0, remaining);
+                    }
+                    break;
+                }
+                value.append(buffer, 0, read);
+            }
+
+            String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+            if (normalized.length() > maxChars) {
+                return normalized.substring(0, maxChars);
+            }
+            return normalized;
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Unable to read text column " + column, ex);
+            return "";
+        }
     }
 
     private String sanitizeWidgetTableName(String widgetId) {

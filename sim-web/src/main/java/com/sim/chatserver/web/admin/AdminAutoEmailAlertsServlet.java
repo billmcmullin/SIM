@@ -21,7 +21,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Locale;
@@ -47,7 +50,11 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             if (lookupConfigStore() != null && lookupScheduler() != null) {
                 return;
             }
-            initializeInfrastructure();
+            try {
+                initializeInfrastructure();
+            } catch (IllegalStateException e) {
+                throw new ServletException("Unable to initialize automatic email alerts.", e);
+            }
         }
     }
 
@@ -134,7 +141,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         }
     }
 
-    private void initializeInfrastructure() throws ServletException {
+    private void initializeInfrastructure() {
         try {
             AppDataSourceHolder dsHolder = dataSourceHolder();
             WidgetAvailabilityChecker availabilityChecker = availabilityChecker();
@@ -158,7 +165,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             getServletContext().setAttribute(SCHEDULER_ATTR, initializedScheduler);
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed to initialize automatic email alert infrastructure.", e);
-            throw new ServletException("Unable to initialize automatic email alerts.", e);
+            throw new IllegalStateException("Unable to initialize automatic email alerts.", e);
         }
     }
 
@@ -252,40 +259,15 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = readContentType(req);
-        if (contentType == null || contentType.isBlank()) {
-            return false;
-        }
-        String mediaType = contentType;
-        int semicolon = mediaType.indexOf(';');
-        if (semicolon >= 0) {
-            mediaType = mediaType.substring(0, semicolon);
-        }
-        mediaType = mediaType.trim().toLowerCase(Locale.ROOT);
-        if (!"application/json".equals(mediaType)) {
-            return false;
-        }
         long len = req.getContentLengthLong();
         return len >= 0 && len <= MAX_JSON_PAYLOAD_BYTES;
-    }
-
-    private String readContentType(HttpServletRequest req) {
-        if (req == null) {
-            return null;
-        }
-        String value = req.getContentType();
-        if (value == null) {
-            return null;
-        }
-        String normalized = ServletRequestParamUtil.normalizeValue(value, 128, true, true);
-        return normalized == null ? null : normalized;
     }
 
     private String readRequestBody(HttpServletRequest req) {
         if (req == null || !isValidJsonRequest(req)) {
             return null;
         }
-        try (var reader = req.getReader()) {
+        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read automatic alert payload.", e);

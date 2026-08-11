@@ -54,7 +54,7 @@ public class ReviewSamplingService {
                 .collect(Collectors.toList());
     }
 
-    final int scoreEntry(SelectedEntry e, List<String> terms) {
+    private int scoreEntry(SelectedEntry e, List<String> terms) {
         if (e == null || terms == null || terms.isEmpty()) {
             return 0;
         }
@@ -69,7 +69,7 @@ public class ReviewSamplingService {
         return score;
     }
 
-    final List<SelectedEntry> topRelevant(List<SelectedEntry> entries, List<String> terms, int n) {
+    private List<SelectedEntry> topRelevant(List<SelectedEntry> entries, List<String> terms, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -79,7 +79,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    final List<SelectedEntry> newest(List<SelectedEntry> entries, int n) {
+    private List<SelectedEntry> newest(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -89,7 +89,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    final List<SelectedEntry> oldest(List<SelectedEntry> entries, int n) {
+    private List<SelectedEntry> oldest(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -99,7 +99,7 @@ public class ReviewSamplingService {
         return copy.subList(0, Math.min(n, copy.size()));
     }
 
-    final List<SelectedEntry> randomSample(List<SelectedEntry> entries, int n) {
+    private List<SelectedEntry> randomSample(List<SelectedEntry> entries, int n) {
         if (entries == null || entries.isEmpty() || n <= 0) {
             return List.of();
         }
@@ -136,7 +136,7 @@ public class ReviewSamplingService {
         return dedupeByChatId(merged);
     }
 
-    final List<SelectedEntry> dedupeByChatId(List<SelectedEntry> entries) {
+    private List<SelectedEntry> dedupeByChatId(List<SelectedEntry> entries) {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }

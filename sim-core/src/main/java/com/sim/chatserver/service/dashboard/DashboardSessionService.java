@@ -1,5 +1,7 @@
 package com.sim.chatserver.service.dashboard;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -19,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
 import com.sim.chatserver.model.DashboardViewModels.SessionAccumulator;
@@ -35,6 +39,7 @@ import jakarta.json.JsonObject;
 
 public class DashboardSessionService {
 
+    private static final Logger log = Logger.getLogger(DashboardSessionService.class.getName());
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -83,7 +88,7 @@ public class DashboardSessionService {
 
                 try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = rs.getString("session_id");
+                        String sessionId = readDbText(rs, "session_id", 256);
                         if (sessionId == null || sessionId.isBlank()) {
                             continue;
                         }
@@ -106,7 +111,7 @@ public class DashboardSessionService {
 
                 try (PreparedStatement ps = conn.prepareStatement(firstSeenSql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = rs.getString("session_id");
+                        String sessionId = readDbText(rs, "session_id", 256);
                         Timestamp firstSeenTs = SqlTimeUtil.safeTimestamp(rs, "first_seen");
                         if (sessionId == null || sessionId.isBlank() || firstSeenTs == null) {
                             continue;
@@ -276,7 +281,7 @@ public class DashboardSessionService {
 
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = rs.getString("session_id");
+                        String sessionId = readDbText(rs, "session_id", 256);
                         LocalDate entryDate = readLocalDateColumn(rs, "day_value");
                         int dayCount = rs.getInt("day_count");
                         if (sessionId == null || entryDate == null) {
@@ -294,8 +299,7 @@ public class DashboardSessionService {
                         }
 
                         int position = (int) dayIndex;
-                        Integer currentValue = bucket.get(position);
-                        int current = currentValue == null ? 0 : currentValue.intValue();
+                        int current = readCountValue(bucket, position);
                         bucket.set(position, Integer.valueOf(current + dayCount));
                     }
                 }
@@ -316,7 +320,8 @@ public class DashboardSessionService {
             JsonArrayBuilder countsBuilder = Json.createArrayBuilder();
             List<Integer> values = overview.getTimeline().getCountsBySession().get(session.getSessionId());
             if (values != null) {
-                for (Integer value : values) {
+                for (int i = 0; i < values.size(); i++) {
+                    Integer value = values.get(i);
                     countsBuilder.add(value == null ? 0 : value.intValue());
                 }
             } else {
@@ -351,25 +356,87 @@ public class DashboardSessionService {
     }
 
     private LocalDate readLocalDateColumn(ResultSet rs, String column) throws SQLException {
-        String dayText = rs.getString(column);
-        if (dayText != null && !dayText.isBlank()) {
+        String dayText = readDbText(rs, column, 64);
+        if (!dayText.isBlank()) {
             try {
                 return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
-            } catch (DateTimeParseException ignored) {
-                // Fall back to timestamp coercion when driver format differs.
+            } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "LocalDate parse fallback for column " + column, ex);
+            }
+
+            try {
+                return Instant.parse(dayText.trim())
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate();
+            } catch (DateTimeParseException ex) {
+                log.log(Level.FINE, "Instant parse fallback for column " + column, ex);
+            }
+
+            try {
+                return Timestamp.valueOf(dayText.replace('T', ' '))
+                        .toInstant()
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate();
+            } catch (IllegalArgumentException ex) {
+                log.log(Level.FINE, "Timestamp parse fallback for column " + column, ex);
             }
         }
 
-        Timestamp ts = SqlTimeUtil.safeTimestamp(rs, column);
-        if (ts == null) {
-            return null;
+        return null;
+    }
+
+    private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
+        if (column == null || column.isBlank()) {
+            return "";
         }
-        return ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        try (Reader reader = rs.getCharacterStream(column)) {
+            if (reader == null) {
+                return "";
+            }
+            char[] buffer = new char[256];
+            StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxLen > 0 && total > maxLen) {
+                    int remaining = Math.max(0, maxLen - (total - read));
+                    if (remaining > 0) {
+                        out.append(buffer, 0, remaining);
+                    }
+                    break;
+                }
+                out.append(buffer, 0, read);
+            }
+            return normalizeDbText(out.toString(), maxLen);
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Unable to read DB text for column " + column, ex);
+            return "";
+        }
+    }
+
+    private String normalizeDbText(String value, int maxLen) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        if (maxLen > 0 && normalized.length() > maxLen) {
+            return normalized.substring(0, maxLen);
+        }
+        return normalized;
+    }
+
+    private int readCountValue(List<Integer> values, int index) {
+        if (values == null || index < 0 || index >= values.size()) {
+            return 0;
+        }
+        Integer currentValue = values.get(index);
+        return currentValue == null ? 0 : currentValue.intValue();
     }
 
     public String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "—";
+            return "-";
         }
         return ts.toInstant().atZone(ZoneId.systemDefault()).format(ENTRY_FORMATTER);
     }

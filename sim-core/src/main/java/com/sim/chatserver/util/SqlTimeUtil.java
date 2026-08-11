@@ -1,5 +1,7 @@
 package com.sim.chatserver.util;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -73,17 +75,43 @@ public final class SqlTimeUtil {
     }
 
     private static String safeReadRawText(ResultSet rs, String column) throws SQLException {
-        try {
-            return sanitizeTimestampCandidate(rs.getString(column));
+        try (Reader reader = rs.getCharacterStream(column)) {
+            return sanitizeTimestampCandidate(readBoundedText(reader, MAX_TIMESTAMP_TEXT_LENGTH));
         } catch (SQLException primaryEx) {
-            LOG.log(Level.FINER, "Timestamp text fallback to getNString for column {0}", column);
-            try {
-                return sanitizeTimestampCandidate(rs.getNString(column));
-            } catch (SQLException secondaryEx) {
+            LOG.log(Level.FINER, "Timestamp text fallback to getNCharacterStream for column {0}", column);
+            try (Reader reader = rs.getNCharacterStream(column)) {
+                return sanitizeTimestampCandidate(readBoundedText(reader, MAX_TIMESTAMP_TEXT_LENGTH));
+            } catch (SQLException | IOException secondaryEx) {
                 LOG.log(Level.FINER, "Timestamp text read failed for column " + column, secondaryEx);
                 return "";
             }
+        } catch (IOException ioEx) {
+            LOG.log(Level.FINER, "Timestamp text stream read failed for column " + column, ioEx);
+            return "";
         }
+    }
+
+    private static String readBoundedText(Reader reader, int maxLen) throws IOException {
+        if (reader == null || maxLen <= 0) {
+            return "";
+        }
+
+        char[] buffer = new char[128];
+        StringBuilder out = new StringBuilder(Math.max(32, maxLen));
+        int total = 0;
+        int read;
+        while ((read = reader.read(buffer)) != -1) {
+            total += read;
+            if (total > maxLen) {
+                int remaining = Math.max(0, maxLen - (total - read));
+                if (remaining > 0) {
+                    out.append(buffer, 0, remaining);
+                }
+                break;
+            }
+            out.append(buffer, 0, read);
+        }
+        return out.toString();
     }
 
     private static String sanitizeTimestampCandidate(String value) {

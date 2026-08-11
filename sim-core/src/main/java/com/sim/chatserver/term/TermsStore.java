@@ -1,5 +1,7 @@
 package com.sim.chatserver.term;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -211,7 +213,7 @@ public class TermsStore {
     }
 
     public TermDefinition updateTerm(Long id, String name, String description, String pattern, String type) throws SQLException {
-        long termId = normalizeTermId(id);
+        long termId = id == null ? -1L : id.longValue();
         if (termId <= 0L) {
             return null;
         }
@@ -263,7 +265,7 @@ public class TermsStore {
     }
 
     public boolean deleteTerm(Long id) throws SQLException {
-        long termId = normalizeTermId(id);
+        long termId = id == null ? -1L : id.longValue();
         if (termId <= 0L) {
             return false;
         }
@@ -361,15 +363,6 @@ public class TermsStore {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) throws SQLException {
-        try {
-            long value = rs.getLong(column);
-            if (!rs.wasNull()) {
-                return Math.max(0L, value);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getLong failed for column " + column + ", falling back to text parsing", ex);
-        }
-
         String text = readSafeDbText(rs, column, 64);
         if (text.isBlank()) {
             return 0L;
@@ -383,20 +376,35 @@ public class TermsStore {
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        String value = null;
-        try {
-            value = rs.getString(column);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString failed for column " + column, ex);
-        }
-        if (value == null) {
+        try (Reader reader = rs.getCharacterStream(column)) {
+            if (reader == null) {
+                return "";
+            }
+            char[] buffer = new char[256];
+            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxChars > 0 && total > maxChars) {
+                    int remaining = Math.max(0, maxChars - (total - read));
+                    if (remaining > 0) {
+                        value.append(buffer, 0, remaining);
+                    }
+                    break;
+                }
+                value.append(buffer, 0, read);
+            }
+
+            String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+            if (normalized.length() > maxChars) {
+                return normalized.substring(0, maxChars);
+            }
+            return normalized;
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "ResultSet character stream read failed for column " + column, ex);
             return "";
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
-        if (normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
-        }
-        return normalized;
     }
 
     private boolean readSafeDbBoolean(ResultSet rs, String column) throws SQLException {
@@ -424,10 +432,4 @@ public class TermsStore {
         return type.trim().toUpperCase();
     }
 
-    private long normalizeTermId(Long id) {
-        if (id == null) {
-            return -1L;
-        }
-        return id.longValue();
-    }
 }

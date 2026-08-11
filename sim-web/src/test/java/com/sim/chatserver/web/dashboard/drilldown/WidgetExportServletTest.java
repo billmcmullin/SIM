@@ -305,12 +305,6 @@ public class WidgetExportServletTest
 
     // Merged from WidgetExportServletCoverageTest
     
-    
-        @AfterEach
-        void resetStaticHolder() {
-            WidgetExportServlet.dsHolder = null;
-        }
-    
         @Test
         void doPost_whenUnauthenticated_returns401Json() throws Exception {
             WidgetExportServlet servlet = new WidgetExportServlet();

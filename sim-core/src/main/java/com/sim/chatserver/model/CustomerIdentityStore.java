@@ -1,5 +1,7 @@
 package com.sim.chatserver.model;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -477,32 +479,35 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        try {
-            return sanitizeDbText(rs.getString(column), maxChars);
-        } catch (SQLException e) {
+        try (Reader reader = rs.getCharacterStream(column)) {
+            return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
+        } catch (SQLException ex) {
+            try (Reader reader = rs.getNCharacterStream(column)) {
+                return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
+            } catch (SQLException | IOException nestedEx) {
+                log.log(Level.FINE, "Text read failed for column " + column, nestedEx);
+                return null;
+            }
+        } catch (IOException e) {
             log.log(Level.FINE, "Text read failed for column " + column, e);
             return null;
         }
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        try {
-            long typed = rs.getLong(column);
-            if (!rs.wasNull()) {
-                return typed < 0L ? 0L : typed;
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Typed long read failed for column " + column + ", using text fallback", e);
-        }
-
         String text = readSanitizedDbText(rs, column, 64);
         if (text == null || text.isBlank()) {
             return 0L;
         }
 
+        String trimmed = text.trim();
+        if (!trimmed.matches("^-?\\d{1,18}$")) {
+            return 0L;
+        }
+
         long value;
         try {
-            value = Long.parseLong(text.trim());
+            value = Long.parseLong(trimmed);
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
             return 0L;
@@ -541,5 +546,28 @@ public final class CustomerIdentityStore {
             return trimmed;
         }
         return trimmed.substring(0, maxChars);
+    }
+
+    private static String readBoundedText(Reader reader, int maxChars) throws IOException {
+        if (reader == null || maxChars <= 0) {
+            return "";
+        }
+
+        char[] buffer = new char[256];
+        StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+        int total = 0;
+        int read;
+        while ((read = reader.read(buffer)) != -1) {
+            total += read;
+            if (total > maxChars) {
+                int remaining = Math.max(0, maxChars - (total - read));
+                if (remaining > 0) {
+                    out.append(buffer, 0, remaining);
+                }
+                break;
+            }
+            out.append(buffer, 0, read);
+        }
+        return out.toString();
     }
 }

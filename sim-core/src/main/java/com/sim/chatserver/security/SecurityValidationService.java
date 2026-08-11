@@ -57,15 +57,15 @@ public final class SecurityValidationService {
      */
     private final boolean resolveDnsForValidation;
 
-    public SecurityValidationService() {
+    private SecurityValidationService() {
         this(Set.of(), DEFAULT_ALLOWED_MODES, true, true);
     }
 
-    public SecurityValidationService(Set<String> allowedUpstreamHosts, Set<String> allowedModes) {
+    SecurityValidationService(Set<String> allowedUpstreamHosts, Set<String> allowedModes) {
         this(allowedUpstreamHosts, allowedModes, true, true);
     }
 
-    public SecurityValidationService(Set<String> allowedUpstreamHosts,
+    SecurityValidationService(Set<String> allowedUpstreamHosts,
                                      Set<String> allowedModes,
                                      boolean blockPrivateNetworkTargets,
                                      boolean resolveDnsForValidation) {
@@ -87,13 +87,13 @@ public final class SecurityValidationService {
         }
         int semicolon = ct.indexOf(';');
         String mediaType = (semicolon >= 0 ? ct.substring(0, semicolon) : ct).trim().toLowerCase(Locale.ROOT);
-        if (mediaType.isBlank() || mediaType.indexOf('/') <= 0 || mediaType.startsWith("/") || mediaType.endsWith("/")) {
+        if (mediaType.isBlank() || mediaType.indexOf('/') <= 0 || mediaType.charAt(0) == '/' || mediaType.endsWith("/")) {
             return false;
         }
         return "application/json".equals(mediaType);
     }
 
-    public boolean isModeAllowed(String mode) {
+    boolean isModeAllowed(String mode) {
         if (mode == null || mode.isBlank()) {
             return false;
         }
@@ -117,7 +117,7 @@ public final class SecurityValidationService {
     /**
      * Detailed validation result for better blocked-URL logging.
      */
-    public UrlValidationResult validateUpstreamUrl(String baseUrl) {
+    UrlValidationResult validateUpstreamUrl(String baseUrl) {
         String canonicalBaseUrl = canonicalizeUrlInput(baseUrl);
         if (canonicalBaseUrl.isBlank()) {
             return UrlValidationResult.blocked("URL is blank");
@@ -227,7 +227,7 @@ public final class SecurityValidationService {
             if (part.isBlank() || part.length() > 3) {
                 return false;
             }
-            if (part.length() > 1 && part.startsWith("0")) {
+            if (part.length() > 1 && part.charAt(0) == '0') {
                 return false;
             }
             int octet;
@@ -263,7 +263,7 @@ public final class SecurityValidationService {
             return true;
         }
         for (String allowed : allowedUpstreamHosts) {
-            if (host.equals(allowed) || host.endsWith("." + allowed)) {
+            if (host.equals(allowed) || host.endsWith('.' + allowed)) {
                 return true;
             }
         }
@@ -346,23 +346,6 @@ public final class SecurityValidationService {
         return canonicalizeInput(value, 2048);
     }
 
-    private String readForwardedHeaderToken(HttpServletRequest req, String headerName, int maxLen) {
-        if (req == null || headerName == null || headerName.isBlank()) {
-            return "";
-        }
-        String raw = req.getHeader(headerName);
-        if (raw == null || raw.isBlank()) {
-            return "";
-        }
-        int comma = raw.indexOf(',');
-        String token = comma >= 0 ? raw.substring(0, comma) : raw;
-        String normalized = canonicalizeInput(token, maxLen);
-        if (!normalized.isBlank()) {
-            return normalized;
-        }
-        return "";
-    }
-
     private String canonicalizeInput(String value, int maxLen) {
         if (value == null) {
             return "";
@@ -391,15 +374,15 @@ public final class SecurityValidationService {
             this.scheme = scheme;
         }
 
-        public static UrlValidationResult allowed(String host, String scheme, String reason) {
+        static UrlValidationResult allowed(String host, String scheme, String reason) {
             return new UrlValidationResult(true, reason, host, scheme);
         }
 
-        public static UrlValidationResult blocked(String reason) {
+        static UrlValidationResult blocked(String reason) {
             return new UrlValidationResult(false, reason, null, null);
         }
 
-        public boolean isAllowed() {
+        boolean isAllowed() {
             return allowed;
         }
 
