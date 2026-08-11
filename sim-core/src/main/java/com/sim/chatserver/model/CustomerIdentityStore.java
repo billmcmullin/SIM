@@ -9,6 +9,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.Normalizer;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -480,21 +482,43 @@ public final class CustomerIdentityStore {
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         try (Reader reader = rs.getCharacterStream(column)) {
-            return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
-        } catch (SQLException ex) {
-            try (Reader reader = rs.getNCharacterStream(column)) {
+            if (reader != null) {
                 return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
-            } catch (SQLException | IOException nestedEx) {
-                log.log(Level.FINE, "Text read failed for column " + column, nestedEx);
-                return null;
             }
-        } catch (IOException e) {
-            log.log(Level.FINE, "Text read failed for column " + column, e);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Character stream read failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character stream read IO failed for column " + column, ex);
+        }
+
+        try (Reader reader = rs.getNCharacterStream(column)) {
+            if (reader != null) {
+                return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "NCharacter stream read failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "NCharacter stream read IO failed for column " + column, ex);
+        }
+
+        try {
+            return sanitizeDbText(rs.getString(column), maxChars);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Text read failed for column " + column, ex);
             return null;
         }
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
+        try {
+            long typed = rs.getLong(column);
+            if (!rs.wasNull()) {
+                return Math.max(0L, typed);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed long read failed for column " + column, ex);
+        }
+
         String text = readSanitizedDbText(rs, column, 64);
         if (text == null || text.isBlank()) {
             return 0L;
@@ -529,8 +553,16 @@ public final class CustomerIdentityStore {
         if (text == null || text.isEmpty()) {
             return null;
         }
+
         try {
-            return Timestamp.valueOf(text.replace('T', ' '));
+            return Timestamp.from(Instant.parse(text));
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Instant parse failed for column " + column + ", trying SQL timestamp parse", ex);
+        }
+
+        try {
+            String legacy = text.endsWith("Z") ? text.substring(0, text.length() - 1) : text;
+            return Timestamp.valueOf(legacy.replace('T', ' '));
         } catch (IllegalArgumentException ex) {
             log.log(Level.FINE, "Unable to parse timestamp for column " + column, ex);
             return null;

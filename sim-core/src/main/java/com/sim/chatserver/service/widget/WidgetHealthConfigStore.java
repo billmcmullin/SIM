@@ -1,5 +1,7 @@
 package com.sim.chatserver.service.widget;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -351,6 +353,15 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
+        try {
+            int typed = rs.getInt(column);
+            if (!rs.wasNull()) {
+                return Math.max(0, typed);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
+        }
+
         String text = readRawDbText(rs, column);
         if (text == null || text.isBlank()) {
             return 0;
@@ -364,6 +375,17 @@ public class WidgetHealthConfigStore {
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
+        try {
+            int typed = rs.getInt(column);
+            if (!rs.wasNull()) {
+                if (typed > 0) {
+                    return typed;
+                }
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
+        }
+
         String text = readRawDbText(rs, column);
         if (text == null || text.isBlank()) {
             return fallback;
@@ -378,6 +400,15 @@ public class WidgetHealthConfigStore {
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
+        try {
+            boolean typed = rs.getBoolean(column);
+            if (!rs.wasNull()) {
+                return typed;
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getBoolean(String) failed for column " + column, ex);
+        }
+
         String text = readRawDbText(rs, column);
         if (text == null || text.isBlank()) {
             return fallback;
@@ -398,6 +429,15 @@ public class WidgetHealthConfigStore {
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
+        try {
+            Timestamp typed = rs.getTimestamp(column);
+            if (typed != null) {
+                return typed;
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getTimestamp(String) failed for column " + column, ex);
+        }
+
         String text = readSanitizedDbText(rs, column, 128);
         if (text == null || text.isBlank()) {
             return null;
@@ -430,16 +470,66 @@ public class WidgetHealthConfigStore {
         try {
             Object raw = rs.getObject(column);
             if (raw == null) {
-                return null;
+                String fallback = rs.getString(column);
+                return fallback == null ? null : sanitizeDbText(fallback, 4096);
             }
             if (raw instanceof byte[] bytes) {
                 return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
             }
             return sanitizeDbText(String.valueOf(raw), 4096);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column + ", trying stream fallback", ex);
+        }
+
+        try (Reader reader = rs.getCharacterStream(column)) {
+            if (reader != null) {
+                return sanitizeDbText(readBoundedText(reader, 4096), 4096);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getCharacterStream(String) failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character stream read failed for column " + column, ex);
+        }
+
+        try (Reader reader = rs.getNCharacterStream(column)) {
+            if (reader != null) {
+                return sanitizeDbText(readBoundedText(reader, 4096), 4096);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getNCharacterStream(String) failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "NCharacter stream read failed for column " + column, ex);
+        }
+
+        try {
+            String fallback = rs.getString(column);
+            return fallback == null ? null : sanitizeDbText(fallback, 4096);
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet textual read failed for column " + column, ex);
             return null;
         }
+    }
+
+    private String readBoundedText(Reader reader, int maxChars) throws IOException {
+        if (reader == null || maxChars <= 0) {
+            return "";
+        }
+        char[] buffer = new char[256];
+        StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+        int total = 0;
+        int read;
+        while ((read = reader.read(buffer)) != -1) {
+            total += read;
+            if (total > maxChars) {
+                int remaining = Math.max(0, maxChars - (total - read));
+                if (remaining > 0) {
+                    out.append(buffer, 0, remaining);
+                }
+                break;
+            }
+            out.append(buffer, 0, read);
+        }
+        return out.toString();
     }
 
     private String sanitizeDbText(String s, int maxChars) {

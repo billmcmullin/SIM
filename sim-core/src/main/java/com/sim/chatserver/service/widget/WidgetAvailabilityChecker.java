@@ -1121,7 +1121,7 @@ public class WidgetAvailabilityChecker {
                 ? DateTimeFormatter.ISO_INSTANT.format(Instant.now())
                 : DateTimeFormatter.ISO_INSTANT.format(checkedAt);
         return new WidgetAvailabilityResult(
-                true,
+            true,
                 "DISABLED",
                 checkedAtIso,
                 0L,

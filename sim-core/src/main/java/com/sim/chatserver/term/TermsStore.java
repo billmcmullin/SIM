@@ -377,32 +377,45 @@ public class TermsStore {
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader == null) {
+            if (reader != null) {
+                char[] buffer = new char[256];
+                StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+                int total = 0;
+                int read;
+                while ((read = reader.read(buffer)) != -1) {
+                    total += read;
+                    if (maxChars > 0 && total > maxChars) {
+                        int remaining = Math.max(0, maxChars - (total - read));
+                        if (remaining > 0) {
+                            value.append(buffer, 0, remaining);
+                        }
+                        break;
+                    }
+                    value.append(buffer, 0, read);
+                }
+
+                String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+                if (normalized.length() > maxChars) {
+                    return normalized.substring(0, maxChars);
+                }
+                return normalized;
+            }
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "ResultSet character stream read failed for column " + column, ex);
+        }
+
+        try {
+            String text = rs.getString(column);
+            if (text == null) {
                 return "";
             }
-            char[] buffer = new char[256];
-            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (maxChars > 0 && total > maxChars) {
-                    int remaining = Math.max(0, maxChars - (total - read));
-                    if (remaining > 0) {
-                        value.append(buffer, 0, remaining);
-                    }
-                    break;
-                }
-                value.append(buffer, 0, read);
-            }
-
-            String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
-            if (normalized.length() > maxChars) {
+            String normalized = text.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+            if (maxChars > 0 && normalized.length() > maxChars) {
                 return normalized.substring(0, maxChars);
             }
             return normalized;
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "ResultSet character stream read failed for column " + column, ex);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet string read failed for column " + column, ex);
             return "";
         }
     }

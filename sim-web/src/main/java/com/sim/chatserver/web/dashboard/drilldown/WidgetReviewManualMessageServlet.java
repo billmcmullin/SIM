@@ -3,6 +3,7 @@ package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
@@ -168,7 +169,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         try {
             req.setCharacterEncoding(StandardCharsets.UTF_8.name());
         } catch (java.io.UnsupportedEncodingException ex) {
-            log.log(Level.FINE, "UTF-8 character encoding was not accepted", ex);
+            throw new IllegalStateException("UTF-8 character encoding was not accepted", ex);
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
@@ -1218,12 +1219,35 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             return "";
         }
+
+        try {
+            Reader requestReader = req.getReader();
+            if (requestReader != null) {
+                return readRequestBody(requestReader);
+            }
+        } catch (IOException | RuntimeException ex) {
+            log.log(Level.FINE, "Unable to read manual-message request body from reader", ex);
+        }
+
         try (InputStreamReader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
+            return readRequestBody(reader);
+        } catch (IOException | RuntimeException e) {
+            log.log(Level.FINE, "Unable to read manual-message request body", e);
+            return "";
+        }
+    }
+
+    private String readRequestBody(Reader reader) throws IOException {
+        if (reader == null) {
+            return "";
+        }
+
+        try (Reader bodyReader = reader) {
             char[] buffer = new char[4096];
             StringBuilder builder = new StringBuilder();
             int total = 0;
             int read;
-            while ((read = reader.read(buffer)) != -1) {
+            while ((read = bodyReader.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_JSON_PAYLOAD_BYTES) {
                     return "";
@@ -1235,9 +1259,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 return "";
             }
             return canonicalizeForValidation(body);
-        } catch (IOException e) {
-            log.log(Level.FINE, "Unable to read manual-message request body", e);
-            return "";
         }
     }
 

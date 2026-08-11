@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -346,6 +347,9 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private static final RuntimeState STATE = new RuntimeState();
+    private static volatile long summaryIntervalSeconds = DEFAULT_SUMMARY_INTERVAL_SECONDS;
+    private static volatile String summaryPromptTemplate = DEFAULT_SUMMARY_PROMPT;
+    private static volatile Timestamp summaryLastRun;
 
     private static final class RuntimeState {
         private DashboardDailySummaryStore summaryStore;
@@ -354,15 +358,12 @@ public class WidgetSyncServlet extends HttpServlet {
         private long lastSyncRequestAtMs;
         private ScheduledFuture<?> scheduledFuture;
         private long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
-        private long summaryIntervalSeconds = DEFAULT_SUMMARY_INTERVAL_SECONDS;
         private boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
         private int summaryMaxRows = DEFAULT_SUMMARY_MAX_ROWS;
         private int summaryMaxUpstreamEntries = DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES;
         private int summaryMaxMessageChars = DEFAULT_SUMMARY_MAX_MESSAGE_CHARS;
         private int summaryMaxRequestBytes = DEFAULT_SUMMARY_MAX_REQUEST_BYTES;
-        private String summaryPromptTemplate = DEFAULT_SUMMARY_PROMPT;
         private Timestamp lastSynced;
-        private Timestamp summaryLastRun;
         private Instant syncStartedAt;
         private Instant syncFinishedAt;
         private String syncPhase = "idle";
@@ -398,20 +399,28 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static ScheduledExecutorService createScheduler() {
         ScheduledExecutorService managed = lookupManagedScheduledExecutor();
-        if (managed == null) {
-            throw new IllegalStateException(
-                    "ManagedScheduledExecutorService is not available at java:comp/DefaultManagedScheduledExecutorService.");
+        if (managed != null) {
+            return managed;
         }
-        return managed;
+
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "WidgetSyncServlet-Scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     private static ExecutorService createSyncPool() {
         ExecutorService managed = lookupManagedExecutor();
-        if (managed == null) {
-            throw new IllegalStateException(
-                    "ManagedExecutorService is not available at java:comp/DefaultManagedExecutorService.");
+        if (managed != null) {
+            return managed;
         }
-        return managed;
+
+        return Executors.newFixedThreadPool(2, runnable -> {
+            Thread thread = new Thread(runnable, "WidgetSyncServlet-Worker");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     private static ScheduledExecutorService lookupManagedScheduledExecutor() {
@@ -451,12 +460,38 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private static synchronized void ensureExecutorsRunning() {
-        if (STATE.scheduler == null || STATE.scheduler.isShutdown() || STATE.scheduler.isTerminated()) {
+        if (STATE.scheduler == null || isExecutorStopped(STATE.scheduler, "scheduler")) {
             STATE.scheduler = createScheduler();
         }
-        if (STATE.syncPool == null || STATE.syncPool.isShutdown() || STATE.syncPool.isTerminated()) {
+        if (STATE.syncPool == null || isExecutorStopped(STATE.syncPool, "syncPool")) {
             STATE.syncPool = createSyncPool();
         }
+    }
+
+    private static boolean isExecutorStopped(ExecutorService executor, String executorName) {
+        if (executor == null) {
+            return true;
+        }
+        try {
+            return executor.isShutdown() || executor.isTerminated();
+        } catch (RuntimeException ex) {
+            if (isContainerManagedExecutor(executor)) {
+                log.log(Level.FINE, "Skipping lifecycle check for container-managed executor {0}", executorName);
+                return false;
+            }
+            log.log(Level.WARNING, "Executor lifecycle check failed for " + executorName + "; recreating local executor", ex);
+            return true;
+        }
+    }
+
+    private static boolean isContainerManagedExecutor(ExecutorService executor) {
+        if (executor == null) {
+            return false;
+        }
+        String typeName = executor.getClass().getName();
+        return typeName.contains("ManagedExecutorService")
+                || typeName.contains("ManagedScheduledExecutorService")
+                || typeName.contains("jboss.as.ee.concurrent.adapter");
     }
 
     private static boolean isSyncDisabled() {
@@ -551,11 +586,24 @@ public class WidgetSyncServlet extends HttpServlet {
         if (STATE.scheduledFuture != null) {
             STATE.scheduledFuture.cancel(false);
         }
-        if (STATE.scheduler != null && !STATE.scheduler.isShutdown()) {
-            STATE.scheduler.shutdownNow();
+        shutdownExecutorQuietly(STATE.scheduler, "scheduler");
+        shutdownExecutorQuietly(STATE.syncPool, "syncPool");
+    }
+
+    private void shutdownExecutorQuietly(ExecutorService executor, String executorName) {
+        if (executor == null) {
+            return;
         }
-        if (STATE.syncPool != null && !STATE.syncPool.isShutdown()) {
-            STATE.syncPool.shutdownNow();
+        if (isContainerManagedExecutor(executor)) {
+            log.log(Level.FINE, "Skipping shutdown for container-managed executor {0}", executorName);
+            return;
+        }
+        try {
+            if (!executor.isShutdown()) {
+                executor.shutdownNow();
+            }
+        } catch (RuntimeException ex) {
+            log.log(Level.FINE, "Executor shutdown failed for " + executorName, ex);
         }
     }
 
@@ -720,7 +768,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("status", success ? "ok" : "error")
                     .add("message", message)
                     .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
-                .add("summaryLastRunAt", STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString())
+                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                     .build();
             writeJson(resp, success ? HttpServletResponse.SC_OK : HttpServletResponse.SC_BAD_GATEWAY, payload);
@@ -733,7 +781,7 @@ public class WidgetSyncServlet extends HttpServlet {
         boolean running = syncRunning.get();
         String startedAt = STATE.syncStartedAt == null ? "" : STATE.syncStartedAt.toString();
         String finishedAt = STATE.syncFinishedAt == null ? "" : STATE.syncFinishedAt.toString();
-        String summaryLastRunAt = STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString();
+        String summaryLastRunAt = summaryLastRun == null ? "" : summaryLastRun.toInstant().toString();
         String summaryNextRunAt = computeNextSummaryRunAtIso();
         int totalWidgets = Math.max(0, STATE.syncTotalWidgets);
         int completedWidgets = Math.max(0, syncCompletedWidgets.get());
@@ -746,10 +794,10 @@ public class WidgetSyncServlet extends HttpServlet {
                 .add("status", "ok")
                 .add("intervalSeconds", STATE.syncIntervalSeconds)
             .add("syncRunning", running)
-                .add("STATE.lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
-            .add("STATE.syncStartedAt", startedAt)
-            .add("STATE.syncFinishedAt", finishedAt)
-            .add("STATE.syncPhase", defaultIfBlank(STATE.syncPhase, running ? "running" : "idle"))
+                .add("lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
+            .add("syncStartedAt", startedAt)
+            .add("syncFinishedAt", finishedAt)
+            .add("syncPhase", defaultIfBlank(STATE.syncPhase, running ? "running" : "idle"))
             .add("syncMessage", defaultIfBlank(STATE.syncStatusMessage, ""))
             .add("widgetsTotal", totalWidgets)
             .add("widgetsCompleted", completedWidgets)
@@ -760,15 +808,15 @@ public class WidgetSyncServlet extends HttpServlet {
             .add("currentWidgetIndex", Math.max(0, STATE.syncCurrentWidgetIndex))
             .add("progressPercent", percent)
             .add("runningSeconds", runningSeconds)
-                .add("STATE.summaryIntervalSeconds", STATE.summaryIntervalSeconds)
-                .add("STATE.summaryAutoEnabled", STATE.summaryAutoEnabled)
-                .add("STATE.summaryMaxRows", STATE.summaryMaxRows)
-                .add("STATE.summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
-                .add("STATE.summaryMaxMessageChars", STATE.summaryMaxMessageChars)
-                .add("STATE.summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
+                .add("summaryIntervalSeconds", summaryIntervalSeconds)
+                .add("summaryAutoEnabled", STATE.summaryAutoEnabled)
+                .add("summaryMaxRows", STATE.summaryMaxRows)
+                .add("summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
+                .add("summaryMaxMessageChars", STATE.summaryMaxMessageChars)
+                .add("summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
                 .add("summaryPrompt", resolveSummaryPrompt())
                 .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
-                .add("STATE.summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
+                .add("summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
                 .add("summaryLastRunAt", summaryLastRunAt)
                 .add("summaryNextRunAt", summaryNextRunAt)
                 .build();
@@ -781,12 +829,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         String syncIntervalRaw = firstParam(req, "intervalSeconds");
-        String summaryIntervalRaw = firstParam(req, "STATE.summaryIntervalSeconds");
-        String summaryAutoEnabledRaw = firstParam(req, "STATE.summaryAutoEnabled");
-        String summaryMaxRowsRaw = firstParam(req, "STATE.summaryMaxRows");
-        String summaryMaxUpstreamEntriesRaw = firstParam(req, "STATE.summaryMaxUpstreamEntries");
-        String summaryMaxMessageCharsRaw = firstParam(req, "STATE.summaryMaxMessageChars");
-        String summaryMaxRequestBytesRaw = firstParam(req, "STATE.summaryMaxRequestBytes");
+        String summaryIntervalRaw = firstParamAny(req, "summaryIntervalSeconds", "STATE.summaryIntervalSeconds");
+        String summaryAutoEnabledRaw = firstParamAny(req, "summaryAutoEnabled", "STATE.summaryAutoEnabled");
+        String summaryMaxRowsRaw = firstParamAny(req, "summaryMaxRows", "STATE.summaryMaxRows");
+        String summaryMaxUpstreamEntriesRaw = firstParamAny(req, "summaryMaxUpstreamEntries", "STATE.summaryMaxUpstreamEntries");
+        String summaryMaxMessageCharsRaw = firstParamAny(req, "summaryMaxMessageChars", "STATE.summaryMaxMessageChars");
+        String summaryMaxRequestBytesRaw = firstParamAny(req, "summaryMaxRequestBytes", "STATE.summaryMaxRequestBytes");
         String summaryPromptRaw = readMultilineParam(req, "summaryPrompt", MAX_SUMMARY_PROMPT_CHARS);
 
         boolean changed = false;
@@ -802,7 +850,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (summaryIntervalRaw != null && !summaryIntervalRaw.isBlank()) {
                 long parsedSummaryInterval = Long.parseLong(summaryIntervalRaw.trim());
-                STATE.summaryIntervalSeconds = clampSummaryIntervalSeconds(parsedSummaryInterval);
+                summaryIntervalSeconds = clampSummaryIntervalSeconds(parsedSummaryInterval);
                 changed = true;
             }
 
@@ -841,7 +889,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         if (summaryPromptRaw != null) {
-            STATE.summaryPromptTemplate = normalizeSummaryPrompt(summaryPromptRaw);
+            summaryPromptTemplate = normalizeSummaryPrompt(summaryPromptRaw);
             changed = true;
         }
 
@@ -855,17 +903,17 @@ public class WidgetSyncServlet extends HttpServlet {
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "ok")
                 .add("intervalSeconds", STATE.syncIntervalSeconds)
-                .add("STATE.lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
-                .add("STATE.summaryIntervalSeconds", STATE.summaryIntervalSeconds)
-                .add("STATE.summaryAutoEnabled", STATE.summaryAutoEnabled)
-                .add("STATE.summaryMaxRows", STATE.summaryMaxRows)
-                .add("STATE.summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
-                .add("STATE.summaryMaxMessageChars", STATE.summaryMaxMessageChars)
-                .add("STATE.summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
+            .add("lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
+            .add("summaryIntervalSeconds", summaryIntervalSeconds)
+            .add("summaryAutoEnabled", STATE.summaryAutoEnabled)
+            .add("summaryMaxRows", STATE.summaryMaxRows)
+            .add("summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
+            .add("summaryMaxMessageChars", STATE.summaryMaxMessageChars)
+            .add("summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
                 .add("summaryPrompt", resolveSummaryPrompt())
                 .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
-                .add("STATE.summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
-                .add("summaryLastRunAt", STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString())
+            .add("summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
+                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                 .build();
         writeJson(resp, HttpServletResponse.SC_OK, payload);
@@ -1307,7 +1355,7 @@ public class WidgetSyncServlet extends HttpServlet {
         LocalDate day = LocalDate.now(zone);
         int slot = resolveCurrentSlot(LocalTime.now(zone));
         int entryCount = 0;
-        STATE.summaryLastRun = Timestamp.from(Instant.now());
+        summaryLastRun = Timestamp.from(Instant.now());
         persistSyncSettings();
 
         try {
@@ -2828,15 +2876,15 @@ public class WidgetSyncServlet extends HttpServlet {
             if (settings.intervalSeconds > 0) {
                 STATE.syncIntervalSeconds = settings.intervalSeconds;
             }
-            STATE.summaryIntervalSeconds = clampSummaryIntervalSeconds(settings.summaryIntervalSeconds);
+            summaryIntervalSeconds = clampSummaryIntervalSeconds(settings.summaryIntervalSeconds);
             STATE.summaryAutoEnabled = settings.summaryAutoEnabled;
             STATE.summaryMaxRows = clampSummaryMaxRows(settings.summaryMaxRows);
             STATE.summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(settings.summaryMaxUpstreamEntries);
             STATE.summaryMaxMessageChars = clampSummaryMaxMessageChars(settings.summaryMaxMessageChars);
             STATE.summaryMaxRequestBytes = clampSummaryMaxRequestBytes(settings.summaryMaxRequestBytes);
-            STATE.summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
+            summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
             STATE.lastSynced = settings.lastSynced;
-            STATE.summaryLastRun = settings.summaryLastRun;
+            summaryLastRun = settings.summaryLastRun;
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to load sync settings", e);
         }
@@ -2952,7 +3000,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     long persistedSummaryInterval = readPersistedIntervalSeconds(
                             rs,
                             "summary_interval_seconds",
-                            STATE.summaryIntervalSeconds
+                            summaryIntervalSeconds
                     );
                     boolean persistedSummaryAutoEnabled = readPersistedBoolean(
                         rs,
@@ -3002,26 +3050,26 @@ public class WidgetSyncServlet extends HttpServlet {
                     conn,
                     STATE.syncIntervalSeconds,
                     STATE.lastSynced,
-                    STATE.summaryIntervalSeconds,
+                    summaryIntervalSeconds,
                     STATE.summaryAutoEnabled,
                     resolveSummaryPrompt(),
                     STATE.summaryMaxRows,
                     STATE.summaryMaxUpstreamEntries,
                     STATE.summaryMaxMessageChars,
                     STATE.summaryMaxRequestBytes,
-                    STATE.summaryLastRun
+                    summaryLastRun
             );
             return new SyncSettings(
                     STATE.syncIntervalSeconds,
                     STATE.lastSynced,
-                    STATE.summaryIntervalSeconds,
+                    summaryIntervalSeconds,
                     STATE.summaryAutoEnabled,
                     resolveSummaryPrompt(),
                     STATE.summaryMaxRows,
                     STATE.summaryMaxUpstreamEntries,
                     STATE.summaryMaxMessageChars,
                     STATE.summaryMaxRequestBytes,
-                    STATE.summaryLastRun
+                    summaryLastRun
             );
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read sync settings", e);
@@ -3046,14 +3094,14 @@ public class WidgetSyncServlet extends HttpServlet {
             conn,
             intervalSeconds,
             lastSynced,
-            STATE.summaryIntervalSeconds,
+            summaryIntervalSeconds,
             STATE.summaryAutoEnabled,
             resolveSummaryPrompt(),
             STATE.summaryMaxRows,
             STATE.summaryMaxUpstreamEntries,
             STATE.summaryMaxMessageChars,
             STATE.summaryMaxRequestBytes,
-            STATE.summaryLastRun
+            summaryLastRun
         );
     }
 
@@ -4674,23 +4722,23 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isSummaryRunDueNow() {
-        if (STATE.summaryIntervalSeconds <= 0L) {
+        if (summaryIntervalSeconds <= 0L) {
             return true;
         }
-        Timestamp lastRun = STATE.summaryLastRun;
+        Timestamp lastRun = summaryLastRun;
         if (lastRun == null) {
             return true;
         }
-        Instant threshold = lastRun.toInstant().plusSeconds(STATE.summaryIntervalSeconds);
+        Instant threshold = lastRun.toInstant().plusSeconds(summaryIntervalSeconds);
         return !Instant.now().isBefore(threshold);
     }
 
     private String computeNextSummaryRunAtIso() {
-        Timestamp lastRun = STATE.summaryLastRun;
-        if (lastRun == null || STATE.summaryIntervalSeconds <= 0L) {
+        Timestamp lastRun = summaryLastRun;
+        if (lastRun == null || summaryIntervalSeconds <= 0L) {
             return "";
         }
-        return lastRun.toInstant().plusSeconds(STATE.summaryIntervalSeconds).toString();
+        return lastRun.toInstant().plusSeconds(summaryIntervalSeconds).toString();
     }
 
     private long clampSummaryIntervalSeconds(long value) {
@@ -4729,7 +4777,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String resolveSummaryPrompt() {
-        return normalizeSummaryPrompt(STATE.summaryPromptTemplate);
+        return normalizeSummaryPrompt(summaryPromptTemplate);
     }
 
     private String normalizeSummaryPrompt(String prompt) {
@@ -4921,6 +4969,19 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         trimmed = trimmed.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+    }
+
+    private String firstParamAny(HttpServletRequest req, String... names) {
+        if (names == null || names.length == 0) {
+            return null;
+        }
+        for (String name : names) {
+            String value = firstParam(req, name);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private AppDataSourceHolder dataSourceHolder() {

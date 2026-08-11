@@ -267,9 +267,21 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (req == null || !isValidJsonRequest(req)) {
             return null;
         }
+
+        try {
+            Reader requestReader = req.getReader();
+            if (requestReader != null) {
+                try (Reader reader = requestReader) {
+                    return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            log.log(Level.FINE, "Unable to read automatic alert payload from request reader.", e);
+        }
+
         try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
             return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             log.log(Level.FINE, "Unable to read automatic alert payload.", e);
             return null;
         }

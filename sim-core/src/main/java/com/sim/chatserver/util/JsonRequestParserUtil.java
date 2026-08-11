@@ -1,6 +1,7 @@
 package com.sim.chatserver.util;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
@@ -67,12 +68,33 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        try (Reader requestReader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
-            if (requestReader == null) {
+        Reader requestReader = null;
+        try {
+            requestReader = req.getReader();
+        } catch (IOException | RuntimeException ex) {
+            log.log(Level.FINE, "Request reader unavailable, trying input stream fallback", ex);
+        }
+
+        if (requestReader == null) {
+            InputStream stream;
+            try {
+                stream = req.getInputStream();
+            } catch (IOException | RuntimeException ex) {
+                log.log(Level.WARNING, "Failed to read JSON request body", ex);
+                return emptyObject();
+            }
+            if (stream == null) {
+                return emptyObject();
+            }
+            requestReader = new InputStreamReader(stream, StandardCharsets.UTF_8);
+        }
+
+        try (Reader bodyReader = requestReader) {
+            if (bodyReader == null) {
                 return emptyObject();
             }
 
-            String body = readAtMost(requestReader, max);
+            String body = readAtMost(bodyReader, max);
 
             if (body.isBlank()) {
                 return emptyObject();
@@ -101,7 +123,7 @@ public final class JsonRequestParserUtil {
         } catch (BodyTooLargeException ex) {
             log.warning(() -> "JSON request body exceeds limit: " + ex.getMessage());
             return emptyObject();
-        } catch (IOException | JsonException ex) {
+        } catch (IOException | RuntimeException ex) {
             log.log(Level.WARNING, "Failed to parse JSON request body", ex);
             return emptyObject();
         }

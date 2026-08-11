@@ -454,6 +454,21 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
+        try {
+            int typed = rs.getInt(column);
+            if (!rs.wasNull()) {
+                if (typed < min) {
+                    return min;
+                }
+                if (typed > max) {
+                    return max;
+                }
+                return typed;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
+        }
+
         String raw = sanitizeText(readRawText(rs, column), 64);
         if (raw.isBlank() || !raw.matches("^-?\\d+$")) {
             return min;
@@ -513,10 +528,20 @@ public class DashboardDailySummaryStore {
     }
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
+        try {
+            java.sql.Date day = rs.getDate(column);
+            if (day != null) {
+                return day.toLocalDate().toString();
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getDate(String) failed for date column " + column, ex);
+        }
+
         String raw = getSafeString(rs, column, 32);
         if (raw.isBlank()) {
             return "";
         }
+
         try {
             LocalDate localDay = LocalDate.parse(raw.trim());
             return localDay.toString();

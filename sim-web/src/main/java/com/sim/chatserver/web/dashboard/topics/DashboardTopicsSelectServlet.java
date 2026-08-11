@@ -138,7 +138,26 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     }
 
     private String readRequestBody(HttpServletRequest req) {
-        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
+        Reader sourceReader;
+        try {
+            sourceReader = req.getReader();
+        } catch (IOException | IllegalStateException ex) {
+            sourceReader = null;
+        }
+
+        if (sourceReader == null) {
+            try {
+                var inputStream = req.getInputStream();
+                if (inputStream == null) {
+                    return "";
+                }
+                sourceReader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+            } catch (IOException | IllegalStateException ex) {
+                return "";
+            }
+        }
+
+        try (Reader reader = sourceReader) {
             StringBuilder body = new StringBuilder();
             char[] buf = new char[1024];
             int read;
@@ -149,7 +168,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                 }
             }
             return ServletRequestParamUtil.normalizeBodyText(body.toString(), MAX_JSON_PAYLOAD_BYTES, true);
-        } catch (IOException | IllegalArgumentException ex) {
+        } catch (IOException | RuntimeException ex) {
             throw new JsonException("Unable to read request payload", ex);
         }
     }
