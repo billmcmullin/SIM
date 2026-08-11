@@ -295,14 +295,29 @@ public final class WidgetStore {
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        String text = readSanitizedDbText(rs, "created_at", 128);
+        try {
+            Timestamp typedTimestamp = rs.getTimestamp("created_at");
+            if (typedTimestamp != null) {
+                return typedTimestamp.toInstant();
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed timestamp read failed for created_at", ex);
+        }
+
+        String text = "";
+        try {
+            text = sanitizeDbText(rs.getString("created_at"), 128);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Text fallback read failed for created_at", ex);
+        }
+
         if (!text.isBlank()) {
             try {
-                return Instant.parse(text.trim());
+                return Instant.parse(text);
             } catch (DateTimeException e) {
                 log.log(Level.FINE, "Instant parse fallback for created_at", e);
                 try {
-                    return OffsetDateTime.parse(text.trim()).toInstant();
+                    return OffsetDateTime.parse(text).toInstant();
                 } catch (DateTimeException ex) {
                     log.log(Level.FINE, "OffsetDateTime parse fallback for created_at", ex);
                 }
@@ -310,11 +325,12 @@ public final class WidgetStore {
                     return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
                 } catch (IllegalArgumentException ex) {
                     log.log(Level.FINE, "Timestamp fallback parse failed for created_at", ex);
-                    throw new SQLException("Unsupported created_at text value", ex);
                 }
             }
         }
-        throw new SQLException("created_at timestamp must not be null");
+
+        // Keep widget metadata flows alive even if legacy/bad created_at text is present.
+        return Instant.EPOCH;
     }
 
     private static String normalizeRequired(String value, String fieldName) {

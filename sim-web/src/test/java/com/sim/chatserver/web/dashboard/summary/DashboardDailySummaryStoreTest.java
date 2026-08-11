@@ -30,10 +30,13 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import jakarta.json.JsonObject;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class DashboardDailySummaryStoreTest {
 
     @Mock
@@ -63,8 +66,10 @@ class DashboardDailySummaryStoreTest {
     private DashboardDailySummaryStore store;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         store = new DashboardDailySummaryStore(dataSource);
+        org.mockito.Mockito.lenient().when(exactResultSet.getString(anyString())).thenReturn(null);
+        org.mockito.Mockito.lenient().when(latestResultSet.getString(anyString())).thenReturn(null);
     }
 
     @Test

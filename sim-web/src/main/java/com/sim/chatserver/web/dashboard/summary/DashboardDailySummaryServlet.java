@@ -16,7 +16,6 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletContext;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,7 +26,8 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardDailySummaryServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryServlet.class.getName() + ".summaryStore";
+    private static final Object SUMMARY_STORE_LOCK = new Object();
+    static volatile DashboardDailySummaryStore summaryStore;
     private AppDataSourceHolder dsHolder;
 
     @Override
@@ -38,24 +38,34 @@ public class DashboardDailySummaryServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        if (!isLoggedIn(req, resp)) {
-            return;
-        }
-
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate day = parseDay(ServletRequestParamUtil.firstParamFromValues(req, "day", 256, true, true), zone);
-        int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParamFromValues(req, "slot", 32, true, true), zone);
-
         try {
+            if (!isLoggedIn(req, resp)) {
+                return;
+            }
+
+            ZoneId zone = ZoneId.systemDefault();
+            LocalDate day = parseDay(ServletRequestParamUtil.firstParamFromValues(req, "day", 256, true, true), zone);
+            int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParamFromValues(req, "slot", 32, true, true), zone);
+
             DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
 
-            JsonObject payload = store.fetchExactOrLatest(day, slot);
+            JsonObject payload;
+            try {
+                payload = store.fetchExactOrLatest(day, slot);
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
+                writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
+                return;
+            }
             writeJson(resp, HttpServletResponse.SC_OK,
                     payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (ServletException | IllegalStateException e) {
+        } catch (ServletException e) {
             log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
             writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
 
@@ -128,20 +138,30 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
     }
 
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ioe) {
+            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+        }
+    }
+
     private DashboardDailySummaryStore ensureSummaryStoreInitialized() throws ServletException {
-        ServletContext context = getServletContext();
-        DashboardDailySummaryStore local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
+        DashboardDailySummaryStore local = summaryStore;
         if (local != null) {
             return local;
         }
 
-        synchronized (context) {
-            return getOrCreateSummaryStore(context);
+        synchronized (SUMMARY_STORE_LOCK) {
+            return getOrCreateSummaryStore();
         }
     }
 
-    private DashboardDailySummaryStore getOrCreateSummaryStore(ServletContext context) throws ServletException {
-        DashboardDailySummaryStore existing = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
+    private DashboardDailySummaryStore getOrCreateSummaryStore() throws ServletException {
+        DashboardDailySummaryStore existing = summaryStore;
         if (existing != null) {
             return existing;
         }
@@ -149,9 +169,9 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         try {
             DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
             created.ensureTable();
-            context.setAttribute(SUMMARY_STORE_KEY, created);
+            summaryStore = created;
             return created;
-        } catch (IllegalStateException e) {
+        } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
             throw new ServletException("Failed to initialize daily summary store", e);
         }

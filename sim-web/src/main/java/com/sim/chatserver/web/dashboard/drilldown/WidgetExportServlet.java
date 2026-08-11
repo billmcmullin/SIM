@@ -8,6 +8,12 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import org.openpdf.text.Document;
 import org.openpdf.text.DocumentException;
@@ -63,6 +70,7 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     volatile AppDataSourceHolder dsHolder;
 
@@ -705,12 +713,34 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
+        try {
+            Reader requestReader = req.getReader();
+            if (requestReader != null) {
+                return readRequestBody(requestReader);
+            }
+        } catch (IOException | IllegalStateException ex) {
+            log.log(Level.FINE, "Unable to read export request body from request reader", ex);
+        }
+
         try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
+            return readRequestBody(reader);
+        } catch (IOException | IllegalStateException e) {
+            log.log(Level.FINE, "Unable to read export request body", e);
+            return "";
+        }
+    }
+
+    private String readRequestBody(Reader reader) throws IOException {
+        if (reader == null) {
+            return "";
+        }
+
+        try (Reader bodyReader = reader) {
             char[] buffer = new char[2048];
             StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
             int total = 0;
             int read;
-            while ((read = reader.read(buffer)) != -1) {
+            while ((read = bodyReader.read(buffer)) != -1) {
                 total += read;
                 if (total > MAX_JSON_PAYLOAD_BYTES) {
                     return "";
@@ -718,9 +748,147 @@ public class WidgetExportServlet extends HttpServlet {
                 builder.append(buffer, 0, read);
             }
             return ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
-        } catch (IOException e) {
-            log.log(Level.FINE, "Unable to read export request body", e);
+        }
+    }
+
+    private String sanitizeWidgetTableName(String widgetId) {
+        if (widgetId == null || widgetId.isBlank()) {
+            return "widget";
+        }
+        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        if (normalized.isEmpty()) {
+            normalized = "widget";
+        }
+        if (!Character.isLetter(normalized.charAt(0))) {
+            normalized = "w_" + normalized;
+        }
+        if (normalized.length() > 60) {
+            normalized = normalized.substring(0, 60);
+        }
+        return normalized;
+    }
+
+    private String quoteIdentifier(String identifier) {
+        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
+            throw new IllegalArgumentException("Invalid SQL identifier");
+        }
+        return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    private boolean tableExists(Connection conn, String tableName) {
+        if (conn == null || tableName == null || tableName.isBlank()) {
+            return false;
+        }
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
+                }
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
+        }
+        return false;
+    }
+
+    private static List<List<String>> chunk(List<String> input, int size) {
+        List<List<String>> out = new ArrayList<>();
+        if (input == null || input.isEmpty() || size <= 0) {
+            return out;
+        }
+        for (int i = 0; i < input.size(); i += size) {
+            out.add(input.subList(i, Math.min(i + size, input.size())));
+        }
+        return out;
+    }
+
+    private String readDbText(ResultSet rs, String columnName, int maxLen) {
+        if (rs == null || columnName == null || columnName.isBlank()) {
             return "";
+        }
+
+        try (Reader reader = rs.getCharacterStream(columnName)) {
+            if (reader != null) {
+                char[] buffer = new char[256];
+                StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
+                int total = 0;
+                int read;
+                while ((read = reader.read(buffer)) != -1) {
+                    total += read;
+                    if (maxLen > 0 && total > maxLen) {
+                        int remaining = Math.max(0, maxLen - (total - read));
+                        if (remaining > 0) {
+                            value.append(buffer, 0, remaining);
+                        }
+                        break;
+                    }
+                    value.append(buffer, 0, read);
+                }
+                String normalized = ServletRequestParamUtil.normalizeBodyText(value.toString(), maxLen, false);
+                return normalized == null ? "" : normalized.replace('\n', ' ');
+            }
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
+        }
+
+        try {
+            String raw = rs.getString(columnName);
+            if (raw == null) {
+                return "";
+            }
+            String normalized = ServletRequestParamUtil.normalizeBodyText(raw, maxLen, false);
+            return normalized == null ? "" : normalized.replace('\n', ' ');
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Fallback DB text read failed for column " + columnName, ex);
+            return "";
+        }
+    }
+
+    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
+        if (rs == null || columnName == null || columnName.isBlank()) {
+            return null;
+        }
+
+        Timestamp ts;
+        try {
+            ts = rs.getTimestamp(columnName);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Typed DB timestamp read failed for column " + columnName, ex);
+            ts = null;
+        }
+        if (ts != null) {
+            return ts;
+        }
+
+        String raw;
+        try {
+            raw = rs.getString(columnName);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Fallback DB timestamp read failed for column " + columnName, ex);
+            return null;
+        }
+
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        String text = ServletRequestParamUtil.normalizeBodyText(raw, 128, true);
+        if (text.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Timestamp.from(Instant.parse(text));
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            try {
+                return Timestamp.valueOf(text.replace('T', ' '));
+            } catch (IllegalArgumentException ex2) {
+                log.log(Level.FINE, "Unable to parse timestamp fallback text", ex2);
+                return null;
+            }
         }
     }
 
