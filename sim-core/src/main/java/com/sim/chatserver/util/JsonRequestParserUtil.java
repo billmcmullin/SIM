@@ -1,8 +1,10 @@
 package com.sim.chatserver.util;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,12 +52,9 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        String contentType = req.getContentType();
+        String contentType = sanitizeContentTypeHeader(req.getHeader("Content-Type"));
         if (contentType != null && !contentType.isBlank()) {
-            String normalizedType = contentType.toLowerCase(java.util.Locale.ROOT);
-            if (!normalizedType.startsWith("application/json")
-                    && !normalizedType.startsWith("application/ld+json")
-                    && !normalizedType.startsWith("application/problem+json")) {
+            if (!isSupportedJsonContentType(contentType)) {
                 log.warning(() -> "Unsupported JSON content type: " + contentType);
                 return emptyObject();
             }
@@ -68,8 +67,7 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        try {
-            Reader requestReader = req.getReader();
+        try (Reader requestReader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
             if (requestReader == null) {
                 return emptyObject();
             }
@@ -182,7 +180,7 @@ public final class JsonRequestParserUtil {
         return clamp(parsed, min, max);
     }
 
-    public static JsonArray getArray(JsonObject obj, String key) {
+    static JsonArray getArray(JsonObject obj, String key) {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return Json.createArrayBuilder().build();
         }
@@ -248,6 +246,33 @@ public final class JsonRequestParserUtil {
             return normalized.substring(0, maxChars);
         }
         return normalized;
+    }
+
+    private static String sanitizeContentTypeHeader(String headerValue) {
+        if (headerValue == null || headerValue.isBlank()) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(headerValue, Normalizer.Form.NFKC)
+                .replace('\u0000', ' ')
+                .replace("\r", "")
+                .replace("\n", "")
+                .trim();
+        if (normalized.length() > 128) {
+            return normalized.substring(0, 128);
+        }
+        return normalized;
+    }
+
+    private static boolean isSupportedJsonContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return false;
+        }
+        String normalizedType = contentType.toLowerCase(java.util.Locale.ROOT);
+        int paramsIndex = normalizedType.indexOf(';');
+        String baseType = paramsIndex >= 0 ? normalizedType.substring(0, paramsIndex).trim() : normalizedType.trim();
+        return "application/json".equals(baseType)
+                || "application/ld+json".equals(baseType)
+                || "application/problem+json".equals(baseType);
     }
 
     private static JsonObject emptyObject() {

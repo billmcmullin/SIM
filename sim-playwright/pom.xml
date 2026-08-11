@@ -23,8 +23,8 @@
         <failsafe.version>3.5.5</failsafe.version>
         <coverage.integration.version>1.0.0-SNAPSHOT</coverage.integration.version>
 
-        <!-- Keep extension auto-detection opt-in to avoid forcing CTP connectivity locally -->
-        <junit.jupiter.extensions.autodetection.enabled>false</junit.jupiter.extensions.autodetection.enabled>
+        <!-- Required for coverage-integration-junit5 to publish test lifecycle events -->
+        <junit.jupiter.extensions.autodetection.enabled>true</junit.jupiter.extensions.autodetection.enabled>
         <parasoft.coverage.baggageHeader></parasoft.coverage.baggageHeader>
 
         <!-- UI test runtime defaults -->

@@ -1,5 +1,7 @@
 package com.sim.chatserver.widget;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,15 +10,20 @@ import java.sql.Timestamp;
 import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.sim.chatserver.config.Database;
 
 public final class WidgetStore {
+
+    private static final Logger log = Logger.getLogger(WidgetStore.class.getName());
 
     private static final String SQL_STATE_UNDEFINED_TABLE = "42P01";
     private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
@@ -248,10 +255,6 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        int value = rs.getInt(column);
-        if (!rs.wasNull()) {
-            return Math.max(0, value);
-        }
         String text = readSanitizedDbText(rs, column, 32);
         if (text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
@@ -259,36 +262,54 @@ public final class WidgetStore {
         try {
             return Math.max(0, Integer.parseInt(text));
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse integer value for column " + column, ex);
             return 0;
         }
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        try {
-            return sanitizeDbText(rs.getString(column), maxChars);
-        } catch (SQLException ex) {
+        try (Reader reader = rs.getCharacterStream(column)) {
+            if (reader == null) {
+                return "";
+            }
+            char[] buffer = new char[512];
+            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 1024)));
+            int total = 0;
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxChars > 0 && total > maxChars) {
+                    int remaining = Math.max(0, maxChars - (total - read));
+                    if (remaining > 0) {
+                        value.append(buffer, 0, remaining);
+                    }
+                    break;
+                }
+                value.append(buffer, 0, read);
+            }
+            return sanitizeDbText(value.toString(), maxChars);
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Text read failed for column " + column, ex);
             return "";
         }
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        Timestamp timestamp;
-        try {
-            timestamp = rs.getTimestamp("created_at");
-        } catch (SQLException ex) {
-            timestamp = null;
-        }
-        if (timestamp != null) {
-            return timestamp.toInstant();
-        }
         String text = readSanitizedDbText(rs, "created_at", 128);
-        if (text != null && !text.isBlank()) {
+        if (!text.isBlank()) {
             try {
                 return Instant.parse(text.trim());
             } catch (DateTimeException e) {
+                log.log(Level.FINE, "Instant parse fallback for created_at", e);
+                try {
+                    return OffsetDateTime.parse(text.trim()).toInstant();
+                } catch (DateTimeException ex) {
+                    log.log(Level.FINE, "OffsetDateTime parse fallback for created_at", ex);
+                }
                 try {
                     return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
                 } catch (IllegalArgumentException ex) {
+                    log.log(Level.FINE, "Timestamp fallback parse failed for created_at", ex);
                     throw new SQLException("Unsupported created_at text value", ex);
                 }
             }
