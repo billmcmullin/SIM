@@ -8,6 +8,7 @@ import java.sql.Types;
 import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -427,9 +428,16 @@ public class WidgetHealthConfigStore {
 
     private String readRawDbText(ResultSet rs, String column) throws java.sql.SQLException {
         try {
-            return rs.getString(column);
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return null;
+            }
+            if (raw instanceof byte[] bytes) {
+                return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            }
+            return sanitizeDbText(String.valueOf(raw), 4096);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
             return null;
         }
     }

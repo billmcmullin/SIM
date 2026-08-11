@@ -5,7 +5,10 @@ import java.sql.SQLException;
 import java.text.Normalizer;
 import java.util.Map;
 import java.util.regex.Pattern;
+
 import javax.sql.DataSource;
+
+import org.postgresql.ds.PGSimpleDataSource;
 
 public final class Database {
 
@@ -30,23 +33,13 @@ public final class Database {
     }
 
     private static DataSource buildDataSource(String host, int port, String dbName, String user, String password) {
-        try {
-            Class<?> dataSourceClass = Class.forName("org.postgresql.ds.PGSimpleDataSource");
-            Object dataSourceObject = dataSourceClass.getDeclaredConstructor().newInstance();
-
-            dataSourceClass.getMethod("setServerNames", String[].class).invoke(dataSourceObject, (Object) new String[]{host});
-            dataSourceClass.getMethod("setPortNumbers", int[].class).invoke(dataSourceObject, (Object) new int[]{port});
-            dataSourceClass.getMethod("setDatabaseName", String.class).invoke(dataSourceObject, dbName);
-            dataSourceClass.getMethod("setUser", String.class).invoke(dataSourceObject, user);
-            dataSourceClass.getMethod("setPassword", String.class).invoke(dataSourceObject, password);
-
-            if (!(dataSourceObject instanceof DataSource dataSource)) {
-                throw new IllegalStateException("Configured PostgreSQL data source is not a javax.sql.DataSource.");
-            }
-            return dataSource;
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to initialize PostgreSQL data source.", ex);
-        }
+        PGSimpleDataSource dataSource = new PGSimpleDataSource();
+        dataSource.setServerNames(new String[]{host});
+        dataSource.setPortNumbers(new int[]{port});
+        dataSource.setDatabaseName(dbName);
+        dataSource.setUser(user);
+        dataSource.setPassword(password);
+        return dataSource;
     }
 
     private static String requireEnv(String name) {

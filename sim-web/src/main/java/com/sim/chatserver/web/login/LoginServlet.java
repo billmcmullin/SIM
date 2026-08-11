@@ -22,10 +22,6 @@ public class LoginServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(LoginServlet.class.getName());
     private static final String VIEW = "/WEB-INF/views/login.html";
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
-    private static final Object USER_SERVICE_LOCK = new Object();
-    private static volatile UserService configuredUserService;
-
-    UserService userService;
 
     @Override
     public void init() throws ServletException {
@@ -34,8 +30,7 @@ public class LoginServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         if (req == null || resp == null) {
             return;
         }
@@ -49,24 +44,10 @@ public class LoginServlet extends HttpServlet {
         }
 
         req.getRequestDispatcher(VIEW).forward(req, resp);
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         if (req == null || resp == null) {
             return;
         }
@@ -109,48 +90,16 @@ public class LoginServlet extends HttpServlet {
             contextPath = "";
         }
         resp.sendRedirect(contextPath + "/dashboard");
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private UserService resolveUserService() {
-        if (userService != null) {
-            return userService;
-        }
-
-        UserService service = configuredUserService;
-        if (service != null) {
-            return service;
-        }
-
-        synchronized (USER_SERVICE_LOCK) {
-            service = configuredUserService;
-            if (service != null) {
-                return service;
-            }
-
-            try {
-                service = CDI.current().select(UserService.class).get();
-            } catch (RuntimeException ex) {
-                log.log(Level.SEVERE, "CDI UserService lookup failed", ex);
-                throw new IllegalStateException(
-                        "UserService is unavailable. WildFly-managed datasource/JPA model requires CDI wiring.",
-                        ex);
-            }
-
-            configuredUserService = service;
-            return service;
+        try {
+            return CDI.current().select(UserService.class).get();
+        } catch (RuntimeException ex) {
+            log.log(Level.SEVERE, "CDI UserService lookup failed", ex);
+            throw new IllegalStateException(
+                    "UserService is unavailable. WildFly-managed datasource/JPA model requires CDI wiring.",
+                    ex);
         }
     }
 

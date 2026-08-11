@@ -47,19 +47,11 @@ public class DashboardBootstrapServlet extends HttpServlet {
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int ACTIVE_DAYS = 7;
     private static final int SESSION_LIMIT = 10;
-    private static final Object SUMMARY_STORE_LOCK = new Object();
-
-    private static volatile DashboardDailySummaryStore summaryStore;
-    private AppDataSourceHolder dsHolder;
+    private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getName() + ".summaryStore";
 
     @Override
     public void init() throws ServletException {
         super.init();
-        if (dsHolder != null) {
-            synchronized (SUMMARY_STORE_LOCK) {
-                summaryStore = null;
-            }
-        }
         ensureSummaryStoreInitialized();
     }
 
@@ -343,13 +335,14 @@ public class DashboardBootstrapServlet extends HttpServlet {
     }
 
     private DashboardDailySummaryStore ensureSummaryStoreInitialized() throws ServletException {
-        DashboardDailySummaryStore local = summaryStore;
+        jakarta.servlet.ServletContext context = getServletContext();
+        DashboardDailySummaryStore local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
         if (local != null) {
             return local;
         }
 
-        synchronized (SUMMARY_STORE_LOCK) {
-            local = summaryStore;
+        synchronized (context) {
+            local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
             if (local != null) {
                 return local;
             }
@@ -357,7 +350,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
             try {
                 DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
                 created.ensureTable();
-                summaryStore = created;
+                context.setAttribute(SUMMARY_STORE_KEY, created);
                 return created;
             } catch (RuntimeException e) {
                 log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore for bootstrap", e);
@@ -367,9 +360,6 @@ public class DashboardBootstrapServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

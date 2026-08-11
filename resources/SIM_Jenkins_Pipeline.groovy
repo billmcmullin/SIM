@@ -25,6 +25,11 @@ pipeline {
         // Integration Tests
         DOCKER_COMPOSE_FILE    = 'Wildfly-Jtest-docker-compose.yml'
         PLAYWRIGHT_BASE_URL    = 'http://chatserver:8080/chat-server'
+
+        //CTP Information for Coverage
+        CTP_WEBSOCKET           = 'wss://ctp:8080/em/coverage/websocket'
+        CTP_QUEUE               = '/user/queue/environments/4/components/2/coverage'
+        TEST_USER               = 'jonnytest'
     }
 
     stages {
@@ -168,6 +173,16 @@ pipeline {
                             echo 'jtest.agent.restServerEnabled=true' >> "${AGENT_FILE}"
                         fi
 
+                        echo "ctp.websocket.url=${CTP_WEBSOCKET}" >> "${AGENT_FILE}"
+
+                        echo "ctp.subscription.queue=${CTP_QUEUE}" >> "${AGENT_FILE}"
+
+                        echo "dtp.buildID=${BUILD_TAG}" >> "${AGENT_FILE}"
+
+                        echo "dtp.project=SIM Java" >> "${AGENT_FILE}"
+
+                        echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play" >> "${AGENT_FILE}"
+
                         echo "Updated ${AGENT_FILE}:"
                         grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode|restServerEnabled)=' "${AGENT_FILE}" || true
 
@@ -185,7 +200,8 @@ pipeline {
                             -Dexec.args="install --with-deps chromium" \
                             -Dmaven.test.failure.ignore=true \
                             -Dmaven.test.error.ignore=true \
-                            -Dexec.mainClass=com.microsoft.playwright.CLI
+                            -Dexec.mainClass=com.microsoft.playwright.CLI \
+                            -Dparasoft.coverage.baggageHeader="test-operator-id=${TEST_USER}"
                     '''
                 }
             }

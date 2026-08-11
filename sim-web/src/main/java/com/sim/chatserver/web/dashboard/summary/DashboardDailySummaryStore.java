@@ -423,18 +423,20 @@ public class DashboardDailySummaryStore {
 
     private String readRawText(ResultSet rs, String column) throws SQLException {
         try {
-            return rs.getString(column);
+            Object raw = rs.getObject(column);
+            return raw == null ? null : String.valueOf(raw);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
             return null;
         }
     }
 
     private String readRawText(ResultSet rs, int column) throws SQLException {
         try {
-            return rs.getString(column);
+            Object raw = rs.getObject(column);
+            return raw == null ? null : String.valueOf(raw);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
             return null;
         }
     }
@@ -454,21 +456,6 @@ public class DashboardDailySummaryStore {
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
-        try {
-            int direct = rs.getInt(column);
-            if (!rs.wasNull()) {
-                if (direct < min) {
-                    return min;
-                }
-                if (direct > max) {
-                    return max;
-                }
-                return direct;
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
-        }
-
         String raw = sanitizeText(readRawText(rs, column), 64);
         if (raw.isBlank() || !raw.matches("^-?\\d+$")) {
             return min;
@@ -490,12 +477,26 @@ public class DashboardDailySummaryStore {
     }
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        Timestamp direct = rs.getTimestamp(column);
-        if (direct != null) {
-            return direct;
+        Object directValue;
+        try {
+            directValue = rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for timestamp column " + column, ex);
+            directValue = null;
+        }
+        if (directValue instanceof Timestamp directTs) {
+            return directTs;
+        }
+        if (directValue instanceof java.util.Date utilDate) {
+            try {
+                return Timestamp.from(utilDate.toInstant());
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                log.log(Level.FINE, "Invalid util.Date timestamp value for column " + column, ex);
+                return null;
+            }
         }
 
-        String raw = getSafeString(rs, column, 128);
+        String raw = sanitizeText(directValue == null ? null : String.valueOf(directValue), 128);
         if (raw.isBlank()) {
             return null;
         }

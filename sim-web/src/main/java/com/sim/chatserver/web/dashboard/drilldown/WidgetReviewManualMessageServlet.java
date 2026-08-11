@@ -80,8 +80,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static volatile ReviewOutputValidator reviewOutputValidator;
     private static volatile TrustedUrlValidator trustedUrlValidator;
 
-    AppDataSourceHolder dsHolder;
-
     @Override
     public void init() throws ServletException {
         super.init();
@@ -1227,9 +1225,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

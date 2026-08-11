@@ -184,12 +184,12 @@ public final class BatchFailure {
         private String reasonCode;
         private String message;
 
-        private int httpStatus;
+        private int httpStatus = 0;
         private boolean retryAttempted;
         private boolean retrySucceeded;
         private boolean contextTooLargeDetected;
 
-        private long latencyMs;
+        private long latencyMs = 0L;
         private List<String> batchChatIds = new ArrayList<>();
 
         private Builder() {

@@ -31,8 +31,6 @@ public class AdminConfigServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
     private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getName());
 
-    TermsStore termsStore;
-
     @Override
     public void init() throws ServletException {
         super.init();
@@ -303,9 +301,6 @@ public class AdminConfigServlet extends HttpServlet {
     }
 
     private TermsStore termsStore() {
-        if (termsStore != null) {
-            return termsStore;
-        }
         return CDI.current().select(TermsStore.class).get();
     }
 }

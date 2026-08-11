@@ -30,11 +30,8 @@ public class ProfileServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
 
-    UserService userService;
-
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             resp.sendRedirect(LOGIN_PATH);
@@ -58,24 +55,10 @@ public class ProfileServlet extends HttpServlet {
         }
         out.print(rendered);
         out.flush();
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -117,25 +100,9 @@ public class ProfileServlet extends HttpServlet {
             log.log(Level.WARNING, "Profile update failed", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to update profile.");
         }
-    
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
     }
 
     private UserService resolveUserService() {
-        if (userService != null) {
-            return userService;
-        }
         return CDI.current().select(UserService.class).get();
     }
 
