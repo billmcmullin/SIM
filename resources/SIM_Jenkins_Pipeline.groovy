@@ -193,6 +193,7 @@ pipeline {
                             -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
                             -Dheadless=true \
                             -DignoreHttpsErrors=true \
+                            -Djunit.jupiter.extensions.autodetection.enabled=true \
                             -DadminUsername=admin \
                             -DadminPassword=admin \
                             -DuserUsername=jonnytest \

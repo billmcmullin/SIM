@@ -423,20 +423,18 @@ public class DashboardDailySummaryStore {
 
     private String readRawText(ResultSet rs, String column) throws SQLException {
         try {
-            Object raw = rs.getObject(column);
-            return raw == null ? null : String.valueOf(raw);
+            return rs.getString(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
             return null;
         }
     }
 
     private String readRawText(ResultSet rs, int column) throws SQLException {
         try {
-            Object raw = rs.getObject(column);
-            return raw == null ? null : String.valueOf(raw);
+            return rs.getString(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
+            log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
             return null;
         }
     }
@@ -477,26 +475,24 @@ public class DashboardDailySummaryStore {
     }
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        Object directValue;
+        Timestamp direct;
         try {
-            directValue = rs.getObject(column);
+            direct = rs.getTimestamp(column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for timestamp column " + column, ex);
-            directValue = null;
+            log.log(Level.FINE, "ResultSet#getTimestamp(String) failed for timestamp column " + column, ex);
+            direct = null;
         }
-        if (directValue instanceof Timestamp directTs) {
-            return directTs;
-        }
-        if (directValue instanceof java.util.Date utilDate) {
+        if (direct != null) {
             try {
-                return Timestamp.from(utilDate.toInstant());
+                Instant instant = direct.toInstant();
+                return instant == null ? null : Timestamp.from(instant);
             } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Invalid util.Date timestamp value for column " + column, ex);
+                log.log(Level.FINE, "Invalid direct timestamp value for column " + column, ex);
                 return null;
             }
         }
 
-        String raw = sanitizeText(directValue == null ? null : String.valueOf(directValue), 128);
+        String raw = sanitizeText(readRawText(rs, column), 128);
         if (raw.isBlank()) {
             return null;
         }

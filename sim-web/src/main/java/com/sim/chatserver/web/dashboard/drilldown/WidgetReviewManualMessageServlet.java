@@ -2,6 +2,7 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
@@ -71,7 +72,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final Object INIT_LOCK = new Object();
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
-    private static volatile HttpClient httpClient;
     private static volatile MapReduceConfig mrConfig;
     private static volatile WorkspaceClient workspaceClient;
     private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
@@ -85,68 +85,74 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         synchronized (INIT_LOCK) {
-            if (mrConfig != null && orchestrator != null && trustedUrlValidator != null && workspaceClient != null) {
-            return;
+            if (isRuntimeInitialized()) {
+                return;
             }
-
-            MapReduceConfig loadedConfig = MapReduceConfig.load();
-            HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(20))
-                .build();
-
-            WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
-                client,
-                loadedConfig.getWorkspaceMaxRetries(),
-                loadedConfig.getWorkspaceTimeout()
-            );
-
-            PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
-            ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService();
-            ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
-
-            Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
-            Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
-            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
-            TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
-
-            WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
-                configuredWorkspaceClient,
-                configuredReviewContextBuilderService,
-                configuredPromptTemplateService,
-                configuredReviewOutputValidator,
-                loadedConfig.getBatchSize(),
-                loadedConfig.getMaxParallel(),
-                loadedConfig.getMapMessageMaxChars(),
-                loadedConfig.getMapContextMaxChars(),
-                loadedConfig.getReduceMessageMaxChars(),
-                loadedConfig.getReduceContextMaxChars(),
-                loadedConfig.getRetryContextChars(),
-                loadedConfig.getRetryMessageMaxChars(),
-                loadedConfig.getMaxCoveragePasses(),
-                loadedConfig.getMinBatchSize(),
-                loadedConfig.getSegmentPromptChars(),
-                loadedConfig.getSegmentResponseChars(),
-                loadedConfig.getReduceInitialChunkSize(),
-                loadedConfig.getReduceMinChunkSize(),
-                loadedConfig.getReduceMaxLevels(),
-                loadedConfig.getReduceChunkSummaryMaxChars(),
-                loadedConfig.getFinalReduceMaxSummaries(),
-                loadedConfig.getFinalReduceSummaryMaxChars(),
-                loadedConfig.getFinalReduceMaxAttempts()
-            );
-
-            mrConfig = loadedConfig;
-            httpClient = client;
-            workspaceClient = configuredWorkspaceClient;
-            promptTemplateService = configuredPromptTemplateService;
-            reviewContextBuilderService = configuredReviewContextBuilderService;
-            reviewOutputValidator = configuredReviewOutputValidator;
-            trustedUrlValidator = configuredTrustedUrlValidator;
-            orchestrator = configuredOrchestrator;
+            initializeRuntime();
         }
 
         log.log(Level.INFO, "[manual-message][init] loaded config: {0}", mrConfig);
+    }
+
+    private boolean isRuntimeInitialized() {
+        return mrConfig != null && orchestrator != null && trustedUrlValidator != null && workspaceClient != null;
+    }
+
+    private void initializeRuntime() {
+        MapReduceConfig loadedConfig = MapReduceConfig.load();
+        HttpClient client = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(20))
+            .build();
+
+        WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
+            client,
+            loadedConfig.getWorkspaceMaxRetries(),
+            loadedConfig.getWorkspaceTimeout()
+        );
+
+        PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
+        ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService();
+        ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
+
+        Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
+        Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
+        boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
+        TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+
+        WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
+            configuredWorkspaceClient,
+            configuredReviewContextBuilderService,
+            configuredPromptTemplateService,
+            configuredReviewOutputValidator,
+            loadedConfig.getBatchSize(),
+            loadedConfig.getMaxParallel(),
+            loadedConfig.getMapMessageMaxChars(),
+            loadedConfig.getMapContextMaxChars(),
+            loadedConfig.getReduceMessageMaxChars(),
+            loadedConfig.getReduceContextMaxChars(),
+            loadedConfig.getRetryContextChars(),
+            loadedConfig.getRetryMessageMaxChars(),
+            loadedConfig.getMaxCoveragePasses(),
+            loadedConfig.getMinBatchSize(),
+            loadedConfig.getSegmentPromptChars(),
+            loadedConfig.getSegmentResponseChars(),
+            loadedConfig.getReduceInitialChunkSize(),
+            loadedConfig.getReduceMinChunkSize(),
+            loadedConfig.getReduceMaxLevels(),
+            loadedConfig.getReduceChunkSummaryMaxChars(),
+            loadedConfig.getFinalReduceMaxSummaries(),
+            loadedConfig.getFinalReduceSummaryMaxChars(),
+            loadedConfig.getFinalReduceMaxAttempts()
+        );
+
+        mrConfig = loadedConfig;
+        workspaceClient = configuredWorkspaceClient;
+        promptTemplateService = configuredPromptTemplateService;
+        reviewContextBuilderService = configuredReviewContextBuilderService;
+        reviewOutputValidator = configuredReviewOutputValidator;
+        trustedUrlValidator = configuredTrustedUrlValidator;
+        orchestrator = configuredOrchestrator;
     }
 
     @Override
@@ -159,7 +165,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return;
         }
 
-        req.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        try {
+            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        } catch (java.io.UnsupportedEncodingException ex) {
+            log.log(Level.FINE, "UTF-8 character encoding was not accepted", ex);
+        }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
@@ -276,7 +286,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to process manual message.");
         }
     
-        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger(getClass().getName())
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
@@ -604,7 +614,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         warnings,
                         finalReport, body, contentType
                 );
-            } catch (RuntimeException e) {
+            } catch (IllegalArgumentException | IllegalStateException e) {
                 if (causedByInterrupted(e)) {
                     Thread.currentThread().interrupt();
                 }
@@ -722,7 +732,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     requestId,
                     progressListener
             );
-        } catch (Exception ex) {
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Map-reduce orchestration failed", ex);
+        } catch (IOException ex) {
             if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
             }
@@ -833,14 +846,17 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            current = current.getCause();
+        return causedByInterruptedRecursive(throwable, 0);
+    }
+
+    private boolean causedByInterruptedRecursive(Throwable throwable, int depth) {
+        if (throwable == null || depth > 24) {
+            return false;
         }
-        return false;
+        if (throwable instanceof InterruptedException) {
+            return true;
+        }
+        return causedByInterruptedRecursive(throwable.getCause(), depth + 1);
     }
 
     private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) {
@@ -863,7 +879,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             resp.getOutputStream().flush();
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to mirror workspace response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Unable to stream workspace response.");
                 } catch (IOException ioe) {
@@ -1202,7 +1218,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             return "";
         }
-        try (java.io.BufferedReader reader = req.getReader()) {
+        try (InputStreamReader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
             char[] buffer = new char[4096];
             StringBuilder builder = new StringBuilder();
             int total = 0;
@@ -1276,7 +1292,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write manual-message error response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, message == null ? "Request failed." : message);
                 } catch (IOException ioe) {

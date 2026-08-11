@@ -368,7 +368,7 @@
     };
 
     function confirmAction(message) {
-        const confirmFn = window["confirm"]?.bind(window);
+        const confirmFn = window.confirm?.bind(window);
         return typeof confirmFn === 'function' ? confirmFn(message) : false;
     }
 
