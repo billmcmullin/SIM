@@ -35,8 +35,6 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    AppDataSourceHolder dsHolder;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
@@ -212,9 +210,6 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder resolveDataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

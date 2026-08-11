@@ -140,6 +140,9 @@ final class InactiveUsersListQueryService {
             int promptScanLimit,
             Function<List<String>, InactiveUsersListPageServlet.FrustrationResult> frustrationAnalyzer) {
         List<InactiveUsersListPageServlet.Row> rows = new ArrayList<>();
+        if (table == null || table.isBlank()) {
+            return rows;
+        }
         String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                 + quoteIdentifier(table)
                 + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";

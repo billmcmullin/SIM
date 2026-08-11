@@ -630,11 +630,10 @@ public class WorkspaceClient {
 
             conn.getOutputStream().write(bytes);
 
-            int rawStatus = conn.getResponseCode();
-            int status = sanitizeStatusCode(rawStatus);
-            String contentType = sanitizeHeaderValue(conn.getHeaderField("Content-Type"));
+            int status = safeResponseCode(conn);
+            String contentType = safeHeaderValue(conn, "Content-Type");
 
-            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            InputStream stream = selectResponseStream(conn, status);
             String responseBody = "";
             if (stream != null) {
                 try (InputStream in = stream) {
@@ -807,6 +806,31 @@ public class WorkspaceClient {
             return 500;
         }
         return status;
+    }
+
+    private int safeResponseCode(HttpURLConnection conn) throws IOException {
+        if (conn == null) {
+            throw new IOException("Connection is not available.");
+        }
+        int code = conn.getResponseCode();
+        return sanitizeStatusCode(code);
+    }
+
+    private String safeHeaderValue(HttpURLConnection conn, String headerName) {
+        if (conn == null || headerName == null || headerName.isBlank()) {
+            return "";
+        }
+        return sanitizeHeaderValue(conn.getHeaderField(headerName));
+    }
+
+    private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {
+        if (conn == null) {
+            throw new IOException("Connection is not available.");
+        }
+        if (status >= 400) {
+            return conn.getErrorStream();
+        }
+        return conn.getInputStream();
     }
 
     private String sanitizeHeaderValue(String headerValue) {

@@ -318,7 +318,7 @@ public class SalesforceClient {
 
     public static class SalesforceClientException extends Exception {
 
-        private final int statusCode;
+        private final transient int statusCode;
 
         public SalesforceClientException(int statusCode, String message) {
             super(message);

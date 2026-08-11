@@ -301,7 +301,8 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) {
         try {
-            return sanitizeCellText(rs.getString(columnIndex));
+            Object raw = rs.getObject(columnIndex);
+            return sanitizeCellText(raw == null ? null : String.valueOf(raw));
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read text cell value.", e);
         }
@@ -309,7 +310,14 @@ public class DatabaseBackupServlet extends HttpServlet {
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
         try {
-            return sanitizeBinary(rs.getBytes(columnIndex));
+            Object raw = rs.getObject(columnIndex);
+            if (raw == null) {
+                return new byte[0];
+            }
+            if (raw instanceof byte[] bytes) {
+                return sanitizeBinary(bytes);
+            }
+            return sanitizeBinary(String.valueOf(raw).getBytes(StandardCharsets.UTF_8));
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read binary cell value.", e);
         }
@@ -318,11 +326,19 @@ public class DatabaseBackupServlet extends HttpServlet {
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
         String rawFallback;
         try {
-            Timestamp typed = rs.getTimestamp(columnIndex);
-            if (typed != null) {
+            Object raw = rs.getObject(columnIndex);
+            if (raw instanceof Timestamp typed) {
                 return normalizeTimestamp(typed);
             }
-            rawFallback = rs.getString(columnIndex);
+            if (raw instanceof java.util.Date utilDate) {
+                try {
+                    return normalizeTimestamp(Timestamp.from(utilDate.toInstant()));
+                } catch (DateTimeException | IllegalArgumentException ex) {
+                    log.log(Level.FINE, "Ignoring invalid util.Date timestamp cell", ex);
+                    return null;
+                }
+            }
+            rawFallback = raw == null ? null : String.valueOf(raw);
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read timestamp cell value.", e);
         }
@@ -339,12 +355,15 @@ public class DatabaseBackupServlet extends HttpServlet {
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) {
         String rawFallback;
         try {
-            java.sql.Date typedDate = rs.getDate(columnIndex);
-            if (typedDate != null) {
+            Object raw = rs.getObject(columnIndex);
+            if (raw instanceof java.sql.Date typedDate) {
                 LocalDate localDate = typedDate.toLocalDate();
                 return localDate == null ? null : java.sql.Date.valueOf(localDate);
             }
-            rawFallback = rs.getString(columnIndex);
+            if (raw instanceof LocalDate localDate) {
+                return localDate == null ? null : java.sql.Date.valueOf(localDate);
+            }
+            rawFallback = raw == null ? null : String.valueOf(raw);
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read date cell value.", e);
         }

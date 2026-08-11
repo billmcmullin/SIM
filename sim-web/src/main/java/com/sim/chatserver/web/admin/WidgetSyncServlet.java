@@ -8,6 +8,7 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -22,7 +23,6 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
-import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,7 +37,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -47,6 +46,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -343,76 +345,117 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private static volatile DashboardDailySummaryStore summaryStore;
+    private static final RuntimeState STATE = new RuntimeState();
 
-    private static volatile ScheduledExecutorService scheduler = createScheduler();
-    private static volatile ExecutorService syncPool = createSyncPool();
+    private static final class RuntimeState {
+        private DashboardDailySummaryStore summaryStore;
+        private ScheduledExecutorService scheduler = createScheduler();
+        private ExecutorService syncPool = createSyncPool();
+        private long lastSyncRequestAtMs;
+        private ScheduledFuture<?> scheduledFuture;
+        private long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
+        private long summaryIntervalSeconds = DEFAULT_SUMMARY_INTERVAL_SECONDS;
+        private boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
+        private int summaryMaxRows = DEFAULT_SUMMARY_MAX_ROWS;
+        private int summaryMaxUpstreamEntries = DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES;
+        private int summaryMaxMessageChars = DEFAULT_SUMMARY_MAX_MESSAGE_CHARS;
+        private int summaryMaxRequestBytes = DEFAULT_SUMMARY_MAX_REQUEST_BYTES;
+        private String summaryPromptTemplate = DEFAULT_SUMMARY_PROMPT;
+        private Timestamp lastSynced;
+        private Timestamp summaryLastRun;
+        private Instant syncStartedAt;
+        private Instant syncFinishedAt;
+        private String syncPhase = "idle";
+        private String syncStatusMessage = "";
+        private int syncTotalWidgets;
+        private String syncCurrentWidgetId = "";
+        private String syncCurrentWidgetTable = "";
+        private int syncCurrentWidgetIndex;
+        private int syncProgressPercent;
+        private boolean summaryAutoPausedUntilManualSuccess;
+        private String summaryAutoPausedReason = "";
+        private MapReduceConfig mrConfig;
+        private WorkspaceClient workspaceClient;
+        private WidgetReviewMapReduceOrchestrator orchestrator;
+        private TrustedUrlValidator trustedUrlValidator;
+        private ReviewOutputValidator reviewOutputValidator;
+        private AppDataSourceHolder dsHolder;
+    }
 
     private static final Object syncRateLimitLock = new Object();
-    private static volatile long lastSyncRequestAtMs;
 
     private static final Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
     private static final Map<String, RecentChatIdCache> recentChatIdsByWidget = new ConcurrentHashMap<>();
 
-    private static volatile ScheduledFuture<?> scheduledFuture;
-    private static volatile long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
-    private static volatile long summaryIntervalSeconds = DEFAULT_SUMMARY_INTERVAL_SECONDS;
-    private static volatile boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
-    private static volatile int summaryMaxRows = DEFAULT_SUMMARY_MAX_ROWS;
-    private static volatile int summaryMaxUpstreamEntries = DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES;
-    private static volatile int summaryMaxMessageChars = DEFAULT_SUMMARY_MAX_MESSAGE_CHARS;
-    private static volatile int summaryMaxRequestBytes = DEFAULT_SUMMARY_MAX_REQUEST_BYTES;
-    private static volatile String summaryPromptTemplate = DEFAULT_SUMMARY_PROMPT;
-    private static volatile Timestamp lastSynced;
-    private static volatile Timestamp summaryLastRun;
     private static final AtomicBoolean syncRunning = new AtomicBoolean(false);
     private static final AtomicInteger runsSinceLastSyncPersist = new AtomicInteger(0);
     private static final Object syncProgressLock = new Object();
-    private static volatile Instant syncStartedAt;
-    private static volatile Instant syncFinishedAt;
-    private static volatile String syncPhase = "idle";
-    private static volatile String syncStatusMessage = "";
-    private static volatile int syncTotalWidgets;
     private static final AtomicInteger syncCompletedWidgets = new AtomicInteger(0);
     private static final AtomicInteger syncSucceededWidgets = new AtomicInteger(0);
     private static final AtomicInteger syncFailedWidgets = new AtomicInteger(0);
-    private static volatile String syncCurrentWidgetId = "";
-    private static volatile String syncCurrentWidgetTable = "";
-    private static volatile int syncCurrentWidgetIndex;
-    private static volatile int syncProgressPercent;
-    private static volatile boolean summaryAutoPausedUntilManualSuccess;
-    private static volatile String summaryAutoPausedReason = "";
 
-    private static volatile MapReduceConfig mrConfig;
-    private static volatile WorkspaceClient workspaceClient;
-    private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
-    private static volatile TrustedUrlValidator trustedUrlValidator;
-    private static volatile ReviewOutputValidator reviewOutputValidator;
-    private static volatile AppDataSourceHolder dsHolder;
     private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getName() + ".termsStore.override";
 
     private static ScheduledExecutorService createScheduler() {
-        return Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "widget-sync-timer");
-            t.setDaemon(true);
-            return t;
-        });
+        ScheduledExecutorService managed = lookupManagedScheduledExecutor();
+        if (managed == null) {
+            throw new IllegalStateException(
+                    "ManagedScheduledExecutorService is not available at java:comp/DefaultManagedScheduledExecutorService.");
+        }
+        return managed;
     }
 
     private static ExecutorService createSyncPool() {
-        return Executors.newFixedThreadPool(SYNC_PARALLELISM, r -> {
-            Thread t = new Thread(r, "widget-sync-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        ExecutorService managed = lookupManagedExecutor();
+        if (managed == null) {
+            throw new IllegalStateException(
+                    "ManagedExecutorService is not available at java:comp/DefaultManagedExecutorService.");
+        }
+        return managed;
+    }
+
+    private static ScheduledExecutorService lookupManagedScheduledExecutor() {
+        return lookupExecutor("java:comp/DefaultManagedScheduledExecutorService", ScheduledExecutorService.class);
+    }
+
+    private static ExecutorService lookupManagedExecutor() {
+        return lookupExecutor("java:comp/DefaultManagedExecutorService", ExecutorService.class);
+    }
+
+    private static <T> T lookupExecutor(String jndiName, Class<T> type) {
+        if (jndiName == null || type == null) {
+            return null;
+        }
+        InitialContext context = null;
+        try {
+            context = new InitialContext();
+            Object value = context.lookup(jndiName);
+            if (type.isInstance(value)) {
+                return type.cast(value);
+            }
+            log.log(Level.WARNING, "JNDI resource {0} is not a {1}", new Object[]{jndiName, type.getSimpleName()});
+            return null;
+        } catch (NamingException ex) {
+            log.log(Level.WARNING, "Unable to lookup managed executor {0}", jndiName);
+            log.log(Level.FINE, "Managed executor lookup failure details", ex);
+            return null;
+        } finally {
+            if (context != null) {
+                try {
+                    context.close();
+                } catch (NamingException closeEx) {
+                    log.log(Level.FINE, "Failed to close InitialContext", closeEx);
+                }
+            }
+        }
     }
 
     private static synchronized void ensureExecutorsRunning() {
-        if (scheduler == null || scheduler.isShutdown() || scheduler.isTerminated()) {
-            scheduler = createScheduler();
+        if (STATE.scheduler == null || STATE.scheduler.isShutdown() || STATE.scheduler.isTerminated()) {
+            STATE.scheduler = createScheduler();
         }
-        if (syncPool == null || syncPool.isShutdown() || syncPool.isTerminated()) {
-            syncPool = createSyncPool();
+        if (STATE.syncPool == null || STATE.syncPool.isShutdown() || STATE.syncPool.isTerminated()) {
+            STATE.syncPool = createSyncPool();
         }
     }
 
@@ -433,51 +476,51 @@ public class WidgetSyncServlet extends HttpServlet {
                 new Object[]{SYNC_PARALLELISM, SYNC_MIN_REQUEST_GAP_MS});
 
         try {
-            mrConfig = MapReduceConfig.load();
-            workspaceClient = new WorkspaceClient(
+            STATE.mrConfig = MapReduceConfig.load();
+            STATE.workspaceClient = new WorkspaceClient(
                     HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build(),
-                    mrConfig.getWorkspaceMaxRetries(),
-                    mrConfig.getWorkspaceTimeout()
+                    STATE.mrConfig.getWorkspaceMaxRetries(),
+                    STATE.mrConfig.getWorkspaceTimeout()
             );
-            reviewOutputValidator = new ReviewOutputValidator();
+            STATE.reviewOutputValidator = new ReviewOutputValidator();
 
             Set<String> allowedHosts = parseCsvToSet(readEnvSanitized("REVIEW_TRUSTED_HOSTS", 2048));
             Set<String> allowedSuffixes = parseCsvToSet(readEnvSanitized("REVIEW_TRUSTED_HOST_SUFFIXES", 2048));
             boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(readEnvSanitized("REVIEW_ALLOW_PRIVATE_NETWORKS", 16), "false"));
-            trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+            STATE.trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
 
-            orchestrator = new WidgetReviewMapReduceOrchestrator(
-                    workspaceClient,
+            STATE.orchestrator = new WidgetReviewMapReduceOrchestrator(
+                    STATE.workspaceClient,
                     new ReviewContextBuilderService(),
                     new PromptTemplateService(),
-                    reviewOutputValidator,
-                    mrConfig.getBatchSize(),
-                    mrConfig.getMaxParallel(),
-                    mrConfig.getMapMessageMaxChars(),
-                    mrConfig.getMapContextMaxChars(),
-                    mrConfig.getReduceMessageMaxChars(),
-                    mrConfig.getReduceContextMaxChars(),
-                    mrConfig.getRetryContextChars(),
-                    mrConfig.getRetryMessageMaxChars(),
-                    mrConfig.getMaxCoveragePasses(),
-                    mrConfig.getMinBatchSize(),
-                    mrConfig.getSegmentPromptChars(),
-                    mrConfig.getSegmentResponseChars(),
-                    mrConfig.getReduceInitialChunkSize(),
-                    mrConfig.getReduceMinChunkSize(),
-                    mrConfig.getReduceMaxLevels(),
-                    mrConfig.getReduceChunkSummaryMaxChars(),
-                    mrConfig.getFinalReduceMaxSummaries(),
-                    mrConfig.getFinalReduceSummaryMaxChars(),
-                    mrConfig.getFinalReduceMaxAttempts()
+                    STATE.reviewOutputValidator,
+                    STATE.mrConfig.getBatchSize(),
+                    STATE.mrConfig.getMaxParallel(),
+                    STATE.mrConfig.getMapMessageMaxChars(),
+                    STATE.mrConfig.getMapContextMaxChars(),
+                    STATE.mrConfig.getReduceMessageMaxChars(),
+                    STATE.mrConfig.getReduceContextMaxChars(),
+                    STATE.mrConfig.getRetryContextChars(),
+                    STATE.mrConfig.getRetryMessageMaxChars(),
+                    STATE.mrConfig.getMaxCoveragePasses(),
+                    STATE.mrConfig.getMinBatchSize(),
+                    STATE.mrConfig.getSegmentPromptChars(),
+                    STATE.mrConfig.getSegmentResponseChars(),
+                    STATE.mrConfig.getReduceInitialChunkSize(),
+                    STATE.mrConfig.getReduceMinChunkSize(),
+                    STATE.mrConfig.getReduceMaxLevels(),
+                    STATE.mrConfig.getReduceChunkSummaryMaxChars(),
+                    STATE.mrConfig.getFinalReduceMaxSummaries(),
+                    STATE.mrConfig.getFinalReduceSummaryMaxChars(),
+                    STATE.mrConfig.getFinalReduceMaxAttempts()
             );
         } catch (IllegalStateException e) {
             throw new ServletException("Unable to initialize summary orchestrator", e);
         }
 
         try {
-            summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
-            summaryStore.ensureTable();
+            STATE.summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+            STATE.summaryStore.ensureTable();
             loadSyncSettings();
         } catch (IllegalStateException e) {
             logWarningWithDiagnostics(
@@ -499,17 +542,21 @@ public class WidgetSyncServlet extends HttpServlet {
     @Override
     public void destroy() {
         synchronized (WidgetSyncServlet.class) {
-            if (scheduledFuture != null) {
-                scheduledFuture.cancel(false);
-            }
-            if (scheduler != null && !scheduler.isShutdown()) {
-                scheduler.shutdownNow();
-            }
-            if (syncPool != null && !syncPool.isShutdown()) {
-                syncPool.shutdownNow();
-            }
+            shutdownExecutorsLocked();
         }
         super.destroy();
+    }
+
+    private void shutdownExecutorsLocked() {
+        if (STATE.scheduledFuture != null) {
+            STATE.scheduledFuture.cancel(false);
+        }
+        if (STATE.scheduler != null && !STATE.scheduler.isShutdown()) {
+            STATE.scheduler.shutdownNow();
+        }
+        if (STATE.syncPool != null && !STATE.syncPool.isShutdown()) {
+            STATE.syncPool.shutdownNow();
+        }
     }
 
     @Override
@@ -551,11 +598,11 @@ public class WidgetSyncServlet extends HttpServlet {
             boolean summarySuccess = true;
 
             // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
-            if (summaryAutoPausedUntilManualSuccess) {
+            if (STATE.summaryAutoPausedUntilManualSuccess) {
                 log.log(Level.INFO,
                         "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
-                        defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
-            } else if (!summaryAutoEnabled) {
+                        defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"));
+            } else if (!STATE.summaryAutoEnabled) {
                 log.log(Level.INFO,
                         "Skipping summary generation during manual sync because automatic summary generation is disabled.");
             } else if (!isSummaryRunDueNow()) {
@@ -580,9 +627,9 @@ public class WidgetSyncServlet extends HttpServlet {
 
             String completionMessage;
             if (!summaryRan) {
-                completionMessage = summaryAutoPausedUntilManualSuccess
+                completionMessage = STATE.summaryAutoPausedUntilManualSuccess
                         ? "Sync completed. Summary generation is paused until an admin generates a summary."
-                        : (!summaryAutoEnabled
+                        : (!STATE.summaryAutoEnabled
                         ? "Sync completed. Automatic summary generation is disabled."
                         : "Sync completed. Summary generation skipped until the configured interval elapses.");
             } else if (!summarySuccess) {
@@ -646,7 +693,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        if (!summaryAutoEnabled) {
+        if (!STATE.summaryAutoEnabled) {
             jsonError(resp, HttpServletResponse.SC_CONFLICT,
                     "Automatic summary generation is disabled. Enable it in Summary Configuration before generating summaries.");
             return;
@@ -665,15 +712,15 @@ public class WidgetSyncServlet extends HttpServlet {
             String message = success
                 ? "Manual summary generated successfully. The automatic summary timer was reset from this run. Next scheduled summary: "
                 + defaultIfBlank(nextRunAt, "based on configured interval.")
-                : defaultIfBlank(summaryAutoPausedReason, "Manual summary generation failed. Automatic summary remains paused.");
+                : defaultIfBlank(STATE.summaryAutoPausedReason, "Manual summary generation failed. Automatic summary remains paused.");
 
             finishSyncProgress(success, message);
 
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", success ? "ok" : "error")
                     .add("message", message)
-                    .add("summaryAutoPaused", summaryAutoPausedUntilManualSuccess)
-                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
+                    .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
+                .add("summaryLastRunAt", STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                     .build();
             writeJson(resp, success ? HttpServletResponse.SC_OK : HttpServletResponse.SC_BAD_GATEWAY, payload);
@@ -684,11 +731,11 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private void handleTimerStatus(HttpServletResponse resp) {
         boolean running = syncRunning.get();
-        String startedAt = syncStartedAt == null ? "" : syncStartedAt.toString();
-        String finishedAt = syncFinishedAt == null ? "" : syncFinishedAt.toString();
-        String summaryLastRunAt = summaryLastRun == null ? "" : summaryLastRun.toInstant().toString();
+        String startedAt = STATE.syncStartedAt == null ? "" : STATE.syncStartedAt.toString();
+        String finishedAt = STATE.syncFinishedAt == null ? "" : STATE.syncFinishedAt.toString();
+        String summaryLastRunAt = STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString();
         String summaryNextRunAt = computeNextSummaryRunAtIso();
-        int totalWidgets = Math.max(0, syncTotalWidgets);
+        int totalWidgets = Math.max(0, STATE.syncTotalWidgets);
         int completedWidgets = Math.max(0, syncCompletedWidgets.get());
         int succeededWidgets = Math.max(0, syncSucceededWidgets.get());
         int failedWidgets = Math.max(0, syncFailedWidgets.get());
@@ -697,31 +744,31 @@ public class WidgetSyncServlet extends HttpServlet {
 
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "ok")
-                .add("intervalSeconds", syncIntervalSeconds)
+                .add("intervalSeconds", STATE.syncIntervalSeconds)
             .add("syncRunning", running)
-                .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
-            .add("syncStartedAt", startedAt)
-            .add("syncFinishedAt", finishedAt)
-            .add("syncPhase", defaultIfBlank(syncPhase, running ? "running" : "idle"))
-            .add("syncMessage", defaultIfBlank(syncStatusMessage, ""))
+                .add("STATE.lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
+            .add("STATE.syncStartedAt", startedAt)
+            .add("STATE.syncFinishedAt", finishedAt)
+            .add("STATE.syncPhase", defaultIfBlank(STATE.syncPhase, running ? "running" : "idle"))
+            .add("syncMessage", defaultIfBlank(STATE.syncStatusMessage, ""))
             .add("widgetsTotal", totalWidgets)
             .add("widgetsCompleted", completedWidgets)
             .add("widgetsSucceeded", succeededWidgets)
             .add("widgetsFailed", failedWidgets)
-            .add("currentWidgetId", defaultIfBlank(syncCurrentWidgetId, ""))
-            .add("currentWidgetTable", defaultIfBlank(syncCurrentWidgetTable, ""))
-            .add("currentWidgetIndex", Math.max(0, syncCurrentWidgetIndex))
+            .add("currentWidgetId", defaultIfBlank(STATE.syncCurrentWidgetId, ""))
+            .add("currentWidgetTable", defaultIfBlank(STATE.syncCurrentWidgetTable, ""))
+            .add("currentWidgetIndex", Math.max(0, STATE.syncCurrentWidgetIndex))
             .add("progressPercent", percent)
             .add("runningSeconds", runningSeconds)
-                .add("summaryIntervalSeconds", summaryIntervalSeconds)
-                .add("summaryAutoEnabled", summaryAutoEnabled)
-                .add("summaryMaxRows", summaryMaxRows)
-                .add("summaryMaxUpstreamEntries", summaryMaxUpstreamEntries)
-                .add("summaryMaxMessageChars", summaryMaxMessageChars)
-                .add("summaryMaxRequestBytes", summaryMaxRequestBytes)
+                .add("STATE.summaryIntervalSeconds", STATE.summaryIntervalSeconds)
+                .add("STATE.summaryAutoEnabled", STATE.summaryAutoEnabled)
+                .add("STATE.summaryMaxRows", STATE.summaryMaxRows)
+                .add("STATE.summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
+                .add("STATE.summaryMaxMessageChars", STATE.summaryMaxMessageChars)
+                .add("STATE.summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
                 .add("summaryPrompt", resolveSummaryPrompt())
-                .add("summaryAutoPaused", summaryAutoPausedUntilManualSuccess)
-                .add("summaryAutoPausedReason", defaultIfBlank(summaryAutoPausedReason, ""))
+                .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
+                .add("STATE.summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
                 .add("summaryLastRunAt", summaryLastRunAt)
                 .add("summaryNextRunAt", summaryNextRunAt)
                 .build();
@@ -734,12 +781,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         String syncIntervalRaw = firstParam(req, "intervalSeconds");
-        String summaryIntervalRaw = firstParam(req, "summaryIntervalSeconds");
-        String summaryAutoEnabledRaw = firstParam(req, "summaryAutoEnabled");
-        String summaryMaxRowsRaw = firstParam(req, "summaryMaxRows");
-        String summaryMaxUpstreamEntriesRaw = firstParam(req, "summaryMaxUpstreamEntries");
-        String summaryMaxMessageCharsRaw = firstParam(req, "summaryMaxMessageChars");
-        String summaryMaxRequestBytesRaw = firstParam(req, "summaryMaxRequestBytes");
+        String summaryIntervalRaw = firstParam(req, "STATE.summaryIntervalSeconds");
+        String summaryAutoEnabledRaw = firstParam(req, "STATE.summaryAutoEnabled");
+        String summaryMaxRowsRaw = firstParam(req, "STATE.summaryMaxRows");
+        String summaryMaxUpstreamEntriesRaw = firstParam(req, "STATE.summaryMaxUpstreamEntries");
+        String summaryMaxMessageCharsRaw = firstParam(req, "STATE.summaryMaxMessageChars");
+        String summaryMaxRequestBytesRaw = firstParam(req, "STATE.summaryMaxRequestBytes");
         String summaryPromptRaw = readMultilineParam(req, "summaryPrompt", MAX_SUMMARY_PROMPT_CHARS);
 
         boolean changed = false;
@@ -755,36 +802,36 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (summaryIntervalRaw != null && !summaryIntervalRaw.isBlank()) {
                 long parsedSummaryInterval = Long.parseLong(summaryIntervalRaw.trim());
-                summaryIntervalSeconds = clampSummaryIntervalSeconds(parsedSummaryInterval);
+                STATE.summaryIntervalSeconds = clampSummaryIntervalSeconds(parsedSummaryInterval);
                 changed = true;
             }
 
             if (summaryAutoEnabledRaw != null && !summaryAutoEnabledRaw.isBlank()) {
-                summaryAutoEnabled = Boolean.parseBoolean(summaryAutoEnabledRaw.trim());
+                STATE.summaryAutoEnabled = Boolean.parseBoolean(summaryAutoEnabledRaw.trim());
                 changed = true;
             }
 
             if (summaryMaxRowsRaw != null && !summaryMaxRowsRaw.isBlank()) {
                 int parsedSummaryMaxRows = Integer.parseInt(summaryMaxRowsRaw.trim());
-                summaryMaxRows = clampSummaryMaxRows(parsedSummaryMaxRows);
+                STATE.summaryMaxRows = clampSummaryMaxRows(parsedSummaryMaxRows);
                 changed = true;
             }
 
             if (summaryMaxUpstreamEntriesRaw != null && !summaryMaxUpstreamEntriesRaw.isBlank()) {
                 int parsedSummaryMaxUpstreamEntries = Integer.parseInt(summaryMaxUpstreamEntriesRaw.trim());
-                summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(parsedSummaryMaxUpstreamEntries);
+                STATE.summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(parsedSummaryMaxUpstreamEntries);
                 changed = true;
             }
 
             if (summaryMaxMessageCharsRaw != null && !summaryMaxMessageCharsRaw.isBlank()) {
                 int parsedSummaryMaxMessageChars = Integer.parseInt(summaryMaxMessageCharsRaw.trim());
-                summaryMaxMessageChars = clampSummaryMaxMessageChars(parsedSummaryMaxMessageChars);
+                STATE.summaryMaxMessageChars = clampSummaryMaxMessageChars(parsedSummaryMaxMessageChars);
                 changed = true;
             }
 
             if (summaryMaxRequestBytesRaw != null && !summaryMaxRequestBytesRaw.isBlank()) {
                 int parsedSummaryMaxRequestBytes = Integer.parseInt(summaryMaxRequestBytesRaw.trim());
-                summaryMaxRequestBytes = clampSummaryMaxRequestBytes(parsedSummaryMaxRequestBytes);
+                STATE.summaryMaxRequestBytes = clampSummaryMaxRequestBytes(parsedSummaryMaxRequestBytes);
                 changed = true;
             }
         } catch (NumberFormatException e) {
@@ -794,7 +841,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         if (summaryPromptRaw != null) {
-            summaryPromptTemplate = normalizeSummaryPrompt(summaryPromptRaw);
+            STATE.summaryPromptTemplate = normalizeSummaryPrompt(summaryPromptRaw);
             changed = true;
         }
 
@@ -807,25 +854,25 @@ public class WidgetSyncServlet extends HttpServlet {
 
         JsonObject payload = Json.createObjectBuilder()
                 .add("status", "ok")
-                .add("intervalSeconds", syncIntervalSeconds)
-                .add("lastSynced", lastSynced == null ? "" : lastSynced.toInstant().toString())
-                .add("summaryIntervalSeconds", summaryIntervalSeconds)
-                .add("summaryAutoEnabled", summaryAutoEnabled)
-                .add("summaryMaxRows", summaryMaxRows)
-                .add("summaryMaxUpstreamEntries", summaryMaxUpstreamEntries)
-                .add("summaryMaxMessageChars", summaryMaxMessageChars)
-                .add("summaryMaxRequestBytes", summaryMaxRequestBytes)
+                .add("intervalSeconds", STATE.syncIntervalSeconds)
+                .add("STATE.lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
+                .add("STATE.summaryIntervalSeconds", STATE.summaryIntervalSeconds)
+                .add("STATE.summaryAutoEnabled", STATE.summaryAutoEnabled)
+                .add("STATE.summaryMaxRows", STATE.summaryMaxRows)
+                .add("STATE.summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
+                .add("STATE.summaryMaxMessageChars", STATE.summaryMaxMessageChars)
+                .add("STATE.summaryMaxRequestBytes", STATE.summaryMaxRequestBytes)
                 .add("summaryPrompt", resolveSummaryPrompt())
-                .add("summaryAutoPaused", summaryAutoPausedUntilManualSuccess)
-                .add("summaryAutoPausedReason", defaultIfBlank(summaryAutoPausedReason, ""))
-                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
+                .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
+                .add("STATE.summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
+                .add("summaryLastRunAt", STATE.summaryLastRun == null ? "" : STATE.summaryLastRun.toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                 .build();
         writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
     private synchronized void updateInterval(long newIntervalSeconds) {
-        syncIntervalSeconds = newIntervalSeconds;
+        STATE.syncIntervalSeconds = newIntervalSeconds;
         scheduleSyncTask();
     }
 
@@ -834,11 +881,11 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
         ensureExecutorsRunning();
-        if (scheduledFuture != null) {
-            scheduledFuture.cancel(false);
+        if (STATE.scheduledFuture != null) {
+            STATE.scheduledFuture.cancel(false);
         }
-        scheduledFuture = scheduler.scheduleWithFixedDelay(
-                this::runScheduledSync, syncIntervalSeconds, syncIntervalSeconds, TimeUnit.SECONDS);
+        STATE.scheduledFuture = STATE.scheduler.scheduleWithFixedDelay(
+                this::runScheduledSync, STATE.syncIntervalSeconds, STATE.syncIntervalSeconds, TimeUnit.SECONDS);
     }
 
     private void runScheduledSync() {
@@ -854,11 +901,11 @@ public class WidgetSyncServlet extends HttpServlet {
             boolean summaryRan = false;
             boolean summarySuccess = true;
 
-            if (summaryAutoPausedUntilManualSuccess) {
+            if (STATE.summaryAutoPausedUntilManualSuccess) {
                 log.log(Level.INFO,
                         "Skipping scheduled summary generation while paused. reason={0}",
-                        defaultIfBlank(summaryAutoPausedReason, "manual summary generation required"));
-            } else if (!summaryAutoEnabled) {
+                        defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"));
+            } else if (!STATE.summaryAutoEnabled) {
                 log.log(Level.INFO, "Skipping scheduled summary generation because automatic summary is disabled.");
             } else if (!isSummaryRunDueNow()) {
                 log.log(Level.INFO,
@@ -872,9 +919,9 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (!summaryRan) {
                 finishSyncProgress(true,
-                        summaryAutoPausedUntilManualSuccess
+                        STATE.summaryAutoPausedUntilManualSuccess
                                 ? "Scheduled sync completed. Summary generation remains paused."
-                        : (!summaryAutoEnabled
+                        : (!STATE.summaryAutoEnabled
                         ? "Scheduled sync completed. Automatic summary generation is disabled."
                         : "Scheduled sync completed. Summary generation skipped until the configured interval elapses."));
             } else if (!summarySuccess) {
@@ -891,7 +938,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "scheduled-sync-failed",
                     "Automatic widget sync failed",
-                    "intervalSeconds=" + syncIntervalSeconds,
+                    "intervalSeconds=" + STATE.syncIntervalSeconds,
                     e
             );
             finishSyncProgress(false, "Scheduled sync failed. Check server logs.");
@@ -989,9 +1036,9 @@ public class WidgetSyncServlet extends HttpServlet {
             statuses.add(status);
         }
 
-        syncCurrentWidgetId = "";
-        syncCurrentWidgetTable = "";
-        syncCurrentWidgetIndex = 0;
+        STATE.syncCurrentWidgetId = "";
+        STATE.syncCurrentWidgetTable = "";
+        STATE.syncCurrentWidgetIndex = 0;
         return statuses;
     }
 
@@ -1005,7 +1052,7 @@ public class WidgetSyncServlet extends HttpServlet {
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "Calling API for chat messages..."),
-                syncProgressPercent
+                STATE.syncProgressPercent
             );
 
             List<JsonObject> chats = fetchWidgetChatsWithRetry(config, widgetId);
@@ -1021,7 +1068,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     updateSyncProgress(
                         "syncing_widgets",
                         currentWidgetStepMessage(widgetId, "Payload unchanged from recent syncs. Skipping DB upsert."),
-                        syncProgressPercent
+                        STATE.syncProgressPercent
                     );
                 } else if (missingChatIds.size() < candidateChatIds.size()) {
                     Set<String> missingIdSet = new LinkedHashSet<>(missingChatIds);
@@ -1030,7 +1077,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     updateSyncProgress(
                         "syncing_widgets",
                         currentWidgetStepMessage(widgetId, "Filtered " + filteredCount + " known chat(s) before DB upsert."),
-                        syncProgressPercent
+                        STATE.syncProgressPercent
                     );
                 }
             }
@@ -1038,7 +1085,7 @@ public class WidgetSyncServlet extends HttpServlet {
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "API returned " + chats.size() + " chat(s). Checking for new entries..."),
-                syncProgressPercent
+                STATE.syncProgressPercent
             );
 
             int inserted = 0;
@@ -1046,19 +1093,19 @@ public class WidgetSyncServlet extends HttpServlet {
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "Upserting chat(s) into database..."),
-                syncProgressPercent
+                STATE.syncProgressPercent
             );
                 inserted = insertWidgetChats(conn, tableName, chatsForUpsert);
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "Added " + inserted + " new chat(s) to database."),
-                syncProgressPercent
+                STATE.syncProgressPercent
             );
             } else {
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "No new chats detected. Database unchanged."),
-                syncProgressPercent
+                STATE.syncProgressPercent
             );
             }
 
@@ -1093,72 +1140,72 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String currentWidgetStepMessage(String widgetId, String action) {
-        int index = Math.max(1, syncCurrentWidgetIndex);
-        int total = Math.max(index, syncTotalWidgets);
+        int index = Math.max(1, STATE.syncCurrentWidgetIndex);
+        int total = Math.max(index, STATE.syncTotalWidgets);
         String safeWidget = defaultIfBlank(widgetId, "unknown");
         return "Widget " + index + '/' + total + " (" + safeWidget + "): " + defaultIfBlank(action, "processing...");
     }
 
     private void beginSyncProgress(String phase, String message) {
-        synchronized (syncProgressLock) {
-            syncStartedAt = Instant.now();
-            syncFinishedAt = null;
-            syncPhase = defaultIfBlank(phase, "running");
-            syncStatusMessage = defaultIfBlank(message, "Sync running.");
-            syncTotalWidgets = 0;
+        withSyncProgressLock(() -> {
+            STATE.syncStartedAt = Instant.now();
+            STATE.syncFinishedAt = null;
+            STATE.syncPhase = defaultIfBlank(phase, "running");
+            STATE.syncStatusMessage = defaultIfBlank(message, "Sync running.");
+            STATE.syncTotalWidgets = 0;
             syncCompletedWidgets.set(0);
             syncSucceededWidgets.set(0);
             syncFailedWidgets.set(0);
-            syncCurrentWidgetId = "";
-            syncCurrentWidgetTable = "";
-            syncCurrentWidgetIndex = 0;
-            syncProgressPercent = 2;
-        }
+            STATE.syncCurrentWidgetId = "";
+            STATE.syncCurrentWidgetTable = "";
+            STATE.syncCurrentWidgetIndex = 0;
+            STATE.syncProgressPercent = 2;
+        });
     }
 
     private void startWidgetSyncProgress(int totalWidgets) {
-        synchronized (syncProgressLock) {
-            syncPhase = "syncing_widgets";
-            syncTotalWidgets = Math.max(0, totalWidgets);
+        withSyncProgressLock(() -> {
+            STATE.syncPhase = "syncing_widgets";
+            STATE.syncTotalWidgets = Math.max(0, totalWidgets);
             syncCompletedWidgets.set(0);
             syncSucceededWidgets.set(0);
             syncFailedWidgets.set(0);
-            syncCurrentWidgetId = "";
-            syncCurrentWidgetTable = "";
-            syncCurrentWidgetIndex = 0;
+            STATE.syncCurrentWidgetId = "";
+            STATE.syncCurrentWidgetTable = "";
+            STATE.syncCurrentWidgetIndex = 0;
 
-            if (syncTotalWidgets == 0) {
-                syncProgressPercent = Math.max(syncProgressPercent, 90);
-                syncStatusMessage = "No widgets available to sync.";
+            if (STATE.syncTotalWidgets == 0) {
+                STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 90);
+                STATE.syncStatusMessage = "No widgets available to sync.";
                 return;
             }
 
-            syncProgressPercent = Math.max(syncProgressPercent, 5);
-            syncStatusMessage = "Syncing widget tables...";
-        }
+            STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 5);
+            STATE.syncStatusMessage = "Syncing widget tables...";
+        });
     }
 
     private void updateCurrentWidgetProgress(String widgetId, String tableName, int widgetIndex, int totalWidgets) {
-        synchronized (syncProgressLock) {
-            syncCurrentWidgetId = defaultIfBlank(widgetId, "");
-            syncCurrentWidgetTable = defaultIfBlank(tableName, "");
-            syncCurrentWidgetIndex = Math.max(0, widgetIndex);
+        withSyncProgressLock(() -> {
+            STATE.syncCurrentWidgetId = defaultIfBlank(widgetId, "");
+            STATE.syncCurrentWidgetTable = defaultIfBlank(tableName, "");
+            STATE.syncCurrentWidgetIndex = Math.max(0, widgetIndex);
 
             int safeTotal = Math.max(0, totalWidgets);
             if (safeTotal > 0) {
                 int scaledPercent = 5 + (int) Math.round(((Math.max(0, widgetIndex - 1) * 100.0d) / safeTotal) * 0.85d);
-                syncProgressPercent = Math.max(syncProgressPercent, Math.min(90, scaledPercent));
+                STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
-            if (!syncCurrentWidgetId.isBlank()) {
-                syncStatusMessage = "Syncing widget "
+            if (!STATE.syncCurrentWidgetId.isBlank()) {
+                STATE.syncStatusMessage = "Syncing widget "
                         + Math.max(1, widgetIndex)
                         + '/'
                         + Math.max(1, safeTotal)
                         + ": "
-                        + syncCurrentWidgetId;
+                        + STATE.syncCurrentWidgetId;
             }
-        }
+        });
     }
 
     private void markWidgetSyncCompletion(String widgetId, boolean success) {
@@ -1169,15 +1216,15 @@ public class WidgetSyncServlet extends HttpServlet {
             syncFailedWidgets.incrementAndGet();
         }
 
-        synchronized (syncProgressLock) {
-            int total = Math.max(0, syncTotalWidgets);
+        withSyncProgressLock(() -> {
+            int total = Math.max(0, STATE.syncTotalWidgets);
             if (total > 0) {
                 int widgetPercent = (int) Math.round((completed * 100.0d) / total);
                 int scaledPercent = 5 + (int) Math.round(widgetPercent * 0.85d);
-                syncProgressPercent = Math.max(syncProgressPercent, Math.min(90, scaledPercent));
+                STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
-            syncStatusMessage = "Processed "
+            STATE.syncStatusMessage = "Processed "
                     + completed
                     + '/'
                     + Math.max(total, completed)
@@ -1187,35 +1234,44 @@ public class WidgetSyncServlet extends HttpServlet {
                     + syncFailedWidgets.get()
                     + " failed)."
                     + (widgetId == null || widgetId.isBlank() ? "" : " Last widget: " + widgetId + '.');
-        }
+        });
     }
 
     private void updateSyncProgress(String phase, String message, int minimumPercent) {
-        synchronized (syncProgressLock) {
+        withSyncProgressLock(() -> {
             if (phase != null && !phase.isBlank()) {
-                syncPhase = phase;
+                STATE.syncPhase = phase;
             }
             if (message != null && !message.isBlank()) {
-                syncStatusMessage = message;
+                STATE.syncStatusMessage = message;
             }
-            syncProgressPercent = Math.max(syncProgressPercent, clampPercent(minimumPercent));
-        }
+            STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, clampPercent(minimumPercent));
+        });
     }
 
     private void finishSyncProgress(boolean success, String message) {
+        withSyncProgressLock(() -> {
+            STATE.syncFinishedAt = Instant.now();
+            STATE.syncPhase = success ? "completed" : "failed";
+            STATE.syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
+            STATE.syncCurrentWidgetId = "";
+            STATE.syncCurrentWidgetTable = "";
+            STATE.syncCurrentWidgetIndex = 0;
+            STATE.syncProgressPercent = success ? 100 : Math.max(1, Math.min(99, STATE.syncProgressPercent));
+        });
+    }
+
+    private void withSyncProgressLock(Runnable action) {
+        if (action == null) {
+            return;
+        }
         synchronized (syncProgressLock) {
-            syncFinishedAt = Instant.now();
-            syncPhase = success ? "completed" : "failed";
-            syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
-            syncCurrentWidgetId = "";
-            syncCurrentWidgetTable = "";
-            syncCurrentWidgetIndex = 0;
-            syncProgressPercent = success ? 100 : Math.max(1, Math.min(99, syncProgressPercent));
+            action.run();
         }
     }
 
     private int computeSyncProgressPercent(boolean running, int totalWidgets, int completedWidgets) {
-        int percent = clampPercent(syncProgressPercent);
+        int percent = clampPercent(STATE.syncProgressPercent);
         if (totalWidgets > 0) {
             int computed = (int) Math.round((Math.max(0, completedWidgets) * 100.0d) / totalWidgets);
             percent = Math.max(percent, clampPercent(computed));
@@ -1227,11 +1283,11 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private long computeRunningSeconds(boolean running) {
-        Instant started = syncStartedAt;
+        Instant started = STATE.syncStartedAt;
         if (started == null) {
             return 0L;
         }
-        Instant end = running ? Instant.now() : (syncFinishedAt == null ? Instant.now() : syncFinishedAt);
+        Instant end = running ? Instant.now() : (STATE.syncFinishedAt == null ? Instant.now() : STATE.syncFinishedAt);
         return Math.max(0L, Duration.between(started, end).toSeconds());
     }
 
@@ -1251,32 +1307,32 @@ public class WidgetSyncServlet extends HttpServlet {
         LocalDate day = LocalDate.now(zone);
         int slot = resolveCurrentSlot(LocalTime.now(zone));
         int entryCount = 0;
-        summaryLastRun = Timestamp.from(Instant.now());
+        STATE.summaryLastRun = Timestamp.from(Instant.now());
         persistSyncSettings();
 
         try {
-            if (summaryStore == null) {
-                summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
-                summaryStore.ensureTable();
+            if (STATE.summaryStore == null) {
+                STATE.summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+                STATE.summaryStore.ensureTable();
             }
 
             String startMessage = manualTrigger
                     ? "Manual summary generation started..."
                     : "Preparing daily summary context...";
-            summaryStore.upsertProgress(day, slot, "running", 5, startMessage, 0, true, false);
+            STATE.summaryStore.upsertProgress(day, slot, "running", 5, startMessage, 0, true, false);
 
-            int effectiveMaxRows = clampSummaryMaxRows(summaryMaxRows);
+            int effectiveMaxRows = clampSummaryMaxRows(STATE.summaryMaxRows);
             List<SelectedEntry> entries = loadEntriesForDay(day, effectiveMaxRows);
             entryCount = entries.size();
 
             if (entries.isEmpty()) {
-                summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
+                STATE.summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
                         "No entries available for this day yet.", "—", "—", "—", 0, false, true);
                 resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
                 return true;
             }
 
-            summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
+            STATE.summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
 
             ServerConfig cfg = EncryptedDbConfigStore.load();
             if (cfg == null) {
@@ -1329,7 +1385,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + canonicalTargetUrl);
             }
 
-            TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(canonicalTargetUrl);
+            TrustedUrlValidator.ValidationResult trust = STATE.trustedUrlValidator.validate(canonicalTargetUrl);
             if (!trust.isValid()) {
                 String trustReason = defaultIfBlank(trust.getReason(), "unspecified trust validation failure.");
                 if (isSummaryTargetFromConfiguredServer(canonicalTargetUrl, cfg)) {
@@ -1343,7 +1399,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
             }
 
-            summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
+            STATE.summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
 
             List<TermDefinition> termDefinitions = loadSummaryTerms();
             List<SelectedEntry> upstreamEntries = limitSummaryEntriesForUpstream(entries);
@@ -1509,7 +1565,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 usage = "No specific usage notes generated.";
             }
 
-            summaryStore.upsertSummary(day, slot, "success", 100, "Summary generated.",
+            STATE.summaryStore.upsertSummary(day, slot, "success", 100, "Summary generated.",
                     overall, quality, response, usage, entries.size(), false, true);
             resumeAutomaticSummaryGeneration("Summary generated successfully.");
             return true;
@@ -1531,8 +1587,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String pausedMessage = defaultIfBlank(message, "Summary generation failed.")
             + " Automatic summary generation is paused until an ADMIN runs manual summary generation.";
 
-        if (summaryStore != null) {
-            summaryStore.upsertSummary(
+        if (STATE.summaryStore != null) {
+            STATE.summaryStore.upsertSummary(
                 day,
                 slot,
                 "error",
@@ -1556,13 +1612,13 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void pauseAutomaticSummaryGeneration(String reason) {
-        summaryAutoPausedUntilManualSuccess = true;
-        summaryAutoPausedReason = defaultIfBlank(reason, "Automatic summary generation paused until manual summary generation succeeds.");
+        STATE.summaryAutoPausedUntilManualSuccess = true;
+        STATE.summaryAutoPausedReason = defaultIfBlank(reason, "Automatic summary generation paused until manual summary generation succeeds.");
     }
 
     private void resumeAutomaticSummaryGeneration(String reason) {
-        summaryAutoPausedUntilManualSuccess = false;
-        summaryAutoPausedReason = "";
+        STATE.summaryAutoPausedUntilManualSuccess = false;
+        STATE.summaryAutoPausedReason = "";
         if (reason != null && !reason.isBlank()) {
             log.log(Level.INFO, "Automatic summary generation resumed: {0}", reason);
         }
@@ -1763,7 +1819,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String response = section(markdown, "Response");
         String usage = section(markdown, "Usage");
 
-        summaryStore.upsertSummary(
+        STATE.summaryStore.upsertSummary(
                 day,
                 slot,
                 "success",
@@ -2634,18 +2690,19 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        long waitMs = 0L;
-        synchronized (syncRateLimitLock) {
+        final long[] waitMsHolder = new long[]{0L};
+        withSyncRateLimitLock(() -> {
             long now = System.currentTimeMillis();
-            long nextAllowed = lastSyncRequestAtMs + SYNC_MIN_REQUEST_GAP_MS;
+            long nextAllowed = STATE.lastSyncRequestAtMs + SYNC_MIN_REQUEST_GAP_MS;
             if (now < nextAllowed) {
-                waitMs = nextAllowed - now;
-                lastSyncRequestAtMs = nextAllowed;
+                waitMsHolder[0] = nextAllowed - now;
+                STATE.lastSyncRequestAtMs = nextAllowed;
             } else {
-                lastSyncRequestAtMs = now;
+                STATE.lastSyncRequestAtMs = now;
             }
-        }
+        });
 
+        long waitMs = waitMsHolder[0];
         if (waitMs > 0L) {
             try {
                 Thread.sleep(waitMs);
@@ -2653,6 +2710,15 @@ public class WidgetSyncServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Sync request throttling interrupted", e);
             }
+        }
+    }
+
+    private void withSyncRateLimitLock(Runnable action) {
+        if (action == null) {
+            return;
+        }
+        synchronized (syncRateLimitLock) {
+            action.run();
         }
     }
 
@@ -2747,7 +2813,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void updateLastSyncedMaybePersist(boolean forcePersist) {
-        lastSynced = Timestamp.from(Instant.now());
+        STATE.lastSynced = Timestamp.from(Instant.now());
         int n = runsSinceLastSyncPersist.incrementAndGet();
         if (forcePersist || n >= LAST_SYNC_FLUSH_EVERY_N_RUNS) {
             runsSinceLastSyncPersist.set(0);
@@ -2760,17 +2826,17 @@ public class WidgetSyncServlet extends HttpServlet {
             ensureSyncSettingsTable(conn);
             SyncSettings settings = readSyncSettings(conn);
             if (settings.intervalSeconds > 0) {
-                syncIntervalSeconds = settings.intervalSeconds;
+                STATE.syncIntervalSeconds = settings.intervalSeconds;
             }
-            summaryIntervalSeconds = clampSummaryIntervalSeconds(settings.summaryIntervalSeconds);
-            summaryAutoEnabled = settings.summaryAutoEnabled;
-            summaryMaxRows = clampSummaryMaxRows(settings.summaryMaxRows);
-            summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(settings.summaryMaxUpstreamEntries);
-            summaryMaxMessageChars = clampSummaryMaxMessageChars(settings.summaryMaxMessageChars);
-            summaryMaxRequestBytes = clampSummaryMaxRequestBytes(settings.summaryMaxRequestBytes);
-            summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
-            lastSynced = settings.lastSynced;
-            summaryLastRun = settings.summaryLastRun;
+            STATE.summaryIntervalSeconds = clampSummaryIntervalSeconds(settings.summaryIntervalSeconds);
+            STATE.summaryAutoEnabled = settings.summaryAutoEnabled;
+            STATE.summaryMaxRows = clampSummaryMaxRows(settings.summaryMaxRows);
+            STATE.summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(settings.summaryMaxUpstreamEntries);
+            STATE.summaryMaxMessageChars = clampSummaryMaxMessageChars(settings.summaryMaxMessageChars);
+            STATE.summaryMaxRequestBytes = clampSummaryMaxRequestBytes(settings.summaryMaxRequestBytes);
+            STATE.summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
+            STATE.lastSynced = settings.lastSynced;
+            STATE.summaryLastRun = settings.summaryLastRun;
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to load sync settings", e);
         }
@@ -2779,12 +2845,12 @@ public class WidgetSyncServlet extends HttpServlet {
     private void persistSyncSettings() {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             ensureSyncSettingsTable(conn);
-            upsertSyncSettings(conn, syncIntervalSeconds, lastSynced);
+            upsertSyncSettings(conn, STATE.syncIntervalSeconds, STATE.lastSynced);
         } catch (SQLException e) {
             logWarningWithDiagnostics(
                     "persist-sync-settings-failed",
                     "Unable to persist sync settings",
-                    "intervalSeconds=" + syncIntervalSeconds + "\nlastSynced=" + String.valueOf(lastSynced),
+                    "intervalSeconds=" + STATE.syncIntervalSeconds + "\nlastSynced=" + String.valueOf(STATE.lastSynced),
                     e
             );
         }
@@ -2878,15 +2944,15 @@ public class WidgetSyncServlet extends HttpServlet {
                     + " FROM widget_sync_settings WHERE id = 1";
             try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", syncIntervalSeconds);
+                    long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", STATE.syncIntervalSeconds);
                     if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
-                        persistedInterval = syncIntervalSeconds;
+                        persistedInterval = STATE.syncIntervalSeconds;
                     }
 
                     long persistedSummaryInterval = readPersistedIntervalSeconds(
                             rs,
                             "summary_interval_seconds",
-                            summaryIntervalSeconds
+                            STATE.summaryIntervalSeconds
                     );
                     boolean persistedSummaryAutoEnabled = readPersistedBoolean(
                         rs,
@@ -2894,21 +2960,21 @@ public class WidgetSyncServlet extends HttpServlet {
                         DEFAULT_SUMMARY_AUTO_ENABLED
                     );
 
-                    int persistedSummaryMaxRows = readPersistedInt(rs, "summary_max_rows", summaryMaxRows);
+                    int persistedSummaryMaxRows = readPersistedInt(rs, "summary_max_rows", STATE.summaryMaxRows);
                     int persistedSummaryMaxUpstreamEntries = readPersistedInt(
                         rs,
                         "summary_max_upstream_entries",
-                        summaryMaxUpstreamEntries
+                        STATE.summaryMaxUpstreamEntries
                     );
                     int persistedSummaryMaxMessageChars = readPersistedInt(
                         rs,
                         "summary_max_message_chars",
-                        summaryMaxMessageChars
+                        STATE.summaryMaxMessageChars
                     );
                     int persistedSummaryMaxRequestBytes = readPersistedInt(
                         rs,
                         "summary_max_request_bytes",
-                        summaryMaxRequestBytes
+                        STATE.summaryMaxRequestBytes
                     );
 
                     String persistedSummaryPrompt = readDbText(rs, "summary_prompt", MAX_SUMMARY_PROMPT_CHARS);
@@ -2934,28 +3000,28 @@ public class WidgetSyncServlet extends HttpServlet {
             }
             upsertSyncSettings(
                     conn,
-                    syncIntervalSeconds,
-                    lastSynced,
-                    summaryIntervalSeconds,
-                    summaryAutoEnabled,
+                    STATE.syncIntervalSeconds,
+                    STATE.lastSynced,
+                    STATE.summaryIntervalSeconds,
+                    STATE.summaryAutoEnabled,
                     resolveSummaryPrompt(),
-                    summaryMaxRows,
-                    summaryMaxUpstreamEntries,
-                    summaryMaxMessageChars,
-                    summaryMaxRequestBytes,
-                    summaryLastRun
+                    STATE.summaryMaxRows,
+                    STATE.summaryMaxUpstreamEntries,
+                    STATE.summaryMaxMessageChars,
+                    STATE.summaryMaxRequestBytes,
+                    STATE.summaryLastRun
             );
             return new SyncSettings(
-                    syncIntervalSeconds,
-                    lastSynced,
-                    summaryIntervalSeconds,
-                    summaryAutoEnabled,
+                    STATE.syncIntervalSeconds,
+                    STATE.lastSynced,
+                    STATE.summaryIntervalSeconds,
+                    STATE.summaryAutoEnabled,
                     resolveSummaryPrompt(),
-                    summaryMaxRows,
-                    summaryMaxUpstreamEntries,
-                    summaryMaxMessageChars,
-                    summaryMaxRequestBytes,
-                    summaryLastRun
+                    STATE.summaryMaxRows,
+                    STATE.summaryMaxUpstreamEntries,
+                    STATE.summaryMaxMessageChars,
+                    STATE.summaryMaxRequestBytes,
+                    STATE.summaryLastRun
             );
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read sync settings", e);
@@ -2980,14 +3046,14 @@ public class WidgetSyncServlet extends HttpServlet {
             conn,
             intervalSeconds,
             lastSynced,
-            summaryIntervalSeconds,
-            summaryAutoEnabled,
+            STATE.summaryIntervalSeconds,
+            STATE.summaryAutoEnabled,
             resolveSummaryPrompt(),
-            summaryMaxRows,
-            summaryMaxUpstreamEntries,
-            summaryMaxMessageChars,
-            summaryMaxRequestBytes,
-            summaryLastRun
+            STATE.summaryMaxRows,
+            STATE.summaryMaxUpstreamEntries,
+            STATE.summaryMaxMessageChars,
+            STATE.summaryMaxRequestBytes,
+            STATE.summaryLastRun
         );
     }
 
@@ -3270,6 +3336,8 @@ public class WidgetSyncServlet extends HttpServlet {
                 conn.rollback();
             } catch (SQLException rollbackError) {
                 e.addSuppressed(rollbackError);
+                log.log(Level.FINE, "Rollback failed while inserting widget chats into table {0}", tableName);
+                log.log(Level.FINEST, "Rollback failure details", rollbackError);
             }
             throw new IllegalStateException("Unable to insert widget chats into table " + tableName, e);
         } finally {
@@ -3782,7 +3850,7 @@ public class WidgetSyncServlet extends HttpServlet {
             List<SelectedEntry> entries,
             String requestId
         ) {
-        if (workspaceClient == null) {
+        if (STATE.workspaceClient == null) {
             throw new IllegalStateException("Workspace client unavailable for direct summary fallback.");
         }
 
@@ -3859,7 +3927,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String message,
             String requestId
     ) {
-        if (workspaceClient == null) {
+        if (STATE.workspaceClient == null) {
             throw new IllegalStateException("Workspace client unavailable for single-pass summary call.");
         }
 
@@ -3896,7 +3964,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
 
-        if (workspaceClient != null && workspaceClient.isLikelyContextTooLarge(response)) {
+        if (STATE.workspaceClient != null && STATE.workspaceClient.isLikelyContextTooLarge(response)) {
             return true;
         }
 
@@ -3911,7 +3979,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (entries == null || entries.isEmpty()) {
             return List.of();
         }
-        int limit = Math.min(clampSummaryMaxUpstreamEntries(summaryMaxUpstreamEntries), entries.size());
+        int limit = Math.min(clampSummaryMaxUpstreamEntries(STATE.summaryMaxUpstreamEntries), entries.size());
         if (limit == entries.size()) {
             return entries;
         }
@@ -3926,7 +3994,7 @@ public class WidgetSyncServlet extends HttpServlet {
         List<SelectedEntry> source = entries == null ? List.of() : entries;
         int candidateSize = source.size();
         boolean budgetReduced = false;
-        int safeRequestBudgetBytes = clampSummaryMaxRequestBytes(summaryMaxRequestBytes);
+        int safeRequestBudgetBytes = clampSummaryMaxRequestBytes(STATE.summaryMaxRequestBytes);
 
         String message = buildGentleSummaryRequestMessage(promptGuide, source, totalEntries);
         int bytes = utf8Length(message);
@@ -3945,7 +4013,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         if (bytes > safeRequestBudgetBytes) {
             budgetReduced = true;
-            int compactMessageChars = Math.min(clampSummaryMaxMessageChars(summaryMaxMessageChars), 1400);
+            int compactMessageChars = Math.min(clampSummaryMaxMessageChars(STATE.summaryMaxMessageChars), 1400);
             int compactPromptChars = Math.min(SUMMARY_GENTLE_PROMPT_CHARS, 96);
             int compactResponseChars = Math.min(SUMMARY_GENTLE_RESPONSE_CHARS, 140);
             int compactGuidanceChars = Math.min(SUMMARY_GENTLE_GUIDANCE_CHARS, 220);
@@ -3981,7 +4049,7 @@ public class WidgetSyncServlet extends HttpServlet {
             promptGuide,
             entries,
             totalEntries,
-            clampSummaryMaxMessageChars(summaryMaxMessageChars),
+            clampSummaryMaxMessageChars(STATE.summaryMaxMessageChars),
             SUMMARY_GENTLE_PROMPT_CHARS,
             SUMMARY_GENTLE_RESPONSE_CHARS,
             SUMMARY_GENTLE_GUIDANCE_CHARS
@@ -4102,7 +4170,7 @@ public class WidgetSyncServlet extends HttpServlet {
             List<SelectedEntry> entries,
             String requestId
     ) {
-        if (workspaceClient == null) {
+        if (STATE.workspaceClient == null) {
             throw new IllegalStateException("Workspace client unavailable for incremental summary fallback.");
         }
 
@@ -4355,7 +4423,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (status == 413) {
             return true;
         }
-        if (workspaceClient != null && workspaceClient.isLikelyContextTooLarge(response)) {
+        if (STATE.workspaceClient != null && STATE.workspaceClient.isLikelyContextTooLarge(response)) {
             return true;
         }
         return false;
@@ -4370,7 +4438,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return false;
         }
 
-        if (workspaceClient != null && workspaceClient.isLikelyContextTooLarge(response)) {
+        if (STATE.workspaceClient != null && STATE.workspaceClient.isLikelyContextTooLarge(response)) {
             return true;
         }
 
@@ -4441,7 +4509,7 @@ public class WidgetSyncServlet extends HttpServlet {
             // For generic 400 responses, skip direct fallback cascades and rely on
             // deterministic local summary fallback to avoid repetitive upstream noise.
             if (response.statusCode() == 400
-                    && (workspaceClient == null || !workspaceClient.isLikelyContextTooLarge(response))) {
+                    && (STATE.workspaceClient == null || !STATE.workspaceClient.isLikelyContextTooLarge(response))) {
                 return false;
             }
             return true;
@@ -4450,7 +4518,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
         String primaryText = extractPrimaryText(response.body());
-        return primaryText == null || primaryText.isBlank();
+        return primaryText.isBlank();
     }
 
     private boolean isUsableSummaryResponse(WorkspaceResponse response) {
@@ -4461,7 +4529,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return false;
         }
         String primaryText = extractPrimaryText(response.body());
-        return primaryText != null && !primaryText.isBlank() && !isAbortResponse(response.body());
+        return !primaryText.isBlank() && !isAbortResponse(response.body());
     }
 
     private boolean isAbortResponse(String body) {
@@ -4470,16 +4538,25 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject payload = reader.readObject();
-            String type = payload.getString("type", "");
+            String type = safeJsonText(payload, "type", 64);
             if (!"abort".equalsIgnoreCase(type.trim())) {
                 return false;
             }
-            String text = payload.getString("textResponse", "");
+            String text = safeJsonText(payload, "textResponse", 4096);
             return text.isBlank();
         } catch (JsonException | ClassCastException ex) {
             log.log(Level.FINE, "Unable to parse abort response payload.", ex);
             return false;
         }
+    }
+
+    private String safeJsonText(JsonObject payload, String key, int maxLen) {
+        if (payload == null || key == null || key.isBlank()) {
+            return "";
+        }
+        String text = payload.getString(key, "");
+        text = sanitizeConfigToken(text, maxLen <= 0 ? 4096 : maxLen);
+        return text == null ? "" : text;
     }
 
     private String summarizeBodyForDiagnostics(String body) {
@@ -4597,23 +4674,23 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isSummaryRunDueNow() {
-        if (summaryIntervalSeconds <= 0L) {
+        if (STATE.summaryIntervalSeconds <= 0L) {
             return true;
         }
-        Timestamp lastRun = summaryLastRun;
+        Timestamp lastRun = STATE.summaryLastRun;
         if (lastRun == null) {
             return true;
         }
-        Instant threshold = lastRun.toInstant().plusSeconds(summaryIntervalSeconds);
+        Instant threshold = lastRun.toInstant().plusSeconds(STATE.summaryIntervalSeconds);
         return !Instant.now().isBefore(threshold);
     }
 
     private String computeNextSummaryRunAtIso() {
-        Timestamp lastRun = summaryLastRun;
-        if (lastRun == null || summaryIntervalSeconds <= 0L) {
+        Timestamp lastRun = STATE.summaryLastRun;
+        if (lastRun == null || STATE.summaryIntervalSeconds <= 0L) {
             return "";
         }
-        return lastRun.toInstant().plusSeconds(summaryIntervalSeconds).toString();
+        return lastRun.toInstant().plusSeconds(STATE.summaryIntervalSeconds).toString();
     }
 
     private long clampSummaryIntervalSeconds(long value) {
@@ -4652,7 +4729,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String resolveSummaryPrompt() {
-        return normalizeSummaryPrompt(summaryPromptTemplate);
+        return normalizeSummaryPrompt(STATE.summaryPromptTemplate);
     }
 
     private String normalizeSummaryPrompt(String prompt) {
@@ -4847,14 +4924,14 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
+        if (STATE.dsHolder != null) {
+            return STATE.dsHolder;
         }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     void setDataSourceHolder(AppDataSourceHolder dsHolder) {
-        WidgetSyncServlet.dsHolder = dsHolder;
+        STATE.dsHolder = dsHolder;
     }
 
     private WorkspaceResponse sendChatHandled(
@@ -4868,7 +4945,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String requestId
     ) {
         try {
-            return workspaceClient.sendChat(
+            return STATE.workspaceClient.sendChat(
                     targetUrl,
                     apiKey,
                     message,
@@ -4897,7 +4974,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String requestId
     ) {
         try {
-            return workspaceClient.sendChatBearerCompat(
+            return STATE.workspaceClient.sendChatBearerCompat(
                     targetUrl,
                     apiKey,
                     message,
@@ -5066,3 +5143,4 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
 }
+

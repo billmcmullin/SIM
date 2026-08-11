@@ -3,6 +3,7 @@ package com.sim.chatserver.util;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -49,6 +50,17 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
+        String contentType = req.getContentType();
+        if (contentType != null && !contentType.isBlank()) {
+            String normalizedType = contentType.toLowerCase(java.util.Locale.ROOT);
+            if (!normalizedType.startsWith("application/json")
+                    && !normalizedType.startsWith("application/ld+json")
+                    && !normalizedType.startsWith("application/problem+json")) {
+                log.warning(() -> "Unsupported JSON content type: " + contentType);
+                return emptyObject();
+            }
+        }
+
         int max = Math.max(1, maxBodyBytes);
         long declaredLength = req.getContentLengthLong();
         if (declaredLength > max) {
@@ -68,7 +80,12 @@ public final class JsonRequestParserUtil {
                 return emptyObject();
             }
 
-            try (JsonReader reader = Json.createReader(new StringReader(body))) {
+            String canonicalBody = normalizeBodyText(body, max);
+            if (canonicalBody == null || canonicalBody.isBlank()) {
+                return emptyObject();
+            }
+
+            try (JsonReader reader = Json.createReader(new StringReader(canonicalBody))) {
                 JsonStructure structure = reader.read();
 
                 if (structure == null) {
@@ -214,6 +231,23 @@ public final class JsonRequestParserUtil {
             payload.append(buffer, 0, read);
         }
         return payload.toString();
+    }
+
+    private static String normalizeBodyText(String body, int maxChars) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(body, Normalizer.Form.NFKC)
+                .replace("\u0000", "")
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 
     private static JsonObject emptyObject() {

@@ -287,11 +287,12 @@ public class DefaultTranslationService implements TranslationService {
             throws IOException, InterruptedException {
 
         String source = (sourceLang == null || sourceLang.isBlank()) ? "auto" : sourceLang;
+        String safeTargetLang = (targetLang == null || targetLang.isBlank()) ? "en" : targetLang;
 
         StringBuilder form = new StringBuilder();
         form.append("q=").append(urlEncode(text));
         form.append("&source=").append(urlEncode(source));
-        form.append("&target=").append(urlEncode(targetLang));
+        form.append("&target=").append(urlEncode(safeTargetLang));
         form.append("&format=text");
         if (apiKey != null && !apiKey.isBlank()) {
             form.append("&api_key=").append(urlEncode(apiKey));
@@ -303,7 +304,7 @@ public class DefaultTranslationService implements TranslationService {
             "translate-request",
             "method=POST\nurl=" + translateUrl
                 + "\nsource=" + source
-                + "\ntarget=" + targetLang
+                + "\ntarget=" + safeTargetLang
                 + "\nbody=" + redactApiKey(form.toString())
         );
 

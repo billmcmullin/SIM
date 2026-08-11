@@ -39,8 +39,6 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDateSelectionServlet.class.getName());
     private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    AppDataSourceHolder dsHolder;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
@@ -105,9 +103,6 @@ public class DashboardDateSelectionServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

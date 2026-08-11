@@ -35,63 +35,39 @@ public class WidgetTableServlet extends HttpServlet {
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
 
-    AppDataSourceHolder dsHolder;
-
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        try {
-            if (!authorizeAdmin(req, resp)) {
-                return;
-            }
-            // support either single widgetId or bulk ids (comma-separated widgetIds)
-            String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
-            String widgetId = firstParam(req, "widgetId");
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (!authorizeAdmin(req, resp)) {
+            return;
+        }
+        // support either single widgetId or bulk ids (comma-separated widgetIds)
+        String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
+        String widgetId = firstParam(req, "widgetId");
 
-            if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
-                jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
-                return;
-            }
+        if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
+            jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
+            return;
+        }
 
-            if (idsParam != null && !idsParam.isBlank()) {
-                // bulk mode
-                List<String> widgetIds = Arrays.stream(idsParam.split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isBlank())
-                        .collect(Collectors.toList());
-                handleBulkCheck(resp, widgetIds);
-            } else {
-                handleCheck(req, resp);
-            }
-        } catch (Exception e) {
-            log.log(Level.WARNING, "I/O failure in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+        if (idsParam != null && !idsParam.isBlank()) {
+            // bulk mode
+            List<String> widgetIds = Arrays.stream(idsParam.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.toList());
+            handleBulkCheck(resp, widgetIds);
+        } else {
+            handleCheck(req, resp);
         }
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        try {
-            if (!authorizeAdmin(req, resp)) {
-                return;
-            }
-            // Support creating a table for a widget via POST widgetId=...
-            handleCreate(req, resp);
-        } catch (Exception e) {
-            log.log(Level.WARNING, "I/O failure in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        if (!authorizeAdmin(req, resp)) {
+            return;
         }
+        // Support creating a table for a widget via POST widgetId=...
+        handleCreate(req, resp);
     }
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
@@ -370,9 +346,6 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

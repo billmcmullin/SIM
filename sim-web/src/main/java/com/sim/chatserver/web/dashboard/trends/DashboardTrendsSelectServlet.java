@@ -26,7 +26,6 @@ import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.enterprise.inject.spi.CDI;
-import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletException;
@@ -42,9 +41,6 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
-
-    @Inject
-    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -214,9 +210,6 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder resolveDataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

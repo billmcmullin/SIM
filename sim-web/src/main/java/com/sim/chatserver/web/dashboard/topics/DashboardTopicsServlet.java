@@ -3,6 +3,7 @@ package com.sim.chatserver.web.dashboard.topics;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -40,10 +41,11 @@ public class DashboardTopicsServlet extends HttpServlet {
                     .replace("${user}", escapeHtml(user))
                     .replace("${globalTopicRows}", "")
                     .replace("${perWidgetTopicTables}", "");
+                String safeRendered = sanitizeRenderedTemplate(rendered);
 
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
             resp.setContentType("text/html; charset=UTF-8");
-            resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
+                resp.getOutputStream().write(safeRendered.getBytes(StandardCharsets.UTF_8));
 
         } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
@@ -93,6 +95,14 @@ public class DashboardTopicsServlet extends HttpServlet {
             }
         }
         return escaped.toString();
+    }
+
+    private String sanitizeRenderedTemplate(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        return normalized.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
     }
 
 }

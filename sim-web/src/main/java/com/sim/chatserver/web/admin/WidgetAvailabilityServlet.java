@@ -5,7 +5,7 @@ import com.sim.chatserver.service.widget.WidgetAvailabilityChecker.WidgetAvailab
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
@@ -33,9 +33,6 @@ public class WidgetAvailabilityServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetAvailabilityServlet.class.getName());
 
-    @Inject
-    WidgetAvailabilityChecker checker;
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
@@ -53,7 +50,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         try {
             boolean forceRefresh = isTruthy(ServletRequestParamUtil.firstParam(req, "force", 12, true, true));
             boolean runWhenDisabled = isTruthy(ServletRequestParamUtil.firstParam(req, "runWhenDisabled", 12, true, true));
-            WidgetAvailabilityResult result = checker.checkNow(forceRefresh, runWhenDisabled);
+            WidgetAvailabilityResult result = availabilityChecker().checkNow(forceRefresh, runWhenDisabled);
             if (result == null) {
                 log.warning(() -> "Widget availability checker returned null result for user=" + sanitizeForLog(user));
                 result = new WidgetAvailabilityResult(false, "DOWN", "", 0L, "Availability check returned no result");
@@ -167,5 +164,9 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                 || "yes".equals(normalized)
                 || "on".equals(normalized)
                 || "y".equals(normalized);
+    }
+
+    private WidgetAvailabilityChecker availabilityChecker() {
+        return CDI.current().select(WidgetAvailabilityChecker.class).get();
     }
 }

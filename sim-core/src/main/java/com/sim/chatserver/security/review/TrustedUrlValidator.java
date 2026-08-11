@@ -4,6 +4,7 @@ package com.sim.chatserver.security.review;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -40,9 +41,16 @@ public final class TrustedUrlValidator {
             return ValidationResult.invalid("URL is blank.");
         }
 
+        String canonicalUrl = Normalizer.normalize(rawUrl, Normalizer.Form.NFKC)
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
+        if (canonicalUrl.isBlank()) {
+            return ValidationResult.invalid("URL is blank.");
+        }
+
         final URI uri;
         try {
-            uri = URI.create(rawUrl.trim());
+            uri = URI.create(canonicalUrl).normalize();
         } catch (IllegalArgumentException ex) {
             return ValidationResult.invalid("URL is invalid.");
         }

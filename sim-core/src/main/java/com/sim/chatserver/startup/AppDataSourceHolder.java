@@ -156,8 +156,9 @@ public class AppDataSourceHolder {
     }
 
     private static DataSource lookupDataSource(String jndiName) {
+        InitialContext context = null;
         try {
-            InitialContext context = new InitialContext();
+            context = new InitialContext();
             Object resolved = context.lookup(jndiName);
             if (resolved instanceof DataSource dataSource) {
                 return dataSource;
@@ -166,6 +167,14 @@ public class AppDataSourceHolder {
         } catch (NamingException ex) {
             log.log(Level.FINE, "JNDI lookup failed for datasource " + jndiName, ex);
             return null;
+        } finally {
+            if (context != null) {
+                try {
+                    context.close();
+                } catch (NamingException closeEx) {
+                    log.log(Level.FINE, "Failed to close JNDI context", closeEx);
+                }
+            }
         }
     }
 }
