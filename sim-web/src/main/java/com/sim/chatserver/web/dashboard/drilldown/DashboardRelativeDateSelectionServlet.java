@@ -50,6 +50,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    AppDataSourceHolder dsHolder;
+    TermsStore termsStore;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -358,10 +360,16 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private TermsStore termsStore() {
+        if (termsStore != null) {
+            return termsStore;
+        }
         return CDI.current().select(TermsStore.class).get();
     }
 

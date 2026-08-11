@@ -34,6 +34,7 @@ public class WidgetTableServlet extends HttpServlet {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
+    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -346,6 +347,9 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

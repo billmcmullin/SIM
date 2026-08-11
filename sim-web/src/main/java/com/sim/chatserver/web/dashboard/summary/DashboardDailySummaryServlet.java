@@ -28,6 +28,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final String SUMMARY_STORE_KEY = DashboardDailySummaryServlet.class.getName() + ".summaryStore";
+    private AppDataSourceHolder dsHolder;
 
     @Override
     public void init() throws ServletException {
@@ -157,7 +158,14 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    void setDataSourceHolder(AppDataSourceHolder dsHolder) {
+        this.dsHolder = dsHolder;
     }
 
 }
