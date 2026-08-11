@@ -29,12 +29,18 @@ public class ProfileServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
+    UserService userService;
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(LOGIN_PATH);
+            try {
+                resp.sendRedirect(LOGIN_PATH);
+            } catch (IOException ex) {
+                log.log(Level.FINE, "Unable to redirect to login", ex);
+                sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
+            }
             return;
         }
 
@@ -49,16 +55,22 @@ public class ProfileServlet extends HttpServlet {
                 .replace("${contextPath}", contextPath);
 
         resp.setContentType("text/html;charset=UTF-8");
-        PrintWriter out = resp.getWriter();
-        if (out == null) {
-            throw new IOException("Response writer unavailable");
+        try {
+            PrintWriter out = resp.getWriter();
+            if (out == null) {
+                sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                return;
+            }
+            out.print(rendered);
+            out.flush();
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to render profile page", ex);
+            sendFallbackError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
-        out.print(rendered);
-        out.flush();
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -103,6 +115,9 @@ public class ProfileServlet extends HttpServlet {
     }
 
     private UserService resolveUserService() {
+        if (userService != null) {
+            return userService;
+        }
         return CDI.current().select(UserService.class).get();
     }
 

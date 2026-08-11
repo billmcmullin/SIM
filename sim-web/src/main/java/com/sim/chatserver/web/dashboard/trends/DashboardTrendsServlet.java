@@ -42,6 +42,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTrendsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_trends.html";
+    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -221,6 +222,9 @@ public class DashboardTrendsServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
+        if (dsHolder != null) {
+            return dsHolder;
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
