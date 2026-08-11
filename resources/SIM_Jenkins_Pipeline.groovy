@@ -12,7 +12,7 @@ pipeline {
         SESSION_TAG            = 'Jenkins Jtest'
         // Parasoft Test Configuration to run this build
         TEST_CONFIG            = 'jtest.dtp://StaticAndUnit'
-        // Parasoft Security Compliance Test Configruation to run 2025 OWASP
+        // Parasoft Security Compliance Test Configurations to run 2025 OWASP
         OWASP_2025_TEST_CONFIG = 'jtest.dtp://OWASP Top 10-2025 [Parasoft 2026.1]'
         // Parasoft Security Compliance Test Configuration for CWE
         CWE_TEST_CONFIG        = 'jtest.dtp://CWE Top 25 + On the Cusp 2025 [Parasoft 2026.1]'
@@ -84,7 +84,7 @@ pipeline {
                             $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app,sim-email \
                                 -Djtest.settings="${WORKSPACE}/jtest_${JOB_NAME}.properties" \
                                 -Djtest.publish="${PUBLISH}" \
-                                -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT" \
+                                -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT;${JOB_NAME}-Play" \
                                 -Dmaven.test.failure.ignore=true \
                                 -Dmaven.test.error.ignore=true \
                                 -DautoUpdate=false \
@@ -181,7 +181,7 @@ pipeline {
 
                         echo "dtp.project=SIM Java" >> "${AGENT_FILE}"
 
-                        echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play" >> "${AGENT_FILE}"
+                        echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
 
                         echo "Updated ${AGENT_FILE}:"
                         grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode|restServerEnabled)=' "${AGENT_FILE}" || true
@@ -193,7 +193,6 @@ pipeline {
                             -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
                             -Dheadless=true \
                             -DignoreHttpsErrors=true \
-                            -Djunit.jupiter.extensions.autodetection.enabled=true \
                             -DadminUsername=admin \
                             -DadminPassword=admin \
                             -DuserUsername=jonnytest \
@@ -204,28 +203,6 @@ pipeline {
                             -Dexec.mainClass=com.microsoft.playwright.CLI \
                             -Dparasoft.coverage.baggageHeader="test-operator-id=${TEST_USER}"
                     '''
-                }
-            }
-        }
-
-        stage('Run Maven OWASP for A6') {
-            steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
-                        sh '''
-                            set -e
-                            mkdir -p "$DC_DATA_DIR"
-
-                            $MAVEN_HOME/mvn install org.owasp:dependency-check-maven:12.2.2:aggregate \
-                                -DnvdApiKey="$NVD_API_KEY" \
-                                -DdataDirectory="$DC_DATA_DIR" \
-                                -DskipTests=true
-
-                            $DEPENDENCY_CHECK/dependencycheck.sh \
-                                -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
-                                -settings "jtest_${JOB_NAME}_3RDCHECK.properties"
-                        '''
-                    }
                 }
             }
         }
@@ -265,6 +242,28 @@ pipeline {
 
                         exit 0
                     '''
+                }
+            }
+        }
+
+        stage('Run Maven OWASP for A6') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
+                        sh '''
+                            set -e
+                            mkdir -p "$DC_DATA_DIR"
+
+                            $MAVEN_HOME/mvn install org.owasp:dependency-check-maven:12.2.2:aggregate \
+                                -DnvdApiKey="$NVD_API_KEY" \
+                                -DdataDirectory="$DC_DATA_DIR" \
+                                -DskipTests=true
+
+                            $DEPENDENCY_CHECK/dependencycheck.sh \
+                                -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
+                                -settings "jtest_${JOB_NAME}_3RDCHECK.properties"
+                        '''
+                    }
                 }
             }
         }

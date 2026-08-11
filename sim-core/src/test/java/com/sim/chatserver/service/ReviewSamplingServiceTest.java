@@ -26,6 +26,45 @@ import java.lang.reflect.Method;
 public class ReviewSamplingServiceTest
 {
 
+    @SuppressWarnings("unchecked")
+    private List<SelectedEntry> invokeDedupeByChatId(ReviewSamplingService target, List<SelectedEntry> entries) throws Throwable {
+        return (List<SelectedEntry>) invokeMethod(target, "dedupeByChatId", new Class<?>[] { List.class }, entries);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<SelectedEntry> invokeNewest(ReviewSamplingService target, List<SelectedEntry> entries, int n) throws Throwable {
+        return (List<SelectedEntry>) invokeMethod(target, "newest", new Class<?>[] { List.class, int.class }, entries, n);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<SelectedEntry> invokeOldest(ReviewSamplingService target, List<SelectedEntry> entries, int n) throws Throwable {
+        return (List<SelectedEntry>) invokeMethod(target, "oldest", new Class<?>[] { List.class, int.class }, entries, n);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<SelectedEntry> invokeRandomSample(ReviewSamplingService target, List<SelectedEntry> entries, int n) throws Throwable {
+        return (List<SelectedEntry>) invokeMethod(target, "randomSample", new Class<?>[] { List.class, int.class }, entries, n);
+    }
+
+    private int invokeScoreEntry(ReviewSamplingService target, SelectedEntry entry, List<String> terms) throws Throwable {
+        return (Integer) invokeMethod(target, "scoreEntry", new Class<?>[] { SelectedEntry.class, List.class }, entry, terms);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<SelectedEntry> invokeTopRelevant(ReviewSamplingService target, List<SelectedEntry> entries, List<String> terms, int n) throws Throwable {
+        return (List<SelectedEntry>) invokeMethod(target, "topRelevant", new Class<?>[] { List.class, List.class, int.class }, entries, terms, n);
+    }
+
+    private Object invokeMethod(ReviewSamplingService target, String methodName, Class<?>[] paramTypes, Object... args) throws Throwable {
+        Method method = ReviewSamplingService.class.getDeclaredMethod(methodName, paramTypes);
+        method.setAccessible(true);
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
     /**
      * Parasoft Jtest UTA: Test for dedupeByChatId(List)
      *
@@ -40,7 +79,7 @@ public class ReviewSamplingServiceTest
 
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -58,7 +97,7 @@ public class ReviewSamplingServiceTest
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -78,7 +117,7 @@ public class ReviewSamplingServiceTest
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -100,7 +139,7 @@ public class ReviewSamplingServiceTest
         String getChatIdResult = "getChatIdResult"; // UTA: configured value
         when(item.getChatId()).thenReturn(getChatIdResult);
         entries.add(item);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -122,7 +161,7 @@ public class ReviewSamplingServiceTest
         String getChatIdResult = null; // UTA: configured value
         when(item.getChatId()).thenReturn(getChatIdResult);
         entries.add(item);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -144,7 +183,7 @@ public class ReviewSamplingServiceTest
         entries.add(item);
         SelectedEntry item2 = mock(SelectedEntry.class);
         entries.add(item2);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -170,7 +209,7 @@ public class ReviewSamplingServiceTest
         String getChatIdResult2 = "getChatIdResult2"; // UTA: default value
         when(item2.getChatId()).thenReturn(getChatIdResult2);
         entries.add(item2);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -196,7 +235,7 @@ public class ReviewSamplingServiceTest
         String getChatIdResult2 = "getChatIdResult2"; // UTA: default value
         when(item2.getChatId()).thenReturn(getChatIdResult2);
         entries.add(item2);
-        List<SelectedEntry> result = underTest.dedupeByChatId(entries);
+        List<SelectedEntry> result = invokeDedupeByChatId(underTest, entries);
 
     }
 
@@ -624,7 +663,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.newest(entries, n);
+        List<SelectedEntry> result = invokeNewest(underTest, entries, n);
 
     }
 
@@ -643,7 +682,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.newest(entries, n);
+        List<SelectedEntry> result = invokeNewest(underTest, entries, n);
 
     }
 
@@ -664,7 +703,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 0; // UTA: configured value
-        List<SelectedEntry> result = underTest.newest(entries, n);
+        List<SelectedEntry> result = invokeNewest(underTest, entries, n);
 
     }
 
@@ -685,7 +724,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 1; // UTA: configured value
-        List<SelectedEntry> result = underTest.newest(entries, n);
+        List<SelectedEntry> result = invokeNewest(underTest, entries, n);
 
     }
 
@@ -704,7 +743,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.oldest(entries, n);
+        List<SelectedEntry> result = invokeOldest(underTest, entries, n);
 
     }
 
@@ -723,7 +762,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.oldest(entries, n);
+        List<SelectedEntry> result = invokeOldest(underTest, entries, n);
 
     }
 
@@ -744,7 +783,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 0; // UTA: configured value
-        List<SelectedEntry> result = underTest.oldest(entries, n);
+        List<SelectedEntry> result = invokeOldest(underTest, entries, n);
 
     }
 
@@ -765,7 +804,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 1; // UTA: configured value
-        List<SelectedEntry> result = underTest.oldest(entries, n);
+        List<SelectedEntry> result = invokeOldest(underTest, entries, n);
 
     }
 
@@ -784,7 +823,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.randomSample(entries, n);
+        List<SelectedEntry> result = invokeRandomSample(underTest, entries, n);
 
     }
 
@@ -803,7 +842,7 @@ public class ReviewSamplingServiceTest
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.randomSample(entries, n);
+        List<SelectedEntry> result = invokeRandomSample(underTest, entries, n);
 
     }
 
@@ -824,7 +863,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 0; // UTA: configured value
-        List<SelectedEntry> result = underTest.randomSample(entries, n);
+        List<SelectedEntry> result = invokeRandomSample(underTest, entries, n);
 
     }
 
@@ -845,7 +884,7 @@ public class ReviewSamplingServiceTest
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int n = 1; // UTA: configured value
-        List<SelectedEntry> result = underTest.randomSample(entries, n);
+        List<SelectedEntry> result = invokeRandomSample(underTest, entries, n);
 
     }
 
@@ -866,7 +905,7 @@ public class ReviewSamplingServiceTest
         List<String> terms = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         terms.add(item);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -885,7 +924,7 @@ public class ReviewSamplingServiceTest
         // When
         SelectedEntry e = mock(SelectedEntry.class);
         List<String> terms = null; // UTA: configured value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -904,7 +943,7 @@ public class ReviewSamplingServiceTest
         // When
         SelectedEntry e = mock(SelectedEntry.class);
         List<String> terms = new ArrayList<String>(); // UTA: default value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -928,7 +967,7 @@ public class ReviewSamplingServiceTest
         String getResponseResult = "getResponseResult"; // UTA: default value
         when(e.getResponse()).thenReturn(getResponseResult);
         List<String> terms = new ArrayList<String>(); // UTA: default value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -952,7 +991,7 @@ public class ReviewSamplingServiceTest
         String getResponseResult = null; // UTA: configured value
         when(e.getResponse()).thenReturn(getResponseResult);
         List<String> terms = new ArrayList<String>(); // UTA: default value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -976,7 +1015,7 @@ public class ReviewSamplingServiceTest
         String getResponseResult = "getResponseResult"; // UTA: default value
         when(e.getResponse()).thenReturn(getResponseResult);
         List<String> terms = new ArrayList<String>(); // UTA: default value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1000,7 +1039,7 @@ public class ReviewSamplingServiceTest
         String getResponseResult = null; // UTA: configured value
         when(e.getResponse()).thenReturn(getResponseResult);
         List<String> terms = new ArrayList<String>(); // UTA: default value
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1026,7 +1065,7 @@ public class ReviewSamplingServiceTest
         List<String> terms = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         terms.add(item);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1052,7 +1091,7 @@ public class ReviewSamplingServiceTest
         List<String> terms = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         terms.add(item);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1078,7 +1117,7 @@ public class ReviewSamplingServiceTest
         List<String> terms = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         terms.add(item);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1104,7 +1143,7 @@ public class ReviewSamplingServiceTest
         List<String> terms = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         terms.add(item);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1132,7 +1171,7 @@ public class ReviewSamplingServiceTest
         terms.add(item);
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1160,7 +1199,7 @@ public class ReviewSamplingServiceTest
         terms.add(item);
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1188,7 +1227,7 @@ public class ReviewSamplingServiceTest
         terms.add(item);
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1216,7 +1255,7 @@ public class ReviewSamplingServiceTest
         terms.add(item);
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
-        int result = underTest.scoreEntry(e, terms);
+        int result = invokeScoreEntry(underTest, e, terms);
 
     }
 
@@ -1334,7 +1373,7 @@ public class ReviewSamplingServiceTest
         String item = "item"; // UTA: default value
         terms.add(item);
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.topRelevant(entries, terms, n);
+        List<SelectedEntry> result = invokeTopRelevant(underTest, entries, terms, n);
 
     }
 
@@ -1356,7 +1395,7 @@ public class ReviewSamplingServiceTest
         String item = "item"; // UTA: default value
         terms.add(item);
         int n = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.topRelevant(entries, terms, n);
+        List<SelectedEntry> result = invokeTopRelevant(underTest, entries, terms, n);
 
     }
 
@@ -1380,7 +1419,7 @@ public class ReviewSamplingServiceTest
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
         int n = 0; // UTA: configured value
-        List<SelectedEntry> result = underTest.topRelevant(entries, terms, n);
+        List<SelectedEntry> result = invokeTopRelevant(underTest, entries, terms, n);
 
     }
 
@@ -1404,18 +1443,18 @@ public class ReviewSamplingServiceTest
         String item2 = "item2"; // UTA: default value
         terms.add(item2);
         int n = 1; // UTA: configured value
-        List<SelectedEntry> result = underTest.topRelevant(entries, terms, n);
+        List<SelectedEntry> result = invokeTopRelevant(underTest, entries, terms, n);
 
     }
 
 
     // Merged from ReviewSamplingServiceBranchTest
     @Test
-        void scoreEntry_incrementsWhenTermIsPresent() {
+        void scoreEntry_incrementsWhenTermIsPresent() throws Throwable {
             ReviewSamplingService service = new ReviewSamplingService();
             SelectedEntry entry = new SelectedEntry("id", "contains alpha", "", "", "");
     
-            int score = service.scoreEntry(entry, List.of("alpha"));
+            int score = invokeScoreEntry(service, entry, List.of("alpha"));
     
             assertEquals(1, score);
         }
@@ -1431,13 +1470,13 @@ public class ReviewSamplingServiceTest
         }
     
         @Test
-        void dedupeByChatId_skipsNullEntry() {
+        void dedupeByChatId_skipsNullEntry() throws Throwable {
             ReviewSamplingService service = new ReviewSamplingService();
             List<SelectedEntry> entries = new ArrayList<>();
             entries.add(null);
             entries.add(new SelectedEntry("chat-1", "p", "r", "t", "s"));
     
-            List<SelectedEntry> deduped = service.dedupeByChatId(entries);
+            List<SelectedEntry> deduped = invokeDedupeByChatId(service, entries);
     
             assertEquals(1, deduped.size());
         }
@@ -1466,4 +1505,5 @@ public class ReviewSamplingServiceTest
             assertEquals(ReviewSamplingService.class.getName(), cause.getMessage());
         }
 }
+
 

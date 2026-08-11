@@ -3,16 +3,11 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,8 +18,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.openpdf.text.Document;
 import org.openpdf.text.DocumentException;
@@ -68,12 +61,10 @@ public class WidgetExportServlet extends HttpServlet {
 
     private static final String DEFAULT_FORMAT = "csv";
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
-    private static final int DB_ID_CHUNK_SIZE = parseIntProperty("export.dbIdChunkSize", 500);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    static volatile AppDataSourceHolder dsHolder;
+    volatile AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -253,55 +244,9 @@ public class WidgetExportServlet extends HttpServlet {
         }
 
         String widgetId = selection.widgetId;
-        String tableName = sanitizeWidgetTableName(widgetId);
         Map<String, OrderIndex> order = indexByOrder(selectedChatIds);
-
-        Connection conn = openConnectionSafe();
-        try (conn) {
-            if (!tableExists(conn, tableName)) {
-                return exportRows;
-            }
-
-            for (List<String> chunk : chunk(selectedChatIds, DB_ID_CHUNK_SIZE)) {
-                if (chunk.isEmpty()) {
-                    continue;
-                }
-
-                String placeholders = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + quoteIdentifier(tableName)
-            + " WHERE widget_chat_id IN (" + placeholders + ')';
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    int idx = 1;
-                    for (String id : chunk) {
-                        ps.setString(idx++, id);
-                    }
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String cid = rs.getString("widget_chat_id");
-                            Timestamp created = readDbTimestamp(rs, "created_at");
-                            String prompt = readDbText(rs, "prompt", 32000);
-                            String responseText = readDbText(rs, "response_text", 32000);
-                            String sessionId = readDbText(rs, "session_id", 256);
-
-                            exportRows.add(new TermChatSnapshot(
-                                    sessionId == null ? "" : sessionId,
-                                    widgetId,
-                                    cid == null ? "" : cid,
-                                    prompt,
-                                    responseText,
-                                    created,
-                                    sessionId
-                            ));
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to resolve export rows", e);
-        }
+        exportRows.addAll(new WidgetExportQueryService(dataSourceHolder(), log)
+                .loadRows(widgetId, selectedChatIds));
 
         exportRows.sort(Comparator.comparingInt(x -> orderValue(order, safe(x.getChatId()))));
         return exportRows;
@@ -705,17 +650,6 @@ public class WidgetExportServlet extends HttpServlet {
         return s == null ? "" : s;
     }
 
-    private static List<List<String>> chunk(List<String> input, int size) {
-        List<List<String>> out = new ArrayList<>();
-        if (input == null || input.isEmpty() || size <= 0) {
-            return out;
-        }
-        for (int i = 0; i < input.size(); i += size) {
-            out.add(input.subList(i, Math.min(i + size, input.size())));
-        }
-        return out;
-    }
-
     private static String csvLine(String[] cols) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < cols.length; i++) {
@@ -742,7 +676,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
         String envName = name.trim().toUpperCase(Locale.ROOT).replace('.', '_');
         String raw = readEnvSetting(envName);
-        if (raw == null || raw.isBlank()) {
+        if (raw.isBlank()) {
             return fallback;
         }
         try {
@@ -758,8 +692,8 @@ public class WidgetExportServlet extends HttpServlet {
         if (envName == null || envName.isBlank()) {
             return "";
         }
-        String raw = new ProcessBuilder().environment().get(envName);
-        if (raw == null || raw.isBlank()) {
+        String raw = new ProcessBuilder().environment().getOrDefault(envName, "");
+        if (raw.isBlank()) {
             return "";
         }
         String normalized = ServletRequestParamUtil.normalizeValue(raw, 32, true, false);
@@ -771,7 +705,7 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
-        try (java.io.BufferedReader reader = req.getReader()) {
+        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
             char[] buffer = new char[2048];
             StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
             int total = 0;
@@ -783,66 +717,10 @@ public class WidgetExportServlet extends HttpServlet {
                 }
                 builder.append(buffer, 0, read);
             }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
-            return normalized == null ? "" : normalized;
+            return ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read export request body", e);
             return "";
-        }
-    }
-
-    private String readDbText(ResultSet rs, String columnName, int maxLen) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return "";
-        }
-        String value;
-        try {
-            value = rs.getString(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
-            return "";
-        }
-        return sanitizeDbText(value, maxLen);
-    }
-
-    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return null;
-        }
-        Timestamp ts;
-        try {
-            ts = rs.getTimestamp(columnName);
-        } catch (SQLException ex) {
-            ts = null;
-        }
-        if (ts != null) {
-            return ts;
-        }
-        String text = readDbText(rs, columnName, 128);
-        if (text.isBlank()) {
-            return null;
-        }
-        try {
-            return Timestamp.from(Instant.parse(text));
-        } catch (DateTimeException | IllegalArgumentException ex) {
-            log.log(Level.FINE, "Falling back to SQL timestamp parsing", ex);
-            return Timestamp.valueOf(text.replace('T', ' '));
-        }
-    }
-
-    private String sanitizeDbText(String value, int maxLen) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
-    }
-
-    private Connection openConnectionSafe() {
-        try {
-            return dataSourceHolder().getDataSource().getConnection();
-        } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open export database connection", ex);
         }
     }
 
@@ -874,46 +752,6 @@ public class WidgetExportServlet extends HttpServlet {
             return false;
         }
         return true;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            java.sql.DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
     }
 
     private static final class OrderIndex {

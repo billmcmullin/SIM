@@ -37,7 +37,6 @@ public class GraphTokenClient {
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
-    private static final String PROP_ENABLED = "sim.server.diagnostic.log.enabled";
 
     private static volatile boolean warnedDiagFailure;
 
@@ -48,6 +47,16 @@ public class GraphTokenClient {
 
     GraphTokenClient(GraphEmailConfig config) {
         this.config = Objects.requireNonNull(config, "GraphEmailConfig is required");
+    }
+
+    @SuppressWarnings("unused")
+    private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
     }
 
     final synchronized String getAccessToken() {
@@ -135,7 +144,7 @@ public class GraphTokenClient {
         }
     }
 
-    HttpsURLConnection openConnection(String tokenUrl) throws IOException {
+    final HttpsURLConnection openConnection(String tokenUrl) throws IOException {
         URL url = URI.create(tokenUrl).toURL();
         return (HttpsURLConnection) url.openConnection();
     }
@@ -227,7 +236,7 @@ public class GraphTokenClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = trimToNull(System.getProperty(PROP_ENABLED));
+        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
         return isTruthy(enabledRaw);
     }
 

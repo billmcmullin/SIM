@@ -1,27 +1,21 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.StringReader;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
@@ -46,12 +40,10 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTopicsSelectServlet", urlPatterns = {"/dashboard/topics/select"})
 public class DashboardTopicsSelectServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsSelectServlet.class.getName());
-    private static final int IN_CLAUSE_BATCH_SIZE = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
-    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
-    static volatile AppDataSourceHolder dsHolder;
+    volatile AppDataSourceHolder dsHolder;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -93,8 +85,6 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             return;
         }
 
-        List<TermChatSnapshot> snapshots = new ArrayList<>();
-        Set<String> foundIds = new LinkedHashSet<>();
         Map<String, WidgetEntry> widgetById = new LinkedHashMap<>();
 
         try {
@@ -107,64 +97,18 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to load widget list for topics selection", ex);
         }
 
-        Connection conn = openConnectionSafe();
-        try (conn) {
-            List<String> idList = new ArrayList<>(requestedIds);
-
-            for (Map.Entry<String, WidgetEntry> e : widgetById.entrySet()) {
-                String widgetId = e.getKey();
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                for (int from = 0; from < idList.size(); from += IN_CLAUSE_BATCH_SIZE) {
-                    int to = Math.min(from + IN_CLAUSE_BATCH_SIZE, idList.size());
-                    List<String> chunk = idList.subList(from, to);
-
-                    String inClause = String.join(",", chunk.stream().map(id -> "?").toList());
-                    String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                            + quoteIdentifier(tableName)
-                            + " WHERE widget_chat_id IN (" + inClause + ')';
-
-                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                        int idx = 1;
-                        for (String id : chunk) {
-                            ps.setString(idx++, id);
-                        }
-
-                        try (ResultSet rs = ps.executeQuery()) {
-                            while (rs.next()) {
-                                String chatId = rs.getString("widget_chat_id");
-                                if (chatId == null || chatId.isBlank()) {
-                                    continue;
-                                }
-
-                                String prompt = readDbText(rs, "prompt", 64000);
-                                String responseText = readDbText(rs, "response_text", 64000);
-                                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                String sessionId = readDbText(rs, "session_id", 512);
-
-                                snapshots.add(new TermChatSnapshot(
-                                        "Popular Topics",
-                                        widgetId,
-                                        chatId,
-                                        prompt,
-                                        responseText,
-                                        createdAt,
-                                        sessionId
-                                ));
-                                foundIds.add(chatId);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+        DashboardTopicsSelectionService.SelectionResolution resolved;
+        try {
+            resolved = new DashboardTopicsSelectionService(dataSourceHolder(), log)
+                    .resolveSelectedChats(requestedIds, widgetById);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to resolve selected chats", ex);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to resolve selected chats.");
             return;
         }
+
+        List<TermChatSnapshot> snapshots = resolved.snapshots();
+        Set<String> foundIds = resolved.foundIds();
 
         if (snapshots.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_NOT_FOUND, "No matching chats found in widget tables.");
@@ -193,56 +137,20 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, ok);
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
+    private String readRequestBody(HttpServletRequest req) {
+        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
+            StringBuilder body = new StringBuilder();
+            char[] buf = new char[1024];
+            int read;
+            while ((read = reader.read(buf)) != -1) {
+                body.append(buf, 0, read);
+                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IllegalArgumentException("Payload too large");
                 }
             }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    private String readRequestBody(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-
-        try (java.io.BufferedReader reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-        } catch (IOException e) {
-            log.log(Level.FINE, "Unable to read topics-select request body", e);
-            return "";
+            return ServletRequestParamUtil.normalizeBodyText(body.toString(), MAX_JSON_PAYLOAD_BYTES, true);
+        } catch (IOException | IllegalArgumentException ex) {
+            throw new JsonException("Unable to read request payload", ex);
         }
     }
 
@@ -251,32 +159,6 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             return dsHolder;
         }
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private Connection openConnectionSafe() {
-        try {
-            return dataSourceHolder().getDataSource().getConnection();
-        } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open dashboard topics connection", ex);
-        }
-    }
-
-    private String readDbText(ResultSet rs, String column, int maxChars) {
-        String raw;
-        try {
-            raw = rs.getString(column);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
-            return null;
-        }
-        if (raw == null) {
-            return null;
-        }
-        String normalized = ServletRequestParamUtil.normalizeBodyText(raw, maxChars, true);
-        if (normalized == null) {
-            return null;
-        }
-        return normalized;
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

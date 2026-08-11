@@ -1,8 +1,6 @@
 package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -138,14 +136,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
         }
-        String payloadText;
-        try {
-            payloadText = readValidatedJsonPayload(req);
-        } catch (IOException e) {
-            log.log(java.util.logging.Level.FINE, "Unable to read widget review start payload", e);
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
-            return;
-        }
+        String payloadText = readValidatedJsonPayload(req);
         if (payloadText == null) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid payload.", null);
             return;
@@ -304,25 +295,22 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return v == null ? "" : v.trim();
     }
 
-    private String readValidatedJsonPayload(HttpServletRequest req) throws IOException {
-        StringBuilder payload = new StringBuilder(Math.min(MAX_JSON_PAYLOAD_BYTES, 4096));
-        char[] buffer = new char[2048];
-        int total = 0;
-        try (InputStream in = req.getInputStream(); InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-            if (reader == null) {
-                return "";
-            }
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return null;
-                }
-                payload.append(buffer, 0, read);
-            }
+    private String readValidatedJsonPayload(HttpServletRequest req) {
+        if (req == null || !ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
+            return null;
         }
 
-        String json = payload.toString();
+        String json;
+        try (var reader = req.getReader()) {
+            json = ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+        } catch (IOException e) {
+            log.log(java.util.logging.Level.FINE, "Unable to read widget review start payload", e);
+            return null;
+        }
+        if (json == null) {
+            return null;
+        }
+
         for (int i = 0; i < json.length(); i++) {
             char c = json.charAt(i);
             if (Character.isISOControl(c) && !Character.isWhitespace(c)) {

@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -616,23 +618,33 @@ public class AllSessionsServlet extends HttpServlet {
         String sql = "SELECT session_id, COUNT(*) AS cnt, MIN(created_at) AS first_ts, MAX(created_at) AS last_ts FROM "
                 + quoteIdentifier(tableName) + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
         PreparedStatement ps = prepareStatementSafe(conn, sql);
-        try (ps; ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
-                if (sid == null) {
-                    continue;
-                }
-                if (filter != null && !filter.contains(sid)) {
-                    continue;
-                }
+        try (ps) {
+            ResultSet queryResult;
+            try {
+                queryResult = ps.executeQuery();
+            } catch (SQLException ex) {
+                log.log(Level.FINE, "Unable to execute aggregate query for table " + tableName, ex);
+                return;
+            }
 
-                int count = rs.getInt("cnt");
-                Timestamp first = SqlTimeUtil.safeTimestamp(rs, "first_ts");
-                Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_ts");
+            try (ResultSet rs = queryResult) {
+                while (rs.next()) {
+                    String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
+                    if (sid == null) {
+                        continue;
+                    }
+                    if (filter != null && !filter.contains(sid)) {
+                        continue;
+                    }
 
-                SessionSummary summary = sessions.computeIfAbsent(sid, SessionSummary::new);
-                summary.accept(first, count, widgetId);
-                summary.accept(last, 0, widgetId);
+                    int count = rs.getInt("cnt");
+                    Timestamp first = SqlTimeUtil.safeTimestamp(rs, "first_ts");
+                    Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_ts");
+
+                    SessionSummary summary = sessions.computeIfAbsent(sid, SessionSummary::new);
+                    summary.accept(first, count, widgetId);
+                    summary.accept(last, 0, widgetId);
+                }
             }
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to aggregate session data for table " + tableName, e);
@@ -783,7 +795,27 @@ public class AllSessionsServlet extends HttpServlet {
             return "";
         }
 
-        try (java.io.BufferedReader reader = req.getReader()) {
+        Reader sourceReader;
+        try {
+            sourceReader = req.getReader();
+        } catch (IOException | IllegalStateException ex) {
+            sourceReader = null;
+        }
+
+        if (sourceReader == null) {
+            try {
+                var inputStream = req.getInputStream();
+                if (inputStream == null) {
+                    return "";
+                }
+                sourceReader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+            } catch (IOException | IllegalStateException ex) {
+                log.log(Level.FINE, "Unable to open request body stream", ex);
+                return "";
+            }
+        }
+
+        try (Reader reader = sourceReader) {
             char[] buffer = new char[2048];
             StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
             int total = 0;
@@ -806,12 +838,35 @@ public class AllSessionsServlet extends HttpServlet {
         if (rs == null || column == null || column.isBlank()) {
             return null;
         }
-        String value;
         try {
-            value = rs.getString(column);
-            return safeDbText(value, maxLen);
+            try (Reader reader = rs.getCharacterStream(column)) {
+                if (reader != null) {
+                    char[] buffer = new char[256];
+                    StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
+                    int total = 0;
+                    int read;
+                    while ((read = reader.read(buffer)) != -1) {
+                        total += read;
+                        if (maxLen > 0 && total > maxLen) {
+                            int remaining = Math.max(0, maxLen - (total - read));
+                            if (remaining > 0) {
+                                value.append(buffer, 0, remaining);
+                            }
+                            break;
+                        }
+                        value.append(buffer, 0, read);
+                    }
+                    return safeDbText(value.toString(), maxLen);
+                }
+            }
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Stream DB text read failed for column " + column, ex);
+        }
+
+        try {
+            return safeDbText(rs.getString(column), maxLen);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
+            log.log(Level.FINE, "String DB text read failed for column " + column, ex);
             return null;
         }
     }

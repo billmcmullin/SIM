@@ -1,6 +1,8 @@
 package com.sim.chatserver.web.admin;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -423,18 +425,6 @@ public final class AutoEmailAlertConfigStore {
 
     private Instant readSafeInstant(ResultSet rs, String column) {
         try {
-            Timestamp timestampValue;
-            try {
-                timestampValue = rs.getTimestamp(column);
-            } catch (SQLException ex) {
-                log.log(Level.FINE, "ResultSet#getTimestamp failed for column " + column, ex);
-                timestampValue = null;
-            }
-
-            if (timestampValue != null) {
-                return timestampValue.toInstant();
-            }
-
             String text = readSafeText(rs, column, 128);
             if (text == null) {
                 return null;
@@ -457,15 +447,29 @@ public final class AutoEmailAlertConfigStore {
 
     private String readSafeText(ResultSet rs, String column, int maxChars) {
         try {
-            String text;
-            try {
-                text = rs.getString(column);
-            } catch (SQLException ex) {
-                log.log(Level.FINE, "ResultSet#getString failed for column " + column + ", trying getNString", ex);
-                text = rs.getNString(column);
+            try (Reader reader = rs.getCharacterStream(column)) {
+                if (reader == null) {
+                    return null;
+                }
+
+                char[] buffer = new char[256];
+                StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
+                int total = 0;
+                int read;
+                while ((read = reader.read(buffer)) != -1) {
+                    total += read;
+                    if (maxChars > 0 && total > maxChars) {
+                        int remaining = Math.max(0, maxChars - (total - read));
+                        if (remaining > 0) {
+                            out.append(buffer, 0, remaining);
+                        }
+                        break;
+                    }
+                    out.append(buffer, 0, read);
+                }
+                return sanitizeText(out.toString(), maxChars);
             }
-            return sanitizeText(text, maxChars);
-        } catch (SQLException e) {
+        } catch (SQLException | IOException e) {
             log.log(Level.FINE, "Unable to read text column " + column, e);
             return null;
         }
