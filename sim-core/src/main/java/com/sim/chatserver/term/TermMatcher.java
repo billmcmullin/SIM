@@ -43,7 +43,7 @@ public final class TermMatcher {
         if (type != null && "REGEX".equalsIgnoreCase(type.trim()) && raw.length() > 0) {
             // Use provided regex, but only wrap when it is safe to do so.
             if (isSafeToWrapRegex(raw)) {
-                finalRegex = LEFT_BOUND + "(?:" + raw + ")" + RIGHT_BOUND;
+                finalRegex = LEFT_BOUND + "(?:" + raw + ')' + RIGHT_BOUND;
             } else {
                 // Leave the user's regex intact (they are responsible for anchors/lookarounds).
                 finalRegex = raw;
@@ -145,7 +145,7 @@ public final class TermMatcher {
                 continue;
             } else if ("?".equals(ch)) {
                 // single any-character
-                sb.append(".");
+                sb.append('.');
                 continue;
             }
 

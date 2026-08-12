@@ -159,7 +159,7 @@ public final class ReduceRequest {
         JsonArrayBuilder failedIdx = Json.createArrayBuilder();
         for (Integer i : failedBatchIndexes) {
             if (i != null) {
-                failedIdx.add(i);
+                failedIdx.add(i.intValue());
             }
         }
 
@@ -240,7 +240,7 @@ public final class ReduceRequest {
         private List<String> allSelectedChatIds = new ArrayList<>();
         private List<String> usedChatIds = new ArrayList<>();
         private List<String> missingChatIds = new ArrayList<>();
-        private Boolean coverageCompleteOverride; // retained for backward compatibility, ignored in strict build
+        private boolean coverageCompleteOverride; // retained for backward compatibility, ignored in strict build
 
         private Builder() {
         }
@@ -402,8 +402,11 @@ public final class ReduceRequest {
         }
         Set<Integer> out = new LinkedHashSet<>();
         for (Integer i : src) {
-            if (i != null && i > 0) {
-                out.add(i);
+            if (i != null) {
+                int value = i.intValue();
+                if (value > 0) {
+                    out.add(value);
+                }
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));

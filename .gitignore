@@ -1,6 +1,7 @@
 target/
 docs/static-analysis/
 .idea/
+.jtest/
 .project
 .parasoft
 .settings/

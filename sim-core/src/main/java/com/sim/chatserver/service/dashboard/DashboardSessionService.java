@@ -1,7 +1,5 @@
 package com.sim.chatserver.service.dashboard;
 
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -218,7 +216,7 @@ public class DashboardSessionService {
         );
     }
 
-    public SessionTimeline buildSessionTimeline(
+    SessionTimeline buildSessionTimeline(
             Connection conn,
             List<WidgetEntry> widgets,
             List<String> sessionIds,
@@ -321,8 +319,7 @@ public class DashboardSessionService {
             List<Integer> values = overview.getTimeline().getCountsBySession().get(session.getSessionId());
             if (values != null) {
                 for (int i = 0; i < values.size(); i++) {
-                    Integer value = values.get(i);
-                    countsBuilder.add(value == null ? 0 : value.intValue());
+                    countsBuilder.add(readCountValue(values, i));
                 }
             } else {
                 for (int i = 0; i < overview.getTimeline().getLabels().size(); i++) {
@@ -356,12 +353,13 @@ public class DashboardSessionService {
     }
 
     private LocalDate readLocalDateColumn(ResultSet rs, String column) throws SQLException {
+        String columnName = column == null ? "" : column;
         String dayText = readDbText(rs, column, 64);
         if (!dayText.isBlank()) {
             try {
                 return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "LocalDate parse fallback for column " + column, ex);
+                log.log(Level.FINE, "LocalDate parse fallback for column " + columnName, ex);
             }
 
             try {
@@ -369,7 +367,7 @@ public class DashboardSessionService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "Instant parse fallback for column " + column, ex);
+                log.log(Level.FINE, "Instant parse fallback for column " + columnName, ex);
             }
 
             try {
@@ -378,7 +376,7 @@ public class DashboardSessionService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (IllegalArgumentException ex) {
-                log.log(Level.FINE, "Timestamp parse fallback for column " + column, ex);
+                log.log(Level.FINE, "Timestamp parse fallback for column " + columnName, ex);
             }
         }
 
@@ -389,30 +387,14 @@ public class DashboardSessionService {
         if (column == null || column.isBlank()) {
             return "";
         }
-        try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader == null) {
-                return "";
-            }
-            char[] buffer = new char[256];
-            StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (maxLen > 0 && total > maxLen) {
-                    int remaining = Math.max(0, maxLen - (total - read));
-                    if (remaining > 0) {
-                        out.append(buffer, 0, remaining);
-                    }
-                    break;
-                }
-                out.append(buffer, 0, read);
-            }
-            return normalizeDbText(out.toString(), maxLen);
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Unable to read DB text for column " + column, ex);
+        Object raw = readRawDbObject(rs, column);
+        if (raw == null) {
             return "";
         }
+        if (raw instanceof byte[] bytes) {
+            return normalizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxLen);
+        }
+        return normalizeDbText(String.valueOf(raw), maxLen);
     }
 
     private String normalizeDbText(String value, int maxLen) {
@@ -430,11 +412,20 @@ public class DashboardSessionService {
         if (values == null || index < 0 || index >= values.size()) {
             return 0;
         }
-        Integer currentValue = values.get(index);
+        Number currentValue = values.get(index);
         return currentValue == null ? 0 : currentValue.intValue();
     }
 
-    public String formatTimestamp(Timestamp ts) {
+    private Object readRawDbObject(ResultSet rs, String column) {
+        try {
+            return rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to read DB object for column " + column, ex);
+            return null;
+        }
+    }
+
+    String formatTimestamp(Timestamp ts) {
         if (ts == null) {
             return "-";
         }

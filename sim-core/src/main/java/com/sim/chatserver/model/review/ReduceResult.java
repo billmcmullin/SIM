@@ -279,7 +279,7 @@ public final class ReduceResult {
         private List<String> allSelectedChatIds = new ArrayList<>();
         private List<String> usedChatIds = new ArrayList<>();
         private List<String> missingChatIds = new ArrayList<>(); // compatibility only (ignored in strict derive)
-        private Boolean coverageCompleteOverride; // compatibility only (ignored in strict derive)
+        private boolean coverageCompleteOverride; // compatibility only (ignored in strict derive)
 
         private long latencyMs;
 
@@ -405,7 +405,7 @@ public final class ReduceResult {
         Set<Integer> out = new LinkedHashSet<>();
         for (Integer i : src) {
             if (i != null) {
-                out.add(i);
+                out.add(i.intValue());
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));
@@ -442,7 +442,7 @@ public final class ReduceResult {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    b.add(v);
+                    b.add(v.intValue());
                 }
             }
         }

@@ -3,7 +3,6 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.net.URLEncoder;
@@ -715,17 +714,12 @@ public class WidgetExportServlet extends HttpServlet {
 
         try {
             Reader requestReader = req.getReader();
-            if (requestReader != null) {
-                return readRequestBody(requestReader);
+            if (requestReader == null) {
+                return "";
             }
+            return readRequestBody(requestReader);
         } catch (IOException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to read export request body from request reader", ex);
-        }
-
-        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
-            return readRequestBody(reader);
-        } catch (IOException | IllegalStateException e) {
-            log.log(Level.FINE, "Unable to read export request body", e);
             return "";
         }
     }
@@ -736,18 +730,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
 
         try (Reader bodyReader = reader) {
-            char[] buffer = new char[2048];
-            StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
-            int total = 0;
-            int read;
-            while ((read = bodyReader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
-                builder.append(buffer, 0, read);
-            }
-            return ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
+            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
         }
     }
 
@@ -810,41 +793,20 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
-        try (Reader reader = rs.getCharacterStream(columnName)) {
-            if (reader != null) {
-                char[] buffer = new char[256];
-                StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
-                int total = 0;
-                int read;
-                while ((read = reader.read(buffer)) != -1) {
-                    total += read;
-                    if (maxLen > 0 && total > maxLen) {
-                        int remaining = Math.max(0, maxLen - (total - read));
-                        if (remaining > 0) {
-                            value.append(buffer, 0, remaining);
-                        }
-                        break;
-                    }
-                    value.append(buffer, 0, read);
-                }
-                String normalized = ServletRequestParamUtil.normalizeBodyText(value.toString(), maxLen, false);
-                return normalized == null ? "" : normalized.replace('\n', ' ');
-            }
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
-        }
-
+        Object raw;
         try {
-            String raw = rs.getString(columnName);
-            if (raw == null) {
-                return "";
-            }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(raw, maxLen, false);
-            return normalized == null ? "" : normalized.replace('\n', ' ');
+            raw = rs.getObject(columnName);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Fallback DB text read failed for column " + columnName, ex);
+            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
             return "";
         }
+
+        if (raw == null) {
+            return "";
+        }
+
+        String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), maxLen, false);
+        return normalized == null ? "" : normalized.replace('\n', ' ');
     }
 
     private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
@@ -852,31 +814,33 @@ public class WidgetExportServlet extends HttpServlet {
             return null;
         }
 
-        Timestamp ts;
+        Object raw;
         try {
-            ts = rs.getTimestamp(columnName);
+            raw = rs.getObject(columnName);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Typed DB timestamp read failed for column " + columnName, ex);
-            ts = null;
+            return null;
         }
-        if (ts != null) {
+
+        if (raw == null) {
+            return null;
+        }
+
+        if (raw instanceof Timestamp ts) {
             return ts;
         }
-
-        String raw;
-        try {
-            raw = rs.getString(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Fallback DB timestamp read failed for column " + columnName, ex);
-            return null;
+        if (raw instanceof java.util.Date date) {
+            return new Timestamp(date.getTime());
+        }
+        if (raw instanceof Instant instant) {
+            return Timestamp.from(instant);
+        }
+        if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
+            return Timestamp.from(offsetDateTime.toInstant());
         }
 
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-
-        String text = ServletRequestParamUtil.normalizeBodyText(raw, 128, true);
-        if (text.isBlank()) {
+        String text = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 128, true);
+        if (text == null || text.isBlank()) {
             return null;
         }
 

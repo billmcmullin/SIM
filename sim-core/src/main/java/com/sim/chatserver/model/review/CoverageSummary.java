@@ -65,8 +65,8 @@ public final class CoverageSummary {
         this.successfulBatches = Math.max(0, b.successfulBatches);
         this.failedBatchIndexes = immutableDistinctIntList(b.failedBatchIndexes);
 
-        this.coverageComplete = b.coverageCompleteOverride != null
-                ? b.coverageCompleteOverride
+        this.coverageComplete = b.coverageCompleteOverrideSet
+            ? b.coverageCompleteOverride
                 : this.notUsedChatIds.isEmpty() && this.chatsNotUsed == 0;
 
         this.coveragePercent = computeCoveragePercent(this.chatsProvided, this.chatsUsedInAnalysis);
@@ -213,7 +213,8 @@ public final class CoverageSummary {
         private int successfulBatches = 0;
         private List<Integer> failedBatchIndexes = new ArrayList<>();
 
-        private Boolean coverageCompleteOverride;
+        private boolean coverageCompleteOverride;
+        private boolean coverageCompleteOverrideSet;
 
         private Builder() {
         }
@@ -270,6 +271,7 @@ public final class CoverageSummary {
 
         public Builder coverageComplete(boolean coverageComplete) {
             this.coverageCompleteOverride = coverageComplete;
+            this.coverageCompleteOverrideSet = true;
             return this;
         }
 
@@ -383,8 +385,11 @@ public final class CoverageSummary {
         }
         Set<Integer> set = new LinkedHashSet<>();
         for (Integer v : values) {
-            if (v != null && v > 0) {
-                set.add(v);
+            if (v != null) {
+                int value = v.intValue();
+                if (value > 0) {
+                    set.add(value);
+                }
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(set));
@@ -407,7 +412,7 @@ public final class CoverageSummary {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    b.add(v);
+                    b.add(v.intValue());
                 }
             }
         }

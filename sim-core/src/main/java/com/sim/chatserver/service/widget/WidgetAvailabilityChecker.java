@@ -1054,11 +1054,11 @@ public class WidgetAvailabilityChecker {
     }
 
     private String sourceSuffix(EffectiveConfig cfg) {
-        StringBuilder sb = new StringBuilder(" [source=").append(cfg.source).append("]")
+        StringBuilder sb = new StringBuilder(" [source=").append(cfg.source).append(']')
                 .append(" [enabled=").append(cfg.enabled).append(']')
                 .append(" [checkIntervalSeconds=").append(cfg.checkIntervalSeconds).append(']');
         if (cfg.widgetId != null) {
-            sb.append(" [widgetId=").append(cfg.widgetId).append("]");
+            sb.append(" [widgetId=").append(cfg.widgetId).append(']');
         }
         if (cfg.requestOrigin != null) {
             sb.append(" [origin-set]");

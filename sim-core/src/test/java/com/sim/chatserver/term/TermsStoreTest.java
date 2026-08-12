@@ -90,10 +90,10 @@ class TermsStoreTest {
 
         when(rs.getLong("id")).thenReturn(1L, 2L);
         when(rs.wasNull()).thenReturn(false);
-        when(rs.getString("name")).thenReturn("A", "B");
-        when(rs.getString("description")).thenReturn("DA", "DB");
-        when(rs.getString("match_pattern")).thenReturn("PA", "PB");
-        when(rs.getString("match_type")).thenReturn("WILDCARD", "REGEX");
+        when(rs.getObject("name")).thenReturn("A", "B");
+        when(rs.getObject("description")).thenReturn("DA", "DB");
+        when(rs.getObject("match_pattern")).thenReturn("PA", "PB");
+        when(rs.getObject("match_type")).thenReturn("WILDCARD", "REGEX");
         when(rs.getBoolean("system_flag")).thenReturn(false, true);
 
         List<TermDefinition> out = underTest.listAll();
@@ -208,10 +208,10 @@ class TermsStoreTest {
         when(listRs.next()).thenReturn(true, false);
         when(listRs.getLong("id")).thenReturn(1L);
         when(listRs.wasNull()).thenReturn(false);
-        when(listRs.getString("name")).thenReturn("termA");
-        when(listRs.getString("description")).thenReturn("desc");
-        when(listRs.getString("match_pattern")).thenReturn("*hello*");
-        when(listRs.getString("match_type")).thenReturn("WILDCARD");
+        when(listRs.getObject("name")).thenReturn("termA");
+        when(listRs.getObject("description")).thenReturn("desc");
+        when(listRs.getObject("match_pattern")).thenReturn("*hello*");
+        when(listRs.getObject("match_type")).thenReturn("WILDCARD");
         when(listRs.getBoolean("system_flag")).thenReturn(false);
 
         TermDefinition out = underTest.findFirstMatchingTermInPrompts(Arrays.asList("hello world", "other"));

@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Utility for sanitizing prompt text retrieved from the database and for
@@ -14,6 +16,8 @@ import java.util.regex.Pattern;
  * rendering while preserving Unicode/smart punctuation.
  */
 public final class TextSanitizer {
+
+    private static final Logger LOG = Logger.getLogger(TextSanitizer.class.getName());
 
     private static final Pattern XML_HEADER = Pattern.compile("^\\s*<\\?xml[^>]*\\?>", Pattern.CASE_INSENSITIVE);
     private static final Pattern TAGS = Pattern.compile("<[^>]+>");
@@ -116,9 +120,7 @@ public final class TextSanitizer {
         }
 
         // Escape literal ampersands and angle-brackets so raw HTML doesn't break display
-        s = s.replace("&", "&amp;");
-        s = s.replace("<", "&lt;");
-        s = s.replace(">", "&gt;");
+        s = escapeHtmlChars(s);
         // Remove control chars and collapse whitespace
         s = CONTROL_CHARS.matcher(s).replaceAll(" ");
         s = WHITESPACE.matcher(s).replaceAll(" ").trim();
@@ -147,15 +149,8 @@ public final class TextSanitizer {
         if (s == null || s.indexOf('&') == -1) {
             return s;
         }
-        Matcher m = HTML_ENTITY.matcher(s);
-        StringBuffer sb = new StringBuffer(s.length());
-        while (m.find()) {
-            String ent = m.group(1);
-            String replacement = decodeEntity(ent);
-            m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
-        }
-        m.appendTail(sb);
-        return sb.toString();
+        return HTML_ENTITY.matcher(s)
+                .replaceAll(match -> Matcher.quoteReplacement(decodeEntity(match.group(1))));
     }
 
     private static String decodeEntity(String ent) {
@@ -178,6 +173,7 @@ public final class TextSanitizer {
                     return "";
                 }
             } catch (IllegalArgumentException e) {
+                LOG.log(Level.FINE, "Failed to decode HTML numeric entity", e);
                 return "";
             }
         }
@@ -197,5 +193,25 @@ public final class TextSanitizer {
         normalized = normalized.replaceAll("\\p{M}", "");
         normalized = normalized.replaceAll("[^\\p{ASCII}]", "");
         return normalized;
+    }
+
+    private static String escapeHtmlChars(String input) {
+        if (input == null || input.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(input.length() + 16);
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            if (ch == '&') {
+                sb.append("&amp;");
+            } else if (ch == '<') {
+                sb.append("&lt;");
+            } else if (ch == '>') {
+                sb.append("&gt;");
+            } else {
+                sb.append(ch);
+            }
+        }
+        return sb.toString();
     }
 }

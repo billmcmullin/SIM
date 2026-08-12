@@ -44,18 +44,15 @@ import static org.mockito.Mockito.when;
     @Test
     void readNonNegativeLongObject_coversTypedAndFallbackPaths() throws Exception {
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getLong("identity_id")).thenReturn(15L);
-        when(typed.wasNull()).thenReturn(false);
+        when(typed.getObject("identity_id")).thenReturn(Long.valueOf(15L));
         assertEquals(15L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, typed, "identity_id"));
 
         ResultSet negative = mock(ResultSet.class);
-        when(negative.getLong("identity_id")).thenReturn(-1L);
-        when(negative.wasNull()).thenReturn(false);
+        when(negative.getObject("identity_id")).thenReturn(Long.valueOf(-1L));
         assertEquals(0L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, negative, "identity_id"));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getLong("identity_id")).thenThrow(new SQLException("typed read failed"));
-        when(fallback.getString("identity_id")).thenReturn("42");
+        when(fallback.getObject("identity_id")).thenReturn("42");
         assertEquals(42L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, fallback, "identity_id"));
     }
 
@@ -85,7 +82,7 @@ import static org.mockito.Mockito.when;
     @Test
     void readSanitizedDbText_returnsNullWhenReadFails() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getString("canonical_name")).thenThrow(new SQLException("boom"));
+        when(rs.getObject("canonical_name")).thenThrow(new SQLException("boom"));
 
         assertNull(invoke("readSanitizedDbText", new Class<?>[] { ResultSet.class, String.class, int.class }, rs, "canonical_name", 128));
     }
@@ -93,18 +90,17 @@ import static org.mockito.Mockito.when;
     @Test
     void mapIdentity_setsCoreFieldsFromResultSet() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getLong("identity_id")).thenReturn(101L);
-        when(rs.wasNull()).thenReturn(false);
-        when(rs.getString("canonical_email")).thenReturn(" user@example.com ");
-        when(rs.getString("canonical_name")).thenReturn(" Jane ");
-        when(rs.getString("salesforce_contact_id")).thenReturn("c1");
-        when(rs.getString("salesforce_account_id")).thenReturn("a1");
-        when(rs.getString("email_enc")).thenReturn("e");
-        when(rs.getString("phone_enc")).thenReturn("p");
-        when(rs.getString("title_enc")).thenReturn("t");
-        when(rs.getString("department_enc")).thenReturn("d");
-        when(rs.getString("raw_json_enc")).thenReturn("{}");
-        when(rs.getString("confidence")).thenReturn("high");
+        when(rs.getObject("identity_id")).thenReturn(Long.valueOf(101L));
+        when(rs.getObject("canonical_email")).thenReturn(" user@example.com ");
+        when(rs.getObject("canonical_name")).thenReturn(" Jane ");
+        when(rs.getObject("salesforce_contact_id")).thenReturn("c1");
+        when(rs.getObject("salesforce_account_id")).thenReturn("a1");
+        when(rs.getObject("email_enc")).thenReturn("e");
+        when(rs.getObject("phone_enc")).thenReturn("p");
+        when(rs.getObject("title_enc")).thenReturn("t");
+        when(rs.getObject("department_enc")).thenReturn("d");
+        when(rs.getObject("raw_json_enc")).thenReturn("{}");
+        when(rs.getObject("confidence")).thenReturn("high");
 
         Timestamp created = Timestamp.valueOf("2026-08-07 10:20:30");
         Timestamp updated = Timestamp.valueOf("2026-08-07 11:20:30");

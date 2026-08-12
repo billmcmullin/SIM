@@ -56,7 +56,7 @@ public final class SelectedEntry {
         return sessionId;
     }
 
-    JsonObject toJson() {
+    private JsonObject toJson() {
         JsonObjectBuilder b = Json.createObjectBuilder();
         b.add("chatId", chatId);
         b.add("prompt", prompt);
@@ -66,7 +66,7 @@ public final class SelectedEntry {
         return b.build();
     }
 
-    static SelectedEntry fromJson(JsonObject o) {
+    private static SelectedEntry fromJson(JsonObject o) {
         if (o == null) {
             return new SelectedEntry("", "", "", "", "");
         }
