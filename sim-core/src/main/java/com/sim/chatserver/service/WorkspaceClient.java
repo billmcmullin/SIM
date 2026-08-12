@@ -148,7 +148,7 @@ public class WorkspaceClient {
             ? ApiAuthResolver.resolveForServerConfigOutbound(apiKey)
             : ApiAuthResolver.resolveForOutbound(apiKey);
         final ApiAuthResolver.ResolvedApiAuth secondaryAuth = hasExplicitApiKey
-            ? ApiAuthResolver.ResolvedApiAuth.empty()
+            ? ApiAuthResolver.emptyResolvedApiAuth()
             : ApiAuthResolver.resolveForOutbound(null);
         final List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(primaryAuth, secondaryAuth);
 
@@ -812,7 +812,7 @@ public class WorkspaceClient {
         if (conn == null) {
             throw new IOException("Connection is not available.");
         }
-        int code = conn.getHeaderFieldInt(null, -1);
+        int code = conn.getResponseCode();
         return sanitizeStatusCode(code);
     }
 
@@ -820,7 +820,7 @@ public class WorkspaceClient {
         if (conn == null) {
             return "";
         }
-        return sanitizeHeaderValue(conn.getContentType());
+        return sanitizeContentTypeValue(conn.getHeaderField("Content-Type"));
     }
 
     private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {
@@ -839,6 +839,48 @@ public class WorkspaceClient {
         }
         String normalized = headerValue.replace('\r', ' ').replace('\n', ' ').trim();
         return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+    }
+
+    private String sanitizeContentTypeValue(String headerValue) {
+        String normalized = sanitizeHeaderValue(headerValue);
+        if (normalized.isBlank()) {
+            return "";
+        }
+
+        int semicolon = normalized.indexOf(';');
+        String mime = semicolon >= 0 ? normalized.substring(0, semicolon).trim().toLowerCase(Locale.ROOT) : normalized.toLowerCase(Locale.ROOT);
+        if (mime.isBlank()) {
+            return "";
+        }
+
+        int slash = mime.indexOf('/');
+        if (slash <= 0 || slash == mime.length() - 1) {
+            return "";
+        }
+
+        String type = mime.substring(0, slash);
+        String subtype = mime.substring(slash + 1);
+        if (!isSafeMimeToken(type) || !isSafeMimeToken(subtype)) {
+            return "";
+        }
+
+        return mime;
+    }
+
+    private boolean isSafeMimeToken(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        for (int i = 0; i < token.length(); i++) {
+            char ch = token.charAt(i);
+            boolean lowerAlpha = ch >= 'a' && ch <= 'z';
+            boolean digit = ch >= '0' && ch <= '9';
+            boolean safePunct = ch == '!' || ch == '#' || ch == '$' || ch == '&' || ch == '^' || ch == '_' || ch == '.' || ch == '+' || ch == '-';
+            if (!(lowerAlpha || digit || safePunct)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String readEnvSanitized(String key) {

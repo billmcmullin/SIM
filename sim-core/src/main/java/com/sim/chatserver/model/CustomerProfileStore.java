@@ -326,7 +326,14 @@ public final class CustomerProfileStore {
 
     private static String readDbRawText(ResultSet rs, String column) throws SQLException {
         try {
-            return rs.getString(column);
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return null;
+            }
+            if (raw instanceof byte[] bytes) {
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+            return String.valueOf(raw);
         } catch (SQLException ex) {
             LOG.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
             return null;

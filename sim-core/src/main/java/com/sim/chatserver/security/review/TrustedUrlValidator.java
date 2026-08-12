@@ -8,6 +8,8 @@ import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * URL allow/deny validator to reduce SSRF risk for workspace calls.
@@ -18,6 +20,8 @@ import java.util.Set;
  * obvious local aliases (localhost, *.local, *.internal)
  */
 public final class TrustedUrlValidator {
+
+    private static final Logger LOG = Logger.getLogger(TrustedUrlValidator.class.getName());
 
     private final Set<String> allowedHosts;     // exact lowercase hosts
     private final Set<String> allowedSuffixes;  // lowercase suffixes, e.g. ".example.com"
@@ -37,13 +41,7 @@ public final class TrustedUrlValidator {
      * Validate URL string against trust rules.
      */
     public ValidationResult validate(String rawUrl) {
-        if (rawUrl == null || rawUrl.isBlank()) {
-            return ValidationResult.invalid("URL is blank.");
-        }
-
-        String canonicalUrl = Normalizer.normalize(rawUrl, Normalizer.Form.NFKC)
-                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
-                .trim();
+        String canonicalUrl = canonicalizeUrlInput(rawUrl);
         if (canonicalUrl.isBlank()) {
             return ValidationResult.invalid("URL is blank.");
         }
@@ -52,6 +50,7 @@ public final class TrustedUrlValidator {
         try {
             uri = URI.create(canonicalUrl).normalize();
         } catch (IllegalArgumentException ex) {
+            LOG.log(Level.FINE, "URL parse failed during trust validation", ex);
             return ValidationResult.invalid("URL is invalid.");
         }
 
@@ -83,6 +82,7 @@ public final class TrustedUrlValidator {
                 return ValidationResult.invalid("Private/local network address is not allowed.");
             }
         } catch (UnknownHostException | SecurityException ex) {
+            LOG.log(Level.FINE, "Host resolution failed during trust validation", ex);
             return ValidationResult.invalid("Host DNS resolution failed.");
         }
 
@@ -90,7 +90,11 @@ public final class TrustedUrlValidator {
     }
 
     public boolean isTrusted(String rawUrl) {
-        return validate(rawUrl).isValid();
+        String canonicalUrl = canonicalizeUrlInput(rawUrl);
+        if (canonicalUrl.isBlank()) {
+            return false;
+        }
+        return validate(canonicalUrl).isValid();
     }
 
     private boolean isHostAllowedByAllowlist(String host) {
@@ -101,12 +105,12 @@ public final class TrustedUrlValidator {
             if (suffix.isBlank()) {
                 continue;
             }
-            String normalizedSuffix = suffix.startsWith(".") ? suffix.substring(1) : suffix;
+            String normalizedSuffix = (suffix.charAt(0) == '.') ? suffix.substring(1) : suffix;
             if (normalizedSuffix.isBlank()) {
                 continue;
             }
             // Support "example.com" (exact) and ".example.com" (subdomain suffix)
-            if (host.equals(normalizedSuffix) || host.endsWith("." + normalizedSuffix)) {
+            if (host.equals(normalizedSuffix) || host.endsWith('.' + normalizedSuffix)) {
                 return true;
             }
         }
@@ -145,6 +149,15 @@ public final class TrustedUrlValidator {
 
     private String lower(String s) {
         return s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String canonicalizeUrlInput(String rawUrl) {
+        if (rawUrl == null) {
+            return "";
+        }
+        return Normalizer.normalize(rawUrl, Normalizer.Form.NFKC)
+                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .trim();
     }
 
     public static final class ValidationResult {

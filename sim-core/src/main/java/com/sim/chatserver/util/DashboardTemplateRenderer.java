@@ -45,7 +45,9 @@ public final class DashboardTemplateRenderer {
             return out;
         }
         for (Map.Entry<String, String> e : values.entrySet()) {
-            out = out.replace("${" + e.getKey() + "}", e.getValue() == null ? "" : e.getValue());
+            String key = e.getKey() == null ? "" : e.getKey();
+            String token = new StringBuilder(key.length() + 3).append("${").append(key).append('}').toString();
+            out = out.replace(token, e.getValue() == null ? "" : e.getValue());
         }
         return out;
     }
@@ -54,21 +56,46 @@ public final class DashboardTemplateRenderer {
         if (input == null) {
             return "";
         }
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        StringBuilder out = new StringBuilder(input.length() + 16);
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            if (ch == '&') {
+                out.append("&amp;");
+            } else if (ch == '<') {
+                out.append("&lt;");
+            } else if (ch == '>') {
+                out.append("&gt;");
+            } else if (ch == '"') {
+                out.append("&quot;");
+            } else if (ch == '\'') {
+                out.append("&#39;");
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
     }
 
     public static String escapeForJs(String value) {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+        StringBuilder out = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == '\\') {
+                out.append("\\\\");
+            } else if (ch == '\'') {
+                out.append("\\'");
+            } else if (ch == '\n') {
+                out.append("\\n");
+            } else if (ch == '\r') {
+                out.append("\\r");
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
     }
 
     private static String loadTemplate(ServletContext context, String path) throws IOException {

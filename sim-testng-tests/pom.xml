@@ -17,6 +17,7 @@
 
     <properties>
         <testng.version>7.11.0</testng.version>
+        <junit.jupiter.version>5.12.1</junit.jupiter.version>
     </properties>
 
     <dependencies>
@@ -33,6 +34,24 @@
             <version>${testng.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            JUnit 5 is required so Jtest Unit Tests configuration can import
+            pass/fail outcomes from this module.
+        -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -46,9 +65,13 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <suiteXmlFiles>
-                        <suiteXmlFile>src/test/resources/testng.xml</suiteXmlFile>
-                    </suiteXmlFiles>
+                    <!--
+                        Run the JUnit bridge that executes TestNG programmatically,
+                        producing JUnit 5 outcomes that Jtest Unit Tests can recognize.
+                    -->
+                    <includes>
+                        <include>**/*JupiterTest.java</include>
+                    </includes>
                 </configuration>
             </plugin>
         </plugins>

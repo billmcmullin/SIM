@@ -9,6 +9,8 @@ package com.sim.chatserver.util;
  */
 public final class SessionIdFormatter {
 
+    private static final String ELLIPSIS = "...";
+
     private SessionIdFormatter() {
         // utility
     }
@@ -35,12 +37,12 @@ public final class SessionIdFormatter {
         if (s.contains("-") || s.length() > 24) {
             String first = s.substring(0, Math.min(8, s.length()));
             String last = s.substring(Math.max(0, s.length() - 4));
-            return first + "…" + last;
+            return first + ELLIPSIS + last;
         }
 
         // Otherwise default shorten: first 10 + last 3
         String first = s.substring(0, Math.min(10, s.length()));
         String last = s.substring(Math.max(0, s.length() - 3));
-        return first + "…" + last;
+        return first + ELLIPSIS + last;
     }
 }

@@ -106,6 +106,10 @@ public final class ApiAuthResolver {
         return value.isBlank() ? null : value;
     }
 
+    static ResolvedApiAuth emptyResolvedApiAuth() {
+        return ResolvedApiAuth.empty();
+    }
+
     private static String defaultHeader(String headerName) {
         String normalized = trimToNull(headerName);
         return normalized == null ? "Authorization" : normalized;
@@ -210,7 +214,7 @@ public final class ApiAuthResolver {
             return token != null && !token.isBlank();
         }
 
-        static ResolvedApiAuth empty() {
+        private static ResolvedApiAuth empty() {
             return new ResolvedApiAuth(null, null, "Authorization", "NONE");
         }
     }

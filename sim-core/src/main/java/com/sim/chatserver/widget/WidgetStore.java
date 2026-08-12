@@ -1,7 +1,5 @@
 package com.sim.chatserver.widget;
 
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -255,6 +253,14 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
+        Object raw = readRawDbObject(rs, column);
+        if (raw instanceof Number number) {
+            return Math.max(0, number.intValue());
+        }
+        if (raw instanceof Boolean bool) {
+            return bool ? 1 : 0;
+        }
+
         String text = readSanitizedDbText(rs, column, 32);
         if (text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
@@ -268,30 +274,15 @@ public final class WidgetStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader == null) {
-                return "";
+        Object raw = readRawDbObject(rs, column);
+        if (raw != null) {
+            if (raw instanceof byte[] bytes) {
+                return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
             }
-            char[] buffer = new char[512];
-            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 1024)));
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (maxChars > 0 && total > maxChars) {
-                    int remaining = Math.max(0, maxChars - (total - read));
-                    if (remaining > 0) {
-                        value.append(buffer, 0, remaining);
-                    }
-                    break;
-                }
-                value.append(buffer, 0, read);
-            }
-            return sanitizeDbText(value.toString(), maxChars);
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Text read failed for column " + column, ex);
-            return "";
+            return sanitizeDbText(String.valueOf(raw), maxChars);
         }
+
+        return "";
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
@@ -331,6 +322,15 @@ public final class WidgetStore {
 
         // Keep widget metadata flows alive even if legacy/bad created_at text is present.
         return Instant.EPOCH;
+    }
+
+    private static Object readRawDbObject(ResultSet rs, String column) {
+        try {
+            return rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object read failed for column " + column, ex);
+            return null;
+        }
     }
 
     private static String normalizeRequired(String value, String fieldName) {

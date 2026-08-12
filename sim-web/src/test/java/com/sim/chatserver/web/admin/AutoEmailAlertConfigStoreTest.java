@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -99,6 +100,11 @@ import org.junit.jupiter.api.Test;
         when(c.prepareStatement(anyString())).thenReturn(ps);
         when(ps.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(true);
+        when(rs.getCharacterStream(anyString())).thenAnswer(invocation -> {
+            String column = invocation.getArgument(0, String.class);
+            String value = rs.getString(column);
+            return value == null ? null : new StringReader(value);
+        });
 
         when(rs.getString("id")).thenReturn("5");
         when(rs.getString("health_enabled")).thenReturn("yes");
@@ -123,12 +129,9 @@ import org.junit.jupiter.api.Test;
         when(rs.getString("term_last_checked_at")).thenReturn(null);
 
         Timestamp nowTs = Timestamp.from(Instant.parse("2026-08-07T09:30:00Z"));
-        when(rs.getTimestamp("health_last_checked_at")).thenReturn(nowTs);
-        when(rs.getTimestamp("health_offline_since")).thenThrow(new SQLException("force fallback"));
+        when(rs.getString("health_last_checked_at")).thenReturn(nowTs.toInstant().toString());
         when(rs.getString("health_offline_since")).thenReturn("2026-08-07T09:20:00Z");
-        when(rs.getTimestamp("health_last_alert_at")).thenThrow(new SQLException("force fallback"));
         when(rs.getString("health_last_alert_at")).thenReturn("2026-08-07T09:25:00Z");
-        when(rs.getTimestamp("term_last_alert_at")).thenReturn(null);
 
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
         AutoEmailAlertConfigStore.AutoEmailAlertConfig cfg = store.load();
@@ -182,6 +185,16 @@ import org.junit.jupiter.api.Test;
 
         when(rsLoad1.next()).thenReturn(true);
         when(rsLoad2.next()).thenReturn(true);
+        when(rsLoad1.getCharacterStream(anyString())).thenAnswer(invocation -> {
+            String column = invocation.getArgument(0, String.class);
+            String value = rsLoad1.getString(column);
+            return value == null ? null : new StringReader(value);
+        });
+        when(rsLoad2.getCharacterStream(anyString())).thenAnswer(invocation -> {
+            String column = invocation.getArgument(0, String.class);
+            String value = rsLoad2.getString(column);
+            return value == null ? null : new StringReader(value);
+        });
 
         // First load (current config)
         when(rsLoad1.getString("id")).thenReturn("1");
@@ -220,12 +233,16 @@ import org.junit.jupiter.api.Test;
         assertEquals(true, invokePrivate(store, "eqIgnoreCaseTrim", new Class<?>[]{String.class, String.class}, " A ", "a"));
 
         ResultSet rsTs = mock(ResultSet.class);
-        when(rsTs.getTimestamp("ts")).thenThrow(new SQLException("ts unavailable"));
         when(rsTs.getString("ts")).thenReturn("2026-08-07 12:11:12");
+        when(rsTs.getCharacterStream("ts")).thenReturn(new StringReader("2026-08-07 12:11:12"));
         assertNotNull(invokePrivate(store, "readSafeInstant", new Class<?>[]{ResultSet.class, String.class}, rsTs, "ts"));
 
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("flag")).thenReturn("y");
+        when(rs.getCharacterStream("flag")).thenAnswer(invocation -> {
+            String value = rs.getString("flag");
+            return value == null ? null : new StringReader(value);
+        });
         assertTrue((boolean) invokePrivate(store, "readSafeBoolean", new Class<?>[]{ResultSet.class, String.class, boolean.class}, rs, "flag", false));
         when(rs.getString("flag")).thenReturn("0");
         assertFalse((boolean) invokePrivate(store, "readSafeBoolean", new Class<?>[]{ResultSet.class, String.class, boolean.class}, rs, "flag", true));

@@ -74,7 +74,7 @@ public final class SessionLabelStore {
             return map;
         }
         String placeholders = sessionIds.stream().map(id -> "?").collect(Collectors.joining(","));
-        String sql = "SELECT session_id, display_name, contact_email FROM session_labels WHERE session_id IN (" + placeholders + ")";
+        String sql = "SELECT session_id, display_name, contact_email FROM session_labels WHERE session_id IN (" + placeholders + ')';
         try (Connection conn = Database.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             for (String sessionId : sessionIds) {
@@ -100,8 +100,22 @@ public final class SessionLabelStore {
         if (rs == null || column == null || column.isBlank()) {
             return "";
         }
-        String value = rs.getString(column);
-        return sanitizeDbText(value, maxChars);
+        Object value = readRawDbObject(rs, column);
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof byte[] bytes) {
+            return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
+        }
+        return sanitizeDbText(String.valueOf(value), maxChars);
+    }
+
+    private static Object readRawDbObject(ResultSet rs, String column) {
+        try {
+            return rs.getObject(column);
+        } catch (SQLException ex) {
+            return null;
+        }
     }
 
     private static String sanitizeDbText(String value, int maxChars) {

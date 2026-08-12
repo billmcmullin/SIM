@@ -1,11 +1,8 @@
 package com.sim.chatserver.util;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,8 +50,8 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        String contentType = sanitizeContentTypeHeader(req.getHeader("Content-Type"));
-        if (contentType != null && !contentType.isBlank()) {
+        String contentType = sanitizeContentTypeHeader(req.getContentType());
+        if (!contentType.isBlank()) {
             if (!isSupportedJsonContentType(contentType)) {
                 log.warning(() -> "Unsupported JSON content type: " + contentType);
                 return emptyObject();
@@ -68,25 +65,12 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        Reader requestReader = null;
+        Reader requestReader;
         try {
             requestReader = req.getReader();
-        } catch (IOException | RuntimeException ex) {
-            log.log(Level.FINE, "Request reader unavailable, trying input stream fallback", ex);
-        }
-
-        if (requestReader == null) {
-            InputStream stream;
-            try {
-                stream = req.getInputStream();
-            } catch (IOException | RuntimeException ex) {
-                log.log(Level.WARNING, "Failed to read JSON request body", ex);
-                return emptyObject();
-            }
-            if (stream == null) {
-                return emptyObject();
-            }
-            requestReader = new InputStreamReader(stream, StandardCharsets.UTF_8);
+        } catch (IOException | IllegalStateException ex) {
+            log.log(Level.WARNING, "Failed to read JSON request body", ex);
+            return emptyObject();
         }
 
         try (Reader bodyReader = requestReader) {
@@ -123,7 +107,7 @@ public final class JsonRequestParserUtil {
         } catch (BodyTooLargeException ex) {
             log.warning(() -> "JSON request body exceeds limit: " + ex.getMessage());
             return emptyObject();
-        } catch (IOException | RuntimeException ex) {
+        } catch (IOException | JsonException | IllegalStateException ex) {
             log.log(Level.WARNING, "Failed to parse JSON request body", ex);
             return emptyObject();
         }

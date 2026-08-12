@@ -1,7 +1,5 @@
 package com.sim.chatserver.model;
 
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -481,24 +479,12 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader != null) {
-                return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
+        Object raw = readRawDbObject(rs, column);
+        if (raw != null) {
+            if (raw instanceof byte[] bytes) {
+                return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
             }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Character stream read failed for column " + column, ex);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Character stream read IO failed for column " + column, ex);
-        }
-
-        try (Reader reader = rs.getNCharacterStream(column)) {
-            if (reader != null) {
-                return sanitizeDbText(readBoundedText(reader, maxChars), maxChars);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "NCharacter stream read failed for column " + column, ex);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "NCharacter stream read IO failed for column " + column, ex);
+            return sanitizeDbText(String.valueOf(raw), maxChars);
         }
 
         try {
@@ -510,13 +496,13 @@ public final class CustomerIdentityStore {
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        try {
-            long typed = rs.getLong(column);
-            if (!rs.wasNull()) {
-                return Math.max(0L, typed);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed long read failed for column " + column, ex);
+        Object raw = readRawDbObject(rs, column);
+        if (raw instanceof Number number) {
+            long value = number.longValue();
+            return value < 0L ? 0L : value;
+        }
+        if (raw instanceof Boolean bool) {
+            return bool ? 1L : 0L;
         }
 
         String text = readSanitizedDbText(rs, column, 64);
@@ -580,26 +566,12 @@ public final class CustomerIdentityStore {
         return trimmed.substring(0, maxChars);
     }
 
-    private static String readBoundedText(Reader reader, int maxChars) throws IOException {
-        if (reader == null || maxChars <= 0) {
-            return "";
+    private static Object readRawDbObject(ResultSet rs, String column) {
+        try {
+            return rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object read failed for column " + column, ex);
+            return null;
         }
-
-        char[] buffer = new char[256];
-        StringBuilder out = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
-        int total = 0;
-        int read;
-        while ((read = reader.read(buffer)) != -1) {
-            total += read;
-            if (total > maxChars) {
-                int remaining = Math.max(0, maxChars - (total - read));
-                if (remaining > 0) {
-                    out.append(buffer, 0, remaining);
-                }
-                break;
-            }
-            out.append(buffer, 0, read);
-        }
-        return out.toString();
     }
 }

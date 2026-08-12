@@ -2,7 +2,6 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.ByteArrayOutputStream;
@@ -1222,17 +1221,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         try {
             Reader requestReader = req.getReader();
-            if (requestReader != null) {
-                return readRequestBody(requestReader);
+            if (requestReader == null) {
+                return "";
             }
+            return readRequestBody(requestReader);
         } catch (IOException | RuntimeException ex) {
             log.log(Level.FINE, "Unable to read manual-message request body from reader", ex);
-        }
-
-        try (InputStreamReader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
-            return readRequestBody(reader);
-        } catch (IOException | RuntimeException e) {
-            log.log(Level.FINE, "Unable to read manual-message request body", e);
             return "";
         }
     }

@@ -300,78 +300,107 @@ public class DatabaseBackupServlet extends HttpServlet {
     }
 
     private String readValidatedCellText(ResultSet rs, int columnIndex) {
-        try {
-            return sanitizeCellText(rs.getString(columnIndex));
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read text cell value.", e);
+        Object raw = readCellObject(rs, columnIndex);
+        if (raw == null) {
+            return null;
         }
+        return sanitizeCellText(String.valueOf(raw));
     }
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
-        try {
-            byte[] bytes = rs.getBytes(columnIndex);
-            if (bytes != null) {
-                return sanitizeBinary(bytes);
-            }
-            String fallback = rs.getString(columnIndex);
-            if (fallback == null || fallback.isBlank()) {
-                return new byte[0];
-            }
-            return sanitizeBinary(fallback.getBytes(StandardCharsets.UTF_8));
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read binary cell value.", e);
+        Object raw = readCellObject(rs, columnIndex);
+        if (raw == null) {
+            return new byte[0];
         }
+        if (raw instanceof byte[] bytes) {
+            return sanitizeBinary(bytes);
+        }
+        String fallback = sanitizeCellText(String.valueOf(raw));
+        if (fallback == null || fallback.isBlank()) {
+            return new byte[0];
+        }
+        return sanitizeBinary(fallback.getBytes(StandardCharsets.UTF_8));
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
-        String rawFallback;
-        try {
-            Timestamp typed = rs.getTimestamp(columnIndex);
-            if (typed != null) {
-                return normalizeTimestamp(typed);
-            }
-            rawFallback = rs.getString(columnIndex);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read timestamp cell value.", e);
+        Object raw = readCellObject(rs, columnIndex);
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Timestamp typed) {
+            return normalizeTimestamp(typed);
+        }
+        if (raw instanceof java.util.Date typedDate) {
+            return normalizeTimestamp(new Timestamp(typedDate.getTime()));
+        }
+        if (raw instanceof Instant instant) {
+            return normalizeTimestamp(Timestamp.from(instant));
+        }
+        if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
+            return normalizeTimestamp(Timestamp.from(offsetDateTime.toInstant()));
         }
 
-        String raw = sanitizeCellText(rawFallback);
-        if (raw == null || raw.isBlank()) {
+        String text = sanitizeCellText(String.valueOf(raw));
+        if (text == null || text.isBlank()) {
             return null;
         }
 
-        Timestamp parsed = parseTimestamp(raw);
+        Timestamp parsed = parseTimestamp(text);
         return normalizeTimestamp(parsed);
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) {
-        String rawFallback;
-        try {
-            java.sql.Date typedDate = rs.getDate(columnIndex);
-            if (typedDate != null) {
-                LocalDate localDate = typedDate.toLocalDate();
-                return localDate == null ? null : java.sql.Date.valueOf(localDate);
-            }
-            rawFallback = rs.getString(columnIndex);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read date cell value.", e);
-        }
-
-        String raw = sanitizeCellText(rawFallback);
-        if (raw == null || raw.isBlank()) {
+        Object raw = readCellObject(rs, columnIndex);
+        if (raw == null) {
             return null;
         }
 
-        java.sql.Date parsedDate = parseDate(raw);
+        if (raw instanceof java.sql.Date typedDate) {
+            return safeSqlDate(typedDate.toLocalDate());
+        }
+        if (raw instanceof LocalDate localDate) {
+            return safeSqlDate(localDate);
+        }
+        if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
+            return safeSqlDate(offsetDateTime.toLocalDate());
+        }
+        if (raw instanceof Instant instant) {
+            return safeSqlDate(instant.atOffset(java.time.ZoneOffset.UTC).toLocalDate());
+        }
+
+        String text = sanitizeCellText(String.valueOf(raw));
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+
+        java.sql.Date parsedDate = parseDate(text);
         if (parsedDate == null) {
             return null;
         }
+        return safeSqlDate(parsedDate.toLocalDate());
+    }
+
+    private java.sql.Date safeSqlDate(LocalDate localDate) {
+        if (localDate == null) {
+            return null;
+        }
         try {
-            LocalDate localDate = parsedDate.toLocalDate();
-            return localDate == null ? null : java.sql.Date.valueOf(localDate);
+            return java.sql.Date.valueOf(localDate);
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Ignoring invalid date cell", ex);
             return null;
+        }
+    }
+
+    private Object readCellObject(ResultSet rs, int columnIndex) {
+        if (rs == null) {
+            return null;
+        }
+
+        try {
+            return rs.getObject(columnIndex);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to read cell value.", e);
         }
     }
 

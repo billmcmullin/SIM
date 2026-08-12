@@ -1,5 +1,7 @@
 package com.sim.chatserver.model;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -23,6 +25,26 @@ import static org.mockito.Mockito.when;
 public class SelectedEntryTest
 {
 
+    private SelectedEntry invokeFromJson(JsonObject o) throws Throwable {
+        try {
+            Method fromJson = SelectedEntry.class.getDeclaredMethod("fromJson", JsonObject.class);
+            fromJson.setAccessible(true);
+            return (SelectedEntry) fromJson.invoke(null, o);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
+    private JsonObject invokeToJson(SelectedEntry entry) throws Throwable {
+        try {
+            Method toJson = SelectedEntry.class.getDeclaredMethod("toJson");
+            toJson.setAccessible(true);
+            return (JsonObject) toJson.invoke(entry);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
     /**
      * Parasoft Jtest UTA: Test for equals(Object)
      *
@@ -34,7 +56,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         Object o2 = null; // UTA: configured value
@@ -53,7 +75,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         SelectedEntry o2 = mock(SelectedEntry.class);
@@ -72,7 +94,7 @@ public class SelectedEntryTest
     {
         // When
         JsonObject o = null; // UTA: configured value
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -93,7 +115,7 @@ public class SelectedEntryTest
         boolean containsKeyResult4 = false; // UTA: configured value
         boolean containsKeyResult5 = false; // UTA: configured value
         when(o.containsKey(nullable(Object.class))).thenReturn(containsKeyResult, containsKeyResult2, containsKeyResult3, containsKeyResult4, containsKeyResult5);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -117,7 +139,7 @@ public class SelectedEntryTest
 
         JsonValue getResult = null; // UTA: configured value
         when(o.get(nullable(Object.class))).thenReturn(getResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -141,7 +163,7 @@ public class SelectedEntryTest
 
         JsonValue getResult = null; // UTA: configured value
         when(o.get(nullable(Object.class))).thenReturn(getResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -168,7 +190,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -195,7 +217,7 @@ public class SelectedEntryTest
 
         String getStringResult = "getStringResult"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -222,7 +244,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -249,7 +271,7 @@ public class SelectedEntryTest
 
         String getStringResult = "getStringResult"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -276,7 +298,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -303,7 +325,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -330,7 +352,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -354,7 +376,7 @@ public class SelectedEntryTest
 
         JsonValue getResult = mock(JsonValue.class);
         when(o.get(nullable(Object.class))).thenReturn(getResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -378,7 +400,7 @@ public class SelectedEntryTest
 
         JsonValue getResult = mock(JsonValue.class);
         when(o.get(nullable(Object.class))).thenReturn(getResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -407,7 +429,7 @@ public class SelectedEntryTest
 
         String getStringResult = "getStringResult"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -436,7 +458,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -463,7 +485,7 @@ public class SelectedEntryTest
         JsonValue getResult3 = mock(JsonValue.class);
         JsonValue getResult4 = null; // UTA: configured value
         when(o.get(nullable(Object.class))).thenReturn(getResult, getResult2, getResult3, getResult4);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -493,7 +515,7 @@ public class SelectedEntryTest
         String getStringResult = "getStringResult"; // UTA: default value
         String getStringResult2 = "getStringResult2"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult, getStringResult2);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -523,7 +545,7 @@ public class SelectedEntryTest
         String getStringResult = "getStringResult"; // UTA: default value
         String getStringResult2 = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult, getStringResult2);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -553,7 +575,7 @@ public class SelectedEntryTest
         String getStringResult = null; // UTA: configured value
         String getStringResult2 = "getStringResult2"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult, getStringResult2);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -583,7 +605,7 @@ public class SelectedEntryTest
         String getStringResult = null; // UTA: configured value
         String getStringResult2 = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult, getStringResult2);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -612,7 +634,7 @@ public class SelectedEntryTest
 
         String getStringResult = "getStringResult"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -641,7 +663,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -671,7 +693,7 @@ public class SelectedEntryTest
 
         String getStringResult = "getStringResult"; // UTA: default value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -701,7 +723,7 @@ public class SelectedEntryTest
 
         String getStringResult = null; // UTA: configured value
         when(o.getString(nullable(String.class), nullable(String.class))).thenReturn(getStringResult);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -728,7 +750,7 @@ public class SelectedEntryTest
         JsonValue getResult3 = mock(JsonValue.class);
         JsonValue getResult4 = mock(JsonValue.class);
         when(o.get(nullable(Object.class))).thenReturn(getResult, getResult2, getResult3, getResult4);
-        SelectedEntry result = SelectedEntry.fromJson(o);
+        SelectedEntry result = invokeFromJson(o);
 
     }
 
@@ -819,7 +841,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.getChatId();
@@ -837,7 +859,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.getCreatedAt();
@@ -855,7 +877,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.getPrompt();
@@ -873,7 +895,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.getResponse();
@@ -891,7 +913,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.getSessionId();
@@ -909,7 +931,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         int result = underTest.hashCode();
@@ -927,10 +949,10 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
-        JsonObject result = underTest.toJson();
+        JsonObject result = invokeToJson(underTest);
 
     }
 
@@ -975,9 +997,7 @@ public class SelectedEntryTest
     {
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
-        SelectedEntry item = mock(SelectedEntry.class);
-        JsonObject toJsonResult = mock(JsonObject.class);
-        when(item.toJson()).thenReturn(toJsonResult);
+        SelectedEntry item = new SelectedEntry("chat-1", "prompt-1", "response-1", "created-1", "session-1");
         entries.add(item);
         JsonArray result = SelectedEntry.toJsonArray(entries);
 
@@ -994,13 +1014,9 @@ public class SelectedEntryTest
     {
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
-        SelectedEntry item = mock(SelectedEntry.class);
-        JsonObject toJsonResult = mock(JsonObject.class);
-        when(item.toJson()).thenReturn(toJsonResult);
+        SelectedEntry item = new SelectedEntry("chat-1", "prompt-1", "response-1", "created-1", "session-1");
         entries.add(item);
-        SelectedEntry item2 = mock(SelectedEntry.class);
-        JsonObject toJsonResult2 = mock(JsonObject.class);
-        when(item2.toJson()).thenReturn(toJsonResult2);
+        SelectedEntry item2 = new SelectedEntry("chat-2", "prompt-2", "response-2", "created-2", "session-2");
         entries.add(item2);
         JsonArray result = SelectedEntry.toJsonArray(entries);
 
@@ -1017,7 +1033,7 @@ public class SelectedEntryTest
     {
         // Given
         JsonObject o = null; // UTA: configured value
-        SelectedEntry underTest = SelectedEntry.fromJson(o);
+        SelectedEntry underTest = invokeFromJson(o);
 
         // When
         String result = underTest.toString();

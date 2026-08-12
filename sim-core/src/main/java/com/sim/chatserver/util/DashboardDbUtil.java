@@ -96,28 +96,36 @@ public final class DashboardDbUtil {
 
         long now = System.currentTimeMillis();
         String catalog = conn.getCatalog();
-        String key = (catalog == null ? "" : catalog) + "|" + tableName;
+            String safeCatalog = catalog == null ? "" : catalog;
+            String key = new StringBuilder(safeCatalog.length() + tableName.length() + 1)
+                    .append(safeCatalog)
+                    .append('|')
+                    .append(tableName)
+                    .toString();
 
         CacheValue<Boolean> global;
         synchronized (TABLE_CACHE_LOCK) {
             global = GLOBAL_TABLE_EXISTS_CACHE.get(key);
             if (global != null && !global.isExpired(now)) {
-                requestCache.put(tableName, global.getValue());
-                return global.getValue();
+                    Boolean cachedValue = global.getValue();
+                    if (cachedValue != null) {
+                        requestCache.put(tableName, cachedValue);
+                        return cachedValue.booleanValue();
+                    }
             }
         }
 
         boolean exists = tableExists(conn, tableName);
 
         synchronized (TABLE_CACHE_LOCK) {
-            GLOBAL_TABLE_EXISTS_CACHE.put(key, new CacheValue<>(exists, now + TABLE_EXISTS_TTL_MILLIS));
+                GLOBAL_TABLE_EXISTS_CACHE.put(key, new CacheValue<>(Boolean.valueOf(exists), now + TABLE_EXISTS_TTL_MILLIS));
             if (GLOBAL_TABLE_EXISTS_CACHE.size() > TABLE_EXISTS_CACHE_MAX) {
                 String oldest = GLOBAL_TABLE_EXISTS_CACHE.keySet().iterator().next();
                 GLOBAL_TABLE_EXISTS_CACHE.remove(oldest);
             }
         }
 
-        requestCache.put(tableName, exists);
+            requestCache.put(tableName, Boolean.valueOf(exists));
         return exists;
     }
 

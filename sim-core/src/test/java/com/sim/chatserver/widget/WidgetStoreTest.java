@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.ResultSet;
@@ -37,15 +36,15 @@ import static org.mockito.Mockito.when;
     @Test
     void readNonNegativeInt_coversTypedAndFallbackPaths() throws Exception {
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getCharacterStream("id")).thenReturn(new StringReader("7"));
+        when(typed.getObject("id")).thenReturn(Integer.valueOf(7));
         assertEquals(7, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, typed, "id"));
 
         ResultSet negative = mock(ResultSet.class);
-        when(negative.getCharacterStream("id")).thenReturn(new StringReader("-9"));
+        when(negative.getObject("id")).thenReturn(Integer.valueOf(-9));
         assertEquals(0, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, negative, "id"));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getCharacterStream("id")).thenReturn(new StringReader("17"));
+        when(fallback.getObject("id")).thenReturn("17");
         assertEquals(17, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, fallback, "id"));
     }
 
@@ -72,9 +71,9 @@ import static org.mockito.Mockito.when;
     void mapRow_andFlags_coverUtilityBranches() throws Exception {
         Instant now = Instant.parse("2026-08-07T10:20:30Z");
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getCharacterStream("id")).thenReturn(new StringReader("5"));
-        when(rs.getCharacterStream("widget_id")).thenReturn(new StringReader(" wid "));
-        when(rs.getCharacterStream("display_name")).thenReturn(new StringReader(" name "));
+        when(rs.getObject("id")).thenReturn(Integer.valueOf(5));
+        when(rs.getObject("widget_id")).thenReturn(" wid ");
+        when(rs.getObject("display_name")).thenReturn(" name ");
         when(rs.getTimestamp("created_at")).thenReturn(Timestamp.from(now));
 
         WidgetEntry entry = (WidgetEntry) invoke("mapRow", new Class<?>[] { ResultSet.class }, rs);
@@ -92,7 +91,7 @@ import static org.mockito.Mockito.when;
     @Test
     void readSanitizedDbText_returnsEmptyWhenColumnReadFails() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getCharacterStream("widget_id")).thenThrow(new SQLException("boom"));
+        when(rs.getObject("widget_id")).thenThrow(new SQLException("boom"));
 
         assertEquals("", invoke("readSanitizedDbText", new Class<?>[] { ResultSet.class, String.class, int.class }, rs, "widget_id", 10));
     }

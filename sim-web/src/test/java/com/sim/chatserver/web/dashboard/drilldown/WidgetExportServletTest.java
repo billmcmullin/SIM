@@ -540,17 +540,15 @@ public class WidgetExportServletTest
             assertTrue(line.contains("\"x\"\"y\""));
     
             ResultSet textRs = mock(ResultSet.class);
-            when(textRs.getString("c")).thenReturn(" x\n\u0000y ");
+            when(textRs.getObject("c")).thenReturn(" x\n\u0000y ");
             assertEquals("x y", invoke(servlet, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, textRs, "c", 10));
     
             ResultSet tsRs = mock(ResultSet.class);
-            when(tsRs.getTimestamp("t")).thenReturn(null);
-            when(tsRs.getString("t")).thenReturn("2026-08-01T10:15:30Z");
+            when(tsRs.getObject("t")).thenReturn("2026-08-01T10:15:30Z");
             assertNotNull(invoke(servlet, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsRs, "t"));
     
             ResultSet tsFallbackRs = mock(ResultSet.class);
-            when(tsFallbackRs.getTimestamp("t")).thenReturn(null);
-            when(tsFallbackRs.getString("t")).thenReturn("2026-08-01 10:15:30");
+            when(tsFallbackRs.getObject("t")).thenReturn("2026-08-01 10:15:30");
             assertNotNull(invoke(servlet, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsFallbackRs, "t"));
     
             HttpServletResponse resp = mock(HttpServletResponse.class);

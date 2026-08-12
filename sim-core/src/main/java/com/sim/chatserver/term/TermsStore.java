@@ -1,7 +1,5 @@
 package com.sim.chatserver.term;
 
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -376,48 +374,15 @@ public class TermsStore {
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader != null) {
-                char[] buffer = new char[256];
-                StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
-                int total = 0;
-                int read;
-                while ((read = reader.read(buffer)) != -1) {
-                    total += read;
-                    if (maxChars > 0 && total > maxChars) {
-                        int remaining = Math.max(0, maxChars - (total - read));
-                        if (remaining > 0) {
-                            value.append(buffer, 0, remaining);
-                        }
-                        break;
-                    }
-                    value.append(buffer, 0, read);
-                }
-
-                String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
-                if (normalized.length() > maxChars) {
-                    return normalized.substring(0, maxChars);
-                }
-                return normalized;
+        Object raw = readRawDbObject(rs, column);
+        if (raw != null) {
+            if (raw instanceof byte[] bytes) {
+                return normalizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
             }
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "ResultSet character stream read failed for column " + column, ex);
+            return normalizeDbText(String.valueOf(raw), maxChars);
         }
 
-        try {
-            String text = rs.getString(column);
-            if (text == null) {
-                return "";
-            }
-            String normalized = text.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
-            if (maxChars > 0 && normalized.length() > maxChars) {
-                return normalized.substring(0, maxChars);
-            }
-            return normalized;
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet string read failed for column " + column, ex);
-            return "";
-        }
+        return "";
     }
 
     private boolean readSafeDbBoolean(ResultSet rs, String column) throws SQLException {
@@ -443,6 +408,26 @@ public class TermsStore {
             return "WILDCARD";
         }
         return type.trim().toUpperCase();
+    }
+
+    private String normalizeDbText(String value, int maxChars) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
+    }
+
+    private Object readRawDbObject(ResultSet rs, String column) {
+        try {
+            return rs.getObject(column);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet object read failed for column " + column, ex);
+            return null;
+        }
     }
 
 }

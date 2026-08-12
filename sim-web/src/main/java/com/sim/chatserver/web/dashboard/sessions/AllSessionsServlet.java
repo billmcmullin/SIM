@@ -356,8 +356,9 @@ public class AllSessionsServlet extends HttpServlet {
                     ps.setString(1, sid);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
+                            String chatId = sanitizeChatId(readDbText(rs, "widget_chat_id", MAX_SESSION_ID_LENGTH));
                             rows.add(new ChatRow(
-                                    rs.getString("widget_chat_id"),
+                                    chatId == null ? "" : chatId,
                                     rs.getString("prompt"),
                                     SqlTimeUtil.safeTimestamp(rs, "created_at")
                             ));
@@ -462,11 +463,11 @@ public class AllSessionsServlet extends HttpServlet {
                         ps.setString(1, chatId);
                         try (ResultSet rs = ps.executeQuery()) {
                             while (rs.next()) {
-                                String foundChatId = sanitizeChatId(safeDbText(rs.getString("widget_chat_id"), MAX_SESSION_ID_LENGTH));
+                                String foundChatId = sanitizeChatId(readDbText(rs, "widget_chat_id", MAX_SESSION_ID_LENGTH));
                                 String prompt = rs.getString("prompt");
                                 String responseText = rs.getString("response_text");
                                 Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                String sessionId = sanitizeSessionId(safeDbText(rs.getString("session_id"), MAX_SESSION_ID_LENGTH));
+                                String sessionId = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
 
                                 snapshots.add(new TermChatSnapshot(
                                         "Selected Session Chats",
@@ -799,6 +800,7 @@ public class AllSessionsServlet extends HttpServlet {
         try {
             sourceReader = req.getReader();
         } catch (IOException | IllegalStateException ex) {
+            log.log(Level.FINE, "Unable to open request reader", ex);
             sourceReader = null;
         }
 
@@ -816,18 +818,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         try (Reader reader = sourceReader) {
-            char[] buffer = new char[2048];
-            StringBuilder builder = new StringBuilder(Math.min(4096, MAX_JSON_PAYLOAD_BYTES));
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
-                builder.append(buffer, 0, read);
-            }
-            return ServletRequestParamUtil.normalizeBodyText(builder.toString(), MAX_JSON_PAYLOAD_BYTES, false);
+            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read request body", e);
             return "";
@@ -838,29 +829,14 @@ public class AllSessionsServlet extends HttpServlet {
         if (rs == null || column == null || column.isBlank()) {
             return null;
         }
+
         try {
-            try (Reader reader = rs.getCharacterStream(column)) {
-                if (reader != null) {
-                    char[] buffer = new char[256];
-                    StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
-                    int total = 0;
-                    int read;
-                    while ((read = reader.read(buffer)) != -1) {
-                        total += read;
-                        if (maxLen > 0 && total > maxLen) {
-                            int remaining = Math.max(0, maxLen - (total - read));
-                            if (remaining > 0) {
-                                value.append(buffer, 0, remaining);
-                            }
-                            break;
-                        }
-                        value.append(buffer, 0, read);
-                    }
-                    return safeDbText(value.toString(), maxLen);
-                }
+            Object raw = rs.getObject(column);
+            if (raw != null) {
+                return safeDbText(String.valueOf(raw), maxLen);
             }
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Stream DB text read failed for column " + column, ex);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
         }
 
         try {

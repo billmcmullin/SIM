@@ -70,6 +70,10 @@ class DashboardDailySummaryStoreTest {
         store = new DashboardDailySummaryStore(dataSource);
         org.mockito.Mockito.lenient().when(exactResultSet.getString(anyString())).thenReturn(null);
         org.mockito.Mockito.lenient().when(latestResultSet.getString(anyString())).thenReturn(null);
+        org.mockito.Mockito.lenient().when(exactResultSet.getObject(anyString()))
+            .thenAnswer(invocation -> exactResultSet.getString(invocation.getArgument(0, String.class)));
+        org.mockito.Mockito.lenient().when(latestResultSet.getObject(anyString()))
+            .thenAnswer(invocation -> latestResultSet.getString(invocation.getArgument(0, String.class)));
     }
 
     @Test
