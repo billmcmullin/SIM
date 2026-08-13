@@ -29,7 +29,6 @@ public class ProfileServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
-    UserService userService;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -114,10 +113,7 @@ public class ProfileServlet extends HttpServlet {
         }
     }
 
-    private UserService resolveUserService() {
-        if (userService != null) {
-            return userService;
-        }
+    protected UserService resolveUserService() {
         return CDI.current().select(UserService.class).get();
     }
 

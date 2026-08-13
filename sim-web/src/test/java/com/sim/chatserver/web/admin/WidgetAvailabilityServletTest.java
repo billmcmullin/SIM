@@ -50,8 +50,8 @@ public class WidgetAvailabilityServletTest {
 
     @Test
     public void doGet_authenticatedHealthy_returnsOkJsonContract() throws Exception {
-        WidgetAvailabilityServlet underTest = new WidgetAvailabilityServlet();
-        underTest.checker = mock(WidgetAvailabilityChecker.class);
+        WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
+        WidgetAvailabilityServlet underTest = servletWithChecker(checker);
 
         WidgetAvailabilityResult result = new WidgetAvailabilityResult(
                 true,
@@ -59,7 +59,7 @@ public class WidgetAvailabilityServletTest {
                 "2026-08-05T00:00:00Z",
                 25L,
                 "Synthetic check succeeded");
-        when(underTest.checker.checkNow(false, false)).thenReturn(result);
+        when(checker.checkNow(false, false)).thenReturn(result);
 
         HttpServletRequest req = mock(HttpServletRequest.class);
         HttpSession session = mock(HttpSession.class);
@@ -101,6 +101,15 @@ public class WidgetAvailabilityServletTest {
             @Override
             public void write(int b) throws IOException {
                 out.write(b);
+            }
+        };
+    }
+
+    private WidgetAvailabilityServlet servletWithChecker(WidgetAvailabilityChecker checker) {
+        return new WidgetAvailabilityServlet() {
+            @Override
+            protected WidgetAvailabilityChecker availabilityChecker() {
+                return checker;
             }
         };
     }

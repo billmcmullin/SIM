@@ -64,8 +64,7 @@ class DashboardDailySummaryServletTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        servlet = new DashboardDailySummaryServlet();
-        injectField(servlet, "dsHolder", dsHolder);
+        servlet = servletWithDataSourceHolder(dsHolder);
         injectField(DashboardDailySummaryServlet.class, "summaryStore", null);
 
         responseBuffer = new ByteArrayOutputStream();
@@ -100,7 +99,7 @@ class DashboardDailySummaryServletTest {
 
     @Test
     void init_whenDsHolderNull_resolvesDataSourceHolderFromCdi() throws Exception {
-        injectField(servlet, "dsHolder", null);
+        servlet = new DashboardDailySummaryServlet();
 
         CDI<Object> cdi = Mockito.mock(CDI.class);
         @SuppressWarnings("unchecked")
@@ -311,7 +310,7 @@ class DashboardDailySummaryServletTest {
         DataSource replacementDataSource = Mockito.mock(DataSource.class);
         when(replacement.getDataSource()).thenReturn(replacementDataSource);
 
-        servlet.setDataSourceHolder(replacement);
+        servlet = servletWithDataSourceHolder(replacement);
 
         try (MockedConstruction<DashboardDailySummaryStore> mocked
                 = Mockito.mockConstruction(DashboardDailySummaryStore.class)) {
@@ -390,15 +389,27 @@ class DashboardDailySummaryServletTest {
     }
 
     private static void injectField(Object target, String fieldName, Object value) throws Exception {
-        Field f = target.getClass().getDeclaredField(fieldName);
+        Field f = findFieldInHierarchy(target.getClass(), fieldName);
         f.setAccessible(true);
         f.set(target, value);
     }
 
     private static void injectField(Class<?> targetClass, String fieldName, Object value) throws Exception {
-        Field f = targetClass.getDeclaredField(fieldName);
+        Field f = findFieldInHierarchy(targetClass, fieldName);
         f.setAccessible(true);
         f.set(null, value);
+    }
+
+    private static Field findFieldInHierarchy(Class<?> type, String fieldName) throws NoSuchFieldException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(fieldName);
     }
 
     private static ZoneId findZoneForHourRange(int startInclusive, int endInclusive) {
@@ -412,5 +423,14 @@ class DashboardDailySummaryServletTest {
             }
         }
         return ZoneId.systemDefault();
+    }
+
+    private DashboardDailySummaryServlet servletWithDataSourceHolder(AppDataSourceHolder holder) {
+        return new DashboardDailySummaryServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return holder;
+            }
+        };
     }
 }

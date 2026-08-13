@@ -122,7 +122,7 @@ public class DashboardTrendsSelectServletTest
         Connection getConnectionResult = mock(Connection.class);
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -155,7 +155,7 @@ public class DashboardTrendsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -188,7 +188,7 @@ public class DashboardTrendsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -224,7 +224,7 @@ public class DashboardTrendsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -261,7 +261,7 @@ public class DashboardTrendsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -295,7 +295,7 @@ public class DashboardTrendsSelectServletTest
         DashboardTrendsSelectServlet underTest = new DashboardTrendsSelectServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
         when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -311,4 +311,13 @@ public class DashboardTrendsSelectServletTest
 
     }
 
+    private DashboardTrendsSelectServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new DashboardTrendsSelectServlet() {
+            @Override
+            protected AppDataSourceHolder resolveDataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

@@ -12,6 +12,8 @@
     const salesforceRefreshTokenStored = String(config.salesforceRefreshTokenStored) === 'true' || config.salesforceRefreshTokenStored === true;
     const salesforcePasswordStored = String(config.salesforcePasswordStored) === 'true' || config.salesforcePasswordStored === true;
     const salesforceApiTokenStored = String(config.salesforceApiTokenStored) === 'true' || config.salesforceApiTokenStored === true;
+    const awsAccessKeyIdStored = String(config.awsAccessKeyIdStored) === 'true' || config.awsAccessKeyIdStored === true;
+    const awsSecretAccessKeyStored = String(config.awsSecretAccessKeyStored) === 'true' || config.awsSecretAccessKeyStored === true;
 
     let initialWidgetList = [];
     let initialTermList = [];
@@ -42,10 +44,14 @@
         salesforceRefreshTokenStored,
         salesforcePasswordStored,
         salesforceApiTokenStored,
+        awsAccessKeyIdStored,
+        awsSecretAccessKeyStored,
         salesforceInstanceUrl: config.salesforceInstanceUrl || '',
         salesforceLoginUrl: config.salesforceLoginUrl || '',
         salesforceClientId: config.salesforceClientId || '',
         salesforceUsername: config.salesforceUsername || '',
+        awsRegion: config.awsRegion || '',
+        awsInstanceId: config.awsInstanceId || '',
         initialWidgetList,
         initialTermList,
         workspaceName: config.workspaceName
@@ -266,6 +272,20 @@
             }
         }
 
+        if (awsAccessKeyIdStored) {
+            const awsAccessKeyIdNote = document.getElementById('awsAccessKeyIdStoredNote');
+            if (awsAccessKeyIdNote) {
+                awsAccessKeyIdNote.style.display = 'block';
+            }
+        }
+
+        if (awsSecretAccessKeyStored) {
+            const awsSecretAccessKeyNote = document.getElementById('awsSecretAccessKeyStoredNote');
+            if (awsSecretAccessKeyNote) {
+                awsSecretAccessKeyNote.style.display = 'block';
+            }
+        }
+
         safeInit('AdminTabs', initAdminTabs);
 
         // Initialize modules safely so one failure doesn't break all others.
@@ -276,6 +296,7 @@
         safeInit('AutoEmailAlerts', () => window.AdminPage.AutoEmailAlerts?.init(window.AdminPage.Config));
         safeInit('Workspace', () => window.AdminPage.Workspace?.init(window.AdminPage.Config));
         safeInit('Salesforce', () => window.AdminPage.Salesforce?.init(window.AdminPage.Config));
+        safeInit('Aws', () => window.AdminPage.Aws?.init(window.AdminPage.Config));
         safeInit('DbImport', () => window.AdminPage.DbImport?.init({ contextPath }));
         safeInit('Email', () => window.AdminPage.Email?.init(contextPath));
 

@@ -163,7 +163,7 @@ public class WidgetReviewManualMessageServletTest
         // Given
         WidgetReviewManualMessageServlet underTest = new WidgetReviewManualMessageServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -192,7 +192,7 @@ public class WidgetReviewManualMessageServletTest
         // Given
         WidgetReviewManualMessageServlet underTest = new WidgetReviewManualMessageServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
         underTest.init();
 
         // When
@@ -358,7 +358,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenServerConfigUnavailable_returns500Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -398,7 +398,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenConfigLoadReturnsNull_returns500MissingConfig() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -425,7 +425,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenWorkspaceSlugBlank_returns400Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -454,7 +454,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenBaseUrlMissing_returns400Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -483,7 +483,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenApiKeyMissing_returns400Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -512,7 +512,7 @@ public class WidgetReviewManualMessageServletTest
         @Test
         void doPost_whenTrustValidationFails_returns400Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             TrustedUrlValidator validator = mock(TrustedUrlValidator.class);
             when(validator.validate(anyString()))
@@ -547,7 +547,7 @@ public class WidgetReviewManualMessageServletTest
             @Test
             void doPost_whenAsyncTrue_returnsAcceptedPayload() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             MapReduceConfig cfg = mock(MapReduceConfig.class);
             when(cfg.isExhaustiveMode()).thenReturn(false);
@@ -612,7 +612,7 @@ public class WidgetReviewManualMessageServletTest
             @Test
             void doPost_whenSyncSinglePassSucceeds_mirrorsUpstreamResponse() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             MapReduceConfig cfg = mock(MapReduceConfig.class);
             when(cfg.isExhaustiveMode()).thenReturn(false);
@@ -672,7 +672,7 @@ public class WidgetReviewManualMessageServletTest
             @Test
             void doPost_whenSyncExecutionThrows_returns500Json() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             MapReduceConfig cfg = mock(MapReduceConfig.class);
             when(cfg.isExhaustiveMode()).thenReturn(false);
@@ -763,7 +763,7 @@ public class WidgetReviewManualMessageServletTest
             @Test
             void doPost_whenSyncExecutionInterrupted_setsInterruptAndReturnsError() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             MapReduceConfig cfg = mock(MapReduceConfig.class);
             when(cfg.isExhaustiveMode()).thenReturn(false);
@@ -819,7 +819,7 @@ public class WidgetReviewManualMessageServletTest
             @Test
             void doPost_whenSyncMapReduceSucceeds_mirrorsResponseAndUsesDefaultContentType() throws Exception {
             WidgetReviewManualMessageServlet servlet = new WidgetReviewManualMessageServlet();
-            servlet.dsHolder = mock(AppDataSourceHolder.class);
+            servlet = servletWithDataSourceHolder(mock(AppDataSourceHolder.class));
     
             MapReduceConfig cfg = mock(MapReduceConfig.class);
             when(cfg.isExhaustiveMode()).thenReturn(true);
@@ -1584,7 +1584,7 @@ public class WidgetReviewManualMessageServletTest
             assertNull(invoke(servlet, "toSafeUri", new Class[]{String.class}, "https://bad host"));
     
             AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
-            servlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
             assertSame(holder, invoke(servlet, "dataSourceHolder", new Class[]{}));
     
             assertEquals("", invoke(servlet, "buildSlug", new Class[]{String.class}, new Object[]{null}));
@@ -2105,7 +2105,7 @@ public class WidgetReviewManualMessageServletTest
             @SuppressWarnings("unchecked")
             jakarta.enterprise.inject.spi.CDI<Object> cdi = (jakarta.enterprise.inject.spi.CDI<Object>) mock(jakarta.enterprise.inject.spi.CDI.class);
             when(cdi.select(AppDataSourceHolder.class)).thenReturn((jakarta.enterprise.inject.Instance) instance);
-            servlet.dsHolder = null;
+            servlet = new WidgetReviewManualMessageServlet();
             try (org.mockito.MockedStatic<jakarta.enterprise.inject.spi.CDI> cdiMock = org.mockito.Mockito.mockStatic(jakarta.enterprise.inject.spi.CDI.class)) {
                 cdiMock.when(jakarta.enterprise.inject.spi.CDI::current).thenReturn(cdi);
                 assertSame(holder, invoke(servlet, "dataSourceHolder", new Class[]{}));
@@ -2162,7 +2162,7 @@ public class WidgetReviewManualMessageServletTest
         }
     
         private static Object invoke(Object target, String methodName, Class<?>[] types, Object... args) throws Exception {
-            Method method = target.getClass().getDeclaredMethod(methodName, types);
+            Method method = findMethodInHierarchy(target.getClass(), methodName, types);
             method.setAccessible(true);
             try {
                 return method.invoke(target, args);
@@ -2173,6 +2173,18 @@ public class WidgetReviewManualMessageServletTest
                 }
                 throw ite;
             }
+        }
+
+        private static Method findMethodInHierarchy(Class<?> type, String methodName, Class<?>[] types) throws NoSuchMethodException {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    return current.getDeclaredMethod(methodName, types);
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            throw new NoSuchMethodException(methodName);
         }
     
             private static Object getStaticField(Class<?> owner, String fieldName) throws Exception {
@@ -2277,4 +2289,13 @@ public class WidgetReviewManualMessageServletTest
             ctor.setAccessible(true);
             return ctor.newInstance(code, body, contentType);
         }
+    private WidgetReviewManualMessageServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new WidgetReviewManualMessageServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

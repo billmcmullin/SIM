@@ -281,7 +281,7 @@ public class WidgetExportServletTest
         when(getConnectionResult.getMetaData()).thenReturn(getMetaDataResult);
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -653,4 +653,13 @@ public class WidgetExportServletTest
                 }
             };
         }
+    private WidgetExportServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new WidgetExportServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

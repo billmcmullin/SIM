@@ -318,7 +318,7 @@ public class AdminConfigServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         List<TermDefinition> listAllResult = null; // UTA: configured value
         doReturn(listAllResult).when(termsStoreValue).listAll();
-        underTest.termsStore = termsStoreValue;
+        underTest = servletWithTermsStore(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -417,7 +417,7 @@ public class AdminConfigServletTest
         // Given
         AdminConfigServlet underTest = new AdminConfigServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
-        underTest.termsStore = termsStoreValue;
+        underTest = servletWithTermsStore(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -619,10 +619,9 @@ public class AdminConfigServletTest
     public void testInit2() throws Throwable
     {
         // Given
-        AdminConfigServlet underTest = new AdminConfigServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
         doThrow(SQLException.class).when(termsStoreValue).ensureTable();
-        underTest.termsStore = termsStoreValue;
+        AdminConfigServlet underTest = servletWithTermsStore(termsStoreValue);
 
         // When
         assertThrows(ServletException.class, () -> {
@@ -630,4 +629,13 @@ public class AdminConfigServletTest
         });
 
     }
+    private AdminConfigServlet servletWithTermsStore(TermsStore termsStore) {
+        return new AdminConfigServlet() {
+            @Override
+            protected TermsStore termsStore() {
+                return termsStore;
+            }
+        };
+    }
 }
+

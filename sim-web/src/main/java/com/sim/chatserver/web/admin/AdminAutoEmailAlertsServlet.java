@@ -222,6 +222,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
                 .add("healthLastCheckedAt", formatInstant(cfg.getHealthLastCheckedAt()))
                 .add("healthOfflineSince", formatInstant(cfg.getHealthOfflineSince()))
                 .add("healthLastAlertAt", formatInstant(cfg.getHealthLastAlertAt()))
+                .add("healthLastRestartAttemptAt", formatInstant(cfg.getHealthLastRestartAttemptAt()))
 
                 .add("termLastCheckedAt", formatInstant(cfg.getTermLastCheckedAt()))
                 .add("termLastCount", Math.max(0L, cfg.getTermLastCount()))

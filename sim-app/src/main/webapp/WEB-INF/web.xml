@@ -104,4 +104,22 @@
         <url-pattern>/admin/email/alerts</url-pattern>
     </servlet-mapping>
 
+    <servlet>
+        <servlet-name>TestAwsConnectionServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.TestAwsConnectionServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>TestAwsConnectionServlet</servlet-name>
+        <url-pattern>/admin/test-aws-connection</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>AwsEc2RestartServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.AwsEc2RestartServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AwsEc2RestartServlet</servlet-name>
+        <url-pattern>/admin/aws/restart-ec2</url-pattern>
+    </servlet-mapping>
+
 </web-app>

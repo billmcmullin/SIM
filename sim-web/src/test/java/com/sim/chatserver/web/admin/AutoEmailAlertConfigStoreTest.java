@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
         Instant now = Instant.parse("2026-08-07T12:10:00Z");
 
-        store.updateHealthState(now, "down", now.minusSeconds(60), null);
+        store.updateHealthState(now, "down", now.minusSeconds(60), null, now.minusSeconds(10));
         verify(ps1).setString(2, "DOWN");
 
         store.updateTermState(now, -10L, now.minusSeconds(30));
@@ -55,11 +55,12 @@ import org.junit.jupiter.api.Test;
         PreparedStatement ps1 = mock(PreparedStatement.class);
         PreparedStatement ps2 = mock(PreparedStatement.class);
         PreparedStatement ps3 = mock(PreparedStatement.class);
+        PreparedStatement ps5 = mock(PreparedStatement.class);
         PreparedStatement ps4 = mock(PreparedStatement.class);
 
         when(ds.getConnection()).thenReturn(c1, c2, c3);
         when(c1.prepareStatement(anyString())).thenReturn(ps1);
-        when(c2.prepareStatement(anyString())).thenReturn(ps2, ps3);
+        when(c2.prepareStatement(anyString())).thenReturn(ps2, ps3, ps5);
         when(c3.prepareStatement(anyString())).thenReturn(ps4);
 
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
@@ -69,6 +70,7 @@ import org.junit.jupiter.api.Test;
         verify(ps1).execute();
         verify(ps2).execute();
         verify(ps3).execute();
+        verify(ps5).execute();
         verify(ps4).setInt(1, AutoEmailAlertConfigStore.SINGLETON_ID);
         verify(ps4).executeUpdate();
     }
@@ -132,6 +134,7 @@ import org.junit.jupiter.api.Test;
         when(rs.getString("health_last_checked_at")).thenReturn(nowTs.toInstant().toString());
         when(rs.getString("health_offline_since")).thenReturn("2026-08-07T09:20:00Z");
         when(rs.getString("health_last_alert_at")).thenReturn("2026-08-07T09:25:00Z");
+        when(rs.getString("health_last_restart_attempt_at")).thenReturn("2026-08-07T09:23:00Z");
 
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
         AutoEmailAlertConfigStore.AutoEmailAlertConfig cfg = store.load();
@@ -156,6 +159,7 @@ import org.junit.jupiter.api.Test;
         assertEquals(nowTs.toInstant(), cfg.getHealthLastCheckedAt());
         assertNotNull(cfg.getHealthOfflineSince());
         assertNotNull(cfg.getHealthLastAlertAt());
+        assertNotNull(cfg.getHealthLastRestartAttemptAt());
         assertNull(cfg.getTermLastCheckedAt());
         assertNotNull(cfg.getUpdatedAt());
     }

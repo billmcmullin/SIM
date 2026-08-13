@@ -47,6 +47,12 @@ public class SaveConfigServlet extends HttpServlet {
         String salesforcePasswordParam = ServletRequestParamUtil.firstParam(req, "salesforcePassword", 1024, true, true);
         String salesforceApiTokenParam = ServletRequestParamUtil.firstParam(req, "salesforceApiToken", 1024, true, true);
 
+        // AWS params
+        String awsRegionParam = ServletRequestParamUtil.firstParam(req, "awsRegion", 128, true, true);
+        String awsInstanceIdParam = ServletRequestParamUtil.firstParam(req, "awsInstanceId", 128, true, true);
+        String awsAccessKeyIdParam = ServletRequestParamUtil.firstParam(req, "awsAccessKeyId", 1024, true, true);
+        String awsSecretAccessKeyParam = ServletRequestParamUtil.firstParam(req, "awsSecretAccessKey", 4096, true, true);
+
         try {
             ServerConfig existingConfig = EncryptedDbConfigStore.load();
             if (existingConfig == null) {
@@ -142,6 +148,30 @@ public class SaveConfigServlet extends HttpServlet {
                 salesforceApiToken = defaultString(existingConfig.getSalesforceApiToken());
             }
 
+            // Preserve existing AWS region when blank
+            String awsRegion = awsRegionParam;
+            if (isBlank(awsRegion)) {
+                awsRegion = defaultString(existingConfig.getAwsRegion());
+            }
+
+            // Preserve existing AWS instance ID when blank
+            String awsInstanceId = awsInstanceIdParam;
+            if (isBlank(awsInstanceId)) {
+                awsInstanceId = defaultString(existingConfig.getAwsInstanceId());
+            }
+
+            // Preserve existing AWS access key ID when blank
+            String awsAccessKeyId = awsAccessKeyIdParam;
+            if (isBlank(awsAccessKeyId)) {
+                awsAccessKeyId = defaultString(existingConfig.getAwsAccessKeyId());
+            }
+
+            // Preserve existing AWS secret access key when blank
+            String awsSecretAccessKey = awsSecretAccessKeyParam;
+            if (isBlank(awsSecretAccessKey)) {
+                awsSecretAccessKey = defaultString(existingConfig.getAwsSecretAccessKey());
+            }
+
             ServerConfig config = new ServerConfig(serverHost, serverPort, connectionInfo, apiKey, workspaceName);
             config.setSalesforceInstanceUrl(salesforceInstanceUrl);
             config.setSalesforceApiKey(salesforceApiKey);
@@ -153,6 +183,10 @@ public class SaveConfigServlet extends HttpServlet {
             config.setSalesforceUsername(salesforceUsername);
             config.setSalesforcePassword(salesforcePassword);
             config.setSalesforceApiToken(salesforceApiToken);
+            config.setAwsRegion(awsRegion);
+            config.setAwsInstanceId(awsInstanceId);
+            config.setAwsAccessKeyId(awsAccessKeyId);
+            config.setAwsSecretAccessKey(awsSecretAccessKey);
 
             EncryptedDbConfigStore.save(config);
             writeJson(resp, HttpServletResponse.SC_OK,

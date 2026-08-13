@@ -32,7 +32,6 @@ import java.util.logging.Logger;
 public class WidgetAvailabilityServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetAvailabilityServlet.class.getName());
-    WidgetAvailabilityChecker checker;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -167,10 +166,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                 || "y".equals(normalized);
     }
 
-    private WidgetAvailabilityChecker availabilityChecker() {
-        if (checker != null) {
-            return checker;
-        }
+    protected WidgetAvailabilityChecker availabilityChecker() {
         return CDI.current().select(WidgetAvailabilityChecker.class).get();
     }
 }

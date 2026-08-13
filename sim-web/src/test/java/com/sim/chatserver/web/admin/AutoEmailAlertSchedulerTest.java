@@ -17,11 +17,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.term.TermsStore;
@@ -37,7 +40,12 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class));
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                return new ServerConfig();
+            }
+        };
 
         AutoEmailAlertScheduler.TestEmailResult missingCfg = scheduler.sendHealthTestEmail(null);
         assertFalse(missingCfg.sent());
@@ -64,7 +72,12 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class));
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                return new ServerConfig();
+            }
+        };
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         cfg.setHealthRecipients("ops@example.com");
@@ -73,15 +86,157 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         cfg.setHealthSubject("Offline alert");
 
         when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
-        invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, Instant.parse("2026-08-07T12:00:00Z"));
-        verify(store).updateHealthState(any(), eq("DOWN"), any(), any());
+        Instant firstCheck = Instant.parse("2026-08-07T12:00:00Z");
+        invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, firstCheck);
+
+        ArgumentCaptor<Instant> firstOfflineSince = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> firstLastAlert = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> firstRestartAttempt = ArgumentCaptor.forClass(Instant.class);
+        verify(store).updateHealthState(eq(firstCheck), eq("DOWN"), firstOfflineSince.capture(), firstLastAlert.capture(), firstRestartAttempt.capture());
+        assertNotNull(firstOfflineSince.getValue());
+        assertNull(firstLastAlert.getValue());
+        assertNotNull(firstRestartAttempt.getValue());
 
         setPrivateField(cfg, "healthLastStatus", "DOWN");
         setPrivateField(cfg, "healthOfflineSince", Instant.parse("2026-08-07T11:50:00Z"));
         setPrivateField(cfg, "healthLastAlertAt", Instant.parse("2026-08-07T11:55:00Z"));
+        setPrivateField(cfg, "healthLastRestartAttemptAt", Instant.parse("2026-08-07T11:56:00Z"));
         when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(true, "UP", "", 5L, "ok"));
         invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, Instant.parse("2026-08-07T12:01:00Z"));
-        verify(store).updateHealthState(any(), eq("UP"), eq(null), eq(null));
+        verify(store).updateHealthState(any(), eq("UP"), eq(null), eq(null), eq(null));
+    }
+
+    @Test
+    void evaluateHealthAlert_downBeforeOfflineDelay_doesNotAttemptRestart() throws Exception {
+        AutoEmailAlertConfigStore store = mock(AutoEmailAlertConfigStore.class);
+        WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
+        AtomicReference<String> rebootCapture = new AtomicReference<>();
+
+        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+                store,
+                mock(DataSource.class),
+                checker,
+                mock(TermsStore.class),
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                ServerConfig cfg = new ServerConfig();
+                cfg.setAwsRegion("us-east-1");
+                cfg.setAwsInstanceId("i-123");
+                cfg.setAwsAccessKeyId("AKIA");
+                cfg.setAwsSecretAccessKey("secret");
+                return cfg;
+            }
+
+            @Override
+            boolean rebootEc2InstanceForHealthcheck(String region, String accessKeyId, String secretAccessKey, String instanceId) {
+                rebootCapture.set(region + ":" + instanceId);
+                return true;
+            }
+        };
+
+        AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
+        cfg.setHealthRecipients("ops@example.com");
+        cfg.setHealthOfflineDelaySeconds(300);
+        cfg.setHealthResendIntervalSeconds(30);
+
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
+        Instant now = Instant.parse("2026-08-07T12:00:00Z");
+        invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, now);
+
+        ArgumentCaptor<Instant> offlineSince = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> lastAlert = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> restartAttempt = ArgumentCaptor.forClass(Instant.class);
+        verify(store).updateHealthState(eq(now), eq("DOWN"), offlineSince.capture(), lastAlert.capture(), restartAttempt.capture());
+
+        assertEquals(now, offlineSince.getValue());
+        assertNull(lastAlert.getValue());
+        assertNull(restartAttempt.getValue());
+        assertNull(rebootCapture.get());
+    }
+
+    @Test
+    void attemptAutomaticAwsRestart_withValidAwsConfig_rebootsInstance() throws Exception {
+        AtomicReference<String> capture = new AtomicReference<>();
+
+        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+                mock(AutoEmailAlertConfigStore.class),
+                mock(DataSource.class),
+                mock(WidgetAvailabilityChecker.class),
+                mock(TermsStore.class),
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                ServerConfig cfg = new ServerConfig();
+                cfg.setAwsRegion("us-west-2");
+                cfg.setAwsInstanceId("i-0123456789abcdef0");
+                cfg.setAwsAccessKeyId("AKIATEST123");
+                cfg.setAwsSecretAccessKey("secret");
+                return cfg;
+            }
+
+            @Override
+            boolean rebootEc2InstanceForHealthcheck(String region, String accessKeyId, String secretAccessKey, String instanceId) {
+                capture.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey);
+                return true;
+            }
+        };
+
+        AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
+        Object result = new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 12L, "offline");
+        boolean restarted = (boolean) invokePrivate(
+                scheduler,
+                "attemptAutomaticAwsRestart",
+                new Class<?>[]{AutoEmailAlertConfig.class, Instant.class, Instant.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class},
+                cfg,
+                Instant.parse("2026-08-07T12:00:00Z"),
+                Instant.parse("2026-08-07T11:50:00Z"),
+                result);
+
+        assertTrue(restarted);
+        assertEquals("us-west-2:i-0123456789abcdef0:AKIATEST123:secret", capture.get());
+    }
+
+    @Test
+    void evaluateHealthAlert_afterRestartBeforePostDelay_keepsAlertSuppressed() throws Exception {
+        AutoEmailAlertConfigStore store = mock(AutoEmailAlertConfigStore.class);
+        WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
+
+        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+                store,
+                mock(DataSource.class),
+                checker,
+                mock(TermsStore.class),
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                ServerConfig cfg = new ServerConfig();
+                cfg.setAwsRegion("us-east-1");
+                cfg.setAwsInstanceId("i-xyz");
+                cfg.setAwsAccessKeyId("AKIA");
+                cfg.setAwsSecretAccessKey("secret");
+                return cfg;
+            }
+        };
+
+        AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
+        cfg.setHealthRecipients("ops@example.com");
+        cfg.setHealthOfflineDelaySeconds(300);
+        cfg.setHealthResendIntervalSeconds(60);
+        setPrivateField(cfg, "healthLastStatus", "DOWN");
+        setPrivateField(cfg, "healthOfflineSince", Instant.parse("2026-08-07T11:50:00Z"));
+        Instant priorRestartAttempt = Instant.parse("2026-08-07T11:59:00Z");
+        setPrivateField(cfg, "healthLastRestartAttemptAt", priorRestartAttempt);
+
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
+        Instant now = Instant.parse("2026-08-07T12:00:00Z");
+        invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, now);
+
+        ArgumentCaptor<Instant> lastAlert = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> restartAttempt = ArgumentCaptor.forClass(Instant.class);
+        verify(store).updateHealthState(eq(now), eq("DOWN"), any(), lastAlert.capture(), restartAttempt.capture());
+        assertNull(lastAlert.getValue());
+        assertEquals(priorRestartAttempt, restartAttempt.getValue());
     }
 
     @Test
@@ -180,6 +335,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         cfg.setHealthSubject("Offline");
         cfg.setTermName("term-A");
         cfg.setTermMessage("term note");
+        setPrivateField(cfg, "healthLastRestartAttemptAt", Instant.parse("2026-08-07T10:59:00Z"));
 
         Object result = new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "2026-08-07T11:00:00Z", -5L, "details");
         Instant now = Instant.parse("2026-08-07T11:00:00Z");
@@ -187,10 +343,12 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         String healthBody = (String) invokePrivate(scheduler, "buildHealthBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
         assertTrue(healthBody.contains("OFFLINE"));
         assertTrue(healthBody.contains("custom note"));
+        assertTrue(healthBody.contains("Automatic EC2 restart attempted at"));
 
         String healthHtml = (String) invokePrivate(scheduler, "buildHealthHtmlBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
         assertTrue(healthHtml.contains("<html"));
         assertTrue(healthHtml.contains("Runbook"));
+        assertTrue(healthHtml.contains("Automatic EC2 restart attempted at"));
 
         String recoverySubject = (String) invokePrivate(scheduler, "buildHealthRecoverySubject", new Class<?>[]{AutoEmailAlertConfig.class}, cfg);
         assertTrue(recoverySubject.toLowerCase().contains("back online"));
@@ -212,7 +370,12 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 mock(WidgetAvailabilityChecker.class),
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class));
+                mock(DbEmailConfigProvider.class)) {
+            @Override
+            ServerConfig loadAwsConfigForHealthcheck() {
+                return new ServerConfig();
+            }
+        };
     }
 
     private void setPrivateField(Object target, String fieldName, Object value) throws Exception {
@@ -222,9 +385,17 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
     }
 
     private Object invokePrivate(Object target, String method, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = target.getClass().getDeclaredMethod(method, paramTypes);
-        m.setAccessible(true);
-        return m.invoke(target, args);
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Method m = type.getDeclaredMethod(method, paramTypes);
+                m.setAccessible(true);
+                return m.invoke(target, args);
+            } catch (NoSuchMethodException ignored) {
+                type = type.getSuperclass();
+            }
+        }
+        throw new NoSuchMethodException(method);
     }
 }
 

@@ -34,7 +34,7 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -61,7 +61,7 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -90,7 +90,7 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -172,7 +172,7 @@ public class LoginServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean authenticateResult = false; // UTA: configured value
         when(userServiceValue.authenticate(nullable(String.class), nullable(String.class))).thenReturn(authenticateResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -202,7 +202,7 @@ public class LoginServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean authenticateResult = true; // UTA: configured value
         when(userServiceValue.authenticate(nullable(String.class), nullable(String.class))).thenReturn(authenticateResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -220,4 +220,13 @@ public class LoginServletTest
         underTest.doPost(req, resp);
 
     }
+    private LoginServlet servletWithUserService(UserService userService) {
+        return new LoginServlet() {
+            @Override
+            protected UserService resolveUserService() {
+                return userService;
+            }
+        };
+    }
 }
+

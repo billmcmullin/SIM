@@ -79,7 +79,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static volatile ReviewContextBuilderService reviewContextBuilderService;
     private static volatile ReviewOutputValidator reviewOutputValidator;
     private static volatile TrustedUrlValidator trustedUrlValidator;
-    AppDataSourceHolder dsHolder;
 
     @Override
     public void init() throws ServletException {
@@ -1256,10 +1255,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
+    protected AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

@@ -284,7 +284,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = mock(Connection.class);
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -318,7 +318,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -352,7 +352,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -390,7 +390,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -427,7 +427,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -467,7 +467,7 @@ public class AllSessionsServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -498,7 +498,7 @@ public class AllSessionsServletTest
     
         @AfterEach
         void resetStatics() {
-            AllSessionsServlet.dsHolder = null;
+            
         }
     
         @Test
@@ -693,7 +693,7 @@ public class AllSessionsServletTest
             when(ps.executeQuery()).thenReturn(rows);
             when(rows.next()).thenReturn(false);
     
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
     
             try (MockedStatic<WidgetStore> widgetStore = org.mockito.Mockito.mockStatic(WidgetStore.class)) {
                 widgetStore.when(() -> WidgetStore.list(null))
@@ -744,7 +744,7 @@ public class AllSessionsServletTest
             when(rows.getString("prompt")).thenReturn("prompt one");
             when(rows.getTimestamp("created_at")).thenReturn(Timestamp.from(Instant.parse("2026-08-07T00:00:00Z")));
     
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
     
             try (MockedStatic<WidgetStore> widgetStore = org.mockito.Mockito.mockStatic(WidgetStore.class)) {
                 widgetStore.when(() -> WidgetStore.list(null))
@@ -801,7 +801,7 @@ public class AllSessionsServletTest
             when(rows.getString("session_id")).thenReturn("sid-1");
             when(rows.getTimestamp("created_at")).thenReturn(Timestamp.from(Instant.parse("2026-08-07T00:00:00Z")));
     
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
     
             try (MockedStatic<WidgetStore> widgetStore = org.mockito.Mockito.mockStatic(WidgetStore.class)) {
                 widgetStore.when(() -> WidgetStore.list(null))
@@ -939,7 +939,7 @@ public class AllSessionsServletTest
             when(conn.prepareStatement(org.mockito.ArgumentMatchers.contains("WHERE session_id = ?"))).thenReturn(ps);
             org.mockito.Mockito.doThrow(new SQLException("bind fail")).when(ps).setString(1, "sid-1");
     
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
     
             try (MockedStatic<WidgetStore> widgetStore = org.mockito.Mockito.mockStatic(WidgetStore.class)) {
                 widgetStore.when(() -> WidgetStore.list(null))
@@ -987,7 +987,7 @@ public class AllSessionsServletTest
             when(ps.executeQuery()).thenReturn(rows);
             when(rows.next()).thenReturn(false);
     
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
     
             try (MockedStatic<WidgetStore> widgetStore = org.mockito.Mockito.mockStatic(WidgetStore.class)) {
                 widgetStore.when(() -> WidgetStore.list(null))
@@ -1016,7 +1016,7 @@ public class AllSessionsServletTest
             DataSource ds = mock(DataSource.class);
             when(holder.getDataSource()).thenReturn(ds);
             when(ds.getConnection()).thenThrow(new SQLException("conn fail"));
-            AllSessionsServlet.dsHolder = holder;
+            servlet = servletWithDataSourceHolder(holder);
             try {
                 invoke(servlet, "openConnectionSafe", new Class[]{});
                 throw new AssertionError("Expected IllegalStateException");
@@ -1117,9 +1117,21 @@ public class AllSessionsServletTest
         }
     
         private static Object invoke(Object target, String methodName, Class<?>[] types, Object... args) throws Exception {
-            Method method = target.getClass().getDeclaredMethod(methodName, types);
+            Method method = findMethodInHierarchy(target.getClass(), methodName, types);
             method.setAccessible(true);
             return method.invoke(target, args);
+        }
+
+        private static Method findMethodInHierarchy(Class<?> type, String methodName, Class<?>[] types) throws NoSuchMethodException {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    return current.getDeclaredMethod(methodName, types);
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            throw new NoSuchMethodException(methodName);
         }
     
         private static void assertThrowsIllegalArgument(ThrowingRunnable action) {
@@ -1165,4 +1177,13 @@ public class AllSessionsServletTest
                 }
             };
         }
+        private AllSessionsServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+            return new AllSessionsServlet() {
+                @Override
+                protected AppDataSourceHolder dataSourceHolder() {
+                    return dsHolder;
+                }
+            };
+        }
 }
+

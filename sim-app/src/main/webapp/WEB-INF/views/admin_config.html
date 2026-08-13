@@ -357,6 +357,46 @@
         </section>
 
         <section class="section">
+            <h2>AWS EC2 Management</h2>
+            <p>Configure AWS credentials and a default EC2 instance for connectivity test and restart actions.</p>
+
+            <form id="awsEc2ConfigForm" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="awsRegion">AWS Region</label>
+                    <input type="text" id="awsRegion" name="awsRegion" placeholder="us-east-1" value="${awsRegion}">
+                </div>
+
+                <div class="form-group">
+                    <label for="awsInstanceId">EC2 Instance ID</label>
+                    <input type="text" id="awsInstanceId" name="awsInstanceId" placeholder="i-0123456789abcdef0" value="${awsInstanceId}">
+                </div>
+
+                <div class="form-group">
+                    <label for="awsAccessKeyId">AWS Access Key ID</label>
+                    <input type="password" id="awsAccessKeyId" name="awsAccessKeyId" placeholder="Enter key ID to set or replace">
+                    <div class="small-note">
+                        <span id="awsAccessKeyIdStoredNote" style="display:none;">An AWS access key ID is already stored. Leave blank to keep it.</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="awsSecretAccessKey">AWS Secret Access Key</label>
+                    <input type="password" id="awsSecretAccessKey" name="awsSecretAccessKey" placeholder="Enter secret key to set or replace">
+                    <div class="small-note">
+                        <span id="awsSecretAccessKeyStoredNote" style="display:none;">An AWS secret access key is already stored. Leave blank to keep it.</span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="button" id="testAwsConnectionBtn">Test AWS Connection</button>
+                    <button type="button" id="saveAwsConfigBtn">Save AWS Configuration</button>
+                    <button type="button" id="restartEc2InstanceBtn">Restart EC2 Instance</button>
+                </div>
+                <div id="awsEc2Result" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+            </form>
+        </section>
+
+        <section class="section">
             <h2>Workspace Management</h2>
             <form id="workspaceForm">
                 <div class="form-group">
@@ -711,7 +751,12 @@
             salesforcePasswordStored: '${salesforcePasswordStored}',
             salesforceApiTokenStored: '${salesforceApiTokenStored}',
             salesforceOAuthStatus: '${salesforceOAuthStatus}',
-            salesforceOAuthMessage: '${salesforceOAuthMessage}'
+            salesforceOAuthMessage: '${salesforceOAuthMessage}',
+
+            awsRegion: '${awsRegion}',
+            awsInstanceId: '${awsInstanceId}',
+            awsAccessKeyIdStored: '${awsAccessKeyIdStored}',
+            awsSecretAccessKeyStored: '${awsSecretAccessKeyStored}'
         };
     </script>
 
@@ -803,6 +848,7 @@
     <script defer src="${contextPath}/assets/js/admin_utils/workspace.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/sync.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/salesforce.js"></script>
+    <script defer src="${contextPath}/assets/js/admin_utils/aws.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/db_import.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/email.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/auto_email_alerts.js"></script>

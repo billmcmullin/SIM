@@ -68,6 +68,7 @@ public final class AutoEmailAlertConfigStore {
                 health_last_checked_at TIMESTAMP,
                 health_offline_since TIMESTAMP,
                 health_last_alert_at TIMESTAMP,
+                health_last_restart_attempt_at TIMESTAMP,
 
                 term_last_checked_at TIMESTAMP,
                 term_last_count BIGINT NOT NULL DEFAULT 0,
@@ -96,11 +97,18 @@ public final class AutoEmailAlertConfigStore {
             ADD COLUMN IF NOT EXISTS health_runbook_attachment_path TEXT
             """;
 
+        final String addHealthLastRestartAttemptAt = """
+            ALTER TABLE admin_auto_email_alert_config
+            ADD COLUMN IF NOT EXISTS health_last_restart_attempt_at TIMESTAMP
+            """;
+
         try (Connection c = dataSource.getConnection();
              PreparedStatement psUrl = c.prepareStatement(addRunbookUrl);
-             PreparedStatement psPath = c.prepareStatement(addRunbookAttachmentPath)) {
+             PreparedStatement psPath = c.prepareStatement(addRunbookAttachmentPath);
+             PreparedStatement psRestartAttempt = c.prepareStatement(addHealthLastRestartAttemptAt)) {
             psUrl.execute();
             psPath.execute();
+            psRestartAttempt.execute();
         }
     }
 
@@ -150,6 +158,7 @@ public final class AutoEmailAlertConfigStore {
                    health_last_checked_at,
                    health_offline_since,
                    health_last_alert_at,
+                   health_last_restart_attempt_at,
                    term_last_checked_at,
                    term_last_count,
                    term_last_alert_at,
@@ -233,13 +242,20 @@ public final class AutoEmailAlertConfigStore {
         return load();
     }
 
-    final void updateHealthState(Instant checkedAt, String status, Instant offlineSince, Instant alertAt) throws SQLException {
+    final void updateHealthState(
+            Instant checkedAt,
+            String status,
+            Instant offlineSince,
+            Instant alertAt,
+            Instant restartAttemptAt
+    ) throws SQLException {
         final String sql = """
             UPDATE admin_auto_email_alert_config
             SET health_last_checked_at = ?,
                 health_last_status = ?,
                 health_offline_since = ?,
-                health_last_alert_at = ?
+                health_last_alert_at = ?,
+                health_last_restart_attempt_at = ?
             WHERE id = ?
             """;
 
@@ -248,7 +264,8 @@ public final class AutoEmailAlertConfigStore {
             setNullableString(ps, 2, sanitizeStatus(status));
             setNullableInstant(ps, 3, offlineSince);
             setNullableInstant(ps, 4, alertAt);
-            ps.setInt(5, SINGLETON_ID);
+            setNullableInstant(ps, 5, restartAttemptAt);
+            ps.setInt(6, SINGLETON_ID);
             ps.executeUpdate();
         }
     }
@@ -311,6 +328,7 @@ public final class AutoEmailAlertConfigStore {
         cfg.setHealthLastCheckedAt(readSafeInstant(rs, "health_last_checked_at"));
         cfg.setHealthOfflineSince(readSafeInstant(rs, "health_offline_since"));
         cfg.setHealthLastAlertAt(readSafeInstant(rs, "health_last_alert_at"));
+        cfg.setHealthLastRestartAttemptAt(readSafeInstant(rs, "health_last_restart_attempt_at"));
 
         cfg.setTermLastCheckedAt(readSafeInstant(rs, "term_last_checked_at"));
         cfg.setTermLastCount(readNonNegativeLong(rs, "term_last_count"));
@@ -544,6 +562,7 @@ public final class AutoEmailAlertConfigStore {
         private Instant healthLastCheckedAt;
         private Instant healthOfflineSince;
         private Instant healthLastAlertAt;
+        private Instant healthLastRestartAttemptAt;
 
         private Instant termLastCheckedAt;
         private long termLastCount;
@@ -710,6 +729,14 @@ public final class AutoEmailAlertConfigStore {
 
         private void setHealthLastAlertAt(Instant healthLastAlertAt) {
             this.healthLastAlertAt = healthLastAlertAt;
+        }
+
+        Instant getHealthLastRestartAttemptAt() {
+            return healthLastRestartAttemptAt;
+        }
+
+        private void setHealthLastRestartAttemptAt(Instant healthLastRestartAttemptAt) {
+            this.healthLastRestartAttemptAt = healthLastRestartAttemptAt;
         }
 
         Instant getTermLastCheckedAt() {

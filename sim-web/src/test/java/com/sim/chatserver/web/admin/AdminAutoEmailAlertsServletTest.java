@@ -16,6 +16,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -62,6 +63,7 @@ import jakarta.servlet.http.HttpSession;
         cfg.setHealthCheckIntervalSeconds(300);
         cfg.setTermEnabled(true);
         cfg.setTermCheckIntervalSeconds(600);
+        setPrivateField(cfg, "healthLastRestartAttemptAt", Instant.parse("2026-08-07T09:23:00Z"));
         when(store.load()).thenReturn(cfg);
 
         HttpSession session = adminSession();
@@ -74,6 +76,7 @@ import jakarta.servlet.http.HttpSession;
         assertEquals("ok", body.getString("status"));
         assertTrue(body.getBoolean("healthEnabled"));
         assertEquals(5, body.getInt("healthCheckIntervalMinutes"));
+        assertEquals("2026-08-07T09:23:00Z", body.getString("healthLastRestartAttemptAt"));
         assertTrue(body.getBoolean("termEnabled"));
     }
 
@@ -343,6 +346,12 @@ import jakarta.servlet.http.HttpSession;
         Method m = target.getClass().getDeclaredMethod(method, paramTypes);
         m.setAccessible(true);
         return m.invoke(target, args);
+    }
+
+    private static void setPrivateField(Object target, String fieldName, Object value) throws Exception {
+        Field f = target.getClass().getDeclaredField(fieldName);
+        f.setAccessible(true);
+        f.set(target, value);
     }
 
     private static ServletOutputStream servletOutput(ByteArrayOutputStream out) {

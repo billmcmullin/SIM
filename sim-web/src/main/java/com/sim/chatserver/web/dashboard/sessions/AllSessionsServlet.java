@@ -76,8 +76,6 @@ public class AllSessionsServlet extends HttpServlet {
     private static final String PATH_CHATS = "/dashboard/sessions/chats";
     private static final String PATH_SELECT = "/dashboard/sessions/select";
 
-    static volatile AppDataSourceHolder dsHolder;
-
     private static final class SessionSummary {
 
         final String sessionId;
@@ -768,10 +766,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
+    protected AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

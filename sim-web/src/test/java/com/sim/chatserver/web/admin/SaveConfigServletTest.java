@@ -39,6 +39,10 @@ class SaveConfigServletTest {
         params.put("workspaceName", new String[]{"new-workspace"});
         params.put("salesforceInstanceUrl", new String[]{"https://instance.example.com"});
         params.put("salesforceApiKey", new String[]{"new-sf-key"});
+        params.put("awsRegion", new String[]{"us-east-1"});
+        params.put("awsInstanceId", new String[]{"i-0123456789abcdef0"});
+        params.put("awsAccessKeyId", new String[]{"AKIATEST123"});
+        params.put("awsSecretAccessKey", new String[]{"secret-test-value"});
 
         HttpServletRequest req = requestWithParams(params);
         HttpServletResponse resp = writableResponse();
@@ -64,6 +68,10 @@ class SaveConfigServletTest {
             assertEquals("new-workspace", saved.getWorkspaceName());
             assertEquals("https://instance.example.com", saved.getSalesforceInstanceUrl());
             assertEquals("new-sf-key", saved.getSalesforceApiKey());
+            assertEquals("us-east-1", saved.getAwsRegion());
+            assertEquals("i-0123456789abcdef0", saved.getAwsInstanceId());
+            assertEquals("AKIATEST123", saved.getAwsAccessKeyId());
+            assertEquals("secret-test-value", saved.getAwsSecretAccessKey());
             verify(resp).setStatus(HttpServletResponse.SC_OK);
         }
     }
@@ -87,6 +95,10 @@ class SaveConfigServletTest {
         params.put("salesforceUsername", new String[]{""});
         params.put("salesforcePassword", new String[]{""});
         params.put("salesforceApiToken", new String[]{""});
+        params.put("awsRegion", new String[]{""});
+        params.put("awsInstanceId", new String[]{""});
+        params.put("awsAccessKeyId", new String[]{""});
+        params.put("awsSecretAccessKey", new String[]{""});
 
         HttpServletRequest req = requestWithParams(params);
         HttpServletResponse resp = writableResponse();
@@ -118,6 +130,10 @@ class SaveConfigServletTest {
             assertEquals(existing.getSalesforceUsername(), saved.getSalesforceUsername());
             assertEquals(existing.getSalesforcePassword(), saved.getSalesforcePassword());
             assertEquals(existing.getSalesforceApiToken(), saved.getSalesforceApiToken());
+            assertEquals(existing.getAwsRegion(), saved.getAwsRegion());
+            assertEquals(existing.getAwsInstanceId(), saved.getAwsInstanceId());
+            assertEquals(existing.getAwsAccessKeyId(), saved.getAwsAccessKeyId());
+            assertEquals(existing.getAwsSecretAccessKey(), saved.getAwsSecretAccessKey());
         }
     }
 
@@ -166,6 +182,10 @@ class SaveConfigServletTest {
         cfg.setSalesforceUsername("old-username");
         cfg.setSalesforcePassword("old-password");
         cfg.setSalesforceApiToken("old-api-token");
+        cfg.setAwsRegion("us-west-2");
+        cfg.setAwsInstanceId("i-0f1e2d3c4b5a6f789");
+        cfg.setAwsAccessKeyId("AKIAOLD123");
+        cfg.setAwsSecretAccessKey("old-secret-value");
         return cfg;
     }
 }

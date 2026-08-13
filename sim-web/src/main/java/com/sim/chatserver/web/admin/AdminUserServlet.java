@@ -27,7 +27,6 @@ import jakarta.servlet.http.HttpSession;
 public class AdminUserServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
-    UserService userService;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
@@ -127,10 +126,7 @@ public class AdminUserServlet extends HttpServlet {
         return true;
     }
 
-    private UserService resolveUserService() {
-        if (userService != null) {
-            return userService;
-        }
+    protected UserService resolveUserService() {
         return CDI.current().select(UserService.class).get();
     }
 
