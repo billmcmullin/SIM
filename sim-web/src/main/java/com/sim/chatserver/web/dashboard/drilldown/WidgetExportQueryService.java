@@ -197,7 +197,7 @@ final class WidgetExportQueryService {
         }
 
         String text = readDbText(rs, columnName, 128);
-        if (text.isBlank()) {
+        if (text == null || text.isBlank()) {
             return null;
         }
         try {

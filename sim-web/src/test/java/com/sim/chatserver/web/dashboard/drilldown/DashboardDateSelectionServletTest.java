@@ -183,7 +183,7 @@ public class DashboardDateSelectionServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -277,7 +277,7 @@ public class DashboardDateSelectionServletTest
         // Given
         DashboardDateSelectionServlet underTest = new DashboardDateSelectionServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -293,4 +293,13 @@ public class DashboardDateSelectionServletTest
         underTest.doGet(req, resp);
 
     }
+    private DashboardDateSelectionServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new DashboardDateSelectionServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

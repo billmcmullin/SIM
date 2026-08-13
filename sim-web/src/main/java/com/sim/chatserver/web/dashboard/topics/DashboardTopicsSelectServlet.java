@@ -43,8 +43,6 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
-    volatile AppDataSourceHolder dsHolder;
-
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
@@ -173,10 +171,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
+    protected AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

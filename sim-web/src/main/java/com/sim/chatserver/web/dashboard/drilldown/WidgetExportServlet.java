@@ -71,8 +71,6 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    volatile AppDataSourceHolder dsHolder;
-
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         long startedAt = System.nanoTime();
@@ -864,10 +862,7 @@ public class WidgetExportServlet extends HttpServlet {
         }
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
+    protected AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

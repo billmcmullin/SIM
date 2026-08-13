@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
-import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,7 +34,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
             String user = String.valueOf(session.getAttribute("user"));
 
-            String template = loadTemplate(req, TEMPLATE_PATH);
+                String template = loadTemplate(req, TEMPLATE_PATH);
             String rendered = template
                     .replace("${contextPath}", escapeHtml(contextPath))
                     .replace("${user}", escapeHtml(user))

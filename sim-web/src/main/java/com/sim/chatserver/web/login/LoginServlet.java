@@ -22,7 +22,6 @@ public class LoginServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(LoginServlet.class.getName());
     private static final String VIEW = "/WEB-INF/views/login.html";
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
-    UserService userService;
 
     @Override
     public void init() throws ServletException {
@@ -93,10 +92,7 @@ public class LoginServlet extends HttpServlet {
         resp.sendRedirect(contextPath + "/dashboard");
     }
 
-    private UserService resolveUserService() {
-        if (userService != null) {
-            return userService;
-        }
+    protected UserService resolveUserService() {
         try {
             return CDI.current().select(UserService.class).get();
         } catch (RuntimeException ex) {

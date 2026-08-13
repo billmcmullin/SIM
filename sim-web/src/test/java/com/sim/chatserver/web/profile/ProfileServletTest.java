@@ -297,7 +297,7 @@ public class ProfileServletTest
         String getUsernameResult2 = null; // UTA: configured value
         when(updateCredentialsResult.getUsername()).thenReturn(getUsernameResult, getUsernameResult2);
         when(userServiceValue.updateCredentials(nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateCredentialsResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -331,7 +331,7 @@ public class ProfileServletTest
         String getUsernameResult = "getUsernameResult"; // UTA: default value
         when(updateCredentialsResult.getUsername()).thenReturn(getUsernameResult);
         when(userServiceValue.updateCredentials(nullable(String.class), nullable(String.class), nullable(String.class))).thenReturn(updateCredentialsResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -362,7 +362,7 @@ public class ProfileServletTest
         ProfileServlet underTest = new ProfileServlet();
         UserService userServiceValue = mock(UserService.class);
         when(userServiceValue.updateCredentials(nullable(String.class), nullable(String.class), nullable(String.class))).thenThrow(PersistenceException.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -406,7 +406,7 @@ public class ProfileServletTest
         @BeforeEach
         void setUp() throws Exception {
             servlet = new ProfileServlet();
-            servlet.userService = userService;
+            servlet = servletWithUserService(userService);
     
             responseWriter = new StringWriter();
             when(resp.getWriter()).thenReturn(new PrintWriter(responseWriter, true));
@@ -468,4 +468,13 @@ public class ProfileServletTest
             verify(resp).setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             assertEquals(true, responseWriter.toString().contains("Failed to update profile."));
         }
+    private ProfileServlet servletWithUserService(UserService userService) {
+        return new ProfileServlet() {
+            @Override
+            protected UserService resolveUserService() {
+                return userService;
+            }
+        };
+    }
 }
+

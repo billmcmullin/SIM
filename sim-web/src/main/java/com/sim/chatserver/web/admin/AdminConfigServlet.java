@@ -30,7 +30,6 @@ import jakarta.servlet.http.HttpSession;
 public class AdminConfigServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
     private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getName());
-    TermsStore termsStore;
 
     @Override
     public void init() throws ServletException {
@@ -135,6 +134,15 @@ public class AdminConfigServlet extends HttpServlet {
             String salesforceClientId = config != null ? config.getSalesforceClientId() : "";
                 String salesforceUsername = config != null ? config.getSalesforceUsername() : "";
 
+                String awsRegion = config != null ? config.getAwsRegion() : "";
+                String awsInstanceId = config != null ? config.getAwsInstanceId() : "";
+                boolean awsAccessKeyIdStored = config != null
+                    && config.getAwsAccessKeyId() != null
+                    && !config.getAwsAccessKeyId().isBlank();
+                boolean awsSecretAccessKeyStored = config != null
+                    && config.getAwsSecretAccessKey() != null
+                    && !config.getAwsSecretAccessKey().isBlank();
+
             String salesforceOAuthStatus = ServletRequestParamUtil.firstParam(req, "salesforceOAuthStatus", 512, true, true);
             String salesforceOAuthMessage = ServletRequestParamUtil.firstParam(req, "salesforceOAuthMessage", 512, true, true);
             if (salesforceOAuthStatus == null) {
@@ -169,6 +177,12 @@ public class AdminConfigServlet extends HttpServlet {
                     .replace("${salesforcePasswordStored}", Boolean.toString(salesforcePasswordStored))
                     .replace("${salesforceApiToken}", "")
                     .replace("${salesforceApiTokenStored}", Boolean.toString(salesforceApiTokenStored))
+                    .replace("${awsRegion}", escapeAttribute(awsRegion))
+                    .replace("${awsInstanceId}", escapeAttribute(awsInstanceId))
+                    .replace("${awsAccessKeyId}", "")
+                    .replace("${awsSecretAccessKey}", "")
+                    .replace("${awsAccessKeyIdStored}", Boolean.toString(awsAccessKeyIdStored))
+                    .replace("${awsSecretAccessKeyStored}", Boolean.toString(awsSecretAccessKeyStored))
                     .replace("${salesforceOAuthStatus}", escapeJs(salesforceOAuthStatus))
                     .replace("${salesforceOAuthMessage}", escapeJs(salesforceOAuthMessage))
                     .replace("${widgetListJson}", widgetListJson)
@@ -301,10 +315,7 @@ public class AdminConfigServlet extends HttpServlet {
         return escapeHtml(input);
     }
 
-    private TermsStore termsStore() {
-        if (termsStore != null) {
-            return termsStore;
-        }
+    protected TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
     }
 }

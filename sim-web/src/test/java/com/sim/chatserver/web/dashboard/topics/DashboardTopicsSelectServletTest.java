@@ -121,7 +121,7 @@ public class DashboardTopicsSelectServletTest
         Connection getConnectionResult = mock(Connection.class);
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -153,7 +153,7 @@ public class DashboardTopicsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -185,7 +185,7 @@ public class DashboardTopicsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -226,7 +226,7 @@ public class DashboardTopicsSelectServletTest
         when(getConnectionResult.getMetaData()).thenReturn(getMetaDataResult);
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -258,7 +258,7 @@ public class DashboardTopicsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -294,7 +294,7 @@ public class DashboardTopicsSelectServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -327,7 +327,7 @@ public class DashboardTopicsSelectServletTest
         DashboardTopicsSelectServlet underTest = new DashboardTopicsSelectServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
         when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -342,4 +342,13 @@ public class DashboardTopicsSelectServletTest
 
     }
 
+    private DashboardTopicsSelectServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new DashboardTopicsSelectServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

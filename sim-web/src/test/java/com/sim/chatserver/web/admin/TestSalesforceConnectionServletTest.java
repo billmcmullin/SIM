@@ -198,7 +198,9 @@ public class TestSalesforceConnectionServletTest
         TestSalesforceConnectionServlet underTest = new TestSalesforceConnectionServlet();
 
         // When
-        HttpClient result = underTest.getHttpClient();
+        var method = TestSalesforceConnectionServlet.class.getDeclaredMethod("getHttpClient");
+        method.setAccessible(true);
+        HttpClient result = (HttpClient) method.invoke(underTest);
 
     }
 

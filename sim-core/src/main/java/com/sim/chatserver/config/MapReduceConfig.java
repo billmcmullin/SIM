@@ -4,6 +4,8 @@ package com.sim.chatserver.config;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Central configuration for widget-review map-reduce orchestration.
@@ -11,6 +13,8 @@ import java.util.Map;
  * Loads from environment variables, then defaults.
  */
 public final class MapReduceConfig {
+
+    private static final Logger log = Logger.getLogger(MapReduceConfig.class.getName());
 
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
@@ -337,6 +341,7 @@ public final class MapReduceConfig {
         try {
             return Integer.parseInt(s.trim());
         } catch (NumberFormatException ignored) {
+            log.log(Level.FINE, "Invalid integer environment value: {0}", s);
             return null;
         }
     }

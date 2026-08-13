@@ -1,5 +1,7 @@
 package com.sim.chatserver.web.admin;
 
+import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.email.EmailConfigResolver;
 import com.sim.chatserver.email.EmailConfigSource;
@@ -189,7 +191,7 @@ public class AutoEmailAlertScheduler {
 
         Instant now = Instant.now();
 
-        if (cfg.isHealthEnabled() && hasRecipients(cfg.getHealthRecipients()) && isDue(cfg.getHealthLastCheckedAt(), cfg.getHealthCheckIntervalSeconds(), now)) {
+        if (cfg.isHealthEnabled() && isDue(cfg.getHealthLastCheckedAt(), cfg.getHealthCheckIntervalSeconds(), now)) {
             evaluateHealthAlert(cfg, now);
         }
 
@@ -208,6 +210,7 @@ public class AutoEmailAlertScheduler {
             boolean wasDown = previousStatus != null && "DOWN".equalsIgnoreCase(previousStatus.trim());
             Instant offlineSince = cfg.getHealthOfflineSince();
             Instant lastAlert = cfg.getHealthLastAlertAt();
+            Instant restartAttemptAt = cfg.getHealthLastRestartAttemptAt();
             boolean offlineAlertWasSent = lastAlert != null;
 
             if (up) {
@@ -222,35 +225,117 @@ public class AutoEmailAlertScheduler {
                 }
                 offlineSince = null;
                 lastAlert = null;
+                restartAttemptAt = null;
             } else {
                 if (offlineSince == null) {
                     offlineSince = now;
                 }
 
-                boolean delayElapsed = secondsBetween(offlineSince, now) >= Math.max(0, cfg.getHealthOfflineDelaySeconds());
-                boolean resendElapsed = lastAlert == null
-                        || secondsBetween(lastAlert, now) >= Math.max(30, cfg.getHealthResendIntervalSeconds());
+                int delaySeconds = Math.max(0, cfg.getHealthOfflineDelaySeconds());
 
-                if (delayElapsed && resendElapsed) {
-                    List<String> recipients = parseRecipients(cfg.getHealthRecipients());
-                    if (!recipients.isEmpty()) {
-                        String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Alert: Widget Healthcheck Offline");
-                        String textBody = buildHealthBody(cfg, result, now, offlineSince);
-                        String htmlBody = buildHealthHtmlBody(cfg, result, now, offlineSince);
-                        List<EmailAttachment> attachments = resolveHealthAttachments(cfg);
-                        if (sendEmail(recipients, subject, textBody, htmlBody, attachments)) {
-                            lastAlert = now;
+                if (restartAttemptAt == null) {
+                    boolean restartDelayElapsed = secondsBetween(offlineSince, now) >= delaySeconds;
+                    if (restartDelayElapsed) {
+                        boolean restartSubmitted = attemptAutomaticAwsRestart(cfg, now, offlineSince, result);
+                        restartAttemptAt = now;
+                        if (restartSubmitted) {
+                            log.info("Healthcheck offline automation submitted EC2 restart request.");
+                        } else {
+                            log.warning("Healthcheck offline automation attempted EC2 restart but it was not submitted.");
+                        }
+                    }
+                } else {
+                    boolean postRestartDelayElapsed = secondsBetween(restartAttemptAt, now) >= delaySeconds;
+                    boolean resendElapsed = lastAlert == null
+                            || secondsBetween(lastAlert, now) >= Math.max(30, cfg.getHealthResendIntervalSeconds());
+
+                    if (postRestartDelayElapsed && resendElapsed) {
+                        List<String> recipients = parseRecipients(cfg.getHealthRecipients());
+                        if (!recipients.isEmpty()) {
+                            String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Alert: Widget Healthcheck Offline");
+                            String textBody = buildHealthBody(cfg, result, now, offlineSince);
+                            String htmlBody = buildHealthHtmlBody(cfg, result, now, offlineSince);
+                            List<EmailAttachment> attachments = resolveHealthAttachments(cfg);
+                            if (sendEmail(recipients, subject, textBody, htmlBody, attachments)) {
+                                lastAlert = now;
+                            }
                         }
                     }
                 }
             }
 
             String status = up ? "UP" : "DOWN";
-            store.updateHealthState(now, status, offlineSince, lastAlert);
+            store.updateHealthState(now, status, offlineSince, lastAlert, restartAttemptAt);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to persist health alert state.", e);
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Health alert evaluation failed.", e);
+        }
+    }
+
+    boolean rebootEc2InstanceForHealthcheck(String region,
+            String accessKeyId,
+            String secretAccessKey,
+            String instanceId) {
+        new AwsEc2RestartServlet().rebootEc2Instance(region, accessKeyId, secretAccessKey, instanceId);
+        return true;
+    }
+
+    ServerConfig loadAwsConfigForHealthcheck() throws SQLException {
+        return EncryptedDbConfigStore.load();
+    }
+
+    private boolean attemptAutomaticAwsRestart(
+            AutoEmailAlertConfig cfg,
+            Instant now,
+            Instant offlineSince,
+            WidgetAvailabilityResult result
+    ) {
+        ServerConfig awsCfg;
+        try {
+            awsCfg = loadAwsConfigForHealthcheck();
+        } catch (SQLException ex) {
+            log.log(Level.WARNING,
+                    "Unable to load AWS config for automatic healthcheck restart: {0}",
+                    defaultIfBlank(ex.getMessage(), ex.getClass().getSimpleName()));
+            return false;
+        } catch (RuntimeException ex) {
+            log.log(Level.WARNING, "Unable to load AWS config for automatic healthcheck restart.", ex);
+            return false;
+        }
+
+        if (awsCfg == null) {
+            log.warning("Automatic healthcheck restart skipped: no AWS config available.");
+            return false;
+        }
+
+        String region = trimToNull(awsCfg.getAwsRegion());
+        String instanceId = trimToNull(awsCfg.getAwsInstanceId());
+        String accessKeyId = trimToNull(awsCfg.getAwsAccessKeyId());
+        String secretAccessKey = trimToNull(awsCfg.getAwsSecretAccessKey());
+
+        if (!hasText(region) || !hasText(instanceId) || !hasText(accessKeyId) || !hasText(secretAccessKey)) {
+            log.warning("Automatic healthcheck restart skipped: AWS region/instance/credentials are incomplete.");
+            return false;
+        }
+
+        try {
+            rebootEc2InstanceForHealthcheck(region, accessKeyId, secretAccessKey, instanceId);
+            log.log(
+                    Level.INFO,
+                    "Automatic healthcheck restart submitted. region={0}, instanceId={1}, offlineSince={2}, attemptedAt={3}, checkerStatus={4}",
+                    new Object[]{
+                        region,
+                        instanceId,
+                        formatInstant(offlineSince),
+                        formatInstant(now),
+                        result == null ? "UNKNOWN" : defaultIfBlank(result.status(), "UNKNOWN")
+                    }
+            );
+            return true;
+        } catch (RuntimeException ex) {
+            log.log(Level.WARNING, "Automatic healthcheck restart failed.", ex);
+            return false;
         }
     }
 
@@ -374,6 +459,12 @@ public class AutoEmailAlertScheduler {
             }
         }
 
+        if (cfg.getHealthLastRestartAttemptAt() != null) {
+            sb.append("Automatic EC2 restart attempted at: ")
+                    .append(formatInstant(cfg.getHealthLastRestartAttemptAt()))
+                    .append('\n');
+        }
+
         if (hasText(cfg.getHealthMessage())) {
             sb.append('\n').append(cfg.getHealthMessage()).append('\n');
         }
@@ -455,6 +546,10 @@ public class AutoEmailAlertScheduler {
             if (hasText(result.details())) {
                 builder.addLabeledValue("Details", result.details());
             }
+        }
+
+        if (cfg.getHealthLastRestartAttemptAt() != null) {
+            builder.addLabeledValue("Automatic EC2 restart attempted at", formatInstant(cfg.getHealthLastRestartAttemptAt()));
         }
 
         if (hasText(cfg.getHealthMessage())) {
@@ -641,6 +736,14 @@ public class AutoEmailAlertScheduler {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String defaultIfBlank(String value, String fallback) {

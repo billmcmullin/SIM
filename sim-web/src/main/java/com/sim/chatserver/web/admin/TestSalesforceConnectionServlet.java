@@ -200,7 +200,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         }
     }
 
-    final HttpClient getHttpClient() {
+    private HttpClient getHttpClient() {
         return CLIENT;
     }
 

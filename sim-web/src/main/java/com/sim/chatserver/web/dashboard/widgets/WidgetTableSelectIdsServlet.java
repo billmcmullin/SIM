@@ -34,7 +34,6 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableSelectIdsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    AppDataSourceHolder dsHolder;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -210,10 +209,7 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private AppDataSourceHolder resolveDataSourceHolder() {
-        if (dsHolder != null) {
-            return dsHolder;
-        }
+    protected AppDataSourceHolder resolveDataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

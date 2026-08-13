@@ -85,8 +85,7 @@ class WidgetTableSelectIdsServletTest {
         when(rsMeta.next()).thenReturn(true);
         when(rsQuery.next()).thenReturn(false);
 
-        // field appears package-visible in your original tests
-        underTest.dsHolder = dsHolder;
+        underTest = servletWithDataSourceHolder(dsHolder);
     }
 
     @Test
@@ -246,7 +245,7 @@ class WidgetTableSelectIdsServletTest {
 
     @Test
     void doGet_whenDsHolderNull_resolvesThroughCdi() throws Exception {
-        underTest.dsHolder = null;
+        underTest = new WidgetTableSelectIdsServlet();
         when(req.getParameterValues("widgetId")).thenReturn(new String[] {"widget-1"});
         when(rsMeta.next()).thenReturn(true);
         when(rsQuery.next()).thenReturn(false);
@@ -323,6 +322,15 @@ class WidgetTableSelectIdsServletTest {
         assertEquals("widget", blank);
         assertEquals(true, prefixed.startsWith("w_"));
         assertEquals(true, longName.length() <= 60);
+    }
+
+    private WidgetTableSelectIdsServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new WidgetTableSelectIdsServlet() {
+            @Override
+            protected AppDataSourceHolder resolveDataSourceHolder() {
+                return dsHolder;
+            }
+        };
     }
 
     @Test

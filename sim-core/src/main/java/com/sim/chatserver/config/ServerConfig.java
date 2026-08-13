@@ -23,6 +23,12 @@ public class ServerConfig {
     private String salesforcePassword;
     private String salesforceApiToken;
 
+    // AWS EC2 fields
+    private String awsRegion;
+    private String awsInstanceId;
+    private String awsAccessKeyId;
+    private String awsSecretAccessKey;
+
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getName());
@@ -154,5 +160,37 @@ public class ServerConfig {
 
     public void setSalesforceApiToken(String salesforceApiToken) {
         this.salesforceApiToken = salesforceApiToken;
+    }
+
+    public String getAwsRegion() {
+        return awsRegion;
+    }
+
+    public void setAwsRegion(String awsRegion) {
+        this.awsRegion = awsRegion;
+    }
+
+    public String getAwsInstanceId() {
+        return awsInstanceId;
+    }
+
+    public void setAwsInstanceId(String awsInstanceId) {
+        this.awsInstanceId = awsInstanceId;
+    }
+
+    public String getAwsAccessKeyId() {
+        return awsAccessKeyId;
+    }
+
+    public void setAwsAccessKeyId(String awsAccessKeyId) {
+        this.awsAccessKeyId = awsAccessKeyId;
+    }
+
+    public String getAwsSecretAccessKey() {
+        return awsSecretAccessKey;
+    }
+
+    public void setAwsSecretAccessKey(String awsSecretAccessKey) {
+        this.awsSecretAccessKey = awsSecretAccessKey;
     }
 }

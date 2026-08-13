@@ -75,7 +75,7 @@ public class DashboardMetricsService {
 
             this.termsToday = termsToday;
             this.termsYesterday = termsYesterday;
-            this.termsProgression = new ProgressStat(this.termsToday, this.termsYesterday);
+            this.termsProgression = new ProgressStat(termsToday, termsYesterday);
         }
 
         public int getChatsToday() {

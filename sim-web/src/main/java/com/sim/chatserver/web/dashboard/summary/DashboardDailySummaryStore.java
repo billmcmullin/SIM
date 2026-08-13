@@ -15,6 +15,8 @@ import java.util.logging.Logger;
 
 import javax.sql.DataSource;
 
+import com.sim.chatserver.web.util.ServletRequestParamUtil;
+
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 
@@ -422,40 +424,44 @@ public class DashboardDailySummaryStore {
     }
 
     private String readRawText(ResultSet rs, String column) throws SQLException {
-        try {
-            Object raw = readCellObject(rs, column);
-            if (raw == null) {
-                return null;
-            }
-            return String.valueOf(raw);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
+        if (rs == null || column == null || column.isBlank()) {
+            return "";
         }
 
         try {
-            return rs.getString(column);
+            Object raw = readCellObject(rs, column);
+            if (raw == null) {
+                return "";
+            }
+            String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 0, false);
+            if (normalized == null) {
+                return "";
+            }
+            return normalized.replace("\u2028", " ").replace("\u2029", " ");
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + column, ex);
-            return null;
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + safeColumnName(column), ex);
+            return "";
         }
     }
 
     private String readRawText(ResultSet rs, int column) throws SQLException {
-        try {
-            Object raw = readCellObject(rs, column);
-            if (raw == null) {
-                return null;
-            }
-            return String.valueOf(raw);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
+        if (rs == null || column <= 0) {
+            return "";
         }
 
         try {
-            return rs.getString(column);
+            Object raw = readCellObject(rs, column);
+            if (raw == null) {
+                return "";
+            }
+            String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 0, false);
+            if (normalized == null) {
+                return "";
+            }
+            return normalized.replace("\u2028", " ").replace("\u2029", " ");
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
-            return null;
+            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
+            return "";
         }
     }
 
@@ -477,17 +483,22 @@ public class DashboardDailySummaryStore {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\u0000', ' ')
-                .replace("\r", "")
-                .replace("\u2028", " ")
-                .replace("\u2029", " ");
-        if (normalized.length() > maxLen) {
+        String normalized = ServletRequestParamUtil.normalizeBodyText(value, 0, false);
+        if (normalized == null) {
+            return "";
+        }
+        normalized = normalized.replace("\u2028", " ").replace("\u2029", " ");
+        if (maxLen > 0 && normalized.length() > maxLen) {
             return normalized.substring(0, maxLen);
         }
         return normalized;
     }
 
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
+        if (rs == null || column == null || column.isBlank()) {
+            return min;
+        }
+
         try {
             int typed = rs.getInt(column);
             if (!rs.wasNull()) {
@@ -504,14 +515,14 @@ public class DashboardDailySummaryStore {
         }
 
         String raw = sanitizeText(readRawText(rs, column), 64);
-        if (raw.isBlank() || !raw.matches("^-?\\d+$")) {
+        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d+$")) {
             return min;
         }
         int value;
         try {
             value = Integer.parseInt(raw);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse integer value for column " + column, ex);
+            log.log(Level.FINE, "Unable to parse integer value for column " + safeColumnName(column), ex);
             return min;
         }
         if (value < min) {
@@ -524,11 +535,15 @@ public class DashboardDailySummaryStore {
     }
 
     private Timestamp getSafeTimestamp(ResultSet rs, String column) throws SQLException {
+        if (rs == null || column == null || column.isBlank()) {
+            return null;
+        }
+
         Object raw;
         try {
             raw = readCellObject(rs, column);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for timestamp column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for timestamp column " + safeColumnName(column), ex);
             raw = null;
         }
 
@@ -562,7 +577,7 @@ public class DashboardDailySummaryStore {
         }
 
         String text = sanitizeText(raw == null ? readRawText(rs, column) : String.valueOf(raw), 128);
-        if (text.isBlank()) {
+        if (text == null || text.isBlank()) {
             return null;
         }
         try {
@@ -570,18 +585,22 @@ public class DashboardDailySummaryStore {
             try {
                 value = Timestamp.valueOf(text.replace('T', ' '));
             } catch (IllegalArgumentException ex) {
-                log.log(Level.FINE, "Timestamp SQL parse fallback to Instant parser for column " + column, ex);
+                log.log(Level.FINE, "Timestamp SQL parse fallback to Instant parser for column " + safeColumnName(column), ex);
                 value = Timestamp.from(Instant.parse(text));
             }
             Instant instant = value.toInstant();
             return instant == null ? null : Timestamp.from(instant);
         } catch (IllegalArgumentException | DateTimeException e) {
-            log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
+            log.log(Level.FINE, "Invalid timestamp value for column " + safeColumnName(column), e);
             return null;
         }
     }
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
+        if (rs == null || column == null || column.isBlank()) {
+            return "";
+        }
+
         Object raw = null;
         try {
             raw = readCellObject(rs, column);
@@ -598,11 +617,11 @@ public class DashboardDailySummaryStore {
                 return offsetDateTime.toLocalDate().toString();
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for date column " + column, ex);
+            log.log(Level.FINE, "ResultSet#getObject(String) failed for date column " + safeColumnName(column), ex);
         }
 
         String text = sanitizeText(raw == null ? getSafeString(rs, column, 32) : String.valueOf(raw), 32);
-        if (text.isBlank()) {
+        if (text == null || text.isBlank()) {
             return "";
         }
 
@@ -610,9 +629,16 @@ public class DashboardDailySummaryStore {
             LocalDate localDay = LocalDate.parse(text.trim());
             return localDay.toString();
         } catch (IllegalArgumentException | DateTimeException e) {
-            log.log(Level.FINE, "Invalid date value for column " + column, e);
+            log.log(Level.FINE, "Invalid date value for column " + safeColumnName(column), e);
             return "";
         }
+    }
+
+    private String safeColumnName(String column) {
+        if (column == null || column.isBlank()) {
+            return "<unknown>";
+        }
+        return column;
     }
 
     private String suggestNextAction(String status, String quality, String response, String usage) {

@@ -232,7 +232,7 @@ public class AdminUserServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean deleteUserResult = false; // UTA: configured value
         when(userServiceValue.deleteUser(nullable(String.class))).thenReturn(deleteUserResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -265,7 +265,7 @@ public class AdminUserServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean deleteUserResult = true; // UTA: configured value
         when(userServiceValue.deleteUser(nullable(String.class))).thenReturn(deleteUserResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -328,7 +328,7 @@ public class AdminUserServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean deleteUserResult = false; // UTA: configured value
         when(userServiceValue.deleteUser(nullable(String.class))).thenReturn(deleteUserResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -362,7 +362,7 @@ public class AdminUserServletTest
         UserService userServiceValue = mock(UserService.class);
         boolean deleteUserResult = true; // UTA: configured value
         when(userServiceValue.deleteUser(nullable(String.class))).thenReturn(deleteUserResult);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -499,7 +499,7 @@ public class AdminUserServletTest
         UserAccount item = mock(UserAccount.class);
         listAllUsersResult.add(item);
         doReturn(listAllUsersResult).when(userServiceValue).listAllUsers();
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -531,7 +531,7 @@ public class AdminUserServletTest
         UserAccount item = mock(UserAccount.class);
         listAllUsersResult.add(item);
         doReturn(listAllUsersResult).when(userServiceValue).listAllUsers();
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -661,7 +661,7 @@ public class AdminUserServletTest
         // Given
         AdminUserServlet underTest = new AdminUserServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -689,7 +689,7 @@ public class AdminUserServletTest
         // Given
         AdminUserServlet underTest = new AdminUserServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest.userService = userServiceValue;
+        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -706,4 +706,13 @@ public class AdminUserServletTest
 
     }
 
+    private AdminUserServlet servletWithUserService(UserService userService) {
+        return new AdminUserServlet() {
+            @Override
+            protected UserService resolveUserService() {
+                return userService;
+            }
+        };
+    }
 }
+

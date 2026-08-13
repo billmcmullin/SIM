@@ -99,7 +99,7 @@ public class DashboardTrendsServletTest
         DashboardTrendsServlet underTest = new DashboardTrendsServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
         when(dsHolderValue.getDataSource()).thenThrow(IllegalStateException.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -116,4 +116,13 @@ public class DashboardTrendsServletTest
 
     }
 
+    private DashboardTrendsServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new DashboardTrendsServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
 }
+

@@ -43,23 +43,29 @@ public final class EncryptedDbConfigStore {
             + "salesforce_login_url TEXT, "
             + "salesforce_client_id TEXT, "
             + "salesforce_client_secret TEXT, "
-                + "salesforce_refresh_token TEXT, "
-                + "salesforce_username TEXT, "
-                + "salesforce_password TEXT, "
-                + "salesforce_api_token TEXT)";
+            + "salesforce_refresh_token TEXT, "
+            + "salesforce_username TEXT, "
+            + "salesforce_password TEXT, "
+            + "salesforce_api_token TEXT, "
+            + "aws_region TEXT, "
+            + "aws_instance_id TEXT, "
+            + "aws_access_key_id TEXT, "
+            + "aws_secret_access_key TEXT)";
     private static final String SELECT_SQL
             = "SELECT server_host, server_port, connection_info, api_key, workspace_name, "
             + "salesforce_instance_url, salesforce_api_key, "
-                + "salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token, "
-                + "salesforce_username, salesforce_password, salesforce_api_token "
+            + "salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token, "
+            + "salesforce_username, salesforce_password, salesforce_api_token, "
+            + "aws_region, aws_instance_id, aws_access_key_id, aws_secret_access_key "
             + "FROM " + TABLE_NAME + " ORDER BY id DESC LIMIT 1";
     private static final String DELETE_SQL = "DELETE FROM " + TABLE_NAME;
     private static final String INSERT_SQL
             = "INSERT INTO " + TABLE_NAME
             + " (server_host, server_port, connection_info, api_key, workspace_name, "
             + "salesforce_instance_url, salesforce_api_key, salesforce_login_url, salesforce_client_id, salesforce_client_secret, salesforce_refresh_token, "
-            + "salesforce_username, salesforce_password, salesforce_api_token) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "salesforce_username, salesforce_password, salesforce_api_token, "
+            + "aws_region, aws_instance_id, aws_access_key_id, aws_secret_access_key) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String ENC_KEY_ENV = "CONFIG_ENCRYPTION_KEY";
     private static final String ENC_SALT_ENV = "CONFIG_ENCRYPTION_SALT";
@@ -108,6 +114,10 @@ public final class EncryptedDbConfigStore {
             ensureSalesforceUsernameColumn(conn);
             ensureSalesforcePasswordColumn(conn);
             ensureSalesforceApiTokenColumn(conn);
+            ensureAwsRegionColumn(conn);
+            ensureAwsInstanceIdColumn(conn);
+            ensureAwsAccessKeyIdColumn(conn);
+            ensureAwsSecretAccessKeyColumn(conn);
             log.fine("ensureTable: column checks complete");
         } catch (SQLException e) {
             log.log(Level.SEVERE, "ensureTable: failed during column checks", e);
@@ -145,6 +155,10 @@ public final class EncryptedDbConfigStore {
                 config.setSalesforceUsername(rs.getString("salesforce_username"));
                 config.setSalesforcePassword(decryptIfNeeded(rs.getString("salesforce_password")));
                 config.setSalesforceApiToken(decryptIfNeeded(rs.getString("salesforce_api_token")));
+                config.setAwsRegion(rs.getString("aws_region"));
+                config.setAwsInstanceId(rs.getString("aws_instance_id"));
+                config.setAwsAccessKeyId(decryptIfNeeded(rs.getString("aws_access_key_id")));
+                config.setAwsSecretAccessKey(decryptIfNeeded(rs.getString("aws_secret_access_key")));
 
                 log.fine("load: config loaded successfully");
                 return config;
@@ -169,6 +183,8 @@ public final class EncryptedDbConfigStore {
         String encryptedSalesforceRefreshToken = encryptIfPresent(config != null ? config.getSalesforceRefreshToken() : null);
         String encryptedSalesforcePassword = encryptIfPresent(config != null ? config.getSalesforcePassword() : null);
         String encryptedSalesforceApiToken = encryptIfPresent(config != null ? config.getSalesforceApiToken() : null);
+        String encryptedAwsAccessKeyId = encryptIfPresent(config != null ? config.getAwsAccessKeyId() : null);
+        String encryptedAwsSecretAccessKey = encryptIfPresent(config != null ? config.getAwsSecretAccessKey() : null);
 
         DataSource ds = requireDataSource();
 
@@ -196,6 +212,10 @@ public final class EncryptedDbConfigStore {
             insertStmt.setString(12, config != null ? config.getSalesforceUsername() : null);
             insertStmt.setString(13, encryptedSalesforcePassword);
             insertStmt.setString(14, encryptedSalesforceApiToken);
+            insertStmt.setString(15, config != null ? config.getAwsRegion() : null);
+            insertStmt.setString(16, config != null ? config.getAwsInstanceId() : null);
+            insertStmt.setString(17, encryptedAwsAccessKeyId);
+            insertStmt.setString(18, encryptedAwsSecretAccessKey);
 
             int inserted = insertStmt.executeUpdate();
             log.log(Level.FINE, "save: insert complete, rows={0}", inserted);
@@ -265,6 +285,22 @@ public final class EncryptedDbConfigStore {
 
     private static void ensureSalesforceApiTokenColumn(Connection conn) throws SQLException {
         ensureColumn(conn, "salesforce_api_token", "TEXT");
+    }
+
+    private static void ensureAwsRegionColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "aws_region", "TEXT");
+    }
+
+    private static void ensureAwsInstanceIdColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "aws_instance_id", "TEXT");
+    }
+
+    private static void ensureAwsAccessKeyIdColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "aws_access_key_id", "TEXT");
+    }
+
+    private static void ensureAwsSecretAccessKeyColumn(Connection conn) throws SQLException {
+        ensureColumn(conn, "aws_secret_access_key", "TEXT");
     }
 
     private static void ensureColumn(Connection conn, String columnName, String sqlType) throws SQLException {

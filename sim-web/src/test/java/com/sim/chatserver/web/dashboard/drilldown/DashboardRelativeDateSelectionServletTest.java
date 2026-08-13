@@ -211,7 +211,7 @@ public class DashboardRelativeDateSelectionServletTest
         TermsStore termsStoreValue = mock(TermsStore.class);
         List<TermDefinition> listAllResult = null; // UTA: configured value
         doReturn(listAllResult).when(termsStoreValue).listAll();
-        underTest.termsStore = termsStoreValue;
+        underTest = servletWithTermsStore(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -245,7 +245,7 @@ public class DashboardRelativeDateSelectionServletTest
         Connection getConnectionResult = null; // UTA: configured value
         when(getDataSourceResult.getConnection()).thenReturn(getConnectionResult);
         when(dsHolderValue.getDataSource()).thenReturn(getDataSourceResult);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -403,7 +403,7 @@ public class DashboardRelativeDateSelectionServletTest
         // Given
         DashboardRelativeDateSelectionServlet underTest = new DashboardRelativeDateSelectionServlet();
         AppDataSourceHolder dsHolderValue = mock(AppDataSourceHolder.class);
-        underTest.dsHolder = dsHolderValue;
+        underTest = servletWithDataSourceHolder(dsHolderValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -433,7 +433,7 @@ public class DashboardRelativeDateSelectionServletTest
         // Given
         DashboardRelativeDateSelectionServlet underTest = new DashboardRelativeDateSelectionServlet();
         TermsStore termsStoreValue = mock(TermsStore.class);
-        underTest.termsStore = termsStoreValue;
+        underTest = servletWithTermsStore(termsStoreValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -449,4 +449,21 @@ public class DashboardRelativeDateSelectionServletTest
         underTest.doGet(req, resp);
 
     }
+    private DashboardRelativeDateSelectionServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
+        return new DashboardRelativeDateSelectionServlet() {
+            @Override
+            protected AppDataSourceHolder dataSourceHolder() {
+                return dsHolder;
+            }
+        };
+    }
+    private DashboardRelativeDateSelectionServlet servletWithTermsStore(TermsStore termsStore) {
+        return new DashboardRelativeDateSelectionServlet() {
+            @Override
+            protected TermsStore termsStore() {
+                return termsStore;
+            }
+        };
+    }
 }
+
