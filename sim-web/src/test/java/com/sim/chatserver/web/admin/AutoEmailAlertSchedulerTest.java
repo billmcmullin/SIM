@@ -40,12 +40,10 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                return new ServerConfig();
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                ServerConfig::new,
+                (region, accessKeyId, secretAccessKey, instanceId) -> {
+                });
 
         AutoEmailAlertScheduler.TestEmailResult missingCfg = scheduler.sendHealthTestEmail(null);
         assertFalse(missingCfg.sent());
@@ -72,12 +70,10 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                return new ServerConfig();
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                ServerConfig::new,
+                (region, accessKeyId, secretAccessKey, instanceId) -> {
+                });
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         cfg.setHealthRecipients("ops@example.com");
@@ -117,23 +113,16 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                ServerConfig cfg = new ServerConfig();
-                cfg.setAwsRegion("us-east-1");
-                cfg.setAwsInstanceId("i-123");
-                cfg.setAwsAccessKeyId("AKIA");
-                cfg.setAwsSecretAccessKey("secret");
-                return cfg;
-            }
-
-            @Override
-            boolean rebootEc2InstanceForHealthcheck(String region, String accessKeyId, String secretAccessKey, String instanceId) {
-                rebootCapture.set(region + ":" + instanceId);
-                return true;
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                () -> {
+                    ServerConfig cfg = new ServerConfig();
+                    cfg.setAwsRegion("us-east-1");
+                    cfg.setAwsInstanceId("i-123");
+                    cfg.setAwsAccessKeyId("AKIA");
+                    cfg.setAwsSecretAccessKey("secret");
+                    return cfg;
+                },
+                (region, accessKeyId, secretAccessKey, instanceId) -> rebootCapture.set(region + ":" + instanceId));
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         cfg.setHealthRecipients("ops@example.com");
@@ -164,23 +153,17 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 mock(WidgetAvailabilityChecker.class),
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                ServerConfig cfg = new ServerConfig();
-                cfg.setAwsRegion("us-west-2");
-                cfg.setAwsInstanceId("i-0123456789abcdef0");
-                cfg.setAwsAccessKeyId("AKIATEST123");
-                cfg.setAwsSecretAccessKey("secret");
-                return cfg;
-            }
-
-            @Override
-            boolean rebootEc2InstanceForHealthcheck(String region, String accessKeyId, String secretAccessKey, String instanceId) {
-                capture.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey);
-                return true;
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                () -> {
+                    ServerConfig cfg = new ServerConfig();
+                    cfg.setAwsRegion("us-west-2");
+                    cfg.setAwsInstanceId("i-0123456789abcdef0");
+                    cfg.setAwsAccessKeyId("AKIATEST123");
+                    cfg.setAwsSecretAccessKey("secret");
+                    return cfg;
+                },
+                (region, accessKeyId, secretAccessKey, instanceId) ->
+                        capture.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey));
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         Object result = new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 12L, "offline");
@@ -207,17 +190,17 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 checker,
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                ServerConfig cfg = new ServerConfig();
-                cfg.setAwsRegion("us-east-1");
-                cfg.setAwsInstanceId("i-xyz");
-                cfg.setAwsAccessKeyId("AKIA");
-                cfg.setAwsSecretAccessKey("secret");
-                return cfg;
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                () -> {
+                    ServerConfig cfg = new ServerConfig();
+                    cfg.setAwsRegion("us-east-1");
+                    cfg.setAwsInstanceId("i-xyz");
+                    cfg.setAwsAccessKeyId("AKIA");
+                    cfg.setAwsSecretAccessKey("secret");
+                    return cfg;
+                },
+                (region, accessKeyId, secretAccessKey, instanceId) -> {
+                });
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
         cfg.setHealthRecipients("ops@example.com");
@@ -370,12 +353,10 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                 mock(DataSource.class),
                 mock(WidgetAvailabilityChecker.class),
                 mock(TermsStore.class),
-                mock(DbEmailConfigProvider.class)) {
-            @Override
-            ServerConfig loadAwsConfigForHealthcheck() {
-                return new ServerConfig();
-            }
-        };
+                mock(DbEmailConfigProvider.class),
+                ServerConfig::new,
+                (region, accessKeyId, secretAccessKey, instanceId) -> {
+                });
     }
 
     private void setPrivateField(Object target, String fieldName, Object value) throws Exception {

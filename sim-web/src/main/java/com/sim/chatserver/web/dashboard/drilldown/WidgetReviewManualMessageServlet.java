@@ -1223,7 +1223,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             if (requestReader == null) {
                 return "";
             }
-            return readRequestBody(requestReader);
+            String body = readRequestBody(requestReader);
+            return validateTaintedRequestBody(body);
         } catch (IOException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to read manual-message request body from reader", ex);
             return "";
@@ -1237,7 +1238,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         try (Reader bodyReader = reader) {
             String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
-            return canonicalizeForValidation(body);
+            return validateTaintedRequestBody(canonicalizeForValidation(body));
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to decode manual-message request payload", ex);
             return "";
@@ -1257,6 +1258,25 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (normalized == null) {
             return "";
         }
+        if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
+            return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
+        }
+        return normalized;
+    }
+
+    private String validateTaintedRequestBody(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
             return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
         }

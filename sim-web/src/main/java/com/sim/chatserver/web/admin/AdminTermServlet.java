@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -71,8 +72,8 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            req.setCharacterEncoding("UTF-8");
-        } catch (IOException e) {
+            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        } catch (UnsupportedEncodingException e) {
             log.log(Level.FINE, "Unable to set request character encoding", e);
         }
 
@@ -132,8 +133,8 @@ public class AdminTermServlet extends HttpServlet {
         }
 
         try {
-            req.setCharacterEncoding("UTF-8");
-        } catch (IOException e) {
+            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        } catch (UnsupportedEncodingException e) {
             log.log(Level.FINE, "Unable to set request character encoding", e);
         }
 
@@ -242,11 +243,28 @@ public class AdminTermServlet extends HttpServlet {
             return "";
         }
         try (java.io.Reader reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-        } catch (IOException e) {
+            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+            return validateTaintedText(body);
+        } catch (IOException | IllegalStateException e) {
             log.log(Level.WARNING, "Failed reading request body", e);
             return "";
         }
+    }
+
+    private String validateTaintedText(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(Math.min(value.length(), MAX_JSON_PAYLOAD_BYTES));
+        int limit = Math.min(value.length(), MAX_JSON_PAYLOAD_BYTES);
+        for (int i = 0; i < limit; i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        return safe.toString();
     }
 
     private void writeErrorSafe(HttpServletResponse resp, int status, String message) {

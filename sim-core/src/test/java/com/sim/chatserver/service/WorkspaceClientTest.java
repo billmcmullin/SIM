@@ -1,6 +1,5 @@
 package com.sim.chatserver.service;
 
-import java.io.IOException;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
@@ -8,140 +7,152 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 
-import jakarta.json.JsonArray;
-
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
 /**
- * Parasoft Jtest UTA: Test class for WorkspaceClient
+ * Unit tests for WorkspaceClient and its lightweight response DTO.
  *
  * @see com.sim.chatserver.service.WorkspaceClient
- * @author bmcmullin
  */
 public class WorkspaceClientTest
 {
 
-    /**
-     * Parasoft Jtest UTA: Test for isLikelyContextTooLarge(WorkspaceResponse)
-     *
-     * @see com.sim.chatserver.service.WorkspaceClient#isLikelyContextTooLarge(WorkspaceResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testIsLikelyContextTooLarge() throws Throwable
+    public void isLikelyContextTooLarge_returnsFalse_whenResponseIsNull()
     {
-        // Given
-        HttpClient httpClient = mock(HttpClient.class);
-        int maxRetries = 1; // UTA: default value
-        Duration requestTimeout = mock(Duration.class);
-        WorkspaceClient underTest = new WorkspaceClient(httpClient, maxRetries, requestTimeout);
+        WorkspaceClient underTest = createUnderTest();
 
-        // When
-        WorkspaceResponse response = null; // UTA: configured value
-        boolean result = underTest.isLikelyContextTooLarge(response);
+        boolean result = underTest.isLikelyContextTooLarge(null);
 
+        assertFalse(result);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for isLikelyContextTooLarge(WorkspaceResponse)
-     *
-     * @see com.sim.chatserver.service.WorkspaceClient#isLikelyContextTooLarge(WorkspaceResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testIsLikelyContextTooLarge2() throws Throwable
+    public void isLikelyContextTooLarge_returnsTrue_whenStatusCodeIs413()
     {
-        // Given
-        HttpClient httpClient = mock(HttpClient.class);
-        int maxRetries = 1; // UTA: default value
-        Duration requestTimeout = mock(Duration.class);
-        WorkspaceClient underTest = new WorkspaceClient(httpClient, maxRetries, requestTimeout);
-
-        // When
+        WorkspaceClient underTest = createUnderTest();
         WorkspaceResponse response = mock(WorkspaceResponse.class);
-        String bodyResult = null; // UTA: configured value
-        when(response.body()).thenReturn(bodyResult);
+        when(response.statusCode()).thenReturn(413);
+        when(response.body()).thenReturn(null);
 
-        int statusCodeResult = 413; // UTA: configured value
-        when(response.statusCode()).thenReturn(statusCodeResult);
         boolean result = underTest.isLikelyContextTooLarge(response);
 
+        assertTrue(result);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for isLikelyContextTooLarge(WorkspaceResponse)
-     *
-     * @see com.sim.chatserver.service.WorkspaceClient#isLikelyContextTooLarge(WorkspaceResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testIsLikelyContextTooLarge3() throws Throwable
+    public void isLikelyContextTooLarge_returnsTrue_whenBodyContainsContextSignal()
     {
-        // Given
-        HttpClient httpClient = mock(HttpClient.class);
-        int maxRetries = 1; // UTA: default value
-        Duration requestTimeout = mock(Duration.class);
-        WorkspaceClient underTest = new WorkspaceClient(httpClient, maxRetries, requestTimeout);
-
-        // When
+        WorkspaceClient underTest = createUnderTest();
         WorkspaceResponse response = mock(WorkspaceResponse.class);
-        String bodyResult = "bodyResult"; // UTA: default value
-        when(response.body()).thenReturn(bodyResult);
+        when(response.statusCode()).thenReturn(400);
+        when(response.body()).thenReturn("Maximum context length exceeded for model");
 
-        int statusCodeResult = 413; // UTA: configured value
-        when(response.statusCode()).thenReturn(statusCodeResult);
         boolean result = underTest.isLikelyContextTooLarge(response);
 
+        assertTrue(result);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for isLikelyContextTooLarge(WorkspaceResponse)
-     *
-     * @see com.sim.chatserver.service.WorkspaceClient#isLikelyContextTooLarge(WorkspaceResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testIsLikelyContextTooLarge4() throws Throwable
+    public void isLikelyContextTooLarge_returnsTrue_whenJsonErrorContainsTokenLimitPhrase()
     {
-        // Given
-        HttpClient httpClient = mock(HttpClient.class);
-        int maxRetries = 1; // UTA: default value
-        Duration requestTimeout = mock(Duration.class);
-        WorkspaceClient underTest = new WorkspaceClient(httpClient, maxRetries, requestTimeout);
-
-        // When
+        WorkspaceClient underTest = createUnderTest();
         WorkspaceResponse response = mock(WorkspaceResponse.class);
-        String bodyResult = null; // UTA: configured value
-        when(response.body()).thenReturn(bodyResult);
+        when(response.statusCode()).thenReturn(400);
+        when(response.body()).thenReturn("{\"error\":\"token limit reached\"}");
 
-        int statusCodeResult = 414; // UTA: configured value
-        when(response.statusCode()).thenReturn(statusCodeResult);
         boolean result = underTest.isLikelyContextTooLarge(response);
 
+        assertTrue(result);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for isLikelyContextTooLarge(WorkspaceResponse)
-     *
-     * @see com.sim.chatserver.service.WorkspaceClient#isLikelyContextTooLarge(WorkspaceResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testIsLikelyContextTooLarge5() throws Throwable
+    public void isLikelyContextTooLarge_returnsFalse_whenNoKnownSignalExists()
     {
-        // Given
-        HttpClient httpClient = mock(HttpClient.class);
-        int maxRetries = 1; // UTA: default value
-        Duration requestTimeout = mock(Duration.class);
-        WorkspaceClient underTest = new WorkspaceClient(httpClient, maxRetries, requestTimeout);
-
-        // When
+        WorkspaceClient underTest = createUnderTest();
         WorkspaceResponse response = mock(WorkspaceResponse.class);
-        String bodyResult = "bodyResult"; // UTA: default value
-        when(response.body()).thenReturn(bodyResult);
+        when(response.statusCode()).thenReturn(414);
+        when(response.body()).thenReturn("short request URI");
+
         boolean result = underTest.isLikelyContextTooLarge(response);
 
+        assertFalse(result);
     }
 
+    @Test
+    public void workspaceResponse_bodyGetter_returnsConstructorBody()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(200, "body", "application/json");
+
+        String result = underTest.body();
+
+        assertEquals("body", result);
+    }
+
+    @Test
+    public void workspaceResponse_contentTypeGetter_returnsConstructorContentType()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(200, "body", "application/json");
+
+        String result = underTest.contentType();
+
+        assertEquals("application/json", result);
+    }
+
+    @Test
+    public void workspaceResponse_statusCodeGetter_returnsConstructorStatusCode()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(201, "body", "application/json");
+
+        int result = underTest.statusCode();
+
+        assertEquals(201, result);
+    }
+
+    @Test
+    public void workspaceResponse_isError_returnsFalse_forNonErrorStatus()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(200, "body", "application/json");
+
+        boolean result = underTest.isError();
+
+        assertFalse(result);
+    }
+
+    @Test
+    public void workspaceResponse_isError_returnsTrue_forErrorStatus()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(500, "body", "application/json");
+
+        boolean result = underTest.isError();
+
+        assertTrue(result);
+    }
+
+    @Test
+    public void workspaceResponse_constructor_normalizesNullValues()
+    {
+        WorkspaceResponse underTest = new WorkspaceResponse(200, null, null);
+
+        assertAll(
+                () -> assertEquals(200, underTest.statusCode()),
+                () -> assertEquals("", underTest.body()),
+                () -> assertEquals("", underTest.contentType())
+        );
+    }
+
+    private WorkspaceClient createUnderTest()
+    {
+        HttpClient httpClient = mock(HttpClient.class);
+        Duration requestTimeout = mock(Duration.class);
+        return new WorkspaceClient(httpClient, 1, requestTimeout);
+
+    }
 }
+
+

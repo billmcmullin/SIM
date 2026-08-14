@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -30,7 +31,6 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -357,8 +357,8 @@ public class AllSessionsServlet extends HttpServlet {
                             String chatId = sanitizeChatId(readDbText(rs, "widget_chat_id", MAX_SESSION_ID_LENGTH));
                             rows.add(new ChatRow(
                                     chatId == null ? "" : chatId,
-                                    rs.getString("prompt"),
-                                    SqlTimeUtil.safeTimestamp(rs, "created_at")
+                                    readDbText(rs, "prompt", 4000),
+                                    readDbTimestamp(rs, "created_at")
                             ));
                         }
                     }
@@ -467,9 +467,9 @@ public class AllSessionsServlet extends HttpServlet {
                         try (ResultSet rs = ps.executeQuery()) {
                             while (rs.next()) {
                                 String foundChatId = sanitizeChatId(readDbText(rs, "widget_chat_id", MAX_SESSION_ID_LENGTH));
-                                String prompt = rs.getString("prompt");
-                                String responseText = rs.getString("response_text");
-                                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                                String prompt = readDbText(rs, "prompt", 4000);
+                                String responseText = readDbText(rs, "response_text", 8000);
+                                Timestamp createdAt = readDbTimestamp(rs, "created_at");
                                 String sessionId = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
 
                                 snapshots.add(new TermChatSnapshot(
@@ -641,9 +641,9 @@ public class AllSessionsServlet extends HttpServlet {
                         continue;
                     }
 
-                    int count = rs.getInt("cnt");
-                    Timestamp first = SqlTimeUtil.safeTimestamp(rs, "first_ts");
-                    Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_ts");
+                    int count = readDbNonNegativeInt(rs, "cnt", 0);
+                    Timestamp first = readDbTimestamp(rs, "first_ts");
+                    Timestamp last = readDbTimestamp(rs, "last_ts");
 
                     SessionSummary summary = sessions.computeIfAbsent(sid, SessionSummary::new);
                     summary.accept(first, count, widgetId);
@@ -795,6 +795,9 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
+            return "";
+        }
 
         Reader sourceReader;
         try {
@@ -818,7 +821,8 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         try (Reader reader = sourceReader) {
-            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read request body", e);
             return "";
@@ -833,7 +837,8 @@ public class AllSessionsServlet extends HttpServlet {
         try {
             try (Reader reader = rs.getCharacterStream(column)) {
                 if (reader != null) {
-                    return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen);
+                    String value = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen);
+                    return validateTaintedText(value, maxLen);
                 }
             }
         } catch (SQLException | IOException ex) {
@@ -841,9 +846,44 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         try {
-            return safeDbText(rs.getString(column), maxLen);
+            return validateTaintedText(safeDbText(rs.getString(column), maxLen), maxLen);
         } catch (SQLException ex) {
             log.log(Level.FINE, "String DB text read failed for column " + column, ex);
+            return null;
+        }
+    }
+
+    private int readDbNonNegativeInt(ResultSet rs, String column, int fallback) {
+        String value = readDbText(rs, column, 64);
+        if (value == null || value.isBlank() || !SAFE_INT_PARAM.matcher(value.trim()).matches()) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed < 0 ? fallback : parsed;
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid DB integer for column " + column, ex);
+            return fallback;
+        }
+    }
+
+    private Timestamp readDbTimestamp(ResultSet rs, String column) {
+        String value = readDbText(rs, column, 128);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        try {
+            return Timestamp.from(Instant.parse(trimmed));
+        } catch (DateTimeException ex) {
+            log.log(Level.FINE, "Instant parse fallback for DB timestamp column " + column, ex);
+        }
+
+        try {
+            return Timestamp.valueOf(trimmed.replace('T', ' '));
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Timestamp parse failed for DB column " + column, ex);
             return null;
         }
     }
@@ -852,7 +892,7 @@ public class AllSessionsServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        String contentType = req.getContentType();
+        String contentType = validateTaintedText(req.getContentType(), 256);
         if (contentType == null || contentType.isBlank()) {
             return false;
         }
@@ -872,6 +912,25 @@ public class AllSessionsServlet extends HttpServlet {
         }
         String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
         return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+    }
+
+    private String validateTaintedText(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
+        if (normalized == null) {
+            return null;
+        }
+        StringBuilder safe = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        return safe.toString();
     }
 
     private boolean parseBooleanParam(String value) {

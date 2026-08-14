@@ -28,6 +28,7 @@ import jakarta.json.JsonException;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonValue;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -50,7 +51,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
 
         JsonObject payload;
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
+        if (!isValidJsonPayloadRequest(req)) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -70,6 +71,10 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
 
         Set<String> requestedIds = new LinkedHashSet<>();
         for (int i = 0; i < arr.size(); i++) {
+            JsonValue entry = arr.get(i);
+            if (entry == null || entry.getValueType() != JsonValue.ValueType.STRING) {
+                continue;
+            }
             String id = arr.getString(i, "").trim();
             if (!id.isBlank()) {
                 requestedIds.add(id);
@@ -134,6 +139,10 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
     }
 
     private String readRequestBody(HttpServletRequest req) {
+        if (req == null || !isValidJsonPayloadRequest(req)) {
+            return "";
+        }
+
         Reader sourceReader;
         try {
             sourceReader = req.getReader();
@@ -148,15 +157,54 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
 
         try (Reader reader = sourceReader) {
             String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-            return ServletRequestParamUtil.normalizeBodyText(body, MAX_JSON_PAYLOAD_BYTES, true);
+            return validateTaintedText(ServletRequestParamUtil.normalizeBodyText(body, MAX_JSON_PAYLOAD_BYTES, true));
         } catch (IOException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Unable to parse topics-select request body", ex);
             throw new JsonException("Unable to read request payload", ex);
         }
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
+    AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+    private boolean isValidJsonPayloadRequest(HttpServletRequest req) {
+        return ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)
+                && hasJsonContentType(req);
+    }
+
+    private boolean hasJsonContentType(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String raw = ServletRequestParamUtil.normalizeValue(req.getContentType(), 128, true, false);
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        int semicolon = raw.indexOf(';');
+        String mediaType = (semicolon >= 0 ? raw.substring(0, semicolon) : raw).trim().toLowerCase(java.util.Locale.ROOT);
+        if (mediaType.isBlank()) {
+            return false;
+        }
+        return "application/json".equals(mediaType) || mediaType.endsWith("+json");
+    }
+
+    private String validateTaintedText(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        return normalized.length() > MAX_JSON_PAYLOAD_BYTES
+                ? normalized.substring(0, MAX_JSON_PAYLOAD_BYTES)
+                : normalized;
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

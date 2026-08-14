@@ -54,6 +54,8 @@ public class DatabaseBackupServlet extends HttpServlet {
             .withZone(java.time.ZoneOffset.UTC);
     private static final int MAX_CELL_TEXT_LENGTH = 65535;
     private static final int MAX_BINARY_BYTES = 2 * 1024 * 1024;
+    private static final LocalDate MIN_ALLOWED_DATE = LocalDate.of(1970, 1, 1);
+    private static final LocalDate MAX_ALLOWED_DATE = LocalDate.of(3000, 12, 31);
 
     // Optional exclusions from export
     private static final List<String> EXCLUDED_TABLES = List.of(
@@ -308,7 +310,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             if (raw == null) {
                 return null;
             }
-            return sanitizeCellText(raw);
+            return validateTaintedText(sanitizeCellText(raw));
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read cell value.", e);
         }
@@ -322,7 +324,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         try {
             byte[] typed = rs.getBytes(columnIndex);
             if (typed != null) {
-                return sanitizeBinary(typed);
+                return validateTaintedBinary(sanitizeBinary(typed));
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read binary cell value.", e);
@@ -332,7 +334,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         if (fallback == null || fallback.isBlank()) {
             return new byte[0];
         }
-        return sanitizeBinary(fallback.getBytes(StandardCharsets.UTF_8));
+        return validateTaintedBinary(sanitizeBinary(fallback.getBytes(StandardCharsets.UTF_8)));
     }
 
     private Timestamp readValidatedTimestamp(ResultSet rs, int columnIndex) {
@@ -343,7 +345,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         try {
             Timestamp typed = rs.getTimestamp(columnIndex);
             if (typed != null) {
-                return normalizeTimestamp(typed);
+                return validateTaintedTimestamp(normalizeTimestamp(typed));
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read timestamp cell value.", e);
@@ -355,7 +357,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
 
         Timestamp parsed = parseTimestamp(text);
-        return normalizeTimestamp(parsed);
+        return validateTaintedTimestamp(normalizeTimestamp(parsed));
     }
 
     private java.sql.Date readValidatedDate(ResultSet rs, int columnIndex) {
@@ -366,7 +368,8 @@ public class DatabaseBackupServlet extends HttpServlet {
         try {
             java.sql.Date typedDate = rs.getDate(columnIndex);
             if (typedDate != null) {
-                return safeSqlDate(typedDate.toLocalDate());
+                java.sql.Date validated = validateTaintedDate(typedDate);
+                return validated == null ? null : safeSqlDate(validated.toLocalDate());
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Unable to read date cell value.", e);
@@ -381,7 +384,8 @@ public class DatabaseBackupServlet extends HttpServlet {
         if (parsedDate == null) {
             return null;
         }
-        return safeSqlDate(parsedDate.toLocalDate());
+        java.sql.Date validated = validateTaintedDate(parsedDate);
+        return validated == null ? null : safeSqlDate(validated.toLocalDate());
     }
 
     private java.sql.Date safeSqlDate(LocalDate localDate) {
@@ -389,6 +393,9 @@ public class DatabaseBackupServlet extends HttpServlet {
             return null;
         }
         try {
+            if (localDate.isBefore(MIN_ALLOWED_DATE) || localDate.isAfter(MAX_ALLOWED_DATE)) {
+                return null;
+            }
             return java.sql.Date.valueOf(localDate);
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Ignoring invalid date cell", ex);
@@ -405,6 +412,64 @@ public class DatabaseBackupServlet extends HttpServlet {
             return instant == null ? null : Timestamp.from(instant);
         } catch (DateTimeException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Ignoring invalid timestamp cell", ex);
+            return null;
+        }
+    }
+
+    private String validateTaintedText(String value) {
+        if (value == null) {
+            return null;
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        return normalized.length() > MAX_CELL_TEXT_LENGTH
+                ? normalized.substring(0, MAX_CELL_TEXT_LENGTH)
+                : normalized;
+    }
+
+    private byte[] validateTaintedBinary(byte[] bytes) {
+        if (bytes == null) {
+            return new byte[0];
+        }
+        return sanitizeBinary(bytes);
+    }
+
+    private Timestamp validateTaintedTimestamp(Timestamp ts) {
+        if (ts == null) {
+            return null;
+        }
+        try {
+            Instant instant = ts.toInstant();
+            LocalDate day = instant.atOffset(java.time.ZoneOffset.UTC).toLocalDate();
+            if (day.isBefore(MIN_ALLOWED_DATE) || day.isAfter(MAX_ALLOWED_DATE)) {
+                return null;
+            }
+            return Timestamp.from(instant);
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Ignoring invalid tainted timestamp", ex);
+            return null;
+        }
+    }
+
+    private java.sql.Date validateTaintedDate(java.sql.Date date) {
+        if (date == null) {
+            return null;
+        }
+        try {
+            LocalDate local = date.toLocalDate();
+            if (local == null || local.isBefore(MIN_ALLOWED_DATE) || local.isAfter(MAX_ALLOWED_DATE)) {
+                return null;
+            }
+            return java.sql.Date.valueOf(local);
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Ignoring invalid tainted date", ex);
             return null;
         }
     }

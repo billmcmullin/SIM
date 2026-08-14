@@ -53,12 +53,20 @@ public class ReviewJobService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public ReviewJobService() {
+    private ReviewJobService() {
         this(Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
     }
 
-    public ReviewJobService(int poolSize) {
+    private ReviewJobService(int poolSize) {
         this.executor = Executors.newFixedThreadPool(Math.max(1, poolSize));
+    }
+
+    public static ReviewJobService createDefault() {
+        return new ReviewJobService();
+    }
+
+    public static ReviewJobService createWithPoolSize(int poolSize) {
+        return new ReviewJobService(poolSize);
     }
 
     private long nowEpochMillis() {
@@ -392,7 +400,7 @@ public class ReviewJobService {
         );
     }
 
-    public void failJob(String jobId, int httpStatus, String errorMessage) {
+    private void failJob(String jobId, int httpStatus, String errorMessage) {
         ReviewJobStatus old = statuses.get(jobId);
         if (old == null) {
             return;
@@ -439,7 +447,7 @@ public class ReviewJobService {
         statuses.put(jobId, failed);
     }
 
-    public void completeJob(
+    private void completeJob(
             String jobId,
             int httpStatus,
             boolean success,
@@ -479,7 +487,7 @@ public class ReviewJobService {
         );
     }
 
-    public void completeJob(
+    private void completeJob(
             String jobId,
             int httpStatus,
             boolean success,

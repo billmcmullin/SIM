@@ -1,5 +1,8 @@
 package com.sim.chatserver.security.review;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,7 +38,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getErrors();
@@ -62,7 +65,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getExpectedChatIds();
@@ -89,7 +92,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getFoundChatIds();
@@ -116,10 +119,10 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
-        int result = underTest.getLength();
+        int result = invokeGetLength(underTest);
 
     }
 
@@ -143,7 +146,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getMissingChatIds();
@@ -170,7 +173,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getUnexpectedChatIds();
@@ -197,7 +200,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getWarnings();
@@ -224,7 +227,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         boolean result = underTest.isValid();
@@ -251,10 +254,47 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = new ValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         String result = underTest.toString();
 
+    }
+    private static ValidationResult createValidationResult(
+            boolean valid,
+            List<String> errors,
+            List<String> warnings,
+            int length,
+            List<String> expectedChatIds,
+            List<String> foundChatIds,
+            List<String> missingChatIds,
+            List<String> unexpectedChatIds
+    ) throws Throwable {
+        try {
+            Constructor<ValidationResult> ctor = ValidationResult.class.getDeclaredConstructor(
+                    boolean.class,
+                    List.class,
+                    List.class,
+                    int.class,
+                    List.class,
+                    List.class,
+                    List.class,
+                    List.class
+            );
+            ctor.setAccessible(true);
+            return ctor.newInstance(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause() == null ? ex : ex.getCause();
+        }
+    }
+
+    private static int invokeGetLength(ValidationResult target) throws Throwable {
+        try {
+            Method method = ValidationResult.class.getDeclaredMethod("getLength");
+            method.setAccessible(true);
+            return (int) method.invoke(target);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause() == null ? ex : ex.getCause();
+        }
     }
 }

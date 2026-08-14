@@ -65,11 +65,23 @@ public class AutoEmailAlertScheduler {
     private static final int TICK_SECONDS = 30;
     private static final long MAX_HEALTH_ATTACHMENT_BYTES = 5L * 1024L * 1024L;
 
+    @FunctionalInterface
+    interface AwsConfigLoader {
+        ServerConfig load() throws SQLException;
+    }
+
+    @FunctionalInterface
+    interface Ec2RestartInvoker {
+        void reboot(String region, String accessKeyId, String secretAccessKey, String instanceId);
+    }
+
     private final AutoEmailAlertConfigStore store;
     private final DataSource dataSource;
     private final WidgetAvailabilityChecker availabilityChecker;
     private final TermsStore termsStore;
     private final DbEmailConfigProvider dbEmailConfigProvider;
+    private final AwsConfigLoader awsConfigLoader;
+    private final Ec2RestartInvoker ec2RestartInvoker;
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
@@ -99,14 +111,48 @@ public class AutoEmailAlertScheduler {
             TermsStore termsStore,
             DbEmailConfigProvider dbEmailConfigProvider
     ) {
+        this(
+                store,
+                dataSource,
+                availabilityChecker,
+                termsStore,
+                dbEmailConfigProvider,
+                AutoEmailAlertScheduler::loadAwsConfigFromStore,
+                AutoEmailAlertScheduler::invokeEc2Restart
+        );
+    }
+
+    AutoEmailAlertScheduler(
+            AutoEmailAlertConfigStore store,
+            DataSource dataSource,
+            WidgetAvailabilityChecker availabilityChecker,
+            TermsStore termsStore,
+            DbEmailConfigProvider dbEmailConfigProvider,
+            AwsConfigLoader awsConfigLoader,
+            Ec2RestartInvoker ec2RestartInvoker
+    ) {
         this.store = store;
         this.dataSource = dataSource;
         this.availabilityChecker = availabilityChecker;
         this.termsStore = termsStore;
         this.dbEmailConfigProvider = dbEmailConfigProvider;
+        this.awsConfigLoader = awsConfigLoader == null
+                ? AutoEmailAlertScheduler::loadAwsConfigFromStore
+                : awsConfigLoader;
+        this.ec2RestartInvoker = ec2RestartInvoker == null
+                ? AutoEmailAlertScheduler::invokeEc2Restart
+                : ec2RestartInvoker;
     }
 
-    synchronized void start() {
+    private static ServerConfig loadAwsConfigFromStore() throws SQLException {
+        return EncryptedDbConfigStore.load();
+    }
+
+    private static void invokeEc2Restart(String region, String accessKeyId, String secretAccessKey, String instanceId) {
+        new AwsEc2RestartServlet().rebootEc2Instance(region, accessKeyId, secretAccessKey, instanceId);
+    }
+
+    synchronized final void start() {
         if (!started.compareAndSet(false, true)) {
             return;
         }
@@ -114,7 +160,7 @@ public class AutoEmailAlertScheduler {
         log.info("Automatic email alert scheduler started.");
     }
 
-    synchronized void stop() {
+    synchronized final void stop() {
         if (!started.compareAndSet(true, false)) {
             return;
         }
@@ -274,16 +320,16 @@ public class AutoEmailAlertScheduler {
         }
     }
 
-    boolean rebootEc2InstanceForHealthcheck(String region,
+    private final boolean rebootEc2InstanceForHealthcheck(String region,
             String accessKeyId,
             String secretAccessKey,
             String instanceId) {
-        new AwsEc2RestartServlet().rebootEc2Instance(region, accessKeyId, secretAccessKey, instanceId);
+        ec2RestartInvoker.reboot(region, accessKeyId, secretAccessKey, instanceId);
         return true;
     }
 
-    ServerConfig loadAwsConfigForHealthcheck() throws SQLException {
-        return EncryptedDbConfigStore.load();
+    private final ServerConfig loadAwsConfigForHealthcheck() throws SQLException {
+        return awsConfigLoader.load();
     }
 
     private boolean attemptAutomaticAwsRestart(
@@ -730,7 +776,7 @@ public class AutoEmailAlertScheduler {
     private String twoDigit(long value) {
         long safe = Math.max(0L, value);
         if (safe < 10L) {
-            return "0" + safe;
+            return new StringBuilder(3).append('0').append(safe).toString();
         }
         return Long.toString(safe);
     }

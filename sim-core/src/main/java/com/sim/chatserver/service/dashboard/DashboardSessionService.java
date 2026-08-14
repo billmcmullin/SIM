@@ -421,7 +421,8 @@ public class DashboardSessionService {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return normalizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    String value = normalizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    return validateTaintedDbText(value, 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -435,11 +436,31 @@ public class DashboardSessionService {
             if (bytes == null) {
                 return null;
             }
-            return normalizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            String value = normalizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            return validateTaintedDbText(value, 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
             return null;
         }
+    }
+
+    private String validateTaintedDbText(String value, int maxLen) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        if (maxLen > 0 && normalized.length() > maxLen) {
+            return normalized.substring(0, maxLen);
+        }
+        return normalized;
     }
 
     private String readAtMostChars(Reader reader, int maxChars) throws IOException {

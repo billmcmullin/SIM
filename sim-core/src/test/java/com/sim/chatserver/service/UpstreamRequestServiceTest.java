@@ -12,6 +12,8 @@ import jakarta.json.JsonArray;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 /**
  * Parasoft Jtest UTA: Test class for UpstreamRequestService
  *
@@ -774,4 +776,177 @@ public class UpstreamRequestServiceTest
         });
 
     }
+
+
+    /**
+     * Consolidated from UpstreamRequestService_UpstreamConnectivityExceptionTest.java to keep one test class per production source file.
+     */
+    /**
+     * Parasoft Jtest UTA: Test for code()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamConnectivityException#code()
+     * @author bmcmullin
+     */
+    @Test
+    public void testCode() throws Throwable
+    {
+        // Given
+        String code = "code"; // UTA: default value
+        String message = "message"; // UTA: default value
+        Throwable cause = mock(Throwable.class);
+        UpstreamConnectivityException underTest = new UpstreamConnectivityException(code, message, cause);
+
+        // When
+        String result = underTest.code();
+
+        // Then - assertions for result of method code()
+        assertEquals("code", result);
+
+    }
+
+
+    /**
+     * Consolidated from UpstreamRequestService_UpstreamResponseTest.java to keep one test class per production source file.
+     */
+    /**
+     * Parasoft Jtest UTA: Test for body()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#body()
+     * @author bmcmullin
+     */
+    @Test
+    public void testBody() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        String result = underTest.body();
+
+        // Then - assertions for result of method body()
+        assertEquals("body", result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for contentType()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#contentType()
+     * @author bmcmullin
+     */
+    @Test
+    public void testContentType() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        String result = underTest.contentType();
+
+        // Then - assertions for result of method contentType()
+        assertEquals("contentType", result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for equals(Object)
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#equals(Object)
+     * @author bmcmullin
+     */
+    @Test
+    public void testEquals() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        Object arg0 = new Object(); // UTA: default value
+        boolean result = underTest.equals(arg0);
+
+        // Then - assertions for result of method equals(Object)
+        assertFalse(result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for hashCode()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#hashCode()
+     * @author bmcmullin
+     */
+    @Test
+    public void testHashCode() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        int result = underTest.hashCode();
+
+        // Then - assertions for result of method hashCode()
+        // assertEquals(1, result);// UTA: Expected value may be unstable
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for statusCode()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#statusCode()
+     * @author bmcmullin
+     */
+    @Test
+    public void testStatusCode() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        int result = underTest.statusCode();
+
+        // Then - assertions for result of method statusCode()
+        assertEquals(1, result);
+
+    }
+
+    /**
+     * Parasoft Jtest UTA: Test for toString()
+     *
+     * @see com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse#toString()
+     * @author bmcmullin
+     */
+    @Test
+    public void testToString() throws Throwable
+    {
+        // Given
+        int statusCode = 1; // UTA: default value
+        String contentType = "contentType"; // UTA: default value
+        String body = "body"; // UTA: default value
+        UpstreamResponse underTest = new UpstreamResponse(statusCode, contentType, body);
+
+        // When
+        String result = underTest.toString();
+
+        // Then - assertions for result of method toString()
+        assertEquals("UpstreamResponse[statusCode=1, contentType=contentType, body=body]", result);
+
+    }
 }
+
+
+

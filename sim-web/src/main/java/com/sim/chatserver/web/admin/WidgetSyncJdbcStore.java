@@ -242,10 +242,19 @@ final class WidgetSyncJdbcStore {
     }
 
     private DataSource requireDataSource(AppDataSourceHolder holder) {
-        if (holder == null || holder.getDataSource() == null) {
+        if (holder == null) {
             throw new IllegalStateException("Data source holder is unavailable.");
         }
-        return holder.getDataSource();
+        DataSource dataSource;
+        try {
+            dataSource = holder.getDataSource();
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            throw new IllegalStateException("Data source holder is unavailable.", ex);
+        }
+        if (dataSource == null) {
+            throw new IllegalStateException("Data source holder is unavailable.");
+        }
+        return dataSource;
     }
 
     private Connection openConnection(AppDataSourceHolder holder) throws SQLException {
@@ -623,7 +632,8 @@ final class WidgetSyncJdbcStore {
             Reader reader = rs.getCharacterStream(columnName);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return readAtMostChars(closeable, maxLen);
+                    String raw = readAtMostChars(closeable, maxLen);
+                    return validateTaintedDbText(raw, maxLen);
                 }
             }
         } catch (SQLException | IOException ex) {
@@ -632,11 +642,23 @@ final class WidgetSyncJdbcStore {
 
         try {
             byte[] bytes = rs.getBytes(columnName);
-            return readAtMostBytes(bytes, maxLen);
+            String raw = readAtMostBytes(bytes, maxLen);
+            return validateTaintedDbText(raw, maxLen);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes failed for column " + columnName, ex);
             return "";
         }
+    }
+
+    private String validateTaintedDbText(String value, int maxLen) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        String sanitized = stripControlCharacters(value);
+        if (maxLen > 0 && sanitized.length() > maxLen) {
+            return sanitized.substring(0, maxLen);
+        }
+        return sanitized;
     }
 
     private String readAtMostChars(Reader reader, int maxChars) throws IOException {

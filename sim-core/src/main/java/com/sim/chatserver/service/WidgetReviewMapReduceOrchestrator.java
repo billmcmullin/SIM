@@ -1528,7 +1528,7 @@ public class WidgetReviewMapReduceOrchestrator {
         private final boolean coverageComplete;
         private final int coveragePassesUsed;
 
-        OrchestrationResult(
+        private OrchestrationResult(
                 WorkspaceResponse finalResponse,
                 List<String> mapOutputs,
                 List<Integer> failedBatchIndexes,
@@ -1542,7 +1542,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     totalSelected, totalBatches, List.of(), List.of(), List.of(), false, 0);
         }
 
-        OrchestrationResult(
+        private OrchestrationResult(
                 WorkspaceResponse finalResponse,
                 List<String> mapOutputs,
                 List<Integer> failedBatchIndexes,
@@ -1573,14 +1573,14 @@ public class WidgetReviewMapReduceOrchestrator {
             this.coveragePassesUsed = Math.max(0, coveragePassesUsed);
         }
 
-        OrchestrationResult withBatchFailures(List<BatchFailure> failures) {
+        private final OrchestrationResult withBatchFailures(List<BatchFailure> failures) {
             return new OrchestrationResult(
                     finalResponse, mapOutputs, failedBatchIndexes, mapBatchResults, reduceRequest, reduceResult,
                     totalSelected, totalBatches, failures, allSelectedChatIds, missingChatIds, coverageComplete, coveragePassesUsed
             );
         }
 
-        OrchestrationResult withCoverage(
+        private final OrchestrationResult withCoverage(
                 List<String> allSelectedChatIds, List<String> missingChatIds, boolean coverageComplete, int coveragePassesUsed
         ) {
             return new OrchestrationResult(
