@@ -10,11 +10,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -44,6 +39,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -73,7 +70,6 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore;
@@ -174,7 +170,6 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final long HTTP_RETRY_BASE_MS = 500L;
     private static final long HTTP_RETRY_MAX_MS = 5000L;
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(90);
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final String SYNC_DISABLED_PROPERTY = "sim.widget.sync.disabled";
     private static final String REQUIRE_HTTPS_WITH_AUTH_ENV = "WIDGET_SYNC_REQUIRE_HTTPS_WITH_AUTH";
     private static final String REQUIRE_HTTPS_WITH_AUTH_PROP = "sim.widget.sync.require.https.with.auth";
@@ -347,15 +342,23 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private static final RuntimeState STATE = new RuntimeState();
-    private static volatile long summaryIntervalSeconds = DEFAULT_SUMMARY_INTERVAL_SECONDS;
-    private static volatile String summaryPromptTemplate = DEFAULT_SUMMARY_PROMPT;
-    private static volatile Timestamp summaryLastRun;
 
     private static final class RuntimeState {
         private DashboardDailySummaryStore summaryStore;
+        private final WidgetSyncJdbcStore jdbcStore = new WidgetSyncJdbcStore(
+            DEFAULT_SUMMARY_INTERVAL_SECONDS,
+            DEFAULT_SUMMARY_AUTO_ENABLED,
+            DEFAULT_SUMMARY_MAX_ROWS,
+            DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES,
+            DEFAULT_SUMMARY_MAX_MESSAGE_CHARS,
+            DEFAULT_SUMMARY_MAX_REQUEST_BYTES,
+            MAX_SUMMARY_PROMPT_CHARS
+        );
         private ScheduledExecutorService scheduler = createScheduler();
-        private ExecutorService syncPool = createSyncPool();
-        private long lastSyncRequestAtMs;
+        private final AtomicLong summaryIntervalSeconds = new AtomicLong(DEFAULT_SUMMARY_INTERVAL_SECONDS);
+        private final AtomicReference<String> summaryPromptTemplate = new AtomicReference<>(DEFAULT_SUMMARY_PROMPT);
+        private final AtomicReference<Timestamp> summaryLastRun = new AtomicReference<>();
+        private long lastSyncRequestAtNanos;
         private ScheduledFuture<?> scheduledFuture;
         private long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
         private boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
@@ -398,37 +401,11 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getName() + ".termsStore.override";
 
     private static ScheduledExecutorService createScheduler() {
-        ScheduledExecutorService managed = lookupManagedScheduledExecutor();
-        if (managed != null) {
-            return managed;
-        }
-
-        return Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "WidgetSyncServlet-Scheduler");
-            thread.setDaemon(true);
-            return thread;
-        });
-    }
-
-    private static ExecutorService createSyncPool() {
-        ExecutorService managed = lookupManagedExecutor();
-        if (managed != null) {
-            return managed;
-        }
-
-        return Executors.newFixedThreadPool(2, runnable -> {
-            Thread thread = new Thread(runnable, "WidgetSyncServlet-Worker");
-            thread.setDaemon(true);
-            return thread;
-        });
+        return lookupManagedScheduledExecutor();
     }
 
     private static ScheduledExecutorService lookupManagedScheduledExecutor() {
         return lookupExecutor("java:comp/DefaultManagedScheduledExecutorService", ScheduledExecutorService.class);
-    }
-
-    private static ExecutorService lookupManagedExecutor() {
-        return lookupExecutor("java:comp/DefaultManagedExecutorService", ExecutorService.class);
     }
 
     private static <T> T lookupExecutor(String jndiName, Class<T> type) {
@@ -462,9 +439,9 @@ public class WidgetSyncServlet extends HttpServlet {
     private static synchronized void ensureExecutorsRunning() {
         if (STATE.scheduler == null || isExecutorStopped(STATE.scheduler, "scheduler")) {
             STATE.scheduler = createScheduler();
-        }
-        if (STATE.syncPool == null || isExecutorStopped(STATE.syncPool, "syncPool")) {
-            STATE.syncPool = createSyncPool();
+            if (STATE.scheduler == null) {
+                log.warning("Managed scheduled executor is unavailable; automatic widget sync scheduling is disabled.");
+            }
         }
     }
 
@@ -474,7 +451,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         try {
             return executor.isShutdown() || executor.isTerminated();
-        } catch (RuntimeException ex) {
+        } catch (IllegalStateException | UnsupportedOperationException | SecurityException ex) {
             if (isContainerManagedExecutor(executor)) {
                 log.log(Level.FINE, "Skipping lifecycle check for container-managed executor {0}", executorName);
                 return false;
@@ -587,7 +564,6 @@ public class WidgetSyncServlet extends HttpServlet {
             STATE.scheduledFuture.cancel(false);
         }
         shutdownExecutorQuietly(STATE.scheduler, "scheduler");
-        shutdownExecutorQuietly(STATE.syncPool, "syncPool");
     }
 
     private void shutdownExecutorQuietly(ExecutorService executor, String executorName) {
@@ -602,7 +578,7 @@ public class WidgetSyncServlet extends HttpServlet {
             if (!executor.isShutdown()) {
                 executor.shutdownNow();
             }
-        } catch (RuntimeException ex) {
+        } catch (IllegalStateException | UnsupportedOperationException | SecurityException ex) {
             log.log(Level.FINE, "Executor shutdown failed for " + executorName, ex);
         }
     }
@@ -768,7 +744,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("status", success ? "ok" : "error")
                     .add("message", message)
                     .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
-                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
+                .add("summaryLastRunAt", STATE.summaryLastRun.get() == null ? "" : STATE.summaryLastRun.get().toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                     .build();
             writeJson(resp, success ? HttpServletResponse.SC_OK : HttpServletResponse.SC_BAD_GATEWAY, payload);
@@ -781,7 +757,8 @@ public class WidgetSyncServlet extends HttpServlet {
         boolean running = syncRunning.get();
         String startedAt = STATE.syncStartedAt == null ? "" : STATE.syncStartedAt.toString();
         String finishedAt = STATE.syncFinishedAt == null ? "" : STATE.syncFinishedAt.toString();
-        String summaryLastRunAt = summaryLastRun == null ? "" : summaryLastRun.toInstant().toString();
+        Timestamp summaryLastRunValue = STATE.summaryLastRun.get();
+        String summaryLastRunAt = summaryLastRunValue == null ? "" : summaryLastRunValue.toInstant().toString();
         String summaryNextRunAt = computeNextSummaryRunAtIso();
         int totalWidgets = Math.max(0, STATE.syncTotalWidgets);
         int completedWidgets = Math.max(0, syncCompletedWidgets.get());
@@ -808,7 +785,7 @@ public class WidgetSyncServlet extends HttpServlet {
             .add("currentWidgetIndex", Math.max(0, STATE.syncCurrentWidgetIndex))
             .add("progressPercent", percent)
             .add("runningSeconds", runningSeconds)
-                .add("summaryIntervalSeconds", summaryIntervalSeconds)
+                .add("summaryIntervalSeconds", STATE.summaryIntervalSeconds.get())
                 .add("summaryAutoEnabled", STATE.summaryAutoEnabled)
                 .add("summaryMaxRows", STATE.summaryMaxRows)
                 .add("summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
@@ -850,7 +827,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (summaryIntervalRaw != null && !summaryIntervalRaw.isBlank()) {
                 long parsedSummaryInterval = Long.parseLong(summaryIntervalRaw.trim());
-                summaryIntervalSeconds = clampSummaryIntervalSeconds(parsedSummaryInterval);
+                STATE.summaryIntervalSeconds.set(clampSummaryIntervalSeconds(parsedSummaryInterval));
                 changed = true;
             }
 
@@ -889,7 +866,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         if (summaryPromptRaw != null) {
-            summaryPromptTemplate = normalizeSummaryPrompt(summaryPromptRaw);
+            STATE.summaryPromptTemplate.set(normalizeSummaryPrompt(summaryPromptRaw));
             changed = true;
         }
 
@@ -904,7 +881,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .add("status", "ok")
                 .add("intervalSeconds", STATE.syncIntervalSeconds)
             .add("lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
-            .add("summaryIntervalSeconds", summaryIntervalSeconds)
+            .add("summaryIntervalSeconds", STATE.summaryIntervalSeconds.get())
             .add("summaryAutoEnabled", STATE.summaryAutoEnabled)
             .add("summaryMaxRows", STATE.summaryMaxRows)
             .add("summaryMaxUpstreamEntries", STATE.summaryMaxUpstreamEntries)
@@ -913,7 +890,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .add("summaryPrompt", resolveSummaryPrompt())
                 .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
             .add("summaryAutoPausedReason", defaultIfBlank(STATE.summaryAutoPausedReason, ""))
-                .add("summaryLastRunAt", summaryLastRun == null ? "" : summaryLastRun.toInstant().toString())
+                .add("summaryLastRunAt", STATE.summaryLastRun.get() == null ? "" : STATE.summaryLastRun.get().toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
                 .build();
         writeJson(resp, HttpServletResponse.SC_OK, payload);
@@ -929,6 +906,9 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
         ensureExecutorsRunning();
+        if (STATE.scheduler == null) {
+            return;
+        }
         if (STATE.scheduledFuture != null) {
             STATE.scheduledFuture.cancel(false);
         }
@@ -1029,33 +1009,26 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            current = current.getCause();
+        if (throwable == null) {
+            return false;
         }
-        return false;
+        if (throwable instanceof InterruptedException) {
+            return true;
+        }
+        Throwable cause = throwable.getCause();
+        if (cause == throwable) {
+            return false;
+        }
+        return causedByInterrupted(cause);
     }
 
     private List<WidgetSyncStatus> runSync(String requestedWidgetId) {
-        ServerConfig config;
-        try {
-            config = EncryptedDbConfigStore.load();
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to load server configuration for widget sync.", e);
-        }
+        ServerConfig config = loadServerConfig("widget sync");
         if (config == null) {
             throw new IllegalStateException("Server configuration is missing.");
         }
 
-        List<WidgetEntry> widgets;
-        try {
-            widgets = WidgetStore.list(null);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to load widget entries for sync.", e);
-        }
+        List<WidgetEntry> widgets = loadWidgetEntries("sync");
         if (requestedWidgetId != null && !requestedWidgetId.isBlank()) {
             widgets.removeIf(w -> w == null || !requestedWidgetId.equals(w.getWidgetId()));
         }
@@ -1094,8 +1067,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String tableName = sanitizeWidgetTableName(widgetId);
         boolean success = false;
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            ensureTable(conn, tableName);
+        try {
+            STATE.jdbcStore.ensureWidgetTable(dataSourceHolder(), tableName, ensuredTables);
 
             updateSyncProgress(
                 "syncing_widgets",
@@ -1143,7 +1116,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 currentWidgetStepMessage(widgetId, "Upserting chat(s) into database..."),
                 STATE.syncProgressPercent
             );
-                inserted = insertWidgetChats(conn, tableName, chatsForUpsert);
+                inserted = STATE.jdbcStore.insertWidgetChats(dataSourceHolder(), tableName, toChatUpsertRows(chatsForUpsert));
             updateSyncProgress(
                 "syncing_widgets",
                 currentWidgetStepMessage(widgetId, "Added " + inserted + " new chat(s) to database."),
@@ -1171,7 +1144,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             success = true;
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -1355,7 +1328,7 @@ public class WidgetSyncServlet extends HttpServlet {
         LocalDate day = LocalDate.now(zone);
         int slot = resolveCurrentSlot(LocalTime.now(zone));
         int entryCount = 0;
-        summaryLastRun = Timestamp.from(Instant.now());
+        STATE.summaryLastRun.set(Timestamp.from(Instant.now()));
         persistSyncSettings();
 
         try {
@@ -1382,7 +1355,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             STATE.summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
 
-            ServerConfig cfg = EncryptedDbConfigStore.load();
+            ServerConfig cfg = loadServerConfig("daily summary generation");
             if (cfg == null) {
                 return failDailySummary(day, slot, entryCount,
                         "Server configuration missing.",
@@ -1617,7 +1590,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     overall, quality, response, usage, entries.size(), false, true);
             resumeAutomaticSummaryGeneration("Summary generated successfully.");
             return true;
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
@@ -1673,81 +1646,25 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private List<SelectedEntry> loadEntriesForDay(LocalDate day, int maxRows) {
-        List<SelectedEntry> out = new ArrayList<>();
-        List<WidgetEntry> widgets;
+        List<WidgetEntry> widgets = loadWidgetEntries("daily summary");
+
+        List<String> tableNames = widgets.stream()
+                .filter(w -> w != null && w.getWidgetId() != null && !w.getWidgetId().isBlank())
+                .map(w -> sanitizeWidgetTableName(w.getWidgetId()))
+                .filter(v -> v != null && !v.isBlank())
+                .toList();
+
         try {
-            widgets = WidgetStore.list(null);
-        } catch (SQLException ex) {
-            logWarningWithDiagnostics(
-                    "summary-list-widgets-failed",
-                    "Unable to list widgets for daily summary",
-                    "day=" + String.valueOf(day),
-                    ex
-            );
-            return out;
-        }
-
-        Timestamp start = Timestamp.valueOf(day.atStartOfDay());
-        Timestamp end = Timestamp.valueOf(day.plusDays(1).atStartOfDay());
-
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            for (WidgetEntry w : widgets) {
-                if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String tableName = sanitizeWidgetTableName(w.getWidgetId());
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                int remainingRows = maxRows - out.size();
-                if (remainingRows <= 0) {
-                    return out;
-                }
-
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT ?";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, start);
-                    ps.setTimestamp(2, end);
-                    ps.setInt(3, remainingRows);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            if (out.size() >= maxRows) {
-                                return out;
-                            }
-
-                            String chatId = readDbText(rs, "widget_chat_id", 256);
-                            String prompt = readDbText(rs, "prompt", 8000);
-                            String response = readDbText(rs, "response_text", 32000);
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = readDbText(rs, "session_id", 256);
-
-                            out.add(new SelectedEntry(
-                                    chatId == null ? "" : chatId,
-                                    prompt == null ? "" : prompt,
-                                    response == null ? "" : response,
-                                    createdAt == null ? "" : createdAt.toInstant().toString(),
-                                    sessionId == null ? "" : sessionId
-                            ));
-                        }
-                    }
-                }
-            }
-        } catch (SQLException ex) {
+            return STATE.jdbcStore.loadEntriesForDay(dataSourceHolder(), tableNames, day, maxRows, ensuredTables);
+        } catch (IllegalStateException ex) {
             logWarningWithDiagnostics(
                     "summary-load-day-entries-failed",
                     "Unable to load day entries for daily summary",
                     "day=" + String.valueOf(day) + "\nmaxRows=" + maxRows,
                     ex
             );
+            return List.of();
         }
-
-        return out;
     }
 
     private int resolveCurrentSlot(LocalTime now) {
@@ -2028,9 +1945,26 @@ public class WidgetSyncServlet extends HttpServlet {
             }
             List<TermDefinition> terms = store.listAll();
             return terms == null ? List.of() : terms;
-        } catch (SQLException | IllegalStateException ex) {
+        } catch (Exception ex) {
             log.log(Level.FINE, "Unable to load term definitions for summary prompt", ex);
             return List.of();
+        }
+    }
+
+    private ServerConfig loadServerConfig(String operation) {
+        try {
+            return EncryptedDbConfigStore.load();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to load server configuration for " + defaultIfBlank(operation, "operation") + '.', ex);
+        }
+    }
+
+    private List<WidgetEntry> loadWidgetEntries(String operation) {
+        try {
+            List<WidgetEntry> widgets = WidgetStore.list(null);
+            return widgets == null ? List.of() : widgets;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to load widget entries for " + defaultIfBlank(operation, "operation") + '.', ex);
         }
     }
 
@@ -2162,7 +2096,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         int sum = 0;
         for (Integer count : counts.values()) {
-            int countValue = count == null ? 0 : count.intValue();
+            int countValue = safeInt(count);
             if (countValue > 0) {
                 sum += countValue;
             }
@@ -2332,7 +2266,7 @@ public class WidgetSyncServlet extends HttpServlet {
         int bestCount = -1;
         for (Map.Entry<String, Integer> e : counts.entrySet()) {
             Integer current = e.getValue();
-            int value = current == null ? 0 : current.intValue();
+            int value = safeInt(current);
             if (value > bestCount) {
                 bestCount = value;
                 best = defaultString(e.getKey());
@@ -2350,8 +2284,8 @@ public class WidgetSyncServlet extends HttpServlet {
         ordered.sort((a, b) -> {
             Integer left = b.getValue();
             Integer right = a.getValue();
-            int leftValue = left == null ? 0 : left.intValue();
-            int rightValue = right == null ? 0 : right.intValue();
+            int leftValue = safeInt(left);
+            int rightValue = safeInt(right);
             return Integer.compare(leftValue, rightValue);
         });
 
@@ -2468,8 +2402,8 @@ public class WidgetSyncServlet extends HttpServlet {
         entries.sort((a, b) -> {
             Integer left = b.getValue();
             Integer right = a.getValue();
-            int leftValue = left == null ? 0 : left.intValue();
-            int rightValue = right == null ? 0 : right.intValue();
+            int leftValue = safeInt(left);
+            int rightValue = safeInt(right);
             return Integer.compare(leftValue, rightValue);
         });
 
@@ -2738,22 +2672,25 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        final long[] waitMsHolder = new long[]{0L};
+        final long[] waitNanosHolder = new long[]{0L};
+        final long minGapNanos = TimeUnit.MILLISECONDS.toNanos(SYNC_MIN_REQUEST_GAP_MS);
         withSyncRateLimitLock(() -> {
-            long now = System.currentTimeMillis();
-            long nextAllowed = STATE.lastSyncRequestAtMs + SYNC_MIN_REQUEST_GAP_MS;
+            long now = System.nanoTime();
+            long nextAllowed = STATE.lastSyncRequestAtNanos + minGapNanos;
             if (now < nextAllowed) {
-                waitMsHolder[0] = nextAllowed - now;
-                STATE.lastSyncRequestAtMs = nextAllowed;
+                waitNanosHolder[0] = nextAllowed - now;
+                STATE.lastSyncRequestAtNanos = nextAllowed;
             } else {
-                STATE.lastSyncRequestAtMs = now;
+                STATE.lastSyncRequestAtNanos = now;
             }
         });
 
-        long waitMs = waitMsHolder[0];
-        if (waitMs > 0L) {
+        long waitNanos = waitNanosHolder[0];
+        if (waitNanos > 0L) {
             try {
-                Thread.sleep(waitMs);
+                long waitMs = TimeUnit.NANOSECONDS.toMillis(waitNanos);
+                int extraNanos = (int) (waitNanos - TimeUnit.MILLISECONDS.toNanos(waitMs));
+                Thread.sleep(waitMs, extraNanos);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Sync request throttling interrupted", e);
@@ -2870,31 +2807,54 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private synchronized void loadSyncSettings() {
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            ensureSyncSettingsTable(conn);
-            SyncSettings settings = readSyncSettings(conn);
+        try {
+            WidgetSyncJdbcStore.SyncSettingsData defaults = new WidgetSyncJdbcStore.SyncSettingsData(
+                    STATE.syncIntervalSeconds,
+                    STATE.lastSynced,
+                    STATE.summaryIntervalSeconds.get(),
+                    STATE.summaryAutoEnabled,
+                    resolveSummaryPrompt(),
+                    STATE.summaryMaxRows,
+                    STATE.summaryMaxUpstreamEntries,
+                    STATE.summaryMaxMessageChars,
+                    STATE.summaryMaxRequestBytes,
+                    STATE.summaryLastRun.get()
+            );
+
+            WidgetSyncJdbcStore.SyncSettingsData settings = STATE.jdbcStore.loadOrCreateSyncSettings(dataSourceHolder(), defaults);
             if (settings.intervalSeconds > 0) {
                 STATE.syncIntervalSeconds = settings.intervalSeconds;
             }
-            summaryIntervalSeconds = clampSummaryIntervalSeconds(settings.summaryIntervalSeconds);
+            STATE.summaryIntervalSeconds.set(clampSummaryIntervalSeconds(settings.summaryIntervalSeconds));
             STATE.summaryAutoEnabled = settings.summaryAutoEnabled;
             STATE.summaryMaxRows = clampSummaryMaxRows(settings.summaryMaxRows);
             STATE.summaryMaxUpstreamEntries = clampSummaryMaxUpstreamEntries(settings.summaryMaxUpstreamEntries);
             STATE.summaryMaxMessageChars = clampSummaryMaxMessageChars(settings.summaryMaxMessageChars);
             STATE.summaryMaxRequestBytes = clampSummaryMaxRequestBytes(settings.summaryMaxRequestBytes);
-            summaryPromptTemplate = normalizeSummaryPrompt(settings.summaryPrompt);
-            STATE.lastSynced = settings.lastSynced;
-            summaryLastRun = settings.summaryLastRun;
-        } catch (SQLException e) {
+            STATE.summaryPromptTemplate.set(normalizeSummaryPrompt(settings.summaryPrompt));
+            STATE.lastSynced = sanitizePersistedTimestamp(settings.lastSynced);
+            STATE.summaryLastRun.set(sanitizePersistedTimestamp(settings.summaryLastRun));
+        } catch (IllegalStateException e) {
             throw new IllegalStateException("Unable to load sync settings", e);
         }
     }
 
     private void persistSyncSettings() {
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            ensureSyncSettingsTable(conn);
-            upsertSyncSettings(conn, STATE.syncIntervalSeconds, STATE.lastSynced);
-        } catch (SQLException e) {
+        try {
+            WidgetSyncJdbcStore.SyncSettingsData settings = new WidgetSyncJdbcStore.SyncSettingsData(
+                    STATE.syncIntervalSeconds,
+                    STATE.lastSynced,
+                    STATE.summaryIntervalSeconds.get(),
+                    STATE.summaryAutoEnabled,
+                    resolveSummaryPrompt(),
+                    STATE.summaryMaxRows,
+                    STATE.summaryMaxUpstreamEntries,
+                    STATE.summaryMaxMessageChars,
+                    STATE.summaryMaxRequestBytes,
+                    STATE.summaryLastRun.get()
+            );
+            STATE.jdbcStore.persistSyncSettings(dataSourceHolder(), settings);
+        } catch (IllegalStateException e) {
             logWarningWithDiagnostics(
                     "persist-sync-settings-failed",
                     "Unable to persist sync settings",
@@ -2904,176 +2864,29 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private void ensureSyncSettingsTable(Connection conn) {
-        try {
-            String sql = "CREATE TABLE IF NOT EXISTS widget_sync_settings ("
-                    + "id INTEGER PRIMARY KEY, interval_seconds BIGINT NOT NULL, last_synced TIMESTAMP, "
-                    + "summary_interval_seconds BIGINT NOT NULL DEFAULT " + DEFAULT_SUMMARY_INTERVAL_SECONDS + ", "
-                + "summary_auto_enabled BOOLEAN NOT NULL DEFAULT TRUE, "
-                    + "summary_prompt TEXT, "
-                    + "summary_max_rows INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_ROWS + ", "
-                + "summary_max_upstream_entries INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES + ", "
-                + "summary_max_message_chars INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_MESSAGE_CHARS + ", "
-                + "summary_max_request_bytes INTEGER NOT NULL DEFAULT " + DEFAULT_SUMMARY_MAX_REQUEST_BYTES + ", "
-                    + "summary_last_run TIMESTAMP)";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.execute();
-            }
-
-            addColumnIfMissing(conn,
-                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_interval_seconds BIGINT");
-            addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_auto_enabled BOOLEAN");
-            addColumnIfMissing(conn,
-                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_prompt TEXT");
-            addColumnIfMissing(conn,
-                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_rows INTEGER");
-            addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_upstream_entries INTEGER");
-            addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_message_chars INTEGER");
-            addColumnIfMissing(conn,
-                "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_max_request_bytes INTEGER");
-            addColumnIfMissing(conn,
-                    "ALTER TABLE widget_sync_settings ADD COLUMN IF NOT EXISTS summary_last_run TIMESTAMP");
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_interval_seconds = ? WHERE summary_interval_seconds IS NULL")) {
-                ps.setLong(1, DEFAULT_SUMMARY_INTERVAL_SECONDS);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_auto_enabled = ? WHERE summary_auto_enabled IS NULL")) {
-                ps.setBoolean(1, DEFAULT_SUMMARY_AUTO_ENABLED);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_max_rows = ? WHERE summary_max_rows IS NULL")) {
-                ps.setInt(1, DEFAULT_SUMMARY_MAX_ROWS);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_max_upstream_entries = ? WHERE summary_max_upstream_entries IS NULL")) {
-                ps.setInt(1, DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_max_message_chars = ? WHERE summary_max_message_chars IS NULL")) {
-                ps.setInt(1, DEFAULT_SUMMARY_MAX_MESSAGE_CHARS);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE widget_sync_settings SET summary_max_request_bytes = ? WHERE summary_max_request_bytes IS NULL")) {
-                ps.setInt(1, DEFAULT_SUMMARY_MAX_REQUEST_BYTES);
-                ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to ensure sync settings table", e);
+    private List<WidgetSyncJdbcStore.ChatUpsertRow> toChatUpsertRows(List<JsonObject> chats) {
+        if (chats == null || chats.isEmpty()) {
+            return List.of();
         }
-    }
 
-    private void addColumnIfMissing(Connection conn, String ddl) {
-        try (PreparedStatement ps = conn.prepareStatement(ddl)) {
-            ps.execute();
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to add sync settings column", e);
-        }
-    }
-
-    private SyncSettings readSyncSettings(Connection conn) {
-        try {
-            String sql = "SELECT interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
-                + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run"
-                    + " FROM widget_sync_settings WHERE id = 1";
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    long persistedInterval = readPersistedIntervalSeconds(rs, "interval_seconds", STATE.syncIntervalSeconds);
-                    if (persistedInterval < MIN_INTERVAL_SECONDS || persistedInterval > TimeUnit.DAYS.toSeconds(30)) {
-                        persistedInterval = STATE.syncIntervalSeconds;
-                    }
-
-                    long persistedSummaryInterval = readPersistedIntervalSeconds(
-                            rs,
-                            "summary_interval_seconds",
-                            summaryIntervalSeconds
-                    );
-                    boolean persistedSummaryAutoEnabled = readPersistedBoolean(
-                        rs,
-                        "summary_auto_enabled",
-                        DEFAULT_SUMMARY_AUTO_ENABLED
-                    );
-
-                    int persistedSummaryMaxRows = readPersistedInt(rs, "summary_max_rows", STATE.summaryMaxRows);
-                    int persistedSummaryMaxUpstreamEntries = readPersistedInt(
-                        rs,
-                        "summary_max_upstream_entries",
-                        STATE.summaryMaxUpstreamEntries
-                    );
-                    int persistedSummaryMaxMessageChars = readPersistedInt(
-                        rs,
-                        "summary_max_message_chars",
-                        STATE.summaryMaxMessageChars
-                    );
-                    int persistedSummaryMaxRequestBytes = readPersistedInt(
-                        rs,
-                        "summary_max_request_bytes",
-                        STATE.summaryMaxRequestBytes
-                    );
-
-                    String persistedSummaryPrompt = readDbText(rs, "summary_prompt", MAX_SUMMARY_PROMPT_CHARS);
-                    if (persistedSummaryPrompt != null && persistedSummaryPrompt.isBlank()) {
-                        persistedSummaryPrompt = DEFAULT_SUMMARY_PROMPT;
-                    }
-
-                    Timestamp persistedLastSynced = sanitizePersistedTimestamp(readDbTimestamp(rs, "last_synced"));
-                    Timestamp persistedSummaryLastRun = sanitizePersistedTimestamp(readDbTimestamp(rs, "summary_last_run"));
-                    return new SyncSettings(
-                            persistedInterval,
-                            persistedLastSynced,
-                            persistedSummaryInterval,
-                            persistedSummaryAutoEnabled,
-                            persistedSummaryPrompt,
-                            persistedSummaryMaxRows,
-                            persistedSummaryMaxUpstreamEntries,
-                            persistedSummaryMaxMessageChars,
-                            persistedSummaryMaxRequestBytes,
-                            persistedSummaryLastRun
-                    );
-                }
+        List<WidgetSyncJdbcStore.ChatUpsertRow> rows = new ArrayList<>(chats.size());
+        for (JsonObject chat : chats) {
+            if (chat == null) {
+                continue;
             }
-            upsertSyncSettings(
-                    conn,
-                    STATE.syncIntervalSeconds,
-                    STATE.lastSynced,
-                    summaryIntervalSeconds,
-                    STATE.summaryAutoEnabled,
-                    resolveSummaryPrompt(),
-                    STATE.summaryMaxRows,
-                    STATE.summaryMaxUpstreamEntries,
-                    STATE.summaryMaxMessageChars,
-                    STATE.summaryMaxRequestBytes,
-                    summaryLastRun
-            );
-            return new SyncSettings(
-                    STATE.syncIntervalSeconds,
-                    STATE.lastSynced,
-                    summaryIntervalSeconds,
-                    STATE.summaryAutoEnabled,
-                    resolveSummaryPrompt(),
-                    STATE.summaryMaxRows,
-                    STATE.summaryMaxUpstreamEntries,
-                    STATE.summaryMaxMessageChars,
-                    STATE.summaryMaxRequestBytes,
-                    summaryLastRun
-            );
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read sync settings", e);
+            String chatId = getString(chat, "id");
+            if (chatId == null || chatId.isBlank()) {
+                continue;
+            }
+            String prompt = getString(chat, "prompt");
+            String normalizedResponse = getString(chat, "response_text");
+            String responseText = normalizedResponse != null ? normalizedResponse : formatResponseText(chat);
+            Timestamp createdAt = parseCreatedAt(chat);
+            String sessionId = getString(chat, "session_id");
+            String username = getString(chat, "username");
+            rows.add(new WidgetSyncJdbcStore.ChatUpsertRow(chatId, prompt, responseText, createdAt, sessionId, username));
         }
+        return rows;
     }
 
     private Timestamp sanitizePersistedTimestamp(Timestamp value) {
@@ -3087,68 +2900,6 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         return value;
-    }
-
-    private void upsertSyncSettings(Connection conn, long intervalSeconds, Timestamp lastSynced) {
-        upsertSyncSettings(
-            conn,
-            intervalSeconds,
-            lastSynced,
-            summaryIntervalSeconds,
-            STATE.summaryAutoEnabled,
-            resolveSummaryPrompt(),
-            STATE.summaryMaxRows,
-            STATE.summaryMaxUpstreamEntries,
-            STATE.summaryMaxMessageChars,
-            STATE.summaryMaxRequestBytes,
-            summaryLastRun
-        );
-    }
-
-    private void upsertSyncSettings(
-            Connection conn,
-            long intervalSeconds,
-            Timestamp lastSynced,
-            long summaryInterval,
-            boolean summaryAuto,
-            String summaryPrompt,
-            int summaryRows,
-            int summaryUpstreamEntries,
-            int summaryMessageChars,
-            int summaryRequestBytes,
-            Timestamp lastSummaryRun
-        ) {
-        try {
-            String sql = "INSERT INTO widget_sync_settings (id, interval_seconds, last_synced, summary_interval_seconds, summary_auto_enabled, summary_prompt, summary_max_rows, "
-                + "summary_max_upstream_entries, summary_max_message_chars, summary_max_request_bytes, summary_last_run) "
-                + "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                + "ON CONFLICT (id) DO UPDATE SET "
-                + "interval_seconds = EXCLUDED.interval_seconds, "
-                + "last_synced = EXCLUDED.last_synced, "
-                + "summary_interval_seconds = EXCLUDED.summary_interval_seconds, "
-                + "summary_auto_enabled = EXCLUDED.summary_auto_enabled, "
-                + "summary_prompt = EXCLUDED.summary_prompt, "
-                + "summary_max_rows = EXCLUDED.summary_max_rows, "
-                + "summary_max_upstream_entries = EXCLUDED.summary_max_upstream_entries, "
-                + "summary_max_message_chars = EXCLUDED.summary_max_message_chars, "
-                + "summary_max_request_bytes = EXCLUDED.summary_max_request_bytes, "
-                + "summary_last_run = EXCLUDED.summary_last_run";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setLong(1, intervalSeconds);
-                ps.setTimestamp(2, lastSynced);
-                ps.setLong(3, clampSummaryIntervalSeconds(summaryInterval));
-                ps.setBoolean(4, summaryAuto);
-                ps.setString(5, normalizeSummaryPrompt(summaryPrompt));
-                ps.setInt(6, clampSummaryMaxRows(summaryRows));
-                ps.setInt(7, clampSummaryMaxUpstreamEntries(summaryUpstreamEntries));
-                ps.setInt(8, clampSummaryMaxMessageChars(summaryMessageChars));
-                ps.setInt(9, clampSummaryMaxRequestBytes(summaryRequestBytes));
-                ps.setTimestamp(10, lastSummaryRun);
-                ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to persist sync settings", e);
-        }
     }
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
@@ -3169,234 +2920,6 @@ public class WidgetSyncServlet extends HttpServlet {
         return true;
     }
 
-    private void ensureTable(Connection conn, String tableName) {
-        if (ensuredTables.contains(tableName)) {
-            return;
-        }
-
-        try {
-            String quotedTable = quoteIdentifier(tableName);
-            String createTableSql = "CREATE TABLE IF NOT EXISTS " + quotedTable
-                    + " (db_id BIGSERIAL PRIMARY KEY, widget_chat_id TEXT, prompt TEXT, response_text TEXT, "
-                    + "created_at TIMESTAMP, session_id TEXT, username TEXT)";
-            try (PreparedStatement ps = conn.prepareStatement(createTableSql)) {
-                ps.execute();
-            }
-
-            String idxName = (tableName + "_widget_chat_id_uidx");
-            if (idxName.length() > 63) {
-                idxName = idxName.substring(0, 63);
-            }
-            String quotedIdx = quoteIdentifier(idxName);
-
-            try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
-                    + " ON " + quotedTable + " (widget_chat_id)")) {
-                ps.execute();
-            } catch (SQLException uniqueErr) {
-                log.log(Level.FINE, "Unique index creation failed, attempting dedupe before retry", uniqueErr);
-                dedupeByWidgetChatId(conn, tableName);
-                try (PreparedStatement ps = conn.prepareStatement("CREATE UNIQUE INDEX IF NOT EXISTS " + quotedIdx
-                        + " ON " + quotedTable + " (widget_chat_id)")) {
-                    ps.execute();
-                }
-            }
-
-            String createdAtIdxName = (tableName + "_created_at_idx");
-            if (createdAtIdxName.length() > 63) {
-                createdAtIdxName = createdAtIdxName.substring(0, 63);
-            }
-            String quotedCreatedAtIdx = quoteIdentifier(createdAtIdxName);
-
-            try (PreparedStatement ps = conn.prepareStatement("CREATE INDEX IF NOT EXISTS " + quotedCreatedAtIdx
-                    + " ON " + quotedTable + " (created_at DESC)")) {
-                ps.execute();
-            } catch (SQLException createdAtIndexErr) {
-                log.log(Level.FINE, "Created_at index creation failed for {0}", tableName);
-                log.log(Level.FINEST, "Created_at index error", createdAtIndexErr);
-            }
-
-            ensuredTables.add(tableName);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to ensure widget table " + tableName, e);
-        }
-    }
-
-    private void dedupeByWidgetChatId(Connection conn, String tableName) {
-        try {
-            String quoted = quoteIdentifier(tableName);
-            String sql = "DELETE FROM " + quoted + " a USING " + quoted + " b WHERE a.widget_chat_id = b.widget_chat_id "
-                    + "AND a.widget_chat_id IS NOT NULL "
-                    + "AND (a.created_at < b.created_at "
-                    + "OR (a.created_at = b.created_at AND a.db_id < b.db_id) "
-                    + "OR (a.created_at IS NULL AND b.created_at IS NOT NULL) "
-                    + "OR (a.created_at IS NULL AND b.created_at IS NULL AND a.db_id < b.db_id))";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                int removed = ps.executeUpdate();
-                if (removed > 0) {
-                    log.log(Level.INFO, "Removed {0} duplicate rows from {1}", new Object[]{removed, tableName});
-                }
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to dedupe widget table " + tableName, e);
-        }
-    }
-
-    private List<JsonObject> findNewWidgetChats(Connection conn, String tableName, List<JsonObject> chats) {
-        if (chats == null || chats.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, JsonObject> uniqueById = new LinkedHashMap<>();
-        for (JsonObject chat : chats) {
-            String chatId = getString(chat, "id");
-            if (chatId == null || chatId.isBlank()) {
-                continue;
-            }
-            uniqueById.putIfAbsent(chatId, chat);
-        }
-
-        if (uniqueById.isEmpty()) {
-            return List.of();
-        }
-
-        List<String> candidateIds = new ArrayList<>(uniqueById.keySet());
-        Set<String> existingIds = fetchExistingWidgetChatIds(conn, tableName, candidateIds);
-
-        List<JsonObject> newChats = new ArrayList<>();
-        for (Map.Entry<String, JsonObject> entry : uniqueById.entrySet()) {
-            if (!existingIds.contains(entry.getKey())) {
-                newChats.add(entry.getValue());
-            }
-        }
-        return newChats;
-    }
-
-    private Set<String> fetchExistingWidgetChatIds(Connection conn, String tableName, List<String> candidateIds) {
-        Set<String> existingIds = new LinkedHashSet<>();
-        if (candidateIds == null || candidateIds.isEmpty()) {
-            return existingIds;
-        }
-
-        try {
-            final int chunkSize = 500;
-            String quotedTable = quoteIdentifier(tableName);
-
-            for (int start = 0; start < candidateIds.size(); start += chunkSize) {
-                int end = Math.min(start + chunkSize, candidateIds.size());
-                List<String> chunk = candidateIds.subList(start, end);
-                String sql = "SELECT widget_chat_id FROM " + quotedTable + " WHERE widget_chat_id IN ("
-                    + buildInClausePlaceholders(chunk.size()) + ')';
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    for (int i = 0; i < chunk.size(); i++) {
-                        ps.setString(i + 1, chunk.get(i));
-                    }
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String existing = rs.getString(1);
-                            if (existing != null && !existing.isBlank()) {
-                                existingIds.add(existing);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to fetch existing widget chat IDs for table " + tableName, e);
-        }
-
-        return existingIds;
-    }
-
-    private String buildInClausePlaceholders(int count) {
-        if (count <= 0) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(count * 2);
-        for (int i = 0; i < count; i++) {
-            if (i > 0) {
-                sb.append(',');
-            }
-            sb.append('?');
-        }
-        return sb.toString();
-    }
-
-    private int insertWidgetChats(Connection conn, String tableName, List<JsonObject> chats) {
-        if (chats == null || chats.isEmpty()) {
-            return 0;
-        }
-
-        // De-duplicate IDs from the upstream payload before hitting the DB.
-        Map<String, JsonObject> uniqueById = new LinkedHashMap<>();
-        for (JsonObject chat : chats) {
-            String chatId = getString(chat, "id");
-            if (chatId == null || chatId.isBlank()) {
-                continue;
-            }
-            uniqueById.putIfAbsent(chatId, chat);
-        }
-
-        if (uniqueById.isEmpty()) {
-            return 0;
-        }
-
-        String sql = "INSERT INTO " + quoteIdentifier(tableName)
-                + " (widget_chat_id, prompt, response_text, created_at, session_id, username) "
-                + "VALUES (?,?,?,?,?,?) ON CONFLICT (widget_chat_id) DO NOTHING";
-
-        boolean originalAutoCommit;
-        int inserted = 0;
-
-        try {
-            originalAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to begin widget chat insert transaction for table " + tableName, e);
-        }
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (JsonObject chat : uniqueById.values()) {
-                String chatId = getString(chat, "id");
-                if (chatId == null || chatId.isBlank()) {
-                    continue;
-                }
-
-                ps.setString(1, chatId);
-                ps.setString(2, getString(chat, "prompt"));
-                String normalizedResponse = getString(chat, "response_text");
-                ps.setString(3, normalizedResponse != null ? normalizedResponse : formatResponseText(chat));
-                ps.setTimestamp(4, parseCreatedAt(chat));
-                ps.setString(5, getString(chat, "session_id"));
-                ps.setString(6, getString(chat, "username"));
-                ps.addBatch();
-            }
-            int[] batchResult = ps.executeBatch();
-            for (int result : batchResult) {
-                if (result > 0 || result == Statement.SUCCESS_NO_INFO) {
-                    inserted++;
-                }
-            }
-            conn.commit();
-            return inserted;
-        } catch (SQLException e) {
-            try {
-                conn.rollback();
-            } catch (SQLException rollbackError) {
-                e.addSuppressed(rollbackError);
-                log.log(Level.FINE, "Rollback failed while inserting widget chats into table {0}", tableName);
-                log.log(Level.FINEST, "Rollback failure details", rollbackError);
-            }
-            throw new IllegalStateException("Unable to insert widget chats into table " + tableName, e);
-        } finally {
-            try {
-                conn.setAutoCommit(originalAutoCommit);
-            } catch (SQLException resetError) {
-                log.log(Level.FINE, "Unable to restore auto-commit for table {0}", tableName);
-                log.log(Level.FINEST, "Auto-commit restore error", resetError);
-            }
-        }
-    }
 
     private List<String> collectUniqueChatIds(List<JsonObject> chats) {
         if (chats == null || chats.isEmpty()) {
@@ -3690,37 +3213,6 @@ public class WidgetSyncServlet extends HttpServlet {
             return js.getString();
         }
         return value.toString();
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        if (tableName == null || tableName.isBlank()) {
-            return false;
-        }
-        if (ensuredTables.contains(tableName)) {
-            return true;
-        }
-
-        try {
-            var meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        ensuredTables.add(tableName);
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private void jsonError(HttpServletResponse resp, int status, String message) {
@@ -4200,8 +3692,7 @@ public class WidgetSyncServlet extends HttpServlet {
         int used = 0;
         for (int i = 0; i < value.length();) {
             int codePoint = value.codePointAt(i);
-            String cp = new String(Character.toChars(codePoint));
-            int cpBytes = cp.getBytes(StandardCharsets.UTF_8).length;
+            int cpBytes = utf8LengthForCodePoint(codePoint);
             if (used + cpBytes > maxBytes) {
                 break;
             }
@@ -4210,6 +3701,19 @@ public class WidgetSyncServlet extends HttpServlet {
             i += Character.charCount(codePoint);
         }
         return out.toString();
+    }
+
+    private int utf8LengthForCodePoint(int codePoint) {
+        if (codePoint <= 0x7F) {
+            return 1;
+        }
+        if (codePoint <= 0x7FF) {
+            return 2;
+        }
+        if (codePoint <= 0xFFFF) {
+            return 3;
+        }
+        return 4;
     }
 
     private WorkspaceResponse runIncrementalSummaryChat(
@@ -4458,8 +3962,20 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
         Integer current = counts.get(key);
-        int next = current == null ? 1 : current.intValue() + 1;
+        int next = safeInt(current) + 1;
         counts.put(key, Integer.valueOf(next));
+    }
+
+    private int safeInt(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid Integer value in count map", ex);
+            return 0;
+        }
     }
 
     private boolean shouldRetryCompactDirectSummary(WorkspaceResponse response) {
@@ -4722,23 +4238,25 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isSummaryRunDueNow() {
-        if (summaryIntervalSeconds <= 0L) {
+        long configuredInterval = STATE.summaryIntervalSeconds.get();
+        if (configuredInterval <= 0L) {
             return true;
         }
-        Timestamp lastRun = summaryLastRun;
+        Timestamp lastRun = STATE.summaryLastRun.get();
         if (lastRun == null) {
             return true;
         }
-        Instant threshold = lastRun.toInstant().plusSeconds(summaryIntervalSeconds);
+        Instant threshold = lastRun.toInstant().plusSeconds(configuredInterval);
         return !Instant.now().isBefore(threshold);
     }
 
     private String computeNextSummaryRunAtIso() {
-        Timestamp lastRun = summaryLastRun;
-        if (lastRun == null || summaryIntervalSeconds <= 0L) {
+        Timestamp lastRun = STATE.summaryLastRun.get();
+        long configuredInterval = STATE.summaryIntervalSeconds.get();
+        if (lastRun == null || configuredInterval <= 0L) {
             return "";
         }
-        return lastRun.toInstant().plusSeconds(summaryIntervalSeconds).toString();
+        return lastRun.toInstant().plusSeconds(configuredInterval).toString();
     }
 
     private long clampSummaryIntervalSeconds(long value) {
@@ -4777,7 +4295,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String resolveSummaryPrompt() {
-        return normalizeSummaryPrompt(summaryPromptTemplate);
+        return normalizeSummaryPrompt(STATE.summaryPromptTemplate.get());
     }
 
     private String normalizeSummaryPrompt(String prompt) {
@@ -4849,107 +4367,6 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
         return Boolean.parseBoolean(env.trim());
-    }
-
-    private long readPersistedIntervalSeconds(ResultSet rs, String columnName, long fallback) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return fallback;
-        }
-        String trimmed = readDbText(rs, columnName, 64).trim();
-        if (trimmed.isBlank()) {
-            return fallback;
-        }
-        if (!trimmed.matches("^\\d{1,12}$")) {
-            return fallback;
-        }
-        try {
-            return Long.parseLong(trimmed);
-        } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid persisted sync interval value", ex);
-            return fallback;
-        }
-    }
-
-    private int readPersistedInt(ResultSet rs, String columnName, int fallback) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return fallback;
-        }
-        String trimmed = readDbText(rs, columnName, 32).trim();
-        if (trimmed.isBlank() || !trimmed.matches("^-?\\d{1,10}$")) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(trimmed);
-        } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid persisted integer value", ex);
-            return fallback;
-        }
-    }
-
-    private boolean readPersistedBoolean(ResultSet rs, String columnName, boolean fallback) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return fallback;
-        }
-        String trimmed = readDbText(rs, columnName, 16).trim();
-        if (trimmed.isBlank()) {
-            return fallback;
-        }
-        if ("true".equalsIgnoreCase(trimmed) || "t".equalsIgnoreCase(trimmed) || "1".equals(trimmed)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(trimmed) || "f".equalsIgnoreCase(trimmed) || "0".equals(trimmed)) {
-            return false;
-        }
-        return fallback;
-    }
-
-    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return null;
-        }
-        String normalized = readDbText(rs, columnName, 128).trim();
-        if (normalized.isBlank()) {
-            return null;
-        }
-        try {
-            return Timestamp.valueOf(normalized);
-        } catch (IllegalArgumentException ex) {
-            try {
-                return Timestamp.from(OffsetDateTime.parse(normalized).toInstant());
-            } catch (DateTimeParseException ignored) {
-                try {
-                    return Timestamp.from(Instant.parse(normalized));
-                } catch (DateTimeParseException ignoredToo) {
-                    log.log(Level.FINE, "Unable to parse persisted timestamp value", ex);
-                    return null;
-                }
-            }
-        }
-    }
-
-    private String readDbText(ResultSet rs, String columnName, int maxLen) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return "";
-        }
-        String text;
-        try {
-            text = rs.getString(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString failed for column " + columnName, ex);
-            text = null;
-        }
-        if (text == null) {
-            return "";
-        }
-        text = Normalizer.normalize(text, Normalizer.Form.NFKC);
-        text = stripControlCharacters(text);
-        if (text.indexOf('\u0000') >= 0) {
-            text = text.replace('\u0000', ' ');
-        }
-        if (maxLen > 0 && text.length() > maxLen) {
-            return text.substring(0, maxLen);
-        }
-        return text;
     }
 
     private String firstParam(HttpServletRequest req, String name) {
@@ -5147,44 +4564,6 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("synced", synced)
                     .add("message", message == null ? "" : message)
                     .build();
-        }
-    }
-
-    private static final class SyncSettings {
-
-        final long intervalSeconds;
-        final Timestamp lastSynced;
-        final long summaryIntervalSeconds;
-        final boolean summaryAutoEnabled;
-        final String summaryPrompt;
-        final int summaryMaxRows;
-        final int summaryMaxUpstreamEntries;
-        final int summaryMaxMessageChars;
-        final int summaryMaxRequestBytes;
-        final Timestamp summaryLastRun;
-
-        private SyncSettings(
-                long intervalSeconds,
-                Timestamp lastSynced,
-                long summaryIntervalSeconds,
-                boolean summaryAutoEnabled,
-                String summaryPrompt,
-                int summaryMaxRows,
-                int summaryMaxUpstreamEntries,
-                int summaryMaxMessageChars,
-                int summaryMaxRequestBytes,
-                Timestamp summaryLastRun
-        ) {
-            this.intervalSeconds = intervalSeconds;
-            this.lastSynced = lastSynced;
-            this.summaryIntervalSeconds = summaryIntervalSeconds;
-            this.summaryAutoEnabled = summaryAutoEnabled;
-            this.summaryPrompt = summaryPrompt;
-            this.summaryMaxRows = summaryMaxRows;
-            this.summaryMaxUpstreamEntries = summaryMaxUpstreamEntries;
-            this.summaryMaxMessageChars = summaryMaxMessageChars;
-            this.summaryMaxRequestBytes = summaryMaxRequestBytes;
-            this.summaryLastRun = summaryLastRun;
         }
     }
 

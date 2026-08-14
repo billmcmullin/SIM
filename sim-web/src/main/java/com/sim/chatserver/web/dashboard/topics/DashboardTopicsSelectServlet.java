@@ -1,10 +1,8 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -140,33 +138,19 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         try {
             sourceReader = req.getReader();
         } catch (IOException | IllegalStateException ex) {
+            log.log(Level.FINE, "Unable to read topics-select request body from request reader", ex);
             sourceReader = null;
         }
 
         if (sourceReader == null) {
-            try {
-                var inputStream = req.getInputStream();
-                if (inputStream == null) {
-                    return "";
-                }
-                sourceReader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-            } catch (IOException | IllegalStateException ex) {
-                return "";
-            }
+            return "";
         }
 
         try (Reader reader = sourceReader) {
-            StringBuilder body = new StringBuilder();
-            char[] buf = new char[1024];
-            int read;
-            while ((read = reader.read(buf)) != -1) {
-                body.append(buf, 0, read);
-                if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
-                    throw new IllegalArgumentException("Payload too large");
-                }
-            }
-            return ServletRequestParamUtil.normalizeBodyText(body.toString(), MAX_JSON_PAYLOAD_BYTES, true);
-        } catch (IOException | RuntimeException ex) {
+            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+            return ServletRequestParamUtil.normalizeBodyText(body, MAX_JSON_PAYLOAD_BYTES, true);
+        } catch (IOException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Unable to parse topics-select request body", ex);
             throw new JsonException("Unable to read request payload", ex);
         }
     }

@@ -1,18 +1,20 @@
 package com.sim.chatserver.util;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.DateTimeException;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -74,67 +76,69 @@ public final class SqlTimeUtil {
     }
 
     private static String safeReadRawText(ResultSet rs, String column) throws SQLException {
-        Object raw = readRawCellObject(rs, column);
-        if (raw != null) {
-            return sanitizeTimestampCandidate(toTimestampText(raw));
+        String characterText = readRawFromCharacterStream(rs, column);
+        if (!characterText.isBlank()) {
+            return sanitizeTimestampCandidate(characterText);
         }
 
-        try {
-            return sanitizeTimestampCandidate(rs.getString(column));
-        } catch (SQLException ex) {
-            LOG.log(Level.FINER, "Timestamp text read failed for column " + column, ex);
-            return "";
+        String binaryText = readRawFromBytes(rs, column);
+        if (!binaryText.isBlank()) {
+            return sanitizeTimestampCandidate(binaryText);
         }
+
+        return "";
     }
 
-    private static String toTimestampText(Object raw) {
-        if (raw == null) {
-            return "";
-        }
-
-        if (raw instanceof Timestamp ts) {
-            try {
-                return ts.toInstant().toString();
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                LOG.log(Level.FINER, "Unable to convert Timestamp object to instant text", ex);
-                return ts.toString();
+    private static String readRawFromCharacterStream(ResultSet rs, String column) {
+        try {
+            Reader reader = rs.getCharacterStream(column);
+            if (reader == null) {
+                return "";
             }
+            try (Reader closeable = reader) {
+                return readAtMostChars(closeable, MAX_TIMESTAMP_TEXT_LENGTH);
+            }
+        } catch (SQLException ex) {
+            LOG.log(Level.FINER, "Timestamp character-stream read failed for column " + column, ex);
+            return "";
+        } catch (IOException ex) {
+            LOG.log(Level.FINER, "Timestamp character-stream decode failed for column " + column, ex);
+            return "";
         }
-
-        if (raw instanceof Instant instant) {
-            return instant.toString();
-        }
-
-        if (raw instanceof OffsetDateTime offsetDateTime) {
-            return offsetDateTime.toInstant().toString();
-        }
-
-        if (raw instanceof ZonedDateTime zonedDateTime) {
-            return zonedDateTime.toInstant().toString();
-        }
-
-        if (raw instanceof LocalDateTime localDateTime) {
-            return localDateTime.toString();
-        }
-
-        if (raw instanceof LocalDate localDate) {
-            return localDate.atStartOfDay().toString();
-        }
-
-        if (raw instanceof byte[] bytes) {
-            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-        }
-
-        return String.valueOf(raw);
     }
 
-    private static Object readRawCellObject(ResultSet rs, String column) {
+    private static String readRawFromBytes(ResultSet rs, String column) {
         try {
-            return rs.getObject(column);
+            byte[] bytes = rs.getBytes(column);
+            if (bytes == null) {
+                return "";
+            }
+            String raw = new String(bytes, StandardCharsets.UTF_8);
+            return raw.length() <= MAX_TIMESTAMP_TEXT_LENGTH ? raw : raw.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
         } catch (SQLException ex) {
-            LOG.log(Level.FINER, "Object timestamp read failed for column " + column, ex);
-            return null;
+            LOG.log(Level.FINER, "Timestamp binary read failed for column " + column, ex);
+            return "";
         }
+    }
+
+    private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 64));
+        char[] buffer = new char[64];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private static String sanitizeTimestampCandidate(String value) {

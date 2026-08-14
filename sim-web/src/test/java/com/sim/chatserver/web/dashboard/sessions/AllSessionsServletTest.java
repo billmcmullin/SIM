@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -59,6 +61,7 @@ import jakarta.servlet.http.HttpServletMapping;
  */
 public class AllSessionsServletTest
 {
+    private MockedStatic<CDI> cdiMock;
 
     /**
      * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
@@ -498,7 +501,10 @@ public class AllSessionsServletTest
     
         @AfterEach
         void resetStatics() {
-            
+            if (cdiMock != null) {
+                cdiMock.close();
+                cdiMock = null;
+            }
         }
     
         @Test
@@ -606,6 +612,7 @@ public class AllSessionsServletTest
             when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
             when(req.getHttpServletMapping()).thenReturn(mapping);
             when(req.getSession(false)).thenReturn(session);
+            when(req.getContentType()).thenReturn("application/json");
             when(req.getContentLengthLong()).thenReturn(2L);
             when(req.getReader()).thenReturn(new BufferedReader(new StringReader("{}")));
             when(resp.getOutputStream()).thenReturn(servletOutput(out));
@@ -629,6 +636,7 @@ public class AllSessionsServletTest
             when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
             when(req.getHttpServletMapping()).thenReturn(mapping);
             when(req.getSession(false)).thenReturn(session);
+                when(req.getContentType()).thenReturn("application/json");
             when(req.getContentLengthLong()).thenReturn(128L);
             when(req.getReader()).thenReturn(new BufferedReader(new StringReader("{" +
                     "\"selectedChatIds\":[\"   \",\"bad id\",\"***\",123]" +
@@ -774,6 +782,7 @@ public class AllSessionsServletTest
             when(req.getSession(false)).thenReturn(session);
             when(req.getServletContext()).thenReturn(servletContext);
             when(servletContext.getContextPath()).thenReturn("/sim");
+            when(req.getContentType()).thenReturn("application/json");
             when(req.getContentLengthLong()).thenReturn(64L);
             when(req.getReader()).thenReturn(new BufferedReader(new StringReader("{\"selectedChatIds\":[\"chat-1\"]}")));
             when(resp.getOutputStream()).thenReturn(servletOutput(out));
@@ -965,6 +974,7 @@ public class AllSessionsServletTest
             when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
             when(req.getHttpServletMapping()).thenReturn(mapping);
             when(req.getSession(false)).thenReturn(session);
+            when(req.getContentType()).thenReturn("application/json");
             when(req.getContentLengthLong()).thenReturn(64L);
             when(req.getReader()).thenReturn(new BufferedReader(new StringReader("{\"selectedChatIds\":[\"chat-1\"]}")));
             when(resp.getOutputStream()).thenReturn(servletOutput(out));
@@ -1178,12 +1188,19 @@ public class AllSessionsServletTest
             };
         }
         private AllSessionsServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
-            return new AllSessionsServlet() {
-                @Override
-                protected AppDataSourceHolder dataSourceHolder() {
-                    return dsHolder;
-                }
-            };
+            if (cdiMock != null) {
+                cdiMock.close();
+            }
+            cdiMock = org.mockito.Mockito.mockStatic(CDI.class);
+
+            CDI<Object> cdi = mock(CDI.class);
+            @SuppressWarnings("unchecked")
+            Instance<AppDataSourceHolder> dsHolderInstance = mock(Instance.class);
+            when(cdi.select(AppDataSourceHolder.class)).thenReturn(dsHolderInstance);
+            when(dsHolderInstance.get()).thenReturn(dsHolder);
+            cdiMock.when(CDI::current).thenReturn(cdi);
+
+            return new AllSessionsServlet();
         }
 }
 

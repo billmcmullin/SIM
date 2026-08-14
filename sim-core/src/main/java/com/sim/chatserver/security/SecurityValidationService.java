@@ -142,7 +142,9 @@ public final class SecurityValidationService {
                 return UrlValidationResult.blocked("Host missing in URL");
             }
 
-            if (host.contains("..") || host.startsWith(".") || host.endsWith(".")) {
+            boolean startsOrEndsWithDot = !host.isEmpty()
+                    && (host.charAt(0) == '.' || host.charAt(host.length() - 1) == '.');
+            if (host.contains("..") || startsOrEndsWithDot) {
                 return UrlValidationResult.blocked("Host failed sanity check: " + safeHost);
             }
 
@@ -197,7 +199,7 @@ public final class SecurityValidationService {
             return "(unknown)";
         }
 
-        String remote = canonicalizeInput(req.getRemoteAddr(), 64);
+        String remote = canonicalizeInput(req.getRemoteHost(), 255);
         if (isParseableAddress(remote)) {
             return remote;
         }

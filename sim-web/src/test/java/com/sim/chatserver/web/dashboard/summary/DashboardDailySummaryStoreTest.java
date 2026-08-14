@@ -4,12 +4,15 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -26,6 +29,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,6 +74,26 @@ class DashboardDailySummaryStoreTest {
         store = new DashboardDailySummaryStore(dataSource);
         org.mockito.Mockito.lenient().when(exactResultSet.getString(anyString())).thenReturn(null);
         org.mockito.Mockito.lenient().when(latestResultSet.getString(anyString())).thenReturn(null);
+        org.mockito.Mockito.lenient().when(exactResultSet.getCharacterStream(anyString()))
+            .thenAnswer(invocation -> {
+                String text = exactResultSet.getString(invocation.getArgument(0, String.class));
+                return text == null ? null : new StringReader(text);
+            });
+        org.mockito.Mockito.lenient().when(latestResultSet.getCharacterStream(anyString()))
+            .thenAnswer(invocation -> {
+                String text = latestResultSet.getString(invocation.getArgument(0, String.class));
+                return text == null ? null : new StringReader(text);
+            });
+        org.mockito.Mockito.lenient().when(exactResultSet.getBytes(anyString()))
+            .thenAnswer(invocation -> {
+                String text = exactResultSet.getString(invocation.getArgument(0, String.class));
+                return text == null ? null : text.getBytes(StandardCharsets.UTF_8);
+            });
+        org.mockito.Mockito.lenient().when(latestResultSet.getBytes(anyString()))
+            .thenAnswer(invocation -> {
+                String text = latestResultSet.getString(invocation.getArgument(0, String.class));
+                return text == null ? null : text.getBytes(StandardCharsets.UTF_8);
+            });
         org.mockito.Mockito.lenient().when(exactResultSet.getObject(anyString()))
             .thenAnswer(invocation -> exactResultSet.getString(invocation.getArgument(0, String.class)));
         org.mockito.Mockito.lenient().when(latestResultSet.getObject(anyString()))
@@ -198,16 +222,21 @@ class DashboardDailySummaryStoreTest {
 
         when(exactResultSet.getString("status")).thenReturn("running");
         when(exactResultSet.getInt("progress_pct")).thenReturn(55);
+        when(exactResultSet.getString("progress_pct")).thenReturn("55");
+        doReturn(new StringReader("55")).when(exactResultSet).getCharacterStream("progress_pct");
+        doReturn("55".getBytes(StandardCharsets.UTF_8)).when(exactResultSet).getBytes("progress_pct");
         when(exactResultSet.getString("message")).thenReturn("Working...");
         when(exactResultSet.getString("summary_overall")).thenReturn("");
         when(exactResultSet.getString("summary_quality")).thenReturn("");
         when(exactResultSet.getString("summary_response")).thenReturn("");
         when(exactResultSet.getString("summary_usage")).thenReturn("");
         when(exactResultSet.getInt("entry_count")).thenReturn(42);
+        when(exactResultSet.getString("entry_count")).thenReturn("42");
         when(exactResultSet.getTimestamp("started_at")).thenReturn(started);
         when(exactResultSet.getTimestamp("generated_at")).thenReturn(generated);
         when(exactResultSet.getTimestamp("updated_at")).thenReturn(updated);
         when(exactResultSet.getInt("slot")).thenReturn(2);
+        when(exactResultSet.getString("slot")).thenReturn("2");
 
         JsonObject out = store.fetchExactOrLatest(day, 2);
 
@@ -479,14 +508,16 @@ class DashboardDailySummaryStoreTest {
         when(exactResultSet.getString("summary_usage")).thenReturn("ok");
         when(exactResultSet.getString("suggested_next_action")).thenReturn("next step");
         when(exactResultSet.getInt("entry_count")).thenReturn(2);
-        when(exactResultSet.getTimestamp("started_at")).thenReturn(null);
-        when(exactResultSet.getTimestamp("generated_at")).thenReturn(null);
-        when(exactResultSet.getTimestamp("updated_at")).thenReturn(null);
+        when(exactResultSet.getString("entry_count")).thenReturn("2");
+        when(exactResultSet.getTimestamp("started_at")).thenThrow(new SQLException("force text fallback"));
+        when(exactResultSet.getTimestamp("generated_at")).thenThrow(new SQLException("force text fallback"));
+        when(exactResultSet.getTimestamp("updated_at")).thenThrow(new SQLException("force text fallback"));
         when(exactResultSet.getString("started_at")).thenReturn("2026-08-04T09:10:11Z");
         when(exactResultSet.getString("generated_at")).thenReturn("");
         when(exactResultSet.getString("updated_at")).thenReturn("");
         when(exactResultSet.getString("summary_day")).thenReturn("invalid-day");
         when(exactResultSet.getInt("slot")).thenReturn(0);
+        when(exactResultSet.getString("slot")).thenReturn("0");
 
         JsonObject out = store.fetchExactOrLatest(day, 0);
 

@@ -812,15 +812,20 @@ public class WorkspaceClient {
         if (conn == null) {
             throw new IOException("Connection is not available.");
         }
-        int code = conn.getResponseCode();
-        return sanitizeStatusCode(code);
+        int rawCode = conn.getResponseCode();
+        if (rawCode < 100 || rawCode > 599) {
+            return 500;
+        }
+        return rawCode;
     }
 
     private String safeContentType(HttpURLConnection conn) {
         if (conn == null) {
             return "";
         }
-        return sanitizeContentTypeValue(conn.getHeaderField("Content-Type"));
+        String headerValue = conn.getHeaderField("Content-Type");
+        String sanitizedHeader = sanitizeHeaderValue(headerValue);
+        return sanitizeContentTypeValue(sanitizedHeader);
     }
 
     private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {

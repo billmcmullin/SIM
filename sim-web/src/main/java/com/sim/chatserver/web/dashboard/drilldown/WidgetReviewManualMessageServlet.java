@@ -1224,34 +1224,23 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 return "";
             }
             return readRequestBody(requestReader);
-        } catch (IOException | RuntimeException ex) {
+        } catch (IOException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to read manual-message request body from reader", ex);
             return "";
         }
     }
 
-    private String readRequestBody(Reader reader) throws IOException {
+    private String readRequestBody(Reader reader) {
         if (reader == null) {
             return "";
         }
 
         try (Reader bodyReader = reader) {
-            char[] buffer = new char[4096];
-            StringBuilder builder = new StringBuilder();
-            int total = 0;
-            int read;
-            while ((read = bodyReader.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_JSON_PAYLOAD_BYTES) {
-                    return "";
-                }
-                builder.append(buffer, 0, read);
-            }
-            String body = builder.toString();
-            if (body.length() > MAX_JSON_PAYLOAD_BYTES) {
-                return "";
-            }
+            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
             return canonicalizeForValidation(body);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to decode manual-message request payload", ex);
+            return "";
         }
     }
 

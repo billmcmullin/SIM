@@ -52,6 +52,7 @@ import java.util.regex.Pattern;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
+import software.amazon.awssdk.core.exception.SdkException;
 
 /**
  * Background scheduler that evaluates configured alert conditions and sends email notifications.
@@ -299,7 +300,7 @@ public class AutoEmailAlertScheduler {
                     "Unable to load AWS config for automatic healthcheck restart: {0}",
                     defaultIfBlank(ex.getMessage(), ex.getClass().getSimpleName()));
             return false;
-        } catch (RuntimeException ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to load AWS config for automatic healthcheck restart.", ex);
             return false;
         }
@@ -333,7 +334,7 @@ public class AutoEmailAlertScheduler {
                     }
             );
             return true;
-        } catch (RuntimeException ex) {
+        } catch (SdkException | IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.WARNING, "Automatic healthcheck restart failed.", ex);
             return false;
         }
@@ -396,7 +397,7 @@ public class AutoEmailAlertScheduler {
             for (Map.Entry<String, Integer> entry : counts.entrySet()) {
                 if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(target)) {
                     Integer value = entry.getValue();
-                    long count = value == null ? 0L : value.longValue();
+                    int count = value == null ? 0 : value.intValue();
                     return Math.max(0L, count);
                 }
             }
@@ -719,7 +720,11 @@ public class AutoEmailAlertScheduler {
         long hours = seconds / 3600L;
         long minutes = (seconds % 3600L) / 60L;
         long secs = seconds % 60L;
-        return twoDigit(hours) + "h " + twoDigit(minutes) + "m " + twoDigit(secs) + "s";
+        return new StringBuilder(24)
+                .append(twoDigit(hours)).append("h ")
+                .append(twoDigit(minutes)).append("m ")
+                .append(twoDigit(secs)).append('s')
+                .toString();
     }
 
     private String twoDigit(long value) {

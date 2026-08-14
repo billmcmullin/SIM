@@ -50,14 +50,6 @@ public final class JsonRequestParserUtil {
             return emptyObject();
         }
 
-        String contentType = sanitizeContentTypeHeader(req.getContentType());
-        if (!contentType.isBlank()) {
-            if (!isSupportedJsonContentType(contentType)) {
-                log.warning(() -> "Unsupported JSON content type: " + contentType);
-                return emptyObject();
-            }
-        }
-
         int max = Math.max(1, maxBodyBytes);
         long declaredLength = req.getContentLengthLong();
         if (declaredLength > max) {
@@ -186,7 +178,7 @@ public final class JsonRequestParserUtil {
         return clamp(parsed, min, max);
     }
 
-    static JsonArray getArray(JsonObject obj, String key) {
+    private static JsonArray getArray(JsonObject obj, String key) {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return Json.createArrayBuilder().build();
         }
@@ -252,33 +244,6 @@ public final class JsonRequestParserUtil {
             return normalized.substring(0, maxChars);
         }
         return normalized;
-    }
-
-    private static String sanitizeContentTypeHeader(String headerValue) {
-        if (headerValue == null || headerValue.isBlank()) {
-            return "";
-        }
-        String normalized = Normalizer.normalize(headerValue, Normalizer.Form.NFKC)
-                .replace('\u0000', ' ')
-                .replace("\r", "")
-                .replace("\n", "")
-                .trim();
-        if (normalized.length() > 128) {
-            return normalized.substring(0, 128);
-        }
-        return normalized;
-    }
-
-    private static boolean isSupportedJsonContentType(String contentType) {
-        if (contentType == null || contentType.isBlank()) {
-            return false;
-        }
-        String normalizedType = contentType.toLowerCase(java.util.Locale.ROOT);
-        int paramsIndex = normalizedType.indexOf(';');
-        String baseType = paramsIndex >= 0 ? normalizedType.substring(0, paramsIndex).trim() : normalizedType.trim();
-        return "application/json".equals(baseType)
-                || "application/ld+json".equals(baseType)
-                || "application/problem+json".equals(baseType);
     }
 
     private static JsonObject emptyObject() {

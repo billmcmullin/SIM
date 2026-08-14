@@ -1,8 +1,10 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.PrintWriter;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -44,6 +46,8 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import com.sim.chatserver.config.ServerConfig;
 
 /**
@@ -387,32 +391,68 @@ class WidgetSyncServletTest {
             when(rs.getString("ts_bad")).thenReturn("not-a-timestamp");
             when(rs.getString("text_col")).thenReturn("A\u0000B\r\nC");
             when(rs.getString("text_err")).thenThrow(new SQLException("boom"));
+            when(rs.getCharacterStream(anyString())).thenAnswer(invocation -> {
+                String column = invocation.getArgument(0, String.class);
+                return switch (column) {
+                    case "interval_ok" -> new StringReader("900");
+                    case "interval_bad" -> new StringReader("bad900");
+                    case "int_ok" -> new StringReader("42");
+                    case "int_bad" -> new StringReader("4a2");
+                    case "bool_true" -> new StringReader("1");
+                    case "bool_false" -> new StringReader("false");
+                    case "bool_bad" -> new StringReader("unknown");
+                    case "ts_plain" -> new StringReader("2026-05-20 10:15:30");
+                    case "ts_offset" -> new StringReader("2026-05-20T10:15:30Z");
+                    case "ts_bad" -> new StringReader("not-a-timestamp");
+                    case "text_col" -> new StringReader("A\u0000B\r\nC");
+                    case "text_err" -> throw new SQLException("boom");
+                    default -> null;
+                };
+            });
+            when(rs.getBytes(anyString())).thenAnswer(invocation -> {
+                String column = invocation.getArgument(0, String.class);
+                return switch (column) {
+                    case "interval_ok" -> "900".getBytes(StandardCharsets.UTF_8);
+                    case "interval_bad" -> "bad900".getBytes(StandardCharsets.UTF_8);
+                    case "int_ok" -> "42".getBytes(StandardCharsets.UTF_8);
+                    case "int_bad" -> "4a2".getBytes(StandardCharsets.UTF_8);
+                    case "bool_true" -> "1".getBytes(StandardCharsets.UTF_8);
+                    case "bool_false" -> "false".getBytes(StandardCharsets.UTF_8);
+                    case "bool_bad" -> "unknown".getBytes(StandardCharsets.UTF_8);
+                    case "ts_plain" -> "2026-05-20 10:15:30".getBytes(StandardCharsets.UTF_8);
+                    case "ts_offset" -> "2026-05-20T10:15:30Z".getBytes(StandardCharsets.UTF_8);
+                    case "ts_bad" -> "not-a-timestamp".getBytes(StandardCharsets.UTF_8);
+                    case "text_col" -> "A\u0000B\r\nC".getBytes(StandardCharsets.UTF_8);
+                    case "text_err" -> throw new SQLException("boom");
+                    default -> null;
+                };
+            });
     
-            assertEquals(900L, invoke("readPersistedIntervalSeconds",
+                assertEquals(900L, invokeJdbcStore("readPersistedIntervalSeconds",
                     new Class<?>[]{ResultSet.class, String.class, long.class}, rs, "interval_ok", 7L));
-            assertEquals(7L, invoke("readPersistedIntervalSeconds",
+                assertEquals(7L, invokeJdbcStore("readPersistedIntervalSeconds",
                     new Class<?>[]{ResultSet.class, String.class, long.class}, rs, "interval_bad", 7L));
     
-            assertEquals(42, invoke("readPersistedInt",
+                assertEquals(42, invokeJdbcStore("readPersistedInt",
                     new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "int_ok", 3));
-            assertEquals(3, invoke("readPersistedInt",
+                assertEquals(3, invokeJdbcStore("readPersistedInt",
                     new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "int_bad", 3));
     
-            assertEquals(true, invoke("readPersistedBoolean",
+                assertEquals(true, invokeJdbcStore("readPersistedBoolean",
                     new Class<?>[]{ResultSet.class, String.class, boolean.class}, rs, "bool_true", false));
-            assertEquals(false, invoke("readPersistedBoolean",
+                assertEquals(false, invokeJdbcStore("readPersistedBoolean",
                     new Class<?>[]{ResultSet.class, String.class, boolean.class}, rs, "bool_false", true));
-            assertEquals(true, invoke("readPersistedBoolean",
+                assertEquals(true, invokeJdbcStore("readPersistedBoolean",
                     new Class<?>[]{ResultSet.class, String.class, boolean.class}, rs, "bool_bad", true));
     
-            assertNotNull(invoke("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_plain"));
-            assertNotNull(invoke("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_offset"));
-            assertNull(invoke("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_bad"));
+                assertNotNull(invokeJdbcStore("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_plain"));
+                assertNotNull(invokeJdbcStore("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_offset"));
+                assertNull(invokeJdbcStore("readDbTimestamp", new Class<?>[]{ResultSet.class, String.class}, rs, "ts_bad"));
     
-            String text = (String) invoke("readDbText", new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "text_col", 20);
+                String text = (String) invokeJdbcStore("readDbText", new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "text_col", 20);
             assertTrue(text.toLowerCase(Locale.ROOT).contains("a"));
             assertFalse(text.contains("\u0000"));
-            assertEquals("", invoke("readDbText", new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "text_err", 20));
+                assertEquals("", invokeJdbcStore("readDbText", new Class<?>[]{ResultSet.class, String.class, int.class}, rs, "text_err", 20));
         }
     
         @Test
@@ -441,9 +481,9 @@ class WidgetSyncServletTest {
             assertEquals("fallback", invoke("defaultIfBlank", new Class<?>[]{String.class, String.class}, " ", "fallback"));
             assertEquals("value", invoke("defaultIfBlank", new Class<?>[]{String.class, String.class}, "value", "fallback"));
     
-            assertEquals("\"widget_table\"", invoke("quoteIdentifier", new Class<?>[]{String.class}, "widget_table"));
+                assertEquals("\"widget_table\"", invokeJdbcStore("quoteIdentifier", new Class<?>[]{String.class}, "widget_table"));
             Exception thrown = assertThrows(Exception.class,
-                    () -> invoke("quoteIdentifier", new Class<?>[]{String.class}, "bad-name"));
+                    () -> invokeJdbcStore("quoteIdentifier", new Class<?>[]{String.class}, "bad-name"));
             assertTrue(thrown.getCause() instanceof IllegalArgumentException);
     
             assertEquals("workspace-name", invoke("buildSlug", new Class<?>[]{String.class}, " Workspace Name "));
@@ -474,16 +514,65 @@ class WidgetSyncServletTest {
             method.setAccessible(true);
             return method.invoke(null, args);
         }
+
+        private Object invokeJdbcStore(String methodName, Class<?>[] paramTypes, Object... args) throws Exception {
+            Object jdbcStore = getStaticField("jdbcStore");
+            Method method = jdbcStore.getClass().getDeclaredMethod(methodName, paramTypes);
+            method.setAccessible(true);
+            return method.invoke(jdbcStore, args);
+        }
     
         private static Object getStaticField(String name) throws Exception {
-            Field field = WidgetSyncServlet.class.getDeclaredField(name);
-            field.setAccessible(true);
-            return field.get(null);
+            try {
+                Field field = WidgetSyncServlet.class.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(null);
+            } catch (NoSuchFieldException ignored) {
+                Field stateField = WidgetSyncServlet.class.getDeclaredField("STATE");
+                stateField.setAccessible(true);
+                Object state = stateField.get(null);
+
+                Field nested = state.getClass().getDeclaredField(name);
+                nested.setAccessible(true);
+                Object value = nested.get(state);
+                if (value instanceof AtomicLong atomicLong) {
+                    return atomicLong.get();
+                }
+                if (value instanceof AtomicReference<?> atomicRef) {
+                    return atomicRef.get();
+                }
+                return value;
+            }
         }
     
         private static void setStaticField(String name, Object value) throws Exception {
-            Field field = WidgetSyncServlet.class.getDeclaredField(name);
-            field.setAccessible(true);
-            field.set(null, value);
+            try {
+                Field field = WidgetSyncServlet.class.getDeclaredField(name);
+                field.setAccessible(true);
+                field.set(null, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                Field stateField = WidgetSyncServlet.class.getDeclaredField("STATE");
+                stateField.setAccessible(true);
+                Object state = stateField.get(null);
+
+                Field nested = state.getClass().getDeclaredField(name);
+                nested.setAccessible(true);
+                Object target = nested.get(state);
+
+                if (target instanceof AtomicLong atomicLong) {
+                    long longValue = value == null ? 0L : ((Number) value).longValue();
+                    atomicLong.set(longValue);
+                    return;
+                }
+                if (target instanceof AtomicReference<?> atomicRef) {
+                    @SuppressWarnings("unchecked")
+                    AtomicReference<Object> mutableRef = (AtomicReference<Object>) atomicRef;
+                    mutableRef.set(value);
+                    return;
+                }
+
+                nested.set(state, value);
+            }
         }
 }
