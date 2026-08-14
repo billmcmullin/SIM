@@ -400,6 +400,11 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
+        if (!isJsonContentType(req)) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            return;
+        }
+
         JsonObject payload;
         try {
             String requestBody = readRequestBody(req);
@@ -766,7 +771,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
+    private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
@@ -826,12 +831,13 @@ public class AllSessionsServlet extends HttpServlet {
         }
 
         try {
-            Object raw = rs.getObject(column);
-            if (raw != null) {
-                return safeDbText(String.valueOf(raw), maxLen);
+            try (Reader reader = rs.getCharacterStream(column)) {
+                if (reader != null) {
+                    return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen);
+                }
             }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object DB text read failed for column " + column, ex);
+        } catch (SQLException | IOException ex) {
+            log.log(Level.FINE, "Character stream DB text read failed for column " + column, ex);
         }
 
         try {
@@ -840,6 +846,24 @@ public class AllSessionsServlet extends HttpServlet {
             log.log(Level.FINE, "String DB text read failed for column " + column, ex);
             return null;
         }
+    }
+
+    private boolean isJsonContentType(HttpServletRequest req) {
+        if (req == null) {
+            return false;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            return false;
+        }
+        String normalized = contentType.trim().toLowerCase();
+        int semicolon = normalized.indexOf(';');
+        if (semicolon >= 0) {
+            normalized = normalized.substring(0, semicolon).trim();
+        }
+        return "application/json".equals(normalized)
+                || "text/json".equals(normalized)
+                || normalized.endsWith("+json");
     }
 
     private String safeDbText(String value, int maxLen) {

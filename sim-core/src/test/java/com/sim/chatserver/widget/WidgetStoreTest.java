@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -36,15 +37,19 @@ import static org.mockito.Mockito.when;
     @Test
     void readNonNegativeInt_coversTypedAndFallbackPaths() throws Exception {
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getObject("id")).thenReturn(Integer.valueOf(7));
+        when(typed.getInt("id")).thenReturn(7);
+        when(typed.wasNull()).thenReturn(false);
         assertEquals(7, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, typed, "id"));
 
         ResultSet negative = mock(ResultSet.class);
-        when(negative.getObject("id")).thenReturn(Integer.valueOf(-9));
+        when(negative.getInt("id")).thenReturn(-9);
+        when(negative.wasNull()).thenReturn(false);
         assertEquals(0, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, negative, "id"));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getObject("id")).thenReturn("17");
+        when(fallback.getInt("id")).thenReturn(0);
+        when(fallback.wasNull()).thenReturn(true);
+        when(fallback.getBytes("id")).thenReturn("17".getBytes(StandardCharsets.UTF_8));
         assertEquals(17, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, fallback, "id"));
     }
 
@@ -58,12 +63,12 @@ import static org.mockito.Mockito.when;
 
         ResultSet fallback = mock(ResultSet.class);
         when(fallback.getTimestamp("created_at")).thenThrow(new SQLException("no typed timestamp"));
-        when(fallback.getString("created_at")).thenReturn("2026-08-07T10:20:30Z");
+        when(fallback.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
         assertEquals(now, ((Instant) invoke("readCreatedAt", new Class<?>[] { ResultSet.class }, fallback)));
 
         ResultSet invalid = mock(ResultSet.class);
         when(invalid.getTimestamp("created_at")).thenThrow(new SQLException("no typed timestamp"));
-        when(invalid.getString("created_at")).thenReturn("bad");
+        when(invalid.getBytes("created_at")).thenReturn("bad".getBytes(StandardCharsets.UTF_8));
         assertEquals(Instant.EPOCH, ((Instant) invoke("readCreatedAt", new Class<?>[] { ResultSet.class }, invalid)));
     }
 
@@ -71,9 +76,10 @@ import static org.mockito.Mockito.when;
     void mapRow_andFlags_coverUtilityBranches() throws Exception {
         Instant now = Instant.parse("2026-08-07T10:20:30Z");
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getObject("id")).thenReturn(Integer.valueOf(5));
-        when(rs.getObject("widget_id")).thenReturn(" wid ");
-        when(rs.getObject("display_name")).thenReturn(" name ");
+        when(rs.getInt("id")).thenReturn(5);
+        when(rs.wasNull()).thenReturn(false);
+        when(rs.getBytes("widget_id")).thenReturn(" wid ".getBytes(StandardCharsets.UTF_8));
+        when(rs.getBytes("display_name")).thenReturn(" name ".getBytes(StandardCharsets.UTF_8));
         when(rs.getTimestamp("created_at")).thenReturn(Timestamp.from(now));
 
         WidgetEntry entry = (WidgetEntry) invoke("mapRow", new Class<?>[] { ResultSet.class }, rs);
@@ -91,7 +97,8 @@ import static org.mockito.Mockito.when;
     @Test
     void readSanitizedDbText_returnsEmptyWhenColumnReadFails() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getObject("widget_id")).thenThrow(new SQLException("boom"));
+        when(rs.getCharacterStream("widget_id")).thenThrow(new SQLException("boom"));
+        when(rs.getBytes("widget_id")).thenThrow(new SQLException("boom"));
 
         assertEquals("", invoke("readSanitizedDbText", new Class<?>[] { ResultSet.class, String.class, int.class }, rs, "widget_id", 10));
     }

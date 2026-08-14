@@ -791,19 +791,12 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
-        Object raw;
-        try {
-            raw = rs.getObject(columnName);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
+        String rawText = readRawDbText(rs, columnName, Math.max(maxLen, 1));
+        if (rawText == null || rawText.isBlank()) {
             return "";
         }
 
-        if (raw == null) {
-            return "";
-        }
-
-        String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), maxLen, false);
+        String normalized = ServletRequestParamUtil.normalizeBodyText(rawText, maxLen, false);
         return normalized == null ? "" : normalized.replace('\n', ' ');
     }
 
@@ -812,32 +805,17 @@ public class WidgetExportServlet extends HttpServlet {
             return null;
         }
 
-        Object raw;
         try {
-            raw = rs.getObject(columnName);
+            Timestamp typed = rs.getTimestamp(columnName);
+            if (typed != null) {
+                return typed;
+            }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Typed DB timestamp read failed for column " + columnName, ex);
-            return null;
         }
 
-        if (raw == null) {
-            return null;
-        }
-
-        if (raw instanceof Timestamp ts) {
-            return ts;
-        }
-        if (raw instanceof java.util.Date date) {
-            return new Timestamp(date.getTime());
-        }
-        if (raw instanceof Instant instant) {
-            return Timestamp.from(instant);
-        }
-        if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
-            return Timestamp.from(offsetDateTime.toInstant());
-        }
-
-        String text = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 128, true);
+        String rawText = readRawDbText(rs, columnName, 128);
+        String text = ServletRequestParamUtil.normalizeBodyText(rawText, 128, true);
         if (text == null || text.isBlank()) {
             return null;
         }
@@ -852,6 +830,53 @@ public class WidgetExportServlet extends HttpServlet {
                 return null;
             }
         }
+    }
+
+    private String readRawDbText(ResultSet rs, String columnName, int maxLen) {
+        int limit = Math.max(1, maxLen);
+        try {
+            Reader reader = rs.getCharacterStream(columnName);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return readAtMostChars(closeable, limit);
+                }
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Character-stream DB read failed for column " + columnName, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character-stream decode failed for column " + columnName, ex);
+        }
+
+        try {
+            byte[] bytes = rs.getBytes(columnName);
+            if (bytes == null) {
+                return null;
+            }
+            String raw = new String(bytes, StandardCharsets.UTF_8);
+            return raw.length() <= limit ? raw : raw.substring(0, limit);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Binary DB read failed for column " + columnName, ex);
+            return null;
+        }
+    }
+
+    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private OutputStream openOutputStreamSafe(HttpServletResponse resp, String context) {

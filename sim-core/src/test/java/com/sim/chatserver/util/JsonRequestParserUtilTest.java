@@ -38,7 +38,7 @@ public class JsonRequestParserUtilTest
         // When
         JsonObject obj = null; // UTA: configured value
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -56,7 +56,7 @@ public class JsonRequestParserUtilTest
         boolean containsKeyResult = false; // UTA: configured value
         when(obj.containsKey(nullable(Object.class))).thenReturn(containsKeyResult);
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -72,7 +72,7 @@ public class JsonRequestParserUtilTest
         // When
         JsonObject obj = mock(JsonObject.class);
         String key = null; // UTA: configured value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -93,7 +93,7 @@ public class JsonRequestParserUtilTest
         JsonValue getResult = null; // UTA: configured value
         when(obj.get(nullable(Object.class))).thenReturn(getResult);
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -111,7 +111,7 @@ public class JsonRequestParserUtilTest
         boolean containsKeyResult = true; // UTA: configured value
         when(obj.containsKey(nullable(Object.class))).thenReturn(containsKeyResult);
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -132,7 +132,7 @@ public class JsonRequestParserUtilTest
         JsonArray getJsonArrayResult = mock(JsonArray.class);
         when(obj.getJsonArray(nullable(String.class))).thenReturn(getJsonArrayResult);
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 
@@ -153,7 +153,7 @@ public class JsonRequestParserUtilTest
         JsonArray getJsonArrayResult = null; // UTA: configured value
         when(obj.getJsonArray(nullable(String.class))).thenReturn(getJsonArrayResult);
         String key = "key"; // UTA: default value
-        JsonArray result = JsonRequestParserUtil.getArray(obj, key);
+        List<JsonObject> result = JsonRequestParserUtil.getObjectArray(obj, key, 10);
 
     }
 

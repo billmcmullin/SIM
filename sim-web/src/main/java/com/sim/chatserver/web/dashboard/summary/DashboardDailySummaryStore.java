@@ -1,5 +1,8 @@
 package com.sim.chatserver.web.dashboard.summary;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -429,17 +432,27 @@ public class DashboardDailySummaryStore {
         }
 
         try {
-            Object raw = readCellObject(rs, column);
-            if (raw == null) {
-                return "";
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return normalizeRawText(readAtMostChars(closeable, 8192));
+                } catch (IOException ioEx) {
+                    log.log(Level.FINE, "Character stream decode failed for column " + safeColumnName(column), ioEx);
+                    return "";
+                }
             }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 0, false);
-            if (normalized == null) {
-                return "";
-            }
-            return normalized.replace("\u2028", " ").replace("\u2029", " ");
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, "ResultSet#getCharacterStream(String) failed for column " + safeColumnName(column), ex);
+        }
+
+        try {
+            byte[] rawBytes = rs.getBytes(column);
+            if (rawBytes == null) {
+                return "";
+            }
+            return normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8));
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getBytes(String) failed for column " + safeColumnName(column), ex);
             return "";
         }
     }
@@ -450,44 +463,36 @@ public class DashboardDailySummaryStore {
         }
 
         try {
-            Object raw = readCellObject(rs, column);
-            if (raw == null) {
-                return "";
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return normalizeRawText(readAtMostChars(closeable, 8192));
+                } catch (IOException ioEx) {
+                    log.log(Level.FINE, "Character stream decode failed for column index " + column, ioEx);
+                    return "";
+                }
             }
-            String normalized = ServletRequestParamUtil.normalizeBodyText(String.valueOf(raw), 0, false);
-            if (normalized == null) {
-                return "";
-            }
-            return normalized.replace("\u2028", " ").replace("\u2029", " ");
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
+            log.log(Level.FINE, "ResultSet#getCharacterStream(int) failed for column index " + column, ex);
+        }
+
+        try {
+            byte[] rawBytes = rs.getBytes(column);
+            if (rawBytes == null) {
+                return "";
+            }
+            return normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8));
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getBytes(int) failed for column index " + column, ex);
             return "";
         }
-    }
-
-    private Object readCellObject(ResultSet rs, String column) throws SQLException {
-        if (rs == null || column == null || column.isBlank()) {
-            return null;
-        }
-        return rs.getObject(column);
-    }
-
-    private Object readCellObject(ResultSet rs, int column) throws SQLException {
-        if (rs == null) {
-            return null;
-        }
-        return rs.getObject(column);
     }
 
     private String sanitizeText(String value, int maxLen) {
         if (value == null) {
             return "";
         }
-        String normalized = ServletRequestParamUtil.normalizeBodyText(value, 0, false);
-        if (normalized == null) {
-            return "";
-        }
-        normalized = normalized.replace("\u2028", " ").replace("\u2029", " ");
+        String normalized = normalizeRawText(value);
         if (maxLen > 0 && normalized.length() > maxLen) {
             return normalized.substring(0, maxLen);
         }
@@ -497,21 +502,6 @@ public class DashboardDailySummaryStore {
     private int getSafeInt(ResultSet rs, String column, int min, int max) throws SQLException {
         if (rs == null || column == null || column.isBlank()) {
             return min;
-        }
-
-        try {
-            int typed = rs.getInt(column);
-            if (!rs.wasNull()) {
-                if (typed < min) {
-                    return min;
-                }
-                if (typed > max) {
-                    return max;
-                }
-                return typed;
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getInt(String) failed for column " + column, ex);
         }
 
         String raw = sanitizeText(readRawText(rs, column), 64);
@@ -539,15 +529,11 @@ public class DashboardDailySummaryStore {
             return null;
         }
 
-        Object raw;
         try {
-            raw = readCellObject(rs, column);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for timestamp column " + safeColumnName(column), ex);
-            raw = null;
-        }
-
-        if (raw instanceof Timestamp direct) {
+            Timestamp direct = rs.getTimestamp(column);
+            if (direct == null) {
+                return null;
+            }
             try {
                 Instant instant = direct.toInstant();
                 return instant == null ? null : Timestamp.from(instant);
@@ -555,28 +541,11 @@ public class DashboardDailySummaryStore {
                 log.log(Level.FINE, "Invalid direct timestamp value for column " + column, ex);
                 return null;
             }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getTimestamp(String) failed for column " + safeColumnName(column), ex);
         }
 
-        if (raw instanceof java.util.Date date) {
-            try {
-                Instant instant = new Timestamp(date.getTime()).toInstant();
-                return instant == null ? null : Timestamp.from(instant);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Invalid date timestamp value for column " + column, ex);
-                return null;
-            }
-        }
-
-        if (raw instanceof Instant instantValue) {
-            try {
-                return Timestamp.from(instantValue);
-            } catch (DateTimeException | IllegalArgumentException ex) {
-                log.log(Level.FINE, "Invalid instant timestamp value for column " + column, ex);
-                return null;
-            }
-        }
-
-        String text = sanitizeText(raw == null ? readRawText(rs, column) : String.valueOf(raw), 128);
+        String text = sanitizeText(readRawText(rs, column), 128);
         if (text == null || text.isBlank()) {
             return null;
         }
@@ -601,26 +570,16 @@ public class DashboardDailySummaryStore {
             return "";
         }
 
-        Object raw = null;
         try {
-            raw = readCellObject(rs, column);
-            if (raw instanceof java.sql.Date day) {
+            java.sql.Date day = rs.getDate(column);
+            if (day != null) {
                 return day.toLocalDate().toString();
             }
-            if (raw instanceof LocalDate localDate) {
-                return localDate.toString();
-            }
-            if (raw instanceof Instant instant) {
-                return instant.atZone(ZoneId.systemDefault()).toLocalDate().toString();
-            }
-            if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
-                return offsetDateTime.toLocalDate().toString();
-            }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for date column " + safeColumnName(column), ex);
+            log.log(Level.FINE, "ResultSet#getDate(String) failed for date column " + safeColumnName(column), ex);
         }
 
-        String text = sanitizeText(raw == null ? getSafeString(rs, column, 32) : String.valueOf(raw), 32);
+        String text = sanitizeText(getSafeString(rs, column, 32), 32);
         if (text == null || text.isBlank()) {
             return "";
         }
@@ -639,6 +598,30 @@ public class DashboardDailySummaryStore {
             return "<unknown>";
         }
         return column;
+    }
+
+    private String normalizeRawText(String value) {
+        String normalized = ServletRequestParamUtil.normalizeBodyText(value, 0, false);
+        return normalized.replace("\u2028", " ").replace("\u2029", " ");
+    }
+
+    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private String suggestNextAction(String status, String quality, String response, String usage) {

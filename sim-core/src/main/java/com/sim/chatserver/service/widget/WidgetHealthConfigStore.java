@@ -1,5 +1,7 @@
 package com.sim.chatserver.service.widget;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -351,12 +353,13 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Number number) {
-            return Math.max(0, number.intValue());
-        }
-        if (raw instanceof Boolean bool) {
-            return bool ? 1 : 0;
+        try {
+            int value = rs.getInt(column);
+            if (!rs.wasNull()) {
+                return Math.max(0, value);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet numeric read failed for column " + column, ex);
         }
 
         String text = readRawDbText(rs, column);
@@ -372,10 +375,13 @@ public class WidgetHealthConfigStore {
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Number number) {
-            int value = number.intValue();
-            return value > 0 ? value : fallback;
+        try {
+            int value = rs.getInt(column);
+            if (!rs.wasNull()) {
+                return value > 0 ? value : fallback;
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet positive integer read failed for column " + column, ex);
         }
 
         String text = readRawDbText(rs, column);
@@ -392,12 +398,13 @@ public class WidgetHealthConfigStore {
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Boolean typed) {
-            return typed;
-        }
-        if (raw instanceof Number number) {
-            return number.intValue() != 0;
+        try {
+            boolean value = rs.getBoolean(column);
+            if (!rs.wasNull()) {
+                return value;
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet boolean read failed for column " + column, ex);
         }
 
         String text = readRawDbText(rs, column);
@@ -420,18 +427,13 @@ public class WidgetHealthConfigStore {
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Timestamp typed) {
-            return normalizeTimestamp(typed, column);
-        }
-        if (raw instanceof java.util.Date date) {
-            return normalizeTimestamp(new Timestamp(date.getTime()), column);
-        }
-        if (raw instanceof Instant instant) {
-            return normalizeTimestamp(Timestamp.from(instant), column);
-        }
-        if (raw instanceof java.time.OffsetDateTime offsetDateTime) {
-            return normalizeTimestamp(Timestamp.from(offsetDateTime.toInstant()), column);
+        try {
+            Timestamp typed = rs.getTimestamp(column);
+            if (typed != null) {
+                return normalizeTimestamp(typed, column);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet timestamp read failed for column " + column, ex);
         }
 
         String text = readSanitizedDbText(rs, column, 128);
@@ -444,7 +446,12 @@ public class WidgetHealthConfigStore {
             value = Timestamp.from(Instant.parse(text.trim()));
         } catch (DateTimeException ex) {
             log.log(Level.FINE, "Instant timestamp parse fallback for column " + column, ex);
-            value = Timestamp.valueOf(text.replace('T', ' '));
+            try {
+                value = Timestamp.valueOf(text.replace('T', ' '));
+            } catch (IllegalArgumentException parseEx) {
+                log.log(Level.FINE, "Timestamp parse fallback failed for column " + column, parseEx);
+                return null;
+            }
         }
 
         return normalizeTimestamp(value, column);
@@ -470,30 +477,48 @@ public class WidgetHealthConfigStore {
     }
 
     private String readRawDbText(ResultSet rs, String column) throws java.sql.SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw != null) {
-            if (raw instanceof byte[] bytes) {
-                return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+        try {
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                }
             }
-            return sanitizeDbText(String.valueOf(raw), 4096);
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet character-stream read failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
         }
 
         try {
-            String fallback = rs.getString(column);
-            return fallback == null ? null : sanitizeDbText(fallback, 4096);
+            byte[] bytes = rs.getBytes(column);
+            if (bytes == null) {
+                return null;
+            }
+            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet textual read failed for column " + column, ex);
+            log.log(Level.FINE, "ResultSet binary read failed for column " + column, ex);
             return null;
         }
     }
 
-    private Object readRawDbObject(ResultSet rs, String column) {
-        try {
-            return rs.getObject(column);
-        } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + column, ex);
-            return null;
+    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
         }
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private String sanitizeDbText(String s, int maxChars) {

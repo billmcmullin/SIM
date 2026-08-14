@@ -79,12 +79,19 @@ class AwsEc2RestartServletTest {
     void doPost_returnsOk_whenRebootSucceeds() throws Exception {
         AtomicReference<String> captured = new AtomicReference<>();
 
-        AwsEc2RestartServlet servlet = new AwsEc2RestartServlet() {
-            @Override
-            void rebootEc2Instance(String region, String accessKeyId, String secretAccessKey, String instanceId) {
-                captured.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey);
-            }
-        };
+        AwsEc2RestartServlet servlet = org.mockito.Mockito.spy(new AwsEc2RestartServlet());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String region = invocation.getArgument(0, String.class);
+            String accessKeyId = invocation.getArgument(1, String.class);
+            String secretAccessKey = invocation.getArgument(2, String.class);
+            String instanceId = invocation.getArgument(3, String.class);
+            captured.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey);
+            return null;
+        }).when(servlet).rebootEc2Instance(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
 
         HttpServletRequest req = requestWithParams(Map.of(
                 "awsRegion", new String[]{"us-east-1"},

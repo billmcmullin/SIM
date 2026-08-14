@@ -1,5 +1,6 @@
 package com.sim.chatserver.service.widget;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -85,7 +86,19 @@ class WidgetHealthConfigStoreTest {
         when(rs.next()).thenReturn(true);
 
         when(rs.getInt("id")).thenReturn(1);
-        when(rs.getString("id")).thenReturn("1");
+        when(rs.wasNull()).thenReturn(false);
+        when(rs.getBytes("healthcheck_url")).thenReturn(bytes("  http://example.com/health  "));
+        when(rs.getBytes("method")).thenReturn(bytes("patch"));
+        when(rs.getBytes("expect_json_field")).thenReturn(bytes("  status "));
+        when(rs.getBytes("expect_json_value")).thenReturn(bytes(" up "));
+        when(rs.getBytes("widget_id")).thenReturn(bytes(" wid-1 "));
+        when(rs.getBytes("request_origin")).thenReturn(bytes(" https://origin.local "));
+        when(rs.getBytes("request_referer")).thenReturn(bytes(" https://origin.local/r "));
+        when(rs.getBytes("request_user_agent")).thenReturn(bytes(" test-agent "));
+        when(rs.getBytes("request_cookie")).thenReturn(bytes(" session=abc "));
+        when(rs.getBytes("api_key_header_name")).thenReturn(null);
+        when(rs.getBytes("api_key_value")).thenReturn(bytes(" token "));
+        when(rs.getBytes("updated_by")).thenReturn(bytes(" tester "));
         when(rs.getString("healthcheck_url")).thenReturn("  http://example.com/health  ");
         when(rs.getString("method")).thenReturn("patch");
         when(rs.getInt("timeout_ms")).thenReturn(200_000);
@@ -118,8 +131,7 @@ class WidgetHealthConfigStoreTest {
         when(rs.getObject("api_key_header_name", String.class)).thenReturn(null);
         when(rs.getObject("api_key_value", String.class)).thenReturn(" token ");
         when(rs.getObject("updated_by", String.class)).thenReturn(" tester ");
-        when(rs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
-        when(rs.getString("updated_at")).thenReturn("2026-01-01T00:00:00Z");
+        when(rs.getTimestamp("updated_at")).thenReturn(Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
 
         WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
 
@@ -251,13 +263,17 @@ class WidgetHealthConfigStoreTest {
         when(loadPs.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(true);
 
-        when(rs.getString("id")).thenReturn("1");
-        when(rs.getString("healthcheck_url")).thenReturn("http://example.com/health");
-        when(rs.getString("method")).thenReturn("head");
-        when(rs.getString("timeout_ms")).thenReturn("-5");
-        when(rs.getString("healthcheck_enabled")).thenReturn("0");
-        when(rs.getString("check_interval_seconds")).thenReturn("15");
-        when(rs.getString("updated_at")).thenReturn("2026-01-01 00:00:00");
+        when(rs.getInt("id")).thenReturn(1);
+        when(rs.getInt("timeout_ms")).thenThrow(new java.sql.SQLException("typed timeout read failed"));
+        when(rs.getInt("check_interval_seconds")).thenThrow(new java.sql.SQLException("typed interval read failed"));
+        when(rs.getBoolean("healthcheck_enabled")).thenThrow(new java.sql.SQLException("typed boolean read failed"));
+        when(rs.getTimestamp("updated_at")).thenThrow(new java.sql.SQLException("typed ts read failed"));
+        when(rs.getBytes("healthcheck_url")).thenReturn(bytes("http://example.com/health"));
+        when(rs.getBytes("method")).thenReturn(bytes("head"));
+        when(rs.getBytes("timeout_ms")).thenReturn(bytes("-5"));
+        when(rs.getBytes("healthcheck_enabled")).thenReturn(bytes("0"));
+        when(rs.getBytes("check_interval_seconds")).thenReturn(bytes("15"));
+        when(rs.getBytes("updated_at")).thenReturn(bytes("2026-01-01 00:00:00"));
 
         WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
 
@@ -267,5 +283,9 @@ class WidgetHealthConfigStoreTest {
         assertEquals("HEAD", out.getMethod());
         assertEquals(1, out.getTimeoutMs());
         assertNotNull(out.getUpdatedAt());
+    }
+
+    private static byte[] bytes(String value) {
+        return value == null ? null : value.getBytes(StandardCharsets.UTF_8);
     }
 }

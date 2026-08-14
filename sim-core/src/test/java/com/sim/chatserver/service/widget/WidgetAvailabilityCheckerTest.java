@@ -1,5 +1,6 @@
 package com.sim.chatserver.service.widget;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -76,6 +77,11 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getString("api_key_header_name")).thenReturn("Authorization");
         when(loadRs.getString("api_key_value")).thenReturn("token");
         when(loadRs.getString("updated_by")).thenReturn("tester");
+        when(loadRs.getBytes("healthcheck_url")).thenReturn(bytes("http://[bad-url"));
+        when(loadRs.getBytes("method")).thenReturn(bytes("GET"));
+        when(loadRs.getBytes("api_key_header_name")).thenReturn(bytes("Authorization"));
+        when(loadRs.getBytes("api_key_value")).thenReturn(bytes("token"));
+        when(loadRs.getBytes("updated_by")).thenReturn(bytes("tester"));
         when(loadRs.getObject("updated_at")).thenReturn(Timestamp.from(Instant.now()));
 
         when(loadRs.getObject("id", Integer.class)).thenReturn(1);
@@ -155,6 +161,11 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getString("api_key_header_name")).thenReturn("Authorization");
         when(loadRs.getString("api_key_value")).thenReturn("token");
         when(loadRs.getString("updated_by")).thenReturn("tester");
+        when(loadRs.getBytes("healthcheck_url")).thenReturn(bytes("http://[bad-url"));
+        when(loadRs.getBytes("method")).thenReturn(bytes("GET"));
+        when(loadRs.getBytes("api_key_header_name")).thenReturn(bytes("Authorization"));
+        when(loadRs.getBytes("api_key_value")).thenReturn(bytes("token"));
+        when(loadRs.getBytes("updated_by")).thenReturn(bytes("tester"));
         when(loadRs.getObject("updated_at")).thenReturn(Timestamp.from(Instant.now()));
 
         when(loadRs.getObject("id", Integer.class)).thenReturn(1);
@@ -230,6 +241,11 @@ class WidgetAvailabilityCheckerTest {
             when(loadRs.getString("api_key_header_name")).thenReturn("Authorization");
             when(loadRs.getString("api_key_value")).thenReturn("token");
             when(loadRs.getString("updated_by")).thenReturn("tester");
+            when(loadRs.getBytes("healthcheck_url")).thenReturn(bytes("http://[bad-url"));
+            when(loadRs.getBytes("method")).thenReturn(bytes("GET"));
+            when(loadRs.getBytes("api_key_header_name")).thenReturn(bytes("Authorization"));
+            when(loadRs.getBytes("api_key_value")).thenReturn(bytes("token"));
+            when(loadRs.getBytes("updated_by")).thenReturn(bytes("tester"));
             when(loadRs.getObject("updated_at")).thenReturn(Timestamp.from(Instant.now()));
 
             when(loadRs.getObject("id", Integer.class)).thenReturn(1);
@@ -312,6 +328,14 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getString("api_key_header_name")).thenReturn("Authorization");
         when(loadRs.getString("api_key_value")).thenReturn("token");
         when(loadRs.getString("updated_by")).thenReturn("tester");
+        when(loadRs.getBytes("healthcheck_url")).thenReturn(bytes("http://widget.local/api/health"));
+        when(loadRs.getBytes("method")).thenReturn(bytes("GET"));
+        when(loadRs.getBytes("healthcheck_enabled")).thenReturn(bytes("false"));
+        when(loadRs.getBytes("check_interval_seconds")).thenReturn(bytes("300"));
+        when(loadRs.getBytes("timeout_ms")).thenReturn(bytes("5000"));
+        when(loadRs.getBytes("api_key_header_name")).thenReturn(bytes("Authorization"));
+        when(loadRs.getBytes("api_key_value")).thenReturn(bytes("token"));
+        when(loadRs.getBytes("updated_by")).thenReturn(bytes("tester"));
         when(loadRs.getObject("updated_at")).thenReturn(Timestamp.from(Instant.now()));
 
         when(loadRs.getObject("id", Integer.class)).thenReturn(1);
@@ -335,5 +359,9 @@ class WidgetAvailabilityCheckerTest {
         assertTrue(result.available());
         assertEquals("DISABLED", result.status());
         assertTrue(result.details().contains("disabled"));
+    }
+
+    private static byte[] bytes(String value) {
+        return value == null ? null : value.getBytes(StandardCharsets.UTF_8);
     }
 }

@@ -1,5 +1,7 @@
 package com.sim.chatserver.service.dashboard;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -11,6 +13,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -387,14 +390,11 @@ public class DashboardSessionService {
         if (column == null || column.isBlank()) {
             return "";
         }
-        Object raw = readRawDbObject(rs, column);
+        String raw = readRawDbText(rs, column);
         if (raw == null) {
             return "";
         }
-        if (raw instanceof byte[] bytes) {
-            return normalizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxLen);
-        }
-        return normalizeDbText(String.valueOf(raw), maxLen);
+        return normalizeDbText(raw, maxLen);
     }
 
     private String normalizeDbText(String value, int maxLen) {
@@ -416,13 +416,50 @@ public class DashboardSessionService {
         return currentValue == null ? 0 : currentValue.intValue();
     }
 
-    private Object readRawDbObject(ResultSet rs, String column) {
+    private String readRawDbText(ResultSet rs, String column) {
         try {
-            return rs.getObject(column);
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return normalizeDbText(readAtMostChars(closeable, 4096), 4096);
+                }
+            }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB object for column " + column, ex);
+            log.log(Level.FINE, "Unable to read DB text stream for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to decode DB text stream for column " + column, ex);
+        }
+
+        try {
+            byte[] bytes = rs.getBytes(column);
+            if (bytes == null) {
+                return null;
+            }
+            return normalizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
             return null;
         }
+    }
+
+    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     String formatTimestamp(Timestamp ts) {

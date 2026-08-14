@@ -292,7 +292,7 @@ public class DatabaseBackupServletTest
         ResultSetMetaData md = mock(ResultSetMetaData.class);
 
         when(md.getColumnType(1)).thenReturn(Types.DATE);
-        when(rs.getObject(1)).thenReturn(Date.valueOf("2026-05-20"));
+        when(rs.getDate(1)).thenReturn(Date.valueOf("2026-05-20"));
 
         String value = (String) readCellAsText.invoke(underTest, rs, md, 1);
 
@@ -416,19 +416,19 @@ public class DatabaseBackupServletTest
             ResultSetMetaData md = mock(ResultSetMetaData.class);
     
             when(md.getColumnType(1)).thenReturn(Types.BINARY);
-            when(rs.getObject(1)).thenReturn(new byte[]{1, 2});
+            when(rs.getBytes(1)).thenReturn(new byte[]{1, 2});
             assertEquals("AQI=", invoke(servlet, "readCellAsText", new Class[]{ResultSet.class, ResultSetMetaData.class, int.class}, rs, md, 1));
     
             when(md.getColumnType(2)).thenReturn(Types.TIMESTAMP);
-            when(rs.getObject(2)).thenReturn(Timestamp.from(Instant.parse("2026-08-07T10:11:12Z")));
+            when(rs.getTimestamp(2)).thenReturn(Timestamp.from(Instant.parse("2026-08-07T10:11:12Z")));
             assertEquals("2026-08-07T10:11:12Z", invoke(servlet, "readCellAsText", new Class[]{ResultSet.class, ResultSetMetaData.class, int.class}, rs, md, 2));
     
             when(md.getColumnType(3)).thenReturn(Types.DATE);
-            when(rs.getObject(3)).thenReturn(Date.valueOf("2026-08-07"));
+            when(rs.getDate(3)).thenReturn(Date.valueOf("2026-08-07"));
             assertEquals("2026-08-07", invoke(servlet, "readCellAsText", new Class[]{ResultSet.class, ResultSetMetaData.class, int.class}, rs, md, 3));
     
             when(md.getColumnType(4)).thenReturn(Types.VARCHAR);
-            when(rs.getObject(4)).thenReturn("value");
+            when(rs.getString(4)).thenReturn("value");
             assertEquals("value", invoke(servlet, "readCellAsText", new Class[]{ResultSet.class, ResultSetMetaData.class, int.class}, rs, md, 4));
     
             ResultSetMetaData badMd = mock(ResultSetMetaData.class);
@@ -437,15 +437,15 @@ public class DatabaseBackupServletTest
                     () -> invoke(servlet, "readCellAsText", new Class[]{ResultSet.class, ResultSetMetaData.class, int.class}, rs, badMd, 1));
     
             ResultSet tsFallback = mock(ResultSet.class);
-            when(tsFallback.getObject(1)).thenReturn("2026-08-07T10:11:12Z");
+            when(tsFallback.getString(1)).thenReturn("2026-08-07T10:11:12Z");
             assertNotNull(invoke(servlet, "readValidatedTimestamp", new Class[]{ResultSet.class, int.class}, tsFallback, 1));
     
             ResultSet dateFallback = mock(ResultSet.class);
-            when(dateFallback.getObject(1)).thenReturn("2026-08-07");
+            when(dateFallback.getString(1)).thenReturn("2026-08-07");
             assertEquals(Date.valueOf("2026-08-07"), invoke(servlet, "readValidatedDate", new Class[]{ResultSet.class, int.class}, dateFallback, 1));
     
             ResultSet badTextRow = mock(ResultSet.class);
-            when(badTextRow.getObject(1)).thenThrow(new SQLException("text fail"));
+            when(badTextRow.getString(1)).thenThrow(new SQLException("text fail"));
             assertThrowsCause(IllegalStateException.class,
                     () -> invoke(servlet, "readValidatedCellText", new Class[]{ResultSet.class, int.class}, badTextRow, 1));
         }
@@ -460,7 +460,7 @@ public class DatabaseBackupServletTest
             when(listConn.prepareStatement(contains("FROM pg_catalog.pg_tables"))).thenReturn(listPs);
             when(listPs.executeQuery()).thenReturn(listRs);
             when(listRs.next()).thenReturn(true, true, true, true, false);
-            when(listRs.getObject(1)).thenReturn("good_table", "flyway_schema_history", "bad-name", "   ");
+            when(listRs.getString(1)).thenReturn("good_table", "flyway_schema_history", "bad-name", "   ");
     
             @SuppressWarnings("unchecked")
             List<String> exportable = (List<String>) invoke(servlet, "listExportableTables", new Class[]{Connection.class}, listConn);
@@ -477,7 +477,7 @@ public class DatabaseBackupServletTest
             when(colConn.prepareStatement(contains("FROM information_schema.columns"))).thenReturn(colPs);
             when(colPs.executeQuery()).thenReturn(colRs);
             when(colRs.next()).thenReturn(true, true, false);
-            when(colRs.getObject(1)).thenReturn("col_a", "bad-col");
+            when(colRs.getString(1)).thenReturn("col_a", "bad-col");
     
             @SuppressWarnings("unchecked")
             List<String> columns = (List<String>) invoke(servlet, "listTableColumns", new Class[]{Connection.class, String.class}, colConn, "table_a");
@@ -524,7 +524,7 @@ public class DatabaseBackupServletTest
             when(failConn.prepareStatement(contains("FROM information_schema.columns"))).thenReturn(failColPs);
             when(failColPs.executeQuery()).thenReturn(failColRs);
             when(failColRs.next()).thenReturn(true, false);
-            when(failColRs.getObject(1)).thenReturn("col_1");
+            when(failColRs.getString(1)).thenReturn("col_1");
             when(failConn.prepareStatement(startsWith("SELECT "), anyInt(), anyInt())).thenThrow(new SQLException("select fail"));
     
             ZipOutputStream failZip = new ZipOutputStream(new ByteArrayOutputStream(), StandardCharsets.UTF_8);

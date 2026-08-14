@@ -1,5 +1,7 @@
 package com.sim.chatserver.widget;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -9,6 +11,7 @@ import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -153,7 +156,11 @@ public final class WidgetStore {
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        int resolvedId = id == null ? 0 : id.intValue();
+        if (id == null) {
+            return create(widgetId, displayName);
+        }
+
+        int resolvedId = id.intValue();
         if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
@@ -253,15 +260,16 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Number number) {
-            return Math.max(0, number.intValue());
-        }
-        if (raw instanceof Boolean bool) {
-            return bool ? 1 : 0;
+        try {
+            int value = rs.getInt(column);
+            if (!rs.wasNull()) {
+                return Math.max(0, value);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet numeric read failed for column " + column, ex);
         }
 
-        String text = readSanitizedDbText(rs, column, 32);
+        String text = readRawDbText(rs, column);
         if (text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
         }
@@ -274,35 +282,26 @@ public final class WidgetStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw != null) {
-            if (raw instanceof byte[] bytes) {
-                return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
-            }
-            return sanitizeDbText(String.valueOf(raw), maxChars);
-        }
-
-        return "";
+        String value = sanitizeDbText(readRawDbText(rs, column), maxChars);
+        return value == null ? "" : value;
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
         try {
             Timestamp typedTimestamp = rs.getTimestamp("created_at");
             if (typedTimestamp != null) {
-                return typedTimestamp.toInstant();
+                Instant normalized = normalizeTimestamp(typedTimestamp, "created_at");
+                if (normalized != null) {
+                    return normalized;
+                }
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Typed timestamp read failed for created_at", ex);
         }
 
-        String text = "";
-        try {
-            text = sanitizeDbText(rs.getString("created_at"), 128);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Text fallback read failed for created_at", ex);
-        }
+        String text = sanitizeDbText(readRawDbText(rs, "created_at"), 128);
 
-        if (!text.isBlank()) {
+        if (text != null && !text.isBlank()) {
             try {
                 return Instant.parse(text);
             } catch (DateTimeException e) {
@@ -324,13 +323,63 @@ public final class WidgetStore {
         return Instant.EPOCH;
     }
 
-    private static Object readRawDbObject(ResultSet rs, String column) {
-        try {
-            return rs.getObject(column);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object read failed for column " + column, ex);
+    private static Instant normalizeTimestamp(Timestamp value, String column) {
+        if (value == null) {
             return null;
         }
+
+        try {
+            return value.toInstant();
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid timestamp value for column " + column, ex);
+            return null;
+        }
+    }
+
+    private static String readRawDbText(ResultSet rs, String column) {
+        try {
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                }
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Character-stream read failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
+        }
+
+        try {
+            byte[] bytes = rs.getBytes(column);
+            if (bytes == null) {
+                return null;
+            }
+            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Binary read failed for column " + column, ex);
+            return null;
+        }
+    }
+
+    private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private static String normalizeRequired(String value, String fieldName) {

@@ -2,6 +2,7 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.Enumeration;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -20,6 +21,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.Ec2Exception;
@@ -29,15 +32,15 @@ import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
 public class AwsEc2RestartServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AwsEc2RestartServlet.class.getName());
+    private static final int MAX_IP_LENGTH = 64;
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         try {
             String requestId = UUID.randomUUID().toString();
-            String clientIp = clientIp(req);
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
-                auditRestart(requestId, "(anonymous)", clientIp, "", "", "blocked", HttpServletResponse.SC_UNAUTHORIZED,
+                auditRestart(requestId, "(anonymous)", "", "", "", "blocked", HttpServletResponse.SC_UNAUTHORIZED,
                         "Authentication required.", Level.WARNING);
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
                 return;
@@ -47,11 +50,13 @@ public class AwsEc2RestartServlet extends HttpServlet {
 
             String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
             if (!"ADMIN".equalsIgnoreCase(role)) {
-                auditRestart(requestId, username, clientIp, "", "", "blocked", HttpServletResponse.SC_FORBIDDEN,
+                auditRestart(requestId, username, "", "", "", "blocked", HttpServletResponse.SC_FORBIDDEN,
                         "Admin role required.", Level.WARNING);
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
                 return;
             }
+
+            String clientIp = resolveClientIpForAudit(req);
 
             String awsRegion = ServletRequestParamUtil.firstParam(req, "awsRegion", 128, true, true);
             String awsInstanceId = ServletRequestParamUtil.firstParam(req, "awsInstanceId", 128, true, true);
@@ -62,7 +67,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
             ServerConfig storedConfig = null;
             try {
                 storedConfig = EncryptedDbConfigStore.load();
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | IllegalStateException e) {
                 log.log(Level.FINE, "Unable to load stored AWS configuration for restart", e);
             }
 
@@ -124,7 +129,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
                     .add("instanceId", normalizedInstanceId)
                         .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, payload);
-            } catch (Ec2Exception ex) {
+            } catch (AwsServiceException ex) {
                 log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
                 String message = ex.awsErrorDetails() != null
                         ? ex.awsErrorDetails().errorMessage()
@@ -133,14 +138,14 @@ public class AwsEc2RestartServlet extends HttpServlet {
                     HttpServletResponse.SC_BAD_GATEWAY,
                     message, Level.WARNING);
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
-            } catch (RuntimeException ex) {
+            } catch (SdkClientException ex) {
                 log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
                 auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
                     HttpServletResponse.SC_BAD_GATEWAY,
                     "AWS EC2 reboot request failed.", Level.WARNING);
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
             }
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             Logger.getLogger(getClass().getName())
                     .log(Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
@@ -154,7 +159,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
         }
     }
 
-    void rebootEc2Instance(String region,
+    final void rebootEc2Instance(String region,
             String accessKeyId,
             String secretAccessKey,
             String instanceId) {
@@ -197,17 +202,43 @@ public class AwsEc2RestartServlet extends HttpServlet {
         );
     }
 
-    private String clientIp(HttpServletRequest req) {
-        String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            int comma = xff.indexOf(',');
-            String first = comma >= 0 ? xff.substring(0, comma) : xff;
-            if (!first.isBlank()) {
-                return first.trim();
+    private String resolveClientIpForAudit(HttpServletRequest req) {
+        if (req == null) {
+            return "";
+        }
+
+        Enumeration<String> forwardedValues = req.getHeaders("X-Forwarded-For");
+        if (forwardedValues != null) {
+            while (forwardedValues.hasMoreElements()) {
+                String normalized = normalizeIpCandidate(forwardedValues.nextElement());
+                if (!normalized.isBlank()) {
+                    return normalized;
+                }
             }
         }
-        String remote = req.getRemoteAddr();
-        return remote == null ? "" : remote;
+
+        return normalizeIpLiteral(req.getRemoteAddr());
+    }
+
+    private String normalizeIpCandidate(String headerValue) {
+        if (headerValue == null || headerValue.isBlank()) {
+            return "";
+        }
+
+        int comma = headerValue.indexOf(',');
+        String first = comma >= 0 ? headerValue.substring(0, comma) : headerValue;
+        return normalizeIpLiteral(first);
+    }
+
+    private String normalizeIpLiteral(String value) {
+        String candidate = scrub(value);
+        if (candidate.isBlank() || candidate.length() > MAX_IP_LENGTH) {
+            return "";
+        }
+        if (!candidate.matches("^[0-9A-Fa-f:.%]+$")) {
+            return "";
+        }
+        return candidate;
     }
 
     private String safe(String value) {

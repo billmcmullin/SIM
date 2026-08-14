@@ -1,5 +1,7 @@
 package com.sim.chatserver.model;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -10,6 +12,7 @@ import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -479,30 +482,17 @@ public final class CustomerIdentityStore {
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw != null) {
-            if (raw instanceof byte[] bytes) {
-                return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
-            }
-            return sanitizeDbText(String.valueOf(raw), maxChars);
-        }
-
-        try {
-            return sanitizeDbText(rs.getString(column), maxChars);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Text read failed for column " + column, ex);
-            return null;
-        }
+        return sanitizeDbText(readRawDbText(rs, column), maxChars);
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        Object raw = readRawDbObject(rs, column);
-        if (raw instanceof Number number) {
-            long value = number.longValue();
-            return value < 0L ? 0L : value;
-        }
-        if (raw instanceof Boolean bool) {
-            return bool ? 1L : 0L;
+        try {
+            long value = rs.getLong(column);
+            if (!rs.wasNull()) {
+                return value < 0L ? 0L : value;
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Long read failed for column " + column, ex);
         }
 
         String text = readSanitizedDbText(rs, column, 64);
@@ -566,12 +556,50 @@ public final class CustomerIdentityStore {
         return trimmed.substring(0, maxChars);
     }
 
-    private static Object readRawDbObject(ResultSet rs, String column) {
+    private static String readRawDbText(ResultSet rs, String column) {
         try {
-            return rs.getObject(column);
+            Reader reader = rs.getCharacterStream(column);
+            if (reader != null) {
+                try (Reader closeable = reader) {
+                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                }
+            }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Object read failed for column " + column, ex);
+            log.log(Level.FINE, "Character-stream read failed for column " + column, ex);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
+        }
+
+        try {
+            byte[] bytes = rs.getBytes(column);
+            if (bytes == null) {
+                return null;
+            }
+            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Binary read failed for column " + column, ex);
             return null;
         }
     }
+
+    private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (maxChars <= 0) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
+    }
+
 }
