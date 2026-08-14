@@ -31,6 +31,8 @@ public class DashboardDailySummaryStore {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String PG_UNIQUE_VIOLATION = "23505";
+    private static final LocalDate MIN_ALLOWED_DAY = LocalDate.of(1970, 1, 1);
+    private static final LocalDate MAX_ALLOWED_DAY = LocalDate.of(3000, 12, 31);
 
     private static final String TABLE_SQL = """
             CREATE TABLE IF NOT EXISTS dashboard_daily_summary (
@@ -435,7 +437,8 @@ public class DashboardDailySummaryStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return normalizeRawText(readAtMostChars(closeable, 8192));
+                    String raw = readAtMostChars(closeable, 8192);
+                    return validateDbText(normalizeRawText(raw), 8192);
                 } catch (IOException ioEx) {
                     log.log(Level.FINE, "Character stream decode failed for column " + safeColumnName(column), ioEx);
                     return "";
@@ -450,7 +453,7 @@ public class DashboardDailySummaryStore {
             if (rawBytes == null) {
                 return "";
             }
-            return normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8));
+            return validateDbText(normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8)), 8192);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes(String) failed for column " + safeColumnName(column), ex);
             return "";
@@ -466,7 +469,8 @@ public class DashboardDailySummaryStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return normalizeRawText(readAtMostChars(closeable, 8192));
+                    String raw = readAtMostChars(closeable, 8192);
+                    return validateDbText(normalizeRawText(raw), 8192);
                 } catch (IOException ioEx) {
                     log.log(Level.FINE, "Character stream decode failed for column index " + column, ioEx);
                     return "";
@@ -481,7 +485,7 @@ public class DashboardDailySummaryStore {
             if (rawBytes == null) {
                 return "";
             }
-            return normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8));
+            return validateDbText(normalizeRawText(new String(rawBytes, StandardCharsets.UTF_8)), 8192);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes(int) failed for column index " + column, ex);
             return "";
@@ -535,7 +539,7 @@ public class DashboardDailySummaryStore {
                 return null;
             }
             try {
-                Instant instant = direct.toInstant();
+                Instant instant = validateInstant(direct.toInstant(), column);
                 return instant == null ? null : Timestamp.from(instant);
             } catch (DateTimeException | IllegalArgumentException ex) {
                 log.log(Level.FINE, "Invalid direct timestamp value for column " + column, ex);
@@ -557,7 +561,7 @@ public class DashboardDailySummaryStore {
                 log.log(Level.FINE, "Timestamp SQL parse fallback to Instant parser for column " + safeColumnName(column), ex);
                 value = Timestamp.from(Instant.parse(text));
             }
-            Instant instant = value.toInstant();
+            Instant instant = validateInstant(value.toInstant(), column);
             return instant == null ? null : Timestamp.from(instant);
         } catch (IllegalArgumentException | DateTimeException e) {
             log.log(Level.FINE, "Invalid timestamp value for column " + safeColumnName(column), e);
@@ -570,22 +574,21 @@ public class DashboardDailySummaryStore {
             return "";
         }
 
-        try {
-            java.sql.Date day = rs.getDate(column);
-            if (day != null) {
-                return day.toLocalDate().toString();
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getDate(String) failed for date column " + safeColumnName(column), ex);
-        }
-
-        String text = sanitizeText(getSafeString(rs, column, 32), 32);
+        String text = sanitizeText(getSafeString(rs, column, 64), 64);
         if (text == null || text.isBlank()) {
             return "";
         }
 
+        String dateText = text.trim();
+        if (dateText.length() > 10) {
+            dateText = dateText.substring(0, 10);
+        }
+
         try {
-            LocalDate localDay = LocalDate.parse(text.trim());
+            LocalDate localDay = LocalDate.parse(dateText);
+            if (localDay.isBefore(MIN_ALLOWED_DAY) || localDay.isAfter(MAX_ALLOWED_DAY)) {
+                return "";
+            }
             return localDay.toString();
         } catch (IllegalArgumentException | DateTimeException e) {
             log.log(Level.FINE, "Invalid date value for column " + safeColumnName(column), e);
@@ -602,7 +605,41 @@ public class DashboardDailySummaryStore {
 
     private String normalizeRawText(String value) {
         String normalized = ServletRequestParamUtil.normalizeBodyText(value, 0, false);
+        if (normalized == null) {
+            return "";
+        }
         return normalized.replace("\u2028", " ").replace("\u2029", " ");
+    }
+
+    private String validateDbText(String value, int maxLen) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
+        if (normalized == null || normalized.isBlank()) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        return safe.toString();
+    }
+
+    private Instant validateInstant(Instant instant, String column) {
+        if (instant == null) {
+            return null;
+        }
+        LocalDate day = instant.atZone(ZoneId.systemDefault()).toLocalDate();
+        if (day.isBefore(MIN_ALLOWED_DAY) || day.isAfter(MAX_ALLOWED_DAY)) {
+            log.log(Level.FINE, "Out-of-range timestamp value for column " + safeColumnName(column));
+            return null;
+        }
+        return instant;
     }
 
     private String readAtMostChars(Reader reader, int maxChars) throws IOException {

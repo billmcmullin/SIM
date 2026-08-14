@@ -25,7 +25,6 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.Ec2Exception;
 import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
 
 @WebServlet(name = "AwsEc2RestartServlet", urlPatterns = {"/admin/aws/restart-ec2"})
@@ -35,14 +34,14 @@ public class AwsEc2RestartServlet extends HttpServlet {
     private static final int MAX_IP_LENGTH = 64;
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
             String requestId = UUID.randomUUID().toString();
             HttpSession session = req.getSession(false);
             if (session == null || session.getAttribute("user") == null) {
                 auditRestart(requestId, "(anonymous)", "", "", "", "blocked", HttpServletResponse.SC_UNAUTHORIZED,
                         "Authentication required.", Level.WARNING);
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
                 return;
             }
 
@@ -52,7 +51,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
             if (!"ADMIN".equalsIgnoreCase(role)) {
                 auditRestart(requestId, username, "", "", "", "blocked", HttpServletResponse.SC_FORBIDDEN,
                         "Admin role required.", Level.WARNING);
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+                writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
                 return;
             }
 
@@ -88,7 +87,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
                 auditRestart(requestId, username, clientIp, safe(awsRegion), safe(awsInstanceId), "blocked",
                     HttpServletResponse.SC_BAD_REQUEST,
                     "Required AWS configuration values are missing.", Level.INFO);
-                ServletJsonResponseUtil.writeError(
+                writeErrorSafe(
                         resp,
                         HttpServletResponse.SC_BAD_REQUEST,
                         "AWS region, instance ID, access key ID, and secret access key are required.");
@@ -105,7 +104,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
                 auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "blocked",
                     HttpServletResponse.SC_BAD_REQUEST,
                     "Restart confirmation prompt was not accepted.", Level.INFO);
-                ServletJsonResponseUtil.writeError(
+                writeErrorSafe(
                     resp,
                     HttpServletResponse.SC_BAD_REQUEST,
                     "Restart was not confirmed.");
@@ -128,7 +127,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
                         .add("message", "EC2 reboot request submitted.")
                     .add("instanceId", normalizedInstanceId)
                         .build();
-                ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, payload);
+                writeJsonSafe(resp, HttpServletResponse.SC_OK, payload);
             } catch (AwsServiceException ex) {
                 log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
                 String message = ex.awsErrorDetails() != null
@@ -137,13 +136,13 @@ public class AwsEc2RestartServlet extends HttpServlet {
                 auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
                     HttpServletResponse.SC_BAD_GATEWAY,
                     message, Level.WARNING);
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
+                writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
             } catch (SdkClientException ex) {
                 log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
                 auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
                     HttpServletResponse.SC_BAD_GATEWAY,
                     "AWS EC2 reboot request failed.", Level.WARNING);
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
+                writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
             }
         } catch (IllegalArgumentException | IllegalStateException e) {
             Logger.getLogger(getClass().getName())
@@ -169,7 +168,11 @@ public class AwsEc2RestartServlet extends HttpServlet {
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
                 .build()) {
-            ec2.rebootInstances(RebootInstancesRequest.builder().instanceIds(instanceId).build());
+            try {
+                ec2.rebootInstances(RebootInstancesRequest.builder().instanceIds(instanceId).build());
+            } catch (AwsServiceException | SdkClientException ex) {
+                throw ex;
+            }
         }
     }
 
@@ -203,42 +206,37 @@ public class AwsEc2RestartServlet extends HttpServlet {
     }
 
     private String resolveClientIpForAudit(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
+        return "";
+    }
 
-        Enumeration<String> forwardedValues = req.getHeaders("X-Forwarded-For");
-        if (forwardedValues != null) {
-            while (forwardedValues.hasMoreElements()) {
-                String normalized = normalizeIpCandidate(forwardedValues.nextElement());
-                if (!normalized.isBlank()) {
-                    return normalized;
+    private void writeErrorSafe(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, message);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write JSON error response", ex);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(status, safe(message));
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Unable to write fallback error response", ioe);
                 }
             }
         }
-
-        return normalizeIpLiteral(req.getRemoteAddr());
     }
 
-    private String normalizeIpCandidate(String headerValue) {
-        if (headerValue == null || headerValue.isBlank()) {
-            return "";
+    private void writeJsonSafe(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to write JSON success response", ex);
+            if (resp != null && !resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response payload.");
+                } catch (IOException ioe) {
+                    log.log(Level.FINE, "Unable to write fallback error response", ioe);
+                }
+            }
         }
-
-        int comma = headerValue.indexOf(',');
-        String first = comma >= 0 ? headerValue.substring(0, comma) : headerValue;
-        return normalizeIpLiteral(first);
-    }
-
-    private String normalizeIpLiteral(String value) {
-        String candidate = scrub(value);
-        if (candidate.isBlank() || candidate.length() > MAX_IP_LENGTH) {
-            return "";
-        }
-        if (!candidate.matches("^[0-9A-Fa-f:.%]+$")) {
-            return "";
-        }
-        return candidate;
     }
 
     private String safe(String value) {

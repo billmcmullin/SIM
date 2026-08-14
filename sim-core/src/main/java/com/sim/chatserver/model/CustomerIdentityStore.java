@@ -486,15 +486,6 @@ public final class CustomerIdentityStore {
     }
 
     private static Long readNonNegativeLongObject(ResultSet rs, String column) throws SQLException {
-        try {
-            long value = rs.getLong(column);
-            if (!rs.wasNull()) {
-                return value < 0L ? 0L : value;
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Long read failed for column " + column, ex);
-        }
-
         String text = readSanitizedDbText(rs, column, 64);
         if (text == null || text.isBlank()) {
             return 0L;
@@ -512,19 +503,10 @@ public final class CustomerIdentityStore {
             log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
             return 0L;
         }
-        return value < 0L ? 0L : value;
+        return validateTaintedLong(value);
     }
 
     private static Timestamp readSafeTimestamp(ResultSet rs, String column) throws SQLException {
-        try {
-            Timestamp typed = rs.getTimestamp(column);
-            if (typed != null) {
-                return typed;
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Typed timestamp read failed for column " + column + ", using text fallback", e);
-        }
-
         String text = readSanitizedDbText(rs, column, 128);
         if (text == null || text.isEmpty()) {
             return null;
@@ -561,7 +543,8 @@ public final class CustomerIdentityStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    String raw = sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    return validateTaintedDbText(raw, 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -575,11 +558,35 @@ public final class CustomerIdentityStore {
             if (bytes == null) {
                 return null;
             }
-            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            String raw = sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            return validateTaintedDbText(raw, 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary read failed for column " + column, ex);
             return null;
         }
+    }
+
+    private static Long validateTaintedLong(long value) {
+        return value < 0L ? 0L : value;
+    }
+
+    private static String validateTaintedDbText(String value, int maxChars) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
     }
 
     private static String readAtMostChars(Reader reader, int maxChars) throws IOException {

@@ -10,12 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
- * Parasoft Jtest UTA: Test class for TranslationResult
+ * Parasoft Jtest UTA: Test class for TranslationService.TranslationResult
  *
  * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult
  * @author bmcmullin
  */
-public class TranslationService_TranslationResultTest
+public class TranslationServiceTest
 {
 
     /**

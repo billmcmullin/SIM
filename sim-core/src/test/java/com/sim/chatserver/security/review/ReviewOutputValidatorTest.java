@@ -1,5 +1,7 @@
 package com.sim.chatserver.security.review;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -460,7 +462,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = "output"; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -479,7 +481,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -498,7 +500,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -519,7 +521,7 @@ public class ReviewOutputValidatorTest
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -540,7 +542,7 @@ public class ReviewOutputValidatorTest
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -560,7 +562,7 @@ public class ReviewOutputValidatorTest
         String output = "output"; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds, maxChars);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -580,7 +582,7 @@ public class ReviewOutputValidatorTest
         String output = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds, maxChars);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -600,7 +602,7 @@ public class ReviewOutputValidatorTest
         String output = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds, maxChars);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -622,7 +624,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds, maxChars);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -644,7 +646,35 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutputStrict(output, expectedChatIds, maxChars);
+        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
+    }
+    private static ValidationResult invokeValidateMapOutputStrict(
+            ReviewOutputValidator target,
+            String output,
+            List<String> expectedChatIds
+    ) throws Throwable {
+        try {
+            Method method = ReviewOutputValidator.class.getDeclaredMethod("validateMapOutputStrict", String.class, List.class);
+            method.setAccessible(true);
+            return (ValidationResult) method.invoke(target, output, expectedChatIds);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause() == null ? ex : ex.getCause();
+        }
+    }
+
+    private static ValidationResult invokeValidateMapOutputStrict(
+            ReviewOutputValidator target,
+            String output,
+            List<String> expectedChatIds,
+            int maxChars
+    ) throws Throwable {
+        try {
+            Method method = ReviewOutputValidator.class.getDeclaredMethod("validateMapOutputStrict", String.class, List.class, int.class);
+            method.setAccessible(true);
+            return (ValidationResult) method.invoke(target, output, expectedChatIds, maxChars);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause() == null ? ex : ex.getCause();
+        }
     }
 }

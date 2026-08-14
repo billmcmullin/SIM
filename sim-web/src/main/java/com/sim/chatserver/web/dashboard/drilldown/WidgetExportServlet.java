@@ -710,25 +710,34 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
+            return "";
+        }
+
         try {
             Reader requestReader = req.getReader();
             if (requestReader == null) {
                 return "";
             }
-            return readRequestBody(requestReader);
+            String body = readRequestBody(requestReader);
+            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
         } catch (IOException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to read export request body from request reader", ex);
             return "";
         }
     }
 
-    private String readRequestBody(Reader reader) throws IOException {
+    private String readRequestBody(Reader reader) {
         if (reader == null) {
             return "";
         }
 
         try (Reader bodyReader = reader) {
-            return ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
+            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
+            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to read export request body", ex);
+            return "";
         }
     }
 
@@ -805,15 +814,6 @@ public class WidgetExportServlet extends HttpServlet {
             return null;
         }
 
-        try {
-            Timestamp typed = rs.getTimestamp(columnName);
-            if (typed != null) {
-                return typed;
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB timestamp read failed for column " + columnName, ex);
-        }
-
         String rawText = readRawDbText(rs, columnName, 128);
         String text = ServletRequestParamUtil.normalizeBodyText(rawText, 128, true);
         if (text == null || text.isBlank()) {
@@ -838,7 +838,8 @@ public class WidgetExportServlet extends HttpServlet {
             Reader reader = rs.getCharacterStream(columnName);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return readAtMostChars(closeable, limit);
+                    String raw = readAtMostChars(closeable, limit);
+                    return validateTaintedText(raw, limit);
                 }
             }
         } catch (SQLException ex) {
@@ -852,12 +853,39 @@ public class WidgetExportServlet extends HttpServlet {
             if (bytes == null) {
                 return null;
             }
-            String raw = new String(bytes, StandardCharsets.UTF_8);
-            return raw.length() <= limit ? raw : raw.substring(0, limit);
+            byte[] safeBytes = validateTaintedBytes(bytes);
+            String raw = new String(safeBytes, StandardCharsets.UTF_8);
+            return validateTaintedText(raw, limit);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary DB read failed for column " + columnName, ex);
             return null;
         }
+    }
+
+    private byte[] validateTaintedBytes(byte[] bytes) {
+        if (bytes == null) {
+            return new byte[0];
+        }
+        return bytes;
+    }
+
+    private String validateTaintedText(String value, int maxLen) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        if (maxLen > 0 && normalized.length() > maxLen) {
+            return normalized.substring(0, maxLen);
+        }
+        return normalized;
     }
 
     private String readAtMostChars(Reader reader, int maxChars) throws IOException {

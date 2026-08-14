@@ -28,6 +28,8 @@ public final class WidgetStore {
 
     private static final String SQL_STATE_UNDEFINED_TABLE = "42P01";
     private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
+    private static final Instant MIN_ALLOWED_INSTANT = Instant.parse("1970-01-01T00:00:00Z");
+    private static final Instant MAX_ALLOWED_INSTANT = Instant.parse("3000-12-31T23:59:59Z");
     private static final String CREATE_TABLE_SQL = """
             CREATE TABLE IF NOT EXISTS widget_entries (
                 id SERIAL PRIMARY KEY,
@@ -260,21 +262,12 @@ public final class WidgetStore {
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
-        try {
-            int value = rs.getInt(column);
-            if (!rs.wasNull()) {
-                return Math.max(0, value);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet numeric read failed for column " + column, ex);
-        }
-
-        String text = readRawDbText(rs, column);
-        if (text.isBlank() || !text.matches("^-?\\d+$")) {
+        String text = sanitizeDbText(readRawDbText(rs, column), 64);
+        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
         }
         try {
-            return Math.max(0, Integer.parseInt(text));
+            return Math.max(0, validateDbInt(Integer.parseInt(text), column));
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Unable to parse integer value for column " + column, ex);
             return 0;
@@ -287,32 +280,20 @@ public final class WidgetStore {
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        try {
-            Timestamp typedTimestamp = rs.getTimestamp("created_at");
-            if (typedTimestamp != null) {
-                Instant normalized = normalizeTimestamp(typedTimestamp, "created_at");
-                if (normalized != null) {
-                    return normalized;
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed timestamp read failed for created_at", ex);
-        }
-
         String text = sanitizeDbText(readRawDbText(rs, "created_at"), 128);
 
         if (text != null && !text.isBlank()) {
             try {
-                return Instant.parse(text);
+                return validateDbInstant(Instant.parse(text), "created_at");
             } catch (DateTimeException e) {
                 log.log(Level.FINE, "Instant parse fallback for created_at", e);
                 try {
-                    return OffsetDateTime.parse(text).toInstant();
+                    return validateDbInstant(OffsetDateTime.parse(text).toInstant(), "created_at");
                 } catch (DateTimeException ex) {
                     log.log(Level.FINE, "OffsetDateTime parse fallback for created_at", ex);
                 }
                 try {
-                    return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
+                    return validateDbInstant(Timestamp.valueOf(text.replace('T', ' ')).toInstant(), "created_at");
                 } catch (IllegalArgumentException ex) {
                     log.log(Level.FINE, "Timestamp fallback parse failed for created_at", ex);
                 }
@@ -341,7 +322,7 @@ public final class WidgetStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    return validateDbText(sanitizeDbText(readAtMostChars(closeable, 4096), 4096), 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -355,7 +336,7 @@ public final class WidgetStore {
             if (bytes == null) {
                 return null;
             }
-            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            return validateDbText(sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096), 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary read failed for column " + column, ex);
             return null;
@@ -398,6 +379,40 @@ public final class WidgetStore {
             return trimmed;
         }
         return trimmed.substring(0, maxChars);
+    }
+
+    private static String validateDbText(String value, int maxChars) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String sanitized = sanitizeDbText(value, maxChars);
+        StringBuilder safe = new StringBuilder(sanitized.length());
+        for (int i = 0; i < sanitized.length(); i++) {
+            char ch = sanitized.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        return safe.toString();
+    }
+
+    private static int validateDbInt(int value, String column) {
+        if (value < 0) {
+            return 0;
+        }
+        return value;
+    }
+
+    private static Instant validateDbInstant(Instant instant, String column) {
+        if (instant == null) {
+            return null;
+        }
+        if (instant.isBefore(MIN_ALLOWED_INSTANT) || instant.isAfter(MAX_ALLOWED_INSTANT)) {
+            log.log(Level.FINE, "Out-of-range timestamp value for column " + column);
+            return null;
+        }
+        return instant;
     }
 
     public static final class DuplicateWidgetIdException extends SQLException {

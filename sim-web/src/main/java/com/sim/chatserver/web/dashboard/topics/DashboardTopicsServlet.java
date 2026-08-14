@@ -10,6 +10,7 @@ import java.util.logging.Logger;
 import com.sim.chatserver.web.util.ServletPathUtil;
 
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,7 +35,7 @@ public class DashboardTopicsServlet extends HttpServlet {
 
             String user = String.valueOf(session.getAttribute("user"));
 
-                String template = loadTemplate(req, TEMPLATE_PATH);
+                String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
             String rendered = template
                     .replace("${contextPath}", escapeHtml(contextPath))
                     .replace("${user}", escapeHtml(user))
@@ -63,8 +64,11 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) {
-        try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
+    private String loadTemplate(ServletContext context, String path) {
+        if (context == null) {
+            return "";
+        }
+        try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
                 log.log(Level.WARNING, "Template not found: {0}", path);
                 return "";

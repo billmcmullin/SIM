@@ -30,6 +30,8 @@ public class WidgetHealthConfigStore {
     private static final Logger log = Logger.getLogger(WidgetHealthConfigStore.class.getName());
     private static final String DEFAULT_HEALTHCHECK_URL = "http://anythingllm:3001/api/v1/system";
     private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
+    private static final Instant MIN_ALLOWED_INSTANT = Instant.parse("1970-01-01T00:00:00Z");
+    private static final Instant MAX_ALLOWED_INSTANT = Instant.parse("3000-12-31T23:59:59Z");
 
     public static final int SINGLETON_ID = 1;
 
@@ -353,21 +355,13 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        try {
-            int value = rs.getInt(column);
-            if (!rs.wasNull()) {
-                return Math.max(0, value);
-            }
-        } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet numeric read failed for column " + column, ex);
-        }
-
-        String text = readRawDbText(rs, column);
-        if (text == null || text.isBlank()) {
+        String text = sanitizeDbText(readRawDbText(rs, column), 64);
+        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
         }
         try {
-            return Math.max(0, Integer.parseInt(text.trim()));
+            int parsed = Integer.parseInt(text.trim());
+            return Math.max(0, validateDbInt(parsed, column, 0));
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Invalid integer text for column " + column, ex);
             return 0;
@@ -375,21 +369,12 @@ public class WidgetHealthConfigStore {
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        try {
-            int value = rs.getInt(column);
-            if (!rs.wasNull()) {
-                return value > 0 ? value : fallback;
-            }
-        } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet positive integer read failed for column " + column, ex);
-        }
-
-        String text = readRawDbText(rs, column);
-        if (text == null || text.isBlank()) {
+        String text = sanitizeDbText(readRawDbText(rs, column), 64);
+        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
             return fallback;
         }
         try {
-            int value = Integer.parseInt(text.trim());
+            int value = validateDbInt(Integer.parseInt(text.trim()), column, fallback);
             return value > 0 ? value : fallback;
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Invalid positive integer text for column " + column, ex);
@@ -398,16 +383,7 @@ public class WidgetHealthConfigStore {
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
-        try {
-            boolean value = rs.getBoolean(column);
-            if (!rs.wasNull()) {
-                return value;
-            }
-        } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet boolean read failed for column " + column, ex);
-        }
-
-        String text = readRawDbText(rs, column);
+        String text = sanitizeDbText(readRawDbText(rs, column), 16);
         if (text == null || text.isBlank()) {
             return fallback;
         }
@@ -427,15 +403,6 @@ public class WidgetHealthConfigStore {
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
-        try {
-            Timestamp typed = rs.getTimestamp(column);
-            if (typed != null) {
-                return normalizeTimestamp(typed, column);
-            }
-        } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet timestamp read failed for column " + column, ex);
-        }
-
         String text = readSanitizedDbText(rs, column, 128);
         if (text == null || text.isBlank()) {
             return null;
@@ -462,7 +429,7 @@ public class WidgetHealthConfigStore {
             return null;
         }
         try {
-            Instant instant = value.toInstant();
+            Instant instant = validateDbInstant(value.toInstant(), column);
             return instant == null ? null : Timestamp.from(instant);
         } catch (DateTimeException | IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
@@ -481,7 +448,7 @@ public class WidgetHealthConfigStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
+                    return validateDbText(sanitizeDbText(readAtMostChars(closeable, 4096), 4096), 4096);
                 }
             }
         } catch (java.sql.SQLException ex) {
@@ -495,7 +462,7 @@ public class WidgetHealthConfigStore {
             if (bytes == null) {
                 return null;
             }
-            return sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
+            return validateDbText(sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096), 4096);
         } catch (java.sql.SQLException ex) {
             log.log(Level.FINE, "ResultSet binary read failed for column " + column, ex);
             return null;
@@ -530,6 +497,44 @@ public class WidgetHealthConfigStore {
             return trimmed;
         }
         return trimmed.substring(0, maxChars);
+    }
+
+    private String validateDbText(String value, int maxChars) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = sanitizeDbText(value, maxChars);
+        if (normalized == null || normalized.isBlank()) {
+            return normalized;
+        }
+        StringBuilder safe = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        return safe.toString();
+    }
+
+    private int validateDbInt(int value, String column, int fallback) {
+        if (value < 0) {
+            log.log(Level.FINE, "Negative numeric value for column " + column + ", falling back");
+            return fallback;
+        }
+        return value;
+    }
+
+    private Instant validateDbInstant(Instant instant, String column) {
+        if (instant == null) {
+            return null;
+        }
+        if (instant.isBefore(MIN_ALLOWED_INSTANT) || instant.isAfter(MAX_ALLOWED_INSTANT)) {
+            log.log(Level.FINE, "Out-of-range timestamp value for column " + column);
+            return null;
+        }
+        return instant;
     }
 
     /**

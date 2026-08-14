@@ -21,10 +21,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Locale;
@@ -273,19 +271,33 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             Reader requestReader = req.getReader();
             if (requestReader != null) {
                 try (Reader reader = requestReader) {
-                    return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+                    String body = ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+                    return validateTaintedText(body);
                 }
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | IllegalStateException e) {
             log.log(Level.FINE, "Unable to read automatic alert payload from request reader.", e);
         }
 
-        try (Reader reader = new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8)) {
-            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
-        } catch (IOException | RuntimeException e) {
-            log.log(Level.FINE, "Unable to read automatic alert payload.", e);
-            return null;
+        return null;
+    }
+
+    private String validateTaintedText(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
         }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+        String normalized = safe.toString();
+        return normalized.length() > MAX_JSON_PAYLOAD_BYTES
+                ? normalized.substring(0, MAX_JSON_PAYLOAD_BYTES)
+                : normalized;
     }
 
     private AutoEmailAlertConfigStore configStore() {

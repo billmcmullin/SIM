@@ -569,9 +569,9 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10));
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10, List.of("a"), List.of("a"), List.of()));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10, List.of("a"), List.of("a"), List.of()));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             WorkspaceClient client = mock(WorkspaceClient.class);
@@ -633,7 +633,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             WorkspaceClient client = mock(WorkspaceClient.class);
@@ -834,7 +834,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of("warn"), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of("warn"), 10));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             WidgetReviewMapReduceOrchestrator orch = mock(WidgetReviewMapReduceOrchestrator.class);
@@ -968,7 +968,7 @@ public class WidgetReviewManualMessageServletTest
             assertTrue(reasons.stream().anyMatch(r -> r.contains("batch processing timeout")));
             assertTrue(reasons.stream().anyMatch(r -> r.contains("missing inline evidence")));
     
-            ReviewOutputValidator.ValidationResult mismatch = new ReviewOutputValidator.ValidationResult(
+            ReviewOutputValidator.ValidationResult mismatch = createValidationResult(
                     false,
                     List.of("Coverage metadata mismatch detected."),
                     List.of(),
@@ -1137,7 +1137,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(false, List.of("invalid"), List.of(), 10));
+                .thenReturn(createValidationResult(false, List.of("invalid"), List.of(), 10));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             @SuppressWarnings("unchecked")
@@ -1233,7 +1233,7 @@ public class WidgetReviewManualMessageServletTest
             setStaticField(WidgetReviewManualMessageServlet.class, "workspaceClient", client);
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
-            ReviewOutputValidator.ValidationResult hierarchical = new ReviewOutputValidator.ValidationResult(
+            ReviewOutputValidator.ValidationResult hierarchical = createValidationResult(
                 true,
                 List.of(),
                 List.of(),
@@ -1243,7 +1243,7 @@ public class WidgetReviewManualMessageServletTest
                 List.of()
             );
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 20));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 20));
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
                 .thenReturn(hierarchical);
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
@@ -1294,7 +1294,7 @@ public class WidgetReviewManualMessageServletTest
             setStaticField(WidgetReviewManualMessageServlet.class, "mrConfig", cfg);
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
-            ReviewOutputValidator.ValidationResult mismatch = new ReviewOutputValidator.ValidationResult(
+            ReviewOutputValidator.ValidationResult mismatch = createValidationResult(
                 false,
                 List.of("Coverage metadata mismatch detected."),
                 List.of("warn"),
@@ -1391,7 +1391,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 20));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 20));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             WidgetReviewMapReduceOrchestrator orchestrator = mock(WidgetReviewMapReduceOrchestrator.class);
@@ -1521,9 +1521,9 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10));
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(
+                .thenReturn(createValidationResult(
                     true,
                     List.of(),
                     List.of(),
@@ -1620,9 +1620,9 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10));
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(
+                .thenReturn(createValidationResult(
                     false,
                     List.of("coverage metadata mismatch detected"),
                     List.of(),
@@ -1682,7 +1682,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(
+                .thenReturn(createValidationResult(
                     true,
                     List.of(),
                     List.of(),
@@ -1778,9 +1778,9 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of(), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of(), 10));
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(
+                .thenReturn(createValidationResult(
                     true,
                     List.of(),
                     List.of(),
@@ -1838,7 +1838,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReportHierarchical(anyString(), any(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(
+                .thenReturn(createValidationResult(
                     true,
                     List.of(),
                     List.of(),
@@ -1932,7 +1932,7 @@ public class WidgetReviewManualMessageServletTest
     
             ReviewOutputValidator outputValidator = mock(ReviewOutputValidator.class);
             when(outputValidator.validateFinalReport(anyString(), anyInt()))
-                .thenReturn(new ReviewOutputValidator.ValidationResult(true, List.of(), List.of("warn"), 10));
+                .thenReturn(createValidationResult(true, List.of(), List.of("warn"), 10));
             setStaticField(WidgetReviewManualMessageServlet.class, "reviewOutputValidator", outputValidator);
     
             Object result = invoke(
@@ -1985,7 +1985,7 @@ public class WidgetReviewManualMessageServletTest
                 servlet,
                 "hasCoverageMetadataMismatch",
                 new Class[]{ReviewOutputValidator.ValidationResult.class},
-                new ReviewOutputValidator.ValidationResult(false, List.of("other error"), List.of(), 10)
+                createValidationResult(false, List.of("other error"), List.of(), 10)
             ));
     
             assertEquals("ab", invoke(servlet, "buildOutboundMessage", new Class[]{String.class, String.class, int.class}, "abc", "", 2));
@@ -2289,6 +2289,34 @@ public class WidgetReviewManualMessageServletTest
             ctor.setAccessible(true);
             return ctor.newInstance(code, body, contentType);
         }
+
+        private static ReviewOutputValidator.ValidationResult createValidationResult(
+                boolean success,
+                List<String> errors,
+                List<String> warnings,
+                int length
+        ) throws Exception {
+            Constructor<ReviewOutputValidator.ValidationResult> ctor = ReviewOutputValidator.ValidationResult.class
+                    .getDeclaredConstructor(boolean.class, List.class, List.class, int.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(success, errors, warnings, length);
+        }
+
+        private static ReviewOutputValidator.ValidationResult createValidationResult(
+                boolean success,
+                List<String> errors,
+                List<String> warnings,
+                int length,
+                List<String> allSelectedChatIds,
+                List<String> usedChatIds,
+                List<String> missingChatIds
+        ) throws Exception {
+            Constructor<ReviewOutputValidator.ValidationResult> ctor = ReviewOutputValidator.ValidationResult.class
+                    .getDeclaredConstructor(boolean.class, List.class, List.class, int.class, List.class, List.class, List.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(success, errors, warnings, length, allSelectedChatIds, usedChatIds, missingChatIds);
+        }
+
     private WidgetReviewManualMessageServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
         return new WidgetReviewManualMessageServlet() {
             @Override

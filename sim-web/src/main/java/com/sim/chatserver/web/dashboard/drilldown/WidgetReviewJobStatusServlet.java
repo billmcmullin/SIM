@@ -37,7 +37,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     /**
      * Shared in-memory job service instance.
      */
-    private static final ReviewJobService JOB_SERVICE = new ReviewJobService();
+    private static final ReviewJobService JOB_SERVICE = ReviewJobService.createDefault();
 
     @Override
     public void init() throws ServletException {

@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -1945,7 +1946,7 @@ public class WidgetSyncServlet extends HttpServlet {
             }
             List<TermDefinition> terms = store.listAll();
             return terms == null ? List.of() : terms;
-        } catch (Exception ex) {
+        } catch (SQLException | IllegalStateException ex) {
             log.log(Level.FINE, "Unable to load term definitions for summary prompt", ex);
             return List.of();
         }
@@ -1954,7 +1955,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private ServerConfig loadServerConfig(String operation) {
         try {
             return EncryptedDbConfigStore.load();
-        } catch (Exception ex) {
+        } catch (SQLException | IllegalStateException ex) {
             throw new IllegalStateException("Unable to load server configuration for " + defaultIfBlank(operation, "operation") + '.', ex);
         }
     }
@@ -1963,7 +1964,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             List<WidgetEntry> widgets = WidgetStore.list(null);
             return widgets == null ? List.of() : widgets;
-        } catch (Exception ex) {
+        } catch (SQLException | IllegalStateException ex) {
             throw new IllegalStateException("Unable to load widget entries for " + defaultIfBlank(operation, "operation") + '.', ex);
         }
     }

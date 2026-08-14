@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -60,7 +61,7 @@ public class TestAwsConnectionServlet extends HttpServlet {
             ServerConfig storedConfig = null;
             try {
                 storedConfig = EncryptedDbConfigStore.load();
-            } catch (SQLException | RuntimeException e) {
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
                 log.log(Level.FINE, "Unable to load stored AWS configuration for test", e);
             }
 
@@ -120,6 +121,7 @@ public class TestAwsConnectionServlet extends HttpServlet {
                         .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, payload);
             } catch (IllegalStateException ex) {
+                log.log(Level.FINE, "AWS EC2 test failed with invalid request state", ex);
                 JsonObject payload = Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", ex.getMessage() == null ? "AWS test request was invalid." : ex.getMessage())
@@ -146,20 +148,30 @@ public class TestAwsConnectionServlet extends HttpServlet {
                     .add("errorCode", errorCode)
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, payload);
-            } catch (RuntimeException ex) {
-                log.log(Level.WARNING, "AWS EC2 test failed", ex);
+            } catch (SdkClientException ex) {
+                log.log(Level.WARNING, "AWS EC2 connectivity test failed", ex);
                 JsonObject payload = Json.createObjectBuilder()
                     .add("status", "error")
-                    .add("message", "AWS EC2 connection test failed.")
+                    .add("message", "AWS EC2 connectivity test failed.")
                     .add("requestId", requestId)
                     .add("credentialSource", credentialSource)
                     .add("errorCategory", "transport-or-runtime")
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, payload);
+            } catch (IllegalArgumentException ex) {
+                log.log(Level.WARNING, "AWS EC2 test failed", ex);
+                JsonObject payload = Json.createObjectBuilder()
+                    .add("status", "error")
+                    .add("message", "AWS EC2 test request was invalid.")
+                    .add("requestId", requestId)
+                    .add("credentialSource", credentialSource)
+                    .add("errorCategory", "missing-input")
+                    .build();
+                ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, payload);
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             Logger.getLogger(getClass().getName())
-                    .log(Level.WARNING, "Unhandled exception in doPost", e);
+                    .log(Level.WARNING, "I/O exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");

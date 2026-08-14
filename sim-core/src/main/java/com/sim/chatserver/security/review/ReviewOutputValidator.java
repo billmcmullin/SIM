@@ -149,11 +149,11 @@ public class ReviewOutputValidator {
         );
     }
 
-    public ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds) {
+    private final ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds) {
         return validateMapOutputStrict(canonicalizeForValidation(output), expectedChatIds, DEFAULT_MAX_TEXT_CHARS);
     }
 
-    ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds, int maxChars) {
+    private final ValidationResult validateMapOutputStrict(String output, List<String> expectedChatIds, int maxChars) {
         String canonicalOutput = canonicalizeForValidation(output);
         ValidationResult base = validateMapOutput(canonicalOutput, maxChars);
 
@@ -716,11 +716,11 @@ public class ReviewOutputValidator {
         private final List<String> missingChatIds;
         private final List<String> unexpectedChatIds;
 
-        public ValidationResult(boolean valid, List<String> errors, List<String> warnings, int length) {
+        private ValidationResult(boolean valid, List<String> errors, List<String> warnings, int length) {
             this(valid, errors, warnings, length, List.of(), List.of(), List.of(), List.of());
         }
 
-        public ValidationResult(
+        private ValidationResult(
                 boolean valid,
                 List<String> errors,
                 List<String> warnings,
@@ -732,7 +732,7 @@ public class ReviewOutputValidator {
             this(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, List.of());
         }
 
-        ValidationResult(
+        private ValidationResult(
                 boolean valid,
                 List<String> errors,
                 List<String> warnings,
@@ -765,7 +765,7 @@ public class ReviewOutputValidator {
             return warnings;
         }
 
-        int getLength() {
+        private final int getLength() {
             return length;
         }
 
