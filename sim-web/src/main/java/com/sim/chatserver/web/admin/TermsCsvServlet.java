@@ -120,51 +120,9 @@ public class TermsCsvServlet extends HttpServlet {
         List<String> errors = new ArrayList<>();
 
         try (InputStream in = filePart.getInputStream(); BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-
-            String line;
-            boolean sawHeader = false;
-            int lineNum = 0;
-            while ((line = reader.readLine()) != null) {
-                lineNum++;
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-                // first non-empty line is header - attempt to validate
-                if (!sawHeader) {
-                    sawHeader = true;
-                    String[] headerCols = parseCsvLine(line);
-                    if (!headerMatches(headerCols)) {
-                        // If header does not match, treat the first line as data (header optional).
-                        String[] dataCols = headerCols;
-                        try {
-                            boolean createdNew = processRow(dataCols);
-                            if (createdNew) {
-                                created++;
-                            } else {
-                                updated++;
-                            }
-                        } catch (IllegalArgumentException | IllegalStateException e) {
-                            log.log(Level.FINE, "Skipping invalid CSV data line", e);
-                            errors.add("line " + lineNum + ": " + e.getMessage());
-                        }
-                    }
-                    continue;
-                }
-
-                String[] cols = parseCsvLine(line);
-                try {
-                    boolean createdNew = processRow(cols);
-                    if (createdNew) {
-                        created++;
-                    } else {
-                        updated++;
-                    }
-                } catch (IllegalArgumentException | IllegalStateException e) {
-                    log.log(Level.FINE, "Skipping invalid CSV data line", e);
-                    errors.add("line " + lineNum + ": " + e.getMessage());
-                }
-            }
+            ImportCounters counters = processCsvRows(reader, errors);
+            created = counters.created;
+            updated = counters.updated;
 
         } catch (IOException | IllegalStateException e) {
             log.log(Level.WARNING, "CSV import failed", e);
@@ -190,6 +148,59 @@ public class TermsCsvServlet extends HttpServlet {
                 }
             }
         }
+    }
+
+    private ImportCounters processCsvRows(BufferedReader reader, List<String> errors) throws IOException {
+        ImportCounters counters = new ImportCounters();
+        String line;
+        boolean sawHeader = false;
+        int lineNum = 0;
+
+        while ((line = reader.readLine()) != null) {
+            lineNum++;
+            String normalizedLine = line == null ? "" : line.trim();
+            if (normalizedLine.isEmpty()) {
+                continue;
+            }
+
+            if (!sawHeader) {
+                sawHeader = true;
+                processFirstLine(normalizedLine, lineNum, counters, errors);
+                continue;
+            }
+
+            processDataLine(parseCsvLine(normalizedLine), lineNum, counters, errors);
+        }
+
+        return counters;
+    }
+
+    private void processFirstLine(String line, int lineNum, ImportCounters counters, List<String> errors) {
+        String[] firstRow = parseCsvLine(line);
+        if (headerMatches(firstRow)) {
+            return;
+        }
+        processDataLine(firstRow, lineNum, counters, errors);
+    }
+
+    private void processDataLine(String[] cols, int lineNum, ImportCounters counters, List<String> errors) {
+        try {
+            boolean createdNew = processRow(cols);
+            if (createdNew) {
+                counters.created++;
+            } else {
+                counters.updated++;
+            }
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.FINE, "Skipping invalid CSV data line", e);
+            errors.add("line " + lineNum + ": " + e.getMessage());
+        }
+    }
+
+    private static final class ImportCounters {
+
+        int created = 0;
+        int updated = 0;
     }
 
     private String safeRedirectTarget(HttpServletRequest req, String query) {

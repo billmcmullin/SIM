@@ -61,11 +61,11 @@ public final class SecurityValidationService {
         this(Set.of(), DEFAULT_ALLOWED_MODES, true, true);
     }
 
-    SecurityValidationService(Set<String> allowedUpstreamHosts, Set<String> allowedModes) {
+    private SecurityValidationService(Set<String> allowedUpstreamHosts, Set<String> allowedModes) {
         this(allowedUpstreamHosts, allowedModes, true, true);
     }
 
-    SecurityValidationService(Set<String> allowedUpstreamHosts,
+    private SecurityValidationService(Set<String> allowedUpstreamHosts,
                                      Set<String> allowedModes,
                                      boolean blockPrivateNetworkTargets,
                                      boolean resolveDnsForValidation) {
@@ -93,7 +93,7 @@ public final class SecurityValidationService {
         return "application/json".equals(mediaType);
     }
 
-    boolean isModeAllowed(String mode) {
+    private boolean isModeAllowed(String mode) {
         if (mode == null || mode.isBlank()) {
             return false;
         }
@@ -117,7 +117,7 @@ public final class SecurityValidationService {
     /**
      * Detailed validation result for better blocked-URL logging.
      */
-    UrlValidationResult validateUpstreamUrl(String baseUrl) {
+    private UrlValidationResult validateUpstreamUrl(String baseUrl) {
         String canonicalBaseUrl = canonicalizeUrlInput(baseUrl);
         if (canonicalBaseUrl.isBlank()) {
             return UrlValidationResult.blocked("URL is blank");
@@ -376,15 +376,15 @@ public final class SecurityValidationService {
             this.scheme = scheme;
         }
 
-        static UrlValidationResult allowed(String host, String scheme, String reason) {
+        private static UrlValidationResult allowed(String host, String scheme, String reason) {
             return new UrlValidationResult(true, reason, host, scheme);
         }
 
-        static UrlValidationResult blocked(String reason) {
+        private static UrlValidationResult blocked(String reason) {
             return new UrlValidationResult(false, reason, null, null);
         }
 
-        boolean isAllowed() {
+        private boolean isAllowed() {
             return allowed;
         }
 

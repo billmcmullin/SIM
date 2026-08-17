@@ -327,7 +327,7 @@ public final class CoverageSummary {
         if (provided <= 0) {
             return 0;
         }
-        int pct = (int) Math.round((used * 100.0) / provided);
+        int pct = Math.toIntExact(Math.round((used * 100.0) / provided));
         if (pct < 0) {
             return 0;
         }

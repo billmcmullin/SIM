@@ -1,9 +1,6 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -11,6 +8,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +28,7 @@ import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
@@ -41,11 +40,9 @@ import com.sim.chatserver.widget.WidgetStore;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
-import jakarta.json.JsonException;
 import jakarta.json.JsonString;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonReader;
 import jakarta.json.JsonValue;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -231,12 +228,7 @@ public class AllSessionsServlet extends HttpServlet {
         }
         int activeUsers = Math.max(0, totalUsers - inactiveUsers);
 
-        Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
-        switch (activity) {
-            case "inactive" -> sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
-            case "active" -> sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
-            default -> activity = "all";
-        }
+        activity = applyActivityFilter(sessionList, activity);
 
         // New: only show sessions with friendly name and/or email if labeledOnly=true
         if (labeledOnly && !sessionList.isEmpty()) {
@@ -269,7 +261,7 @@ public class AllSessionsServlet extends HttpServlet {
         int totalPages = 1;
 
         if (!returnAll && limit > 0) {
-            totalPages = (int) Math.ceil((double) totalSessions / (double) limit);
+            totalPages = (totalSessions + limit - 1) / limit;
             if (totalPages < 1) {
                 totalPages = 1;
             }
@@ -400,19 +392,8 @@ public class AllSessionsServlet extends HttpServlet {
             return;
         }
 
-        if (!isJsonContentType(req)) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
-        }
-
-        JsonObject payload;
-        try {
-            String requestBody = readRequestBody(req);
-            try (JsonReader reader = Json.createReader(new StringReader(requestBody))) {
-                payload = reader.readObject();
-            }
-        } catch (JsonException | ClassCastException e) {
-            log.log(Level.FINE, "Invalid JSON payload for session selection", e);
+        JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
+        if (payload == null || payload.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
             return;
         }
@@ -791,62 +772,15 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private String readRequestBody(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            return "";
-        }
-
-        Reader sourceReader;
-        try {
-            sourceReader = req.getReader();
-        } catch (IOException | IllegalStateException ex) {
-            log.log(Level.FINE, "Unable to open request reader", ex);
-            sourceReader = null;
-        }
-
-        if (sourceReader == null) {
-            try {
-                var inputStream = req.getInputStream();
-                if (inputStream == null) {
-                    return "";
-                }
-                sourceReader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-            } catch (IOException | IllegalStateException ex) {
-                log.log(Level.FINE, "Unable to open request body stream", ex);
-                return "";
-            }
-        }
-
-        try (Reader reader = sourceReader) {
-            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
-        } catch (IOException e) {
-            log.log(Level.FINE, "Unable to read request body", e);
-            return "";
-        }
-    }
-
     private String readDbText(ResultSet rs, String column, int maxLen) {
         if (rs == null || column == null || column.isBlank()) {
             return null;
         }
 
         try {
-            try (Reader reader = rs.getCharacterStream(column)) {
-                if (reader != null) {
-                    String value = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen);
-                    return validateTaintedText(value, maxLen);
-                }
-            }
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Character stream DB text read failed for column " + column, ex);
-        }
-
-        try {
-            return validateTaintedText(safeDbText(rs.getString(column), maxLen), maxLen);
+            String raw = rs.getString(column);
+            String canonicalRaw = canonicalizeForValidation(safeDbText(raw, maxLen));
+            return validateTaintedText(canonicalRaw, maxLen);
         } catch (SQLException ex) {
             log.log(Level.FINE, "String DB text read failed for column " + column, ex);
             return null;
@@ -888,29 +822,15 @@ public class AllSessionsServlet extends HttpServlet {
         }
     }
 
-    private boolean isJsonContentType(HttpServletRequest req) {
-        if (req == null) {
-            return false;
-        }
-        String contentType = validateTaintedText(req.getContentType(), 256);
-        if (contentType == null || contentType.isBlank()) {
-            return false;
-        }
-        String normalized = contentType.trim().toLowerCase();
-        int semicolon = normalized.indexOf(';');
-        if (semicolon >= 0) {
-            normalized = normalized.substring(0, semicolon).trim();
-        }
-        return "application/json".equals(normalized)
-                || "text/json".equals(normalized)
-                || normalized.endsWith("+json");
-    }
-
     private String safeDbText(String value, int maxLen) {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
+            .replace('\u0000', ' ')
+            .replace("\r", "")
+            .replace("\n", "")
+                .trim();
         return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
     }
 
@@ -918,9 +838,10 @@ public class AllSessionsServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
-        if (normalized == null) {
-            return null;
+        String canonical = canonicalizeForValidation(value);
+        String normalized = ServletRequestParamUtil.normalizeBodyText(canonical, maxLen, false);
+        if (normalized == null || normalized.isBlank()) {
+            return "";
         }
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
@@ -931,6 +852,13 @@ public class AllSessionsServlet extends HttpServlet {
             safe.append(ch);
         }
         return safe.toString();
+    }
+
+    private String canonicalizeForValidation(String value) {
+        if (value == null) {
+            return null;
+        }
+        return Normalizer.normalize(value, Normalizer.Form.NFKC);
     }
 
     private boolean parseBooleanParam(String value) {
@@ -993,6 +921,19 @@ public class AllSessionsServlet extends HttpServlet {
             return normalized;
         }
         return "all";
+    }
+
+    private String applyActivityFilter(List<SessionSummary> sessionList, String requestedActivity) {
+        String activity = sanitizeActivity(requestedActivity);
+        Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
+        switch (activity) {
+            case "inactive" -> sessionList.removeIf(s -> s == null || s.lastSeen == null || !s.lastSeen.isBefore(cutoff));
+            case "active" -> sessionList.removeIf(s -> s != null && s.lastSeen != null && s.lastSeen.isBefore(cutoff));
+            default -> {
+                return "all";
+            }
+        }
+        return activity;
     }
 
     private String sanitizeSessionId(String sessionId) {

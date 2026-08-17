@@ -496,7 +496,7 @@ public class ReviewOutputValidator {
         }
 
         if (chatsProvidedValue > 0) {
-            int derived = (int) Math.round((chatsUsedValue * 100.0) / chatsProvidedValue);
+            int derived = Math.toIntExact(Math.round((chatsUsedValue * 100.0) / chatsProvidedValue));
             if (Math.abs(derived - coveragePctValue) > 1) {
                 warnings.add("Coverage percentage may be inconsistent with used/provided counts (derived=" + derived + "%).");
             }

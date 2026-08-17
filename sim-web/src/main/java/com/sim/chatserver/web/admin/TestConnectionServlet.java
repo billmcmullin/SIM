@@ -364,6 +364,7 @@ public class TestConnectionServlet extends HttpServlet {
                 .header("Authorization", "Bearer " + safeToken)
                 .header("X-API-Key", safeToken);
             case AUTH_BEARER -> builder.header("Authorization", "Bearer " + safeToken);
+            default -> builder.header("Authorization", "Bearer " + safeToken);
         }
 
         return builder.build();
@@ -375,20 +376,12 @@ public class TestConnectionServlet extends HttpServlet {
             return;
         }
 
-        if ("authorization".equalsIgnoreCase(normalizedHeader)) {
-            builder.header("Authorization", "Bearer " + token);
-            return;
+        String normalizedKey = normalizedHeader.toLowerCase(Locale.ROOT);
+        switch (normalizedKey) {
+            case "authorization" -> builder.header("Authorization", "Bearer " + token);
+            case "x-api-key" -> builder.header("X-API-Key", token);
+            default -> builder.header(normalizedHeader, defaultIfBlank(rawValue, token));
         }
-        if ("x-api-key".equalsIgnoreCase(normalizedHeader)) {
-            builder.header("X-API-Key", token);
-            return;
-        }
-
-        String headerValue = rawValue;
-        if (headerValue == null || headerValue.isBlank()) {
-            headerValue = token;
-        }
-        builder.header(normalizedHeader, headerValue);
     }
 
     private String normalizeRawAuthorizationValue(String rawValue, String token) {

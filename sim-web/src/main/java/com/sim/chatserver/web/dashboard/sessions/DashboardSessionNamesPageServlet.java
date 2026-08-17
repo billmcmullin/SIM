@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.DashboardTemplateRenderer;
+
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
@@ -39,7 +41,7 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         }
 
         String userName = session.getAttribute("user") instanceof String value ? value : "";
-        String role = session.getAttribute("role") instanceof String value ? value : "USER";
+        String role = session.getAttribute("role") instanceof String roleValue ? roleValue : "USER";
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String contextPath = req.getContextPath();
         if (contextPath == null) {
@@ -47,8 +49,8 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         }
         String rendered = template
                 .replace("${contextPath}", contextPath)
-                .replace("${user}", escapeHtml(userName))
-                .replace("${role}", escapeHtml(role));
+            .replace("${user}", DashboardTemplateRenderer.escapeHtml(userName))
+            .replace("${role}", DashboardTemplateRenderer.escapeHtml(role));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
@@ -91,25 +93,6 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 return builder.toString();
             }
         }
-    }
-
-    private String escapeHtml(String input) {
-        if (input == null) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            switch (c) {
-                case '&' -> out.append("&amp;");
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
-                default -> out.append(c);
-            }
-        }
-        return out.toString();
     }
 
     private void sendFallbackError(HttpServletResponse resp, int status) {

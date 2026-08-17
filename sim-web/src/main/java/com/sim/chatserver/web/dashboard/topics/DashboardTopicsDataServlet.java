@@ -112,85 +112,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             realTopics.add(new TopicPattern(name.trim(), p));
         }
 
-        Map<String, Integer> globalCounts = new LinkedHashMap<>();
-        Map<String, Set<String>> globalChatIdsByTopic = new LinkedHashMap<>();
-
-        Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
-        Map<String, Map<String, Set<String>>> byWidgetChatIds = new LinkedHashMap<>();
-
-        long totalMentions = 0L;
-        Set<String> allMatchedChatIds = new LinkedHashSet<>();
-
+        TopicsAggregation aggregation;
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            for (WidgetEntry w : widgets) {
-                if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = w.getWidgetId();
-                String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank())
-                        ? widgetId : w.getDisplayName();
-
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
-                Map<String, Set<String>> widgetTopicChatIds = byWidgetChatIds.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
-
-                String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
-                    ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-
-                            if (chatId == null || chatId.isBlank()) {
-                                continue;
-                            }
-                            if (prompt == null) {
-                                prompt = "";
-                            }
-
-                            try {
-                                SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            } catch (SQLException ignored) {
-                                log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
-                            }
-
-                            Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
-
-                            if (!matchedRealTopics.isEmpty()) {
-                                for (String topic : matchedRealTopics) {
-                                    incrementTopicCount(globalCounts, topic);
-                                    globalChatIdsByTopic.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
-
-                                    incrementTopicCount(widgetMap, topic);
-                                    widgetTopicChatIds.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
-
-                                    totalMentions++;
-                                }
-                                allMatchedChatIds.add(chatId);
-                            } else if (includeOther) {
-                                incrementTopicCount(globalCounts, OTHER_LABEL);
-                                globalChatIdsByTopic.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
-
-                                incrementTopicCount(widgetMap, OTHER_LABEL);
-                                widgetTopicChatIds.computeIfAbsent(OTHER_LABEL, k -> new LinkedHashSet<>()).add(chatId);
-
-                                totalMentions++;
-                                allMatchedChatIds.add(chatId);
-                            }
-                        }
-                    }
-                }
-            }
+            aggregation = collectTopicData(conn, widgets, realTopics, window, includeOther);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
             JsonObject err = Json.createObjectBuilder()
@@ -201,17 +125,108 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             return;
         }
 
-        long uniqueChatsTotal = allMatchedChatIds.size();
+        writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
+    
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        }
+    }
 
-        List<Map.Entry<String, Integer>> globalSorted = sortTopicMap(globalCounts);
+    private TopicsAggregation collectTopicData(
+            Connection conn,
+            List<WidgetEntry> widgets,
+            List<TopicPattern> realTopics,
+            DateWindow window,
+            boolean includeOther
+    ) throws SQLException {
+        TopicsAggregation aggregation = new TopicsAggregation();
 
+        for (WidgetEntry w : widgets) {
+            if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
+                continue;
+            }
+
+            String widgetId = w.getWidgetId();
+            String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank())
+                    ? widgetId : w.getDisplayName();
+
+            String tableName = sanitizeWidgetTableName(widgetId);
+            if (!tableExists(conn, tableName)) {
+                continue;
+            }
+
+            Map<String, Integer> widgetMap = aggregation.byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
+            Map<String, Set<String>> widgetTopicChatIds = aggregation.byWidgetChatIds.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
+
+            String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
+                    + " WHERE created_at >= ? AND created_at < ?";
+
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
+                ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        if (chatId == null || chatId.isBlank()) {
+                            continue;
+                        }
+
+                        String prompt = rs.getString("prompt");
+                        if (prompt == null) {
+                            prompt = "";
+                        }
+
+                        try {
+                            SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        } catch (SQLException ignored) {
+                            log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
+                        }
+
+                        Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
+                        if (!matchedRealTopics.isEmpty()) {
+                            recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, matchedRealTopics);
+                            continue;
+                        }
+
+                        if (includeOther) {
+                            recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, Set.of(OTHER_LABEL));
+                        }
+                    }
+                }
+            }
+        }
+
+        return aggregation;
+    }
+
+    private void recordMatchedTopics(
+            TopicsAggregation aggregation,
+            Map<String, Integer> widgetMap,
+            Map<String, Set<String>> widgetTopicChatIds,
+            String chatId,
+            Set<String> topics
+    ) {
+        for (String topic : topics) {
+            incrementTopicCount(aggregation.globalCounts, topic);
+            aggregation.globalChatIdsByTopic.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
+
+            incrementTopicCount(widgetMap, topic);
+            widgetTopicChatIds.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
+
+            aggregation.totalMentions++;
+        }
+        aggregation.allMatchedChatIds.add(chatId);
+    }
+
+    private JsonObject buildTopicsPayload(DateWindow window, boolean includeOther, TopicsAggregation aggregation) {
         JsonArrayBuilder globalArray = Json.createArrayBuilder();
         int rank = 1;
-        for (Map.Entry<String, Integer> e : globalSorted) {
+        for (Map.Entry<String, Integer> e : sortTopicMap(aggregation.globalCounts)) {
             String topic = e.getKey();
-            Set<String> ids = globalChatIdsByTopic.getOrDefault(topic, Set.of());
-            Integer mentionsValue = e.getValue();
-            int mentions = mentionsValue == null ? 0 : mentionsValue.intValue();
+            Set<String> ids = aggregation.globalChatIdsByTopic.getOrDefault(topic, Set.of());
+            int mentions = e.getValue() == null ? 0 : e.getValue().intValue();
 
             JsonArrayBuilder idsArray = Json.createArrayBuilder();
             for (String id : ids) {
@@ -226,11 +241,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
 
         JsonArrayBuilder widgetsArray = Json.createArrayBuilder();
-        for (Map.Entry<String, Map<String, Integer>> e : byWidgetCounts.entrySet()) {
+        for (Map.Entry<String, Map<String, Integer>> e : aggregation.byWidgetCounts.entrySet()) {
             String widgetName = e.getKey();
             Map<String, Integer> widgetCounts = e.getValue();
-
-            // Restore prior behavior: only show widgets that actually have topic entries.
             if (widgetCounts == null || widgetCounts.isEmpty()) {
                 continue;
             }
@@ -240,15 +253,13 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 continue;
             }
 
-            Map<String, Set<String>> topicChats = byWidgetChatIds.getOrDefault(widgetName, Map.of());
-
+            Map<String, Set<String>> topicChats = aggregation.byWidgetChatIds.getOrDefault(widgetName, Map.of());
             JsonArrayBuilder topicsArray = Json.createArrayBuilder();
             int widgetRank = 1;
             for (Map.Entry<String, Integer> t : sorted) {
                 String topic = t.getKey();
                 Set<String> ids = topicChats.getOrDefault(topic, Set.of());
-                Integer mentionsValue = t.getValue();
-                int mentions = mentionsValue == null ? 0 : mentionsValue.intValue();
+                int mentions = t.getValue() == null ? 0 : t.getValue().intValue();
 
                 JsonArrayBuilder idsArray = Json.createArrayBuilder();
                 for (String id : ids) {
@@ -258,7 +269,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 topicsArray.add(Json.createObjectBuilder()
                         .add("rank", widgetRank++)
                         .add("topic", topic)
-                    .add("mentions", mentions)
+                        .add("mentions", mentions)
                         .add("selectedChatIds", idsArray));
             }
 
@@ -267,26 +278,19 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                     .add("topics", topicsArray));
         }
 
-        JsonObject payload = Json.createObjectBuilder()
+        return Json.createObjectBuilder()
                 .add("status", "ok")
-                .add("query", "") // kept for compatibility
-                .add("limit", "all") // now fixed behavior
+                .add("query", "")
+                .add("limit", "all")
                 .add("includeOther", includeOther)
                 .add("day", window.dayToken)
                 .add("rangeStart", window.startInclusive.format(DATE_FMT))
                 .add("rangeEnd", window.endExclusive.minusDays(1).format(DATE_FMT))
                 .add("globalTopics", globalArray)
                 .add("widgets", widgetsArray)
-                .add("termsTotal", totalMentions)
-                .add("uniqueChatsTotal", uniqueChatsTotal)
+                .add("termsTotal", aggregation.totalMentions)
+                .add("uniqueChatsTotal", aggregation.allMatchedChatIds.size())
                 .build();
-
-        writeJson(resp, HttpServletResponse.SC_OK, payload);
-    
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-        }
     }
 
     private DateWindow resolveDateWindow(HttpServletRequest req) {
@@ -454,6 +458,16 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             this.endExclusive = endExclusive;
             this.dayToken = dayToken;
         }
+    }
+
+    static final class TopicsAggregation {
+
+        final Map<String, Integer> globalCounts = new LinkedHashMap<>();
+        final Map<String, Set<String>> globalChatIdsByTopic = new LinkedHashMap<>();
+        final Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
+        final Map<String, Map<String, Set<String>>> byWidgetChatIds = new LinkedHashMap<>();
+        final Set<String> allMatchedChatIds = new LinkedHashSet<>();
+        long totalMentions = 0L;
     }
 
 }

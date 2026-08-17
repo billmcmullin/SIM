@@ -96,7 +96,7 @@ public final class TextBudgetUtil {
         if (value == null || value.isBlank()) {
             return 0;
         }
-        return Math.max(1, (int) Math.ceil(value.length() / 4.0));
+        return Math.max(1, (value.length() + 3) / 4);
     }
 
     /**

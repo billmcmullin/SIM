@@ -15,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -109,13 +110,13 @@ public class WidgetTableViewServlet extends HttpServlet {
         String role = safeSessionAttribute(session, "role", "USER");
 
         String rendered = template
-                .replace("${user}", escapeHtml(userName))
-                .replace("${role}", escapeHtml(role))
-                .replace("${contextPath}", escapeHtml(ServletPathUtil.safeContextPathStrict(req.getContextPath())))
-                .replace("${widgetId}", escapeHtml(widgetId))
-                .replace("${widgetName}", escapeHtml(widgetName))
-                .replace("${selectedDate}", escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
-                .replace("${selectedDateLabel}", escapeHtml(selectedDateLabel));   // human display label
+        .replace("${user}", DashboardTemplateRenderer.escapeHtml(userName))
+        .replace("${role}", DashboardTemplateRenderer.escapeHtml(role))
+        .replace("${contextPath}", DashboardTemplateRenderer.escapeHtml(ServletPathUtil.safeContextPathStrict(req.getContextPath())))
+        .replace("${widgetId}", DashboardTemplateRenderer.escapeHtml(widgetId))
+        .replace("${widgetName}", DashboardTemplateRenderer.escapeHtml(widgetName))
+        .replace("${selectedDate}", DashboardTemplateRenderer.escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
+        .replace("${selectedDateLabel}", DashboardTemplateRenderer.escapeHtml(selectedDateLabel));   // human display label
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
@@ -149,25 +150,6 @@ public class WidgetTableViewServlet extends HttpServlet {
                 return builder.toString();
             }
         }
-    }
-
-    private String escapeHtml(String input) {
-        if (input == null) {
-            return "";
-        }
-        StringBuilder escaped = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char ch = input.charAt(i);
-            switch (ch) {
-                case '&' -> escaped.append("&amp;");
-                case '<' -> escaped.append("&lt;");
-                case '>' -> escaped.append("&gt;");
-                case '"' -> escaped.append("&quot;");
-                case '\'' -> escaped.append("&#39;");
-                default -> escaped.append(ch);
-            }
-        }
-        return escaped.toString();
     }
 
     private String safeSessionAttribute(HttpSession session, String name, String fallback) {

@@ -39,57 +39,71 @@ public class DashboardTopicsQueryService {
 
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = widget.getWidgetId();
-                String widgetName = (widget.getDisplayName() == null || widget.getDisplayName().isBlank())
-                        ? widgetId : widget.getDisplayName();
-
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, key -> new LinkedHashMap<>());
-
-                String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, Timestamp.valueOf(startInclusive.atStartOfDay()));
-                    ps.setTimestamp(2, Timestamp.valueOf(endExclusive.atStartOfDay()));
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Timestamp ignoredTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (ignoredTs == null) {
-                                // Prompt text is still usable even when timestamp normalization fails.
-                            }
-
-                            String prompt = rs.getString("prompt");
-                            if (prompt == null || prompt.isBlank()) {
-                                continue;
-                            }
-
-                            Set<String> matchedTopics = topicMatcher.apply(prompt);
-                            if (matchedTopics == null || matchedTopics.isEmpty()) {
-                                continue;
-                            }
-                            for (String topic : matchedTopics) {
-                                if (topic == null || topic.isBlank()) {
-                                    continue;
-                                }
-                                incrementCount(globalCounts, topic);
-                                incrementCount(widgetMap, topic);
-                            }
-                        }
-                    }
-                }
+                collectWidgetTopicCounts(conn, widget, startInclusive, endExclusive, topicMatcher, globalCounts, byWidgetCounts);
             }
         }
 
         return new TopicCountResult(globalCounts, byWidgetCounts);
+    }
+
+    private void collectWidgetTopicCounts(
+            Connection conn,
+            WidgetEntry widget,
+            LocalDate startInclusive,
+            LocalDate endExclusive,
+            Function<String, Set<String>> topicMatcher,
+            Map<String, Integer> globalCounts,
+            Map<String, Map<String, Integer>> byWidgetCounts
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+            return;
+        }
+
+        String widgetId = widget.getWidgetId();
+        String widgetName = widget.getDisplayName() == null || widget.getDisplayName().isBlank()
+                ? widgetId : widget.getDisplayName();
+        String tableName = sanitizeWidgetTableName(widgetId);
+        if (!tableExists(conn, tableName)) {
+            return;
+        }
+
+        Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, key -> new LinkedHashMap<>());
+        String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
+                + " WHERE created_at >= ? AND created_at < ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.valueOf(startInclusive.atStartOfDay()));
+            ps.setTimestamp(2, Timestamp.valueOf(endExclusive.atStartOfDay()));
+            try (ResultSet rs = ps.executeQuery()) {
+                collectRowsTopicCounts(rs, topicMatcher, globalCounts, widgetMap);
+            }
+        }
+    }
+
+    private void collectRowsTopicCounts(
+            ResultSet rs,
+            Function<String, Set<String>> topicMatcher,
+            Map<String, Integer> globalCounts,
+            Map<String, Integer> widgetMap
+    ) throws SQLException {
+        while (rs.next()) {
+            SqlTimeUtil.safeTimestamp(rs, "created_at");
+            String prompt = rs.getString("prompt");
+            if (prompt == null || prompt.isBlank()) {
+                continue;
+            }
+
+            Set<String> matchedTopics = topicMatcher.apply(prompt);
+            if (matchedTopics == null || matchedTopics.isEmpty()) {
+                continue;
+            }
+            for (String topic : matchedTopics) {
+                if (topic != null && !topic.isBlank()) {
+                    incrementCount(globalCounts, topic);
+                    incrementCount(widgetMap, topic);
+                }
+            }
+        }
     }
 
     private void incrementCount(Map<String, Integer> counter, String key) {

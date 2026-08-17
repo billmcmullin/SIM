@@ -8,6 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -335,20 +337,22 @@ final class InactiveUsersListQueryService {
     }
 
     private long readNonNegativeLong(ResultSet rs, String column) {
-        String text = readSafeDbText(rs, column, 32);
+        String safeColumn = normalizeColumnName(column);
+        String text = readSafeDbText(rs, safeColumn, 32);
         if (text.isBlank() || !text.matches("^-?\\d{1,18}$")) {
             return 0L;
         }
         try {
             return Math.max(0L, Long.parseLong(text));
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid numeric text in column " + column, ex);
+            log.log(Level.FINE, "Invalid numeric text in column " + safeColumn, ex);
             return 0L;
         }
     }
 
     private Instant readSafeInstant(ResultSet rs, String column) {
-        String text = readSafeDbText(rs, column, 128);
+        String safeColumn = normalizeColumnName(column);
+        String text = readSafeDbText(rs, safeColumn, 128);
         if (text.isBlank()) {
             return null;
         }
@@ -358,42 +362,94 @@ final class InactiveUsersListQueryService {
             try {
                 return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
             } catch (IllegalArgumentException secondEx) {
-                log.log(Level.FINE, "Invalid timestamp text in column " + column, secondEx);
+                log.log(Level.FINE, "Invalid timestamp text in column " + safeColumn, secondEx);
                 return null;
             }
         }
     }
 
     private String readSafeDbText(ResultSet rs, String column, int maxChars) {
-        try (Reader reader = rs.getCharacterStream(column)) {
-            if (reader == null) {
-                return "";
-            }
-            char[] buffer = new char[256];
-            StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxChars, 512)));
-            int total = 0;
-            int read;
-            while ((read = reader.read(buffer)) != -1) {
-                total += read;
-                if (maxChars > 0 && total > maxChars) {
-                    int remaining = Math.max(0, maxChars - (total - read));
-                    if (remaining > 0) {
-                        value.append(buffer, 0, remaining);
-                    }
-                    break;
-                }
-                value.append(buffer, 0, read);
-            }
-
-            String normalized = value.toString().replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
-            if (normalized.length() > maxChars) {
-                return normalized.substring(0, maxChars);
-            }
-            return normalized;
-        } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Unable to read text column " + column, ex);
+        int safeLimit = maxChars > 0 ? maxChars : 8192;
+        if (rs == null || column == null || column.isBlank()) {
             return "";
         }
+
+        try {
+            String raw = rs.getString(column);
+            if (raw != null) {
+                return validateDbText(canonicalizeDbText(raw), safeLimit);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + safeColumnName(column), ex);
+        }
+
+        return "";
+    }
+
+    private String validateDbText(String value, int maxChars) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String canonical = canonicalizeDbText(value);
+        if (canonical.isBlank()) {
+            return "";
+        }
+
+        StringBuilder safe = new StringBuilder(canonical.length());
+        for (int i = 0; i < canonical.length(); i++) {
+            char ch = canonical.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+                continue;
+            }
+            safe.append(ch);
+        }
+
+        String normalized = safe.toString().replace("\n", " ").trim();
+        if (maxChars > 0 && normalized.length() > maxChars) {
+            return normalized.substring(0, maxChars);
+        }
+        return normalized;
+    }
+
+    private String canonicalizeDbText(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .replace('\u0000', ' ')
+                .replace("\r", "");
+    }
+
+    private String safeColumnName(String column) {
+        if (column == null || column.isBlank()) {
+            return "<unknown>";
+        }
+        return column;
+    }
+
+    private String normalizeColumnName(String column) {
+        return column == null ? "" : column;
+    }
+
+    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
+        if (reader == null || maxChars <= 0) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
+        char[] buffer = new char[256];
+        int remaining = maxChars;
+        while (remaining > 0) {
+            int toRead = Math.min(buffer.length, remaining);
+            int read = reader.read(buffer, 0, toRead);
+            if (read < 0) {
+                break;
+            }
+            builder.append(buffer, 0, read);
+            remaining -= read;
+        }
+        return builder.toString();
     }
 
     private String sanitizeWidgetTableName(String widgetId) {

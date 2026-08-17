@@ -87,8 +87,12 @@ class WidgetHealthConfigStoreTest {
 
         when(rs.getInt("id")).thenReturn(1);
         when(rs.wasNull()).thenReturn(false);
+        when(rs.getBytes("id")).thenReturn(bytes("1"));
         when(rs.getBytes("healthcheck_url")).thenReturn(bytes("  http://example.com/health  "));
         when(rs.getBytes("method")).thenReturn(bytes("patch"));
+        when(rs.getBytes("timeout_ms")).thenReturn(bytes("200000"));
+        when(rs.getBytes("healthcheck_enabled")).thenReturn(bytes("true"));
+        when(rs.getBytes("check_interval_seconds")).thenReturn(bytes("600"));
         when(rs.getBytes("expect_json_field")).thenReturn(bytes("  status "));
         when(rs.getBytes("expect_json_value")).thenReturn(bytes(" up "));
         when(rs.getBytes("widget_id")).thenReturn(bytes(" wid-1 "));
@@ -99,6 +103,7 @@ class WidgetHealthConfigStoreTest {
         when(rs.getBytes("api_key_header_name")).thenReturn(null);
         when(rs.getBytes("api_key_value")).thenReturn(bytes(" token "));
         when(rs.getBytes("updated_by")).thenReturn(bytes(" tester "));
+        when(rs.getBytes("updated_at")).thenReturn(bytes("2026-01-01T00:00:00Z"));
         when(rs.getString("healthcheck_url")).thenReturn("  http://example.com/health  ");
         when(rs.getString("method")).thenReturn("patch");
         when(rs.getInt("timeout_ms")).thenReturn(200_000);
@@ -181,6 +186,14 @@ class WidgetHealthConfigStoreTest {
         when(loadRs.next()).thenReturn(true);
 
         when(loadRs.getInt("id")).thenReturn(1);
+        when(loadRs.getBytes("id")).thenReturn(bytes("1"));
+        when(loadRs.getBytes("healthcheck_url")).thenReturn(bytes("http://anythingllm:3001/api/v1/system"));
+        when(loadRs.getBytes("healthcheck_enabled")).thenReturn(bytes("true"));
+        when(loadRs.getBytes("check_interval_seconds")).thenReturn(bytes("300"));
+        when(loadRs.getBytes("method")).thenReturn(bytes("GET"));
+        when(loadRs.getBytes("timeout_ms")).thenReturn(bytes("8000"));
+        when(loadRs.getBytes("updated_by")).thenReturn(bytes("tester"));
+        when(loadRs.getBytes("updated_at")).thenReturn(bytes("2026-01-01T00:00:00Z"));
         when(loadRs.getString("id")).thenReturn("1");
         when(loadRs.getString("healthcheck_url")).thenReturn("http://anythingllm:3001/api/v1/system");
         when(loadRs.getString("healthcheck_enabled")).thenReturn("true");

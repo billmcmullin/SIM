@@ -4,15 +4,8 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.Reader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,7 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
 import org.openpdf.text.Document;
 import org.openpdf.text.DocumentException;
@@ -38,6 +31,7 @@ import org.openpdf.text.pdf.PdfPTable;
 import org.openpdf.text.pdf.PdfWriter;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.SessionIdFormatter;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -48,9 +42,7 @@ import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
-import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
-import jakarta.json.JsonReader;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
 import jakarta.servlet.ServletException;
@@ -69,7 +61,19 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private final Supplier<AppDataSourceHolder> dataSourceHolderOverride;
+
+    public WidgetExportServlet() {
+        this.dataSourceHolderOverride = null;
+    }
+
+    WidgetExportServlet(AppDataSourceHolder dataSourceHolder) {
+        this.dataSourceHolderOverride = dataSourceHolder == null ? null : () -> dataSourceHolder;
+    }
+
+    WidgetExportServlet(Supplier<AppDataSourceHolder> dataSourceHolderSupplier) {
+        this.dataSourceHolderOverride = dataSourceHolderSupplier;
+    }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -84,14 +88,8 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
-        JsonObject payload;
-        try {
-            String requestBody = readRequestBody(req);
-            try (JsonReader jr = Json.createReader(new java.io.StringReader(requestBody))) {
-                payload = jr.readObject();
-            }
-        } catch (JsonException | ClassCastException e) {
-            log.log(Level.FINE, "Invalid export payload", e);
+        JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
+        if (payload == null || payload.isEmpty()) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON body.");
             return;
         }
@@ -705,208 +703,6 @@ public class WidgetExportServlet extends HttpServlet {
         return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
     }
 
-    private String readRequestBody(HttpServletRequest req) {
-        if (req == null) {
-            return "";
-        }
-
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            return "";
-        }
-
-        try {
-            Reader requestReader = req.getReader();
-            if (requestReader == null) {
-                return "";
-            }
-            String body = readRequestBody(requestReader);
-            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
-        } catch (IOException | IllegalStateException ex) {
-            log.log(Level.FINE, "Unable to read export request body from request reader", ex);
-            return "";
-        }
-    }
-
-    private String readRequestBody(Reader reader) {
-        if (reader == null) {
-            return "";
-        }
-
-        try (Reader bodyReader = reader) {
-            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
-            return validateTaintedText(body, MAX_JSON_PAYLOAD_BYTES);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to read export request body", ex);
-            return "";
-        }
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        if (conn == null || tableName == null || tableName.isBlank()) {
-            return false;
-        }
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
-        }
-        return false;
-    }
-
-    private static List<List<String>> chunk(List<String> input, int size) {
-        List<List<String>> out = new ArrayList<>();
-        if (input == null || input.isEmpty() || size <= 0) {
-            return out;
-        }
-        for (int i = 0; i < input.size(); i += size) {
-            out.add(input.subList(i, Math.min(i + size, input.size())));
-        }
-        return out;
-    }
-
-    private String readDbText(ResultSet rs, String columnName, int maxLen) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return "";
-        }
-
-        String rawText = readRawDbText(rs, columnName, Math.max(maxLen, 1));
-        if (rawText == null || rawText.isBlank()) {
-            return "";
-        }
-
-        String normalized = ServletRequestParamUtil.normalizeBodyText(rawText, maxLen, false);
-        return normalized == null ? "" : normalized.replace('\n', ' ');
-    }
-
-    private Timestamp readDbTimestamp(ResultSet rs, String columnName) {
-        if (rs == null || columnName == null || columnName.isBlank()) {
-            return null;
-        }
-
-        String rawText = readRawDbText(rs, columnName, 128);
-        String text = ServletRequestParamUtil.normalizeBodyText(rawText, 128, true);
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-
-        try {
-            return Timestamp.from(Instant.parse(text));
-        } catch (DateTimeException | IllegalArgumentException ex) {
-            try {
-                return Timestamp.valueOf(text.replace('T', ' '));
-            } catch (IllegalArgumentException ex2) {
-                log.log(Level.FINE, "Unable to parse timestamp fallback text", ex2);
-                return null;
-            }
-        }
-    }
-
-    private String readRawDbText(ResultSet rs, String columnName, int maxLen) {
-        int limit = Math.max(1, maxLen);
-        try {
-            Reader reader = rs.getCharacterStream(columnName);
-            if (reader != null) {
-                try (Reader closeable = reader) {
-                    String raw = readAtMostChars(closeable, limit);
-                    return validateTaintedText(raw, limit);
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Character-stream DB read failed for column " + columnName, ex);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Character-stream decode failed for column " + columnName, ex);
-        }
-
-        try {
-            byte[] bytes = rs.getBytes(columnName);
-            if (bytes == null) {
-                return null;
-            }
-            byte[] safeBytes = validateTaintedBytes(bytes);
-            String raw = new String(safeBytes, StandardCharsets.UTF_8);
-            return validateTaintedText(raw, limit);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Binary DB read failed for column " + columnName, ex);
-            return null;
-        }
-    }
-
-    private byte[] validateTaintedBytes(byte[] bytes) {
-        if (bytes == null) {
-            return new byte[0];
-        }
-        return bytes;
-    }
-
-    private String validateTaintedText(String value, int maxLen) {
-        if (value == null || value.isEmpty()) {
-            return value;
-        }
-        StringBuilder safe = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        String normalized = safe.toString();
-        if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
-        }
-        return normalized;
-    }
-
-    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
-        char[] buffer = new char[256];
-        int remaining = maxChars;
-        while (remaining > 0) {
-            int toRead = Math.min(buffer.length, remaining);
-            int read = reader.read(buffer, 0, toRead);
-            if (read < 0) {
-                break;
-            }
-            builder.append(buffer, 0, read);
-            remaining -= read;
-        }
-        return builder.toString();
-    }
-
     private OutputStream openOutputStreamSafe(HttpServletResponse resp, String context) {
         try {
             return resp.getOutputStream();
@@ -915,7 +711,11 @@ public class WidgetExportServlet extends HttpServlet {
         }
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
+    private AppDataSourceHolder dataSourceHolder() {
+        Supplier<AppDataSourceHolder> override = dataSourceHolderOverride;
+        if (override != null) {
+            return override.get();
+        }
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

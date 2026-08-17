@@ -7,6 +7,7 @@ import java.io.StringWriter;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -236,8 +237,28 @@ public class GraphTokenClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
+        String enabledRaw = readEnvCanonical(ENV_ENABLED);
         return isTruthy(enabledRaw);
+    }
+
+    private String readEnvCanonical(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        String normalizedKey = key.trim();
+        String raw = new ProcessBuilder().environment().get(normalizedKey);
+        if (raw == null) {
+            return null;
+        }
+        String canonical = Normalizer.normalize(raw, Normalizer.Form.NFKC)
+                .replace('\u0000', ' ')
+                .replace("\r", "")
+                .replace("\n", "")
+                .trim();
+        if (canonical.isEmpty()) {
+            return null;
+        }
+        return canonical.length() > 128 ? canonical.substring(0, 128) : canonical;
     }
 
     private Path resolveDiagnosticsDir() {

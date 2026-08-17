@@ -1,5 +1,7 @@
 package com.sim.chatserver.security;
 
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.security.SecurityValidationService.UrlValidationResult;
@@ -25,7 +27,7 @@ public class SecurityValidationService_UrlValidationResultTest
         String host = "host"; // UTA: default value
         String scheme = "scheme"; // UTA: default value
         String reason = "reason"; // UTA: default value
-        UrlValidationResult result = UrlValidationResult.allowed(host, scheme, reason);
+        UrlValidationResult result = invokeAllowed(host, scheme, reason);
 
     }
 
@@ -40,7 +42,7 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // When
         String reason = "reason"; // UTA: default value
-        UrlValidationResult result = UrlValidationResult.blocked(reason);
+        UrlValidationResult result = invokeBlocked(reason);
 
     }
 
@@ -55,7 +57,7 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        UrlValidationResult underTest = UrlValidationResult.blocked(reason);
+        UrlValidationResult underTest = invokeBlocked(reason);
 
         // When
         String result = underTest.getHost();
@@ -73,7 +75,7 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        UrlValidationResult underTest = UrlValidationResult.blocked(reason);
+        UrlValidationResult underTest = invokeBlocked(reason);
 
         // When
         String result = underTest.getReason();
@@ -91,7 +93,7 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        UrlValidationResult underTest = UrlValidationResult.blocked(reason);
+        UrlValidationResult underTest = invokeBlocked(reason);
 
         // When
         String result = underTest.getScheme();
@@ -109,10 +111,10 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        UrlValidationResult underTest = UrlValidationResult.blocked(reason);
+        UrlValidationResult underTest = invokeBlocked(reason);
 
         // When
-        boolean result = underTest.isAllowed();
+        boolean result = invokeIsAllowed(underTest);
 
     }
 
@@ -127,10 +129,28 @@ public class SecurityValidationService_UrlValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        UrlValidationResult underTest = UrlValidationResult.blocked(reason);
+        UrlValidationResult underTest = invokeBlocked(reason);
 
         // When
         String result = underTest.toString();
 
+    }
+
+    private static UrlValidationResult invokeAllowed(String host, String scheme, String reason) throws Exception {
+        Method method = UrlValidationResult.class.getDeclaredMethod("allowed", String.class, String.class, String.class);
+        method.setAccessible(true);
+        return (UrlValidationResult) method.invoke(null, host, scheme, reason);
+    }
+
+    private static UrlValidationResult invokeBlocked(String reason) throws Exception {
+        Method method = UrlValidationResult.class.getDeclaredMethod("blocked", String.class);
+        method.setAccessible(true);
+        return (UrlValidationResult) method.invoke(null, reason);
+    }
+
+    private static boolean invokeIsAllowed(UrlValidationResult underTest) throws Exception {
+        Method method = UrlValidationResult.class.getDeclaredMethod("isAllowed");
+        method.setAccessible(true);
+        return ((Boolean) method.invoke(underTest)).booleanValue();
     }
 }

@@ -91,7 +91,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
 
         int percent = total <= 0
                 ? Math.max(0, Math.min(100, status.getCoveragePercent()))
-                : (int) Math.round((used * 100.0) / total);
+            : safeRoundToInt((used * 100.0) / total);
         percent = Math.max(0, Math.min(100, percent));
 
         boolean coverageComplete = missing == 0;
@@ -113,7 +113,9 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 completedBatches,
                 failedBatches
         );
-        int batchPercent = totalBatches <= 0 ? 0 : Math.max(0, Math.min(100, (int) Math.round((completedBatches * 100.0) / totalBatches)));
+        int batchPercent = totalBatches <= 0
+            ? 0
+            : Math.max(0, Math.min(100, safeRoundToInt((completedBatches * 100.0) / totalBatches)));
         boolean running = !status.isDone();
 
         JsonObjectBuilder coverage = Json.createObjectBuilder()
@@ -352,6 +354,17 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
 
     private String safe(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private int safeRoundToInt(double value) {
+        long rounded = Math.round(value);
+        if (rounded <= Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        if (rounded >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(rounded);
     }
 
 }

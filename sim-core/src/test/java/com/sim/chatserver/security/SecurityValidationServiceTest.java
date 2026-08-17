@@ -1,5 +1,7 @@
 package com.sim.chatserver.security;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -33,7 +35,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = null; // UTA: configured value
@@ -53,7 +55,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -76,7 +78,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -99,7 +101,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -125,7 +127,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -151,7 +153,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -177,7 +179,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -203,7 +205,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -229,7 +231,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -255,7 +257,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -281,7 +283,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -307,7 +309,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -329,7 +331,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String baseUrl = null; // UTA: configured value
@@ -349,7 +351,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
@@ -371,7 +373,7 @@ public class SecurityValidationServiceTest
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
         boolean blockPrivateNetworkTargets = false; // UTA: default value
         boolean resolveDnsForValidation = false; // UTA: configured value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
@@ -393,7 +395,7 @@ public class SecurityValidationServiceTest
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
         boolean blockPrivateNetworkTargets = false; // UTA: configured value
         boolean resolveDnsForValidation = true; // UTA: configured value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
@@ -413,7 +415,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = null; // UTA: configured value
@@ -433,7 +435,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -455,7 +457,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -477,11 +479,11 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = null; // UTA: configured value
-        boolean result = underTest.isModeAllowed(mode);
+        boolean result = invokeIsModeAllowed(underTest, mode);
 
     }
 
@@ -497,11 +499,11 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = "mode"; // UTA: configured value
-        boolean result = underTest.isModeAllowed(mode);
+        boolean result = invokeIsModeAllowed(underTest, mode);
 
     }
 
@@ -517,7 +519,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = null; // UTA: configured value
@@ -538,7 +540,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = "mode"; // UTA: configured value
@@ -559,7 +561,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = null; // UTA: configured value
@@ -580,7 +582,7 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String mode = "mode"; // UTA: configured value
@@ -601,11 +603,11 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String baseUrl = null; // UTA: configured value
-        UrlValidationResult result = underTest.validateUpstreamUrl(baseUrl);
+        UrlValidationResult result = invokeValidateUpstreamUrl(underTest, baseUrl);
 
     }
 
@@ -621,11 +623,11 @@ public class SecurityValidationServiceTest
         // Given
         Set<String> allowedUpstreamHosts = null; // UTA: configured value
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
-        UrlValidationResult result = underTest.validateUpstreamUrl(baseUrl);
+        UrlValidationResult result = invokeValidateUpstreamUrl(underTest, baseUrl);
 
     }
 
@@ -643,11 +645,11 @@ public class SecurityValidationServiceTest
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
         boolean blockPrivateNetworkTargets = false; // UTA: default value
         boolean resolveDnsForValidation = false; // UTA: configured value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
-        UrlValidationResult result = underTest.validateUpstreamUrl(baseUrl);
+        UrlValidationResult result = invokeValidateUpstreamUrl(underTest, baseUrl);
 
     }
 
@@ -665,11 +667,40 @@ public class SecurityValidationServiceTest
         Set<String> allowedModes = new HashSet<String>(); // UTA: default value
         boolean blockPrivateNetworkTargets = false; // UTA: configured value
         boolean resolveDnsForValidation = true; // UTA: configured value
-        SecurityValidationService underTest = new SecurityValidationService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
+        SecurityValidationService underTest = newService(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
 
         // When
         String baseUrl = "baseUrl"; // UTA: configured value
-        UrlValidationResult result = underTest.validateUpstreamUrl(baseUrl);
+        UrlValidationResult result = invokeValidateUpstreamUrl(underTest, baseUrl);
 
+    }
+
+    private static SecurityValidationService newService(Set<String> allowedUpstreamHosts, Set<String> allowedModes) throws Exception {
+        Constructor<SecurityValidationService> ctor = SecurityValidationService.class
+                .getDeclaredConstructor(Set.class, Set.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(allowedUpstreamHosts, allowedModes);
+    }
+
+    private static SecurityValidationService newService(Set<String> allowedUpstreamHosts,
+                                                        Set<String> allowedModes,
+                                                        boolean blockPrivateNetworkTargets,
+                                                        boolean resolveDnsForValidation) throws Exception {
+        Constructor<SecurityValidationService> ctor = SecurityValidationService.class
+                .getDeclaredConstructor(Set.class, Set.class, boolean.class, boolean.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(allowedUpstreamHosts, allowedModes, blockPrivateNetworkTargets, resolveDnsForValidation);
+    }
+
+    private static boolean invokeIsModeAllowed(SecurityValidationService underTest, String mode) throws Exception {
+        Method method = SecurityValidationService.class.getDeclaredMethod("isModeAllowed", String.class);
+        method.setAccessible(true);
+        return ((Boolean) method.invoke(underTest, mode)).booleanValue();
+    }
+
+    private static UrlValidationResult invokeValidateUpstreamUrl(SecurityValidationService underTest, String baseUrl) throws Exception {
+        Method method = SecurityValidationService.class.getDeclaredMethod("validateUpstreamUrl", String.class);
+        method.setAccessible(true);
+        return (UrlValidationResult) method.invoke(underTest, baseUrl);
     }
 }

@@ -230,7 +230,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
                 arrayBuilder.add(jsonRow);
             }
 
-            int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / Math.max(1, limit));
+            int totalPages = computeTotalPages(totalRows, limit);
             SearchTerms st = normalizeSearchTerms(selection);
 
             JsonObject body = Json.createObjectBuilder()
@@ -351,7 +351,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
         }
 
         SearchTerms st = normalizeSearchTerms(selection);
-        int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / Math.max(1, limit));
+        int totalPages = computeTotalPages(totalRows, limit);
 
         JsonObject body = Json.createObjectBuilder()
                 .add("status", "ok")
@@ -670,6 +670,17 @@ public class WidgetReviewDataServlet extends HttpServlet {
         return b.toString();
     }
 
+    private int computeTotalPages(int totalRows, int limit) {
+        long safeTotal = Math.max(0L, (long) totalRows);
+        long safeLimit = Math.max(1L, (long) limit);
+        long pages = (safeTotal + safeLimit - 1L) / safeLimit;
+        long normalized = Math.max(1L, pages);
+        if (normalized >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(normalized);
+    }
+
     private void writeJson(HttpServletResponse resp, String body) {
         try {
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -677,7 +688,7 @@ public class WidgetReviewDataServlet extends HttpServlet {
             resp.getWriter().write(body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON text response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {

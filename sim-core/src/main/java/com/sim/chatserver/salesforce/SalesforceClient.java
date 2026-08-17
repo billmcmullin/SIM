@@ -148,10 +148,17 @@ public class SalesforceClient {
                     "status=" + response.statusCode() + "\nbody=" + safeErrorBody(response.body())
             );
             return response;
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            ServerDiagnosticsLog.write(
+                    "salesforce-client",
+                    requestId,
+                    "query-error",
+                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
+            throw e;
+        } catch (IOException e) {
             ServerDiagnosticsLog.write(
                     "salesforce-client",
                     requestId,

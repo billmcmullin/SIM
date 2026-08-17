@@ -11,6 +11,7 @@ import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -18,6 +19,7 @@ import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 /**
  * Stores/retrieves widget availability health-check configuration in
@@ -448,7 +450,8 @@ public class WidgetHealthConfigStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return validateDbText(sanitizeDbText(readAtMostChars(closeable, 4096), 4096), 4096);
+                    String raw = TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
+                    return validateTaintedDbText(raw, 4096);
                 }
             }
         } catch (java.sql.SQLException ex) {
@@ -462,30 +465,13 @@ public class WidgetHealthConfigStore {
             if (bytes == null) {
                 return null;
             }
-            return validateDbText(sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096), 4096);
+            byte[] safeBytes = validateTaintedDbBytes(bytes, 4096);
+            String raw = new String(safeBytes, StandardCharsets.UTF_8);
+            return validateTaintedDbText(raw, 4096);
         } catch (java.sql.SQLException ex) {
             log.log(Level.FINE, "ResultSet binary read failed for column " + column, ex);
             return null;
         }
-    }
-
-    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
-        char[] buffer = new char[256];
-        int remaining = maxChars;
-        while (remaining > 0) {
-            int toRead = Math.min(buffer.length, remaining);
-            int read = reader.read(buffer, 0, toRead);
-            if (read < 0) {
-                break;
-            }
-            builder.append(buffer, 0, read);
-            remaining -= read;
-        }
-        return builder.toString();
     }
 
     private String sanitizeDbText(String s, int maxChars) {
@@ -499,23 +485,43 @@ public class WidgetHealthConfigStore {
         return trimmed.substring(0, maxChars);
     }
 
-    private String validateDbText(String value, int maxChars) {
+    private String validateTaintedDbText(String value, int maxChars) {
         if (value == null) {
             return null;
         }
-        String normalized = sanitizeDbText(value, maxChars);
-        if (normalized == null || normalized.isBlank()) {
-            return normalized;
+
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        String bounded = canonical.trim();
+        if (maxChars > 0 && bounded.length() > maxChars) {
+            bounded = bounded.substring(0, maxChars);
         }
-        StringBuilder safe = new StringBuilder(normalized.length());
-        for (int i = 0; i < normalized.length(); i++) {
-            char ch = normalized.charAt(i);
+        if (bounded.isBlank()) {
+            return bounded;
+        }
+
+        StringBuilder safe = new StringBuilder(bounded.length());
+        for (int i = 0; i < bounded.length(); i++) {
+            char ch = bounded.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         return safe.toString();
+    }
+
+    private byte[] validateTaintedDbBytes(byte[] value, int maxBytes) {
+        if (value == null) {
+            return null;
+        }
+        if (maxBytes <= 0 || value.length <= maxBytes) {
+            return value;
+        }
+        return Arrays.copyOf(value, maxBytes);
+    }
+
+    private String validateDbText(String value, int maxChars) {
+        return validateTaintedDbText(value, maxChars);
     }
 
     private int validateDbInt(int value, String column, int fallback) {

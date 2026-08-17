@@ -267,83 +267,18 @@ public class DashboardMetricsService {
             Timestamp endTs = Timestamp.valueOf(today.plusDays(1).atStartOfDay());
 
             for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
-                if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                    continue;
-                }
-
-                String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, startTs);
-                    ps.setTimestamp(2, endTs);
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String prompt = rs.getString("prompt");
-                            if (prompt == null) {
-                                prompt = "";
-                            }
-
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (createdAt == null) {
-                                continue;
-                            }
-
-                            LocalDate d = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                            if (!d.equals(today) && !d.equals(yesterday)) {
-                                continue;
-                            }
-
-                            String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
-
-                            TermDefinition bestTerm = null;
-                            int bestStart = Integer.MAX_VALUE;
-
-                            for (int i = 0; i < compiledPatterns.size(); i++) {
-                                try {
-                                    Matcher m = compiledPatterns.get(i).matcher(sanitizedPrompt);
-                                    if (m.find()) {
-                                        int s = m.start();
-                                        if (s < bestStart) {
-                                            bestStart = s;
-                                            bestTerm = activeTerms.get(i);
-                                            if (bestStart == 0) {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                } catch (IllegalStateException ex) {
-                                    LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
-                                }
-                            }
-
-                            if (bestTerm == null) {
-                                continue;
-                            }
-                            String label = bestTerm.getName();
-                            if (label == null || label.isBlank() || OTHER_PARASOFT_LABEL.equalsIgnoreCase(label)) {
-                                continue;
-                            }
-
-                            TermDayCount c = counts.get(label);
-                            if (c == null) {
-                                continue;
-                            }
-
-                            if (d.equals(today)) {
-                                c.incToday();
-                            } else {
-                                c.incYesterday();
-                            }
-                        }
-                    }
-                }
+                collectTopTopicDayCountsForWidget(
+                        conn,
+                        widget,
+                        tableExistsCache,
+                        startTs,
+                        endTs,
+                        today,
+                        yesterday,
+                        activeTerms,
+                        compiledPatterns,
+                        counts
+                );
             }
         } catch (SQLException e) {
             LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday fallback to empty list", e);
@@ -391,60 +326,7 @@ public class DashboardMetricsService {
             Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
 
             for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-
-                String widgetId = widget.getWidgetId();
-                String widgetName = (widget.getDisplayName() == null || widget.getDisplayName().isBlank())
-                        ? widgetId
-                        : widget.getDisplayName();
-
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
-                if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                    continue;
-                }
-
-                String sql = "SELECT prompt, session_id, created_at FROM "
-                        + DashboardDbUtil.quoteIdentifier(tableName)
-                        + " ORDER BY created_at DESC LIMIT 500";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-
-                    while (rs.next()) {
-                        String prompt = rs.getString("prompt");
-                        String sessionId = rs.getString("session_id");
-                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                        if (createdAt == null) {
-                            continue;
-                        }
-
-                        String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
-
-                        boolean matchedKnownTerm = false;
-                        for (Pattern p : compiledPatterns) {
-                            try {
-                                Matcher m = p.matcher(sanitized);
-                                if (m.find()) {
-                                    matchedKnownTerm = true;
-                                    break;
-                                }
-                            } catch (IllegalStateException ex) {
-                                LOG.log(Level.FINE, "Other Parasoft matcher evaluation failed", ex);
-                            }
-                        }
-
-                        if (!matchedKnownTerm) {
-                            all.add(new OtherParasoftEntry(
-                                    widgetId,
-                                    widgetName,
-                                    prompt == null ? "" : prompt,
-                                    sessionId == null ? "" : sessionId,
-                                    createdAt
-                            ));
-                        }
-                    }
-                }
+                collectOtherParasoftForWidget(conn, widget, tableExistsCache, compiledPatterns, all);
             }
         } catch (SQLException e) {
             LOG.log(Level.FINE, "buildLatestOtherParasoftEntries fallback to empty list", e);
@@ -544,73 +426,225 @@ public class DashboardMetricsService {
         Timestamp endTs = Timestamp.valueOf(today.plusDays(1).atStartOfDay());
 
         for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null) {
-                continue;
-            }
+            collectTermAssignmentsForWidget(
+                    conn,
+                    widget,
+                    tableExistsCache,
+                    startTs,
+                    endTs,
+                    today,
+                    yesterday,
+                    patterns,
+                    out
+            );
+        }
 
-            String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
-            if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                continue;
-            }
+        return out;
+    }
 
-            String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                    + " WHERE created_at >= ? AND created_at < ?";
+    private void collectTopTopicDayCountsForWidget(
+            Connection conn,
+            WidgetEntry widget,
+            Map<String, Boolean> tableExistsCache,
+            Timestamp startTs,
+            Timestamp endTs,
+            LocalDate today,
+            LocalDate yesterday,
+            List<TermDefinition> activeTerms,
+            List<Pattern> compiledPatterns,
+            Map<String, TermDayCount> counts
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null) {
+            return;
+        }
 
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setTimestamp(1, startTs);
-                ps.setTimestamp(2, endTs);
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
+        if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+            return;
+        }
 
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                        if (createdAt == null) {
-                            continue;
-                        }
+        String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
+                + " WHERE created_at >= ? AND created_at < ?";
 
-                        LocalDate d = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                        if (!d.equals(today) && !d.equals(yesterday)) {
-                            continue;
-                        }
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, startTs);
+            ps.setTimestamp(2, endTs);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    if (createdAt == null) {
+                        continue;
+                    }
 
-                        String promptRaw = rs.getString("prompt");
-                        String prompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+                    LocalDate day = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                    if (!day.equals(today) && !day.equals(yesterday)) {
+                        continue;
+                    }
 
-                        int bestStart = Integer.MAX_VALUE;
-                        boolean matched = false;
+                    String label = resolveBestMatchingLabel(rs.getString("prompt"), activeTerms, compiledPatterns);
+                    if (label == null || label.isBlank() || OTHER_PARASOFT_LABEL.equalsIgnoreCase(label)) {
+                        continue;
+                    }
 
-                        for (Pattern p : patterns) {
-                            try {
-                                Matcher m = p.matcher(prompt);
-                                if (m.find()) {
-                                    int s = m.start();
-                                    if (s < bestStart) {
-                                        bestStart = s;
-                                        matched = true;
-                                        if (bestStart == 0) {
-                                            break;
-                                        }
-                                    }
-                                }
-                            } catch (IllegalStateException ex) {
-                                LOG.log(Level.FINE, "Term assignment matcher evaluation failed", ex);
-                            }
-                        }
-
-                        if (!matched) {
-                            continue;
-                        }
-
-                        if (d.equals(today)) {
-                            out.incToday();
-                        } else {
-                            out.incYesterday();
-                        }
+                    TermDayCount count = counts.get(label);
+                    if (count == null) {
+                        continue;
+                    }
+                    if (day.equals(today)) {
+                        count.incToday();
+                    } else {
+                        count.incYesterday();
                     }
                 }
             }
         }
+    }
 
-        return out;
+    private String resolveBestMatchingLabel(String promptRaw, List<TermDefinition> activeTerms, List<Pattern> compiledPatterns) {
+        String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+        TermDefinition bestTerm = null;
+        int bestStart = Integer.MAX_VALUE;
+
+        for (int i = 0; i < compiledPatterns.size(); i++) {
+            Pattern pattern = compiledPatterns.get(i);
+            if (pattern == null) {
+                continue;
+            }
+            try {
+                Matcher matcher = pattern.matcher(sanitizedPrompt);
+                if (!matcher.find()) {
+                    continue;
+                }
+                int start = matcher.start();
+                if (start < bestStart) {
+                    bestStart = start;
+                    bestTerm = activeTerms.get(i);
+                    if (bestStart == 0) {
+                        break;
+                    }
+                }
+            } catch (IllegalStateException ex) {
+                LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
+            }
+        }
+
+        return bestTerm == null ? null : bestTerm.getName();
+    }
+
+    private void collectOtherParasoftForWidget(
+            Connection conn,
+            WidgetEntry widget,
+            Map<String, Boolean> tableExistsCache,
+            List<Pattern> compiledPatterns,
+            List<OtherParasoftEntry> out
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null) {
+            return;
+        }
+
+        String widgetId = widget.getWidgetId();
+        String widgetName = (widget.getDisplayName() == null || widget.getDisplayName().isBlank())
+                ? widgetId
+                : widget.getDisplayName();
+
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
+        if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+            return;
+        }
+
+        String sql = "SELECT prompt, session_id, created_at FROM "
+                + DashboardDbUtil.quoteIdentifier(tableName)
+                + " ORDER BY created_at DESC LIMIT 500";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String prompt = rs.getString("prompt");
+                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                if (createdAt == null) {
+                    continue;
+                }
+                if (matchesAnyPattern(prompt, compiledPatterns)) {
+                    continue;
+                }
+
+                String sessionId = rs.getString("session_id");
+                out.add(new OtherParasoftEntry(
+                        widgetId,
+                        widgetName,
+                        prompt == null ? "" : prompt,
+                        sessionId == null ? "" : sessionId,
+                        createdAt
+                ));
+            }
+        }
+    }
+
+    private boolean matchesAnyPattern(String promptRaw, List<Pattern> patterns) {
+        String sanitized = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+        for (Pattern pattern : patterns) {
+            try {
+                Matcher matcher = pattern.matcher(sanitized);
+                if (matcher.find()) {
+                    return true;
+                }
+            } catch (IllegalStateException ex) {
+                LOG.log(Level.FINE, "Other Parasoft matcher evaluation failed", ex);
+            }
+        }
+        return false;
+    }
+
+    private void collectTermAssignmentsForWidget(
+            Connection conn,
+            WidgetEntry widget,
+            Map<String, Boolean> tableExistsCache,
+            Timestamp startTs,
+            Timestamp endTs,
+            LocalDate today,
+            LocalDate yesterday,
+            List<Pattern> patterns,
+            TermDayCount out
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null) {
+            return;
+        }
+
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
+        if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+            return;
+        }
+
+        String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
+                + " WHERE created_at >= ? AND created_at < ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, startTs);
+            ps.setTimestamp(2, endTs);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    if (createdAt == null) {
+                        continue;
+                    }
+
+                    LocalDate day = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                    if (!day.equals(today) && !day.equals(yesterday)) {
+                        continue;
+                    }
+
+                    if (!matchesAnyPattern(rs.getString("prompt"), patterns)) {
+                        continue;
+                    }
+
+                    if (day.equals(today)) {
+                        out.incToday();
+                    } else {
+                        out.incYesterday();
+                    }
+                }
+            }
+        }
     }
 
     private int countDistinctSessionsFirstSeenOnDate(Connection conn, List<WidgetEntry> widgets, LocalDate date) throws SQLException {

@@ -64,7 +64,7 @@ public final class ServerDiagnosticsLog {
                 Path dir = resolveLogDirectory();
                 Files.createDirectories(dir);
 
-                String fileName = safeFileToken(comp) + '-' + LocalDate.now() + ".log";
+                String fileName = TextIoSanitizerUtil.safeFileToken(comp, "server") + '-' + LocalDate.now() + ".log";
                 Path file = dir.resolve(fileName);
 
                 String lineSep = System.lineSeparator();
@@ -157,23 +157,6 @@ public final class ServerDiagnosticsLog {
         }
         String cleaned = value.replace('\r', ' ').replace('\n', ' ').trim();
         return cleaned.isEmpty() ? fallback : cleaned;
-    }
-
-    private static String safeFileToken(String value) {
-        String input = value == null ? "server" : value;
-        StringBuilder out = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if ((c >= 'a' && c <= 'z')
-                    || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9')
-                    || c == '-' || c == '_') {
-                out.append(c);
-            } else {
-                out.append('_');
-            }
-        }
-        return out.isEmpty() ? "server" : out.toString();
     }
 
     private static String trimToNull(String value) {

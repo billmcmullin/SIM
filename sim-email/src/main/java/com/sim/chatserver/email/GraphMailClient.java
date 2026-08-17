@@ -183,7 +183,7 @@ public class GraphMailClient {
                 Path dir = resolveDiagnosticsDir();
                 Files.createDirectories(dir);
 
-                String fileName = safeFileToken(comp) + '-' + LocalDate.now() + ".log";
+                String fileName = diagnosticFileName(comp);
                 Path file = dir.resolve(fileName);
 
                 String lineSep = System.lineSeparator();
@@ -259,21 +259,11 @@ public class GraphMailClient {
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 
-    private String safeFileToken(String value) {
-        String input = value == null ? "graph-mail-client" : value;
-        StringBuilder out = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if ((c >= 'a' && c <= 'z')
-                    || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9')
-                    || c == '-' || c == '_') {
-                out.append(c);
-            } else {
-                out.append('_');
-            }
-        }
-        return out.isEmpty() ? "graph-mail-client" : out.toString();
+    private String diagnosticFileName(String component) {
+        String token = component == null || component.isBlank() ? "graph-mail-client" : component.trim();
+        String sanitized = token.replaceAll("[^A-Za-z0-9_-]", "_");
+        String fileToken = sanitized.isBlank() ? "graph-mail-client" : sanitized;
+        return fileToken + '-' + LocalDate.now() + ".log";
     }
 
     private String trimToNull(String value) {

@@ -5,6 +5,7 @@ import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -78,12 +79,12 @@ public final class SqlTimeUtil {
     private static String safeReadRawText(ResultSet rs, String column) throws SQLException {
         String characterText = readRawFromCharacterStream(rs, column);
         if (!characterText.isBlank()) {
-            return sanitizeTimestampCandidate(characterText);
+            return characterText;
         }
 
         String binaryText = readRawFromBytes(rs, column);
         if (!binaryText.isBlank()) {
-            return sanitizeTimestampCandidate(binaryText);
+            return binaryText;
         }
 
         return "";
@@ -96,7 +97,8 @@ public final class SqlTimeUtil {
                 return "";
             }
             try (Reader closeable = reader) {
-                return readAtMostChars(closeable, MAX_TIMESTAMP_TEXT_LENGTH);
+                String raw = TextIoSanitizerUtil.readAtMostChars(closeable, MAX_TIMESTAMP_TEXT_LENGTH);
+                return validateTaintedTimestampText(raw);
             }
         } catch (SQLException ex) {
             LOG.log(Level.FINER, "Timestamp character-stream read failed for column " + column, ex);
@@ -114,32 +116,34 @@ public final class SqlTimeUtil {
                 return "";
             }
             String raw = new String(bytes, StandardCharsets.UTF_8);
-            return raw.length() <= MAX_TIMESTAMP_TEXT_LENGTH ? raw : raw.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
+            if (raw.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
+                raw = raw.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
+            }
+            return validateTaintedTimestampText(raw);
         } catch (SQLException ex) {
             LOG.log(Level.FINER, "Timestamp binary read failed for column " + column, ex);
             return "";
         }
     }
 
-    private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
+    private static String validateTaintedTimestampText(String value) {
+        if (value == null || value.isBlank()) {
             return "";
         }
 
-        StringBuilder builder = new StringBuilder(Math.min(maxChars, 64));
-        char[] buffer = new char[64];
-        int remaining = maxChars;
-        while (remaining > 0) {
-            int toRead = Math.min(buffer.length, remaining);
-            int read = reader.read(buffer, 0, toRead);
-            if (read < 0) {
-                break;
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        StringBuilder safe = new StringBuilder(canonical.length());
+        for (int i = 0; i < canonical.length(); i++) {
+            char ch = canonical.charAt(i);
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\r' && ch != '\t') {
+                continue;
             }
-            builder.append(buffer, 0, read);
-            remaining -= read;
+            safe.append(ch);
         }
-        return builder.toString();
+
+        return sanitizeTimestampCandidate(safe.toString());
     }
+
 
     private static String sanitizeTimestampCandidate(String value) {
         if (value == null) {

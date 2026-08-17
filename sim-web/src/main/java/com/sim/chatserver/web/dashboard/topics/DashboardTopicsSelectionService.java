@@ -44,61 +44,84 @@ final class DashboardTopicsSelectionService {
         Connection conn = openConnectionSafe();
         try (conn) {
             List<String> idList = new ArrayList<>(requestedIds);
+            int idCount = idList.size();
 
             for (Map.Entry<String, WidgetEntry> entry : widgetById.entrySet()) {
-                String widgetId = entry.getKey();
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                for (int from = 0; from < idList.size(); from += IN_CLAUSE_BATCH_SIZE) {
-                    int to = Math.min(from + IN_CLAUSE_BATCH_SIZE, idList.size());
-                    List<String> chunk = idList.subList(from, to);
-
-                    String inClause = String.join(",", chunk.stream().map(id -> "?").toList());
-                    String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                            + quoteIdentifier(tableName)
-                            + " WHERE widget_chat_id IN (" + inClause + ')';
-
-                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                        int idx = 1;
-                        for (String id : chunk) {
-                            ps.setString(idx++, id);
-                        }
-
-                        try (ResultSet rs = ps.executeQuery()) {
-                            while (rs.next()) {
-                                String chatId = readDbText(rs, "widget_chat_id", 512);
-                                if (chatId == null || chatId.isBlank()) {
-                                    continue;
-                                }
-
-                                String prompt = readDbText(rs, "prompt", 64000);
-                                String responseText = readDbText(rs, "response_text", 64000);
-                                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                                String sessionId = readDbText(rs, "session_id", 512);
-
-                                snapshots.add(new TermChatSnapshot(
-                                        "Popular Topics",
-                                        widgetId,
-                                        chatId,
-                                        prompt,
-                                        responseText,
-                                        createdAt,
-                                        sessionId
-                                ));
-                                foundIds.add(chatId);
-                            }
-                        }
-                    }
-                }
+                resolveWidgetChats(conn, entry.getKey(), idList, idCount, snapshots, foundIds);
             }
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to resolve selected chats", ex);
         }
 
         return new SelectionResolution(snapshots, foundIds);
+    }
+
+    private void resolveWidgetChats(
+            Connection conn,
+            String widgetId,
+            List<String> idList,
+            int idCount,
+            List<TermChatSnapshot> snapshots,
+            Set<String> foundIds
+    ) throws SQLException {
+        String tableName = sanitizeWidgetTableName(widgetId);
+        if (!tableExists(conn, tableName)) {
+            return;
+        }
+
+        for (int from = 0; from < idCount; from += IN_CLAUSE_BATCH_SIZE) {
+            int to = Math.min(from + IN_CLAUSE_BATCH_SIZE, idCount);
+            resolveChunkChats(conn, widgetId, tableName, idList.subList(from, to), snapshots, foundIds);
+        }
+    }
+
+    private void resolveChunkChats(
+            Connection conn,
+            String widgetId,
+            String tableName,
+            List<String> chunk,
+            List<TermChatSnapshot> snapshots,
+            Set<String> foundIds
+    ) throws SQLException {
+        String inClause = String.join(",", chunk.stream().map(id -> "?").toList());
+        String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                + quoteIdentifier(tableName)
+                + " WHERE widget_chat_id IN (" + inClause + ')';
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int idx = 1;
+            for (String id : chunk) {
+                ps.setString(idx++, id);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                addResolvedRows(rs, widgetId, snapshots, foundIds);
+            }
+        }
+    }
+
+    private void addResolvedRows(
+            ResultSet rs,
+            String widgetId,
+            List<TermChatSnapshot> snapshots,
+            Set<String> foundIds
+    ) throws SQLException {
+        while (rs.next()) {
+            String chatId = readDbText(rs, "widget_chat_id", 512);
+            if (chatId == null || chatId.isBlank()) {
+                continue;
+            }
+
+            snapshots.add(new TermChatSnapshot(
+                    "Popular Topics",
+                    widgetId,
+                    chatId,
+                    readDbText(rs, "prompt", 64000),
+                    readDbText(rs, "response_text", 64000),
+                    SqlTimeUtil.safeTimestamp(rs, "created_at"),
+                    readDbText(rs, "session_id", 512)
+            ));
+            foundIds.add(chatId);
+        }
     }
 
     private Connection openConnectionSafe() {
