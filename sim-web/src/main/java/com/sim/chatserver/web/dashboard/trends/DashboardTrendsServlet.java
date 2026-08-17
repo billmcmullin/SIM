@@ -68,58 +68,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             List<WidgetEntry> widgets = WidgetStore.list(null);
 
             for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = widget.getWidgetId();
-                String widgetName = widget.getDisplayName();
-                if (widgetName == null || widgetName.isBlank()) {
-                    widgetName = widgetId;
-                }
-
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                Map<LocalDate, Integer> series = new LinkedHashMap<>();
-                for (LocalDate d : totalDaily.keySet()) {
-                    series.put(d, Integer.valueOf(0));
-                }
-
-                String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
-                    ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (ts == null) {
-                                continue;
-                            }
-
-                            LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                            if (!totalDaily.containsKey(entryDate)) {
-                                continue;
-                            }
-
-                            Integer totalCurrent = totalDaily.get(entryDate);
-                            int totalValue = totalCurrent == null ? 0 : totalCurrent.intValue();
-                            totalDaily.put(entryDate, Integer.valueOf(totalValue + 1));
-
-                            Integer seriesCurrent = series.get(entryDate);
-                            int seriesValue = seriesCurrent == null ? 0 : seriesCurrent.intValue();
-                            series.put(entryDate, Integer.valueOf(seriesValue + 1));
-                        }
-                    }
-                }
-
-                widgetDaily.put(widgetName, series);
-                widgetNameToId.put(widgetName, widgetId);
+                collectWidgetTrend(conn, widget, start, end, totalDaily, widgetDaily, widgetNameToId);
             }
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             throw new ServletException("Unable to load trend data", e);
@@ -190,6 +139,72 @@ public class DashboardTrendsServlet extends HttpServlet {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
+    }
+
+    private void collectWidgetTrend(
+            Connection conn,
+            WidgetEntry widget,
+            LocalDate start,
+            LocalDate end,
+            Map<LocalDate, Integer> totalDaily,
+            Map<String, Map<LocalDate, Integer>> widgetDaily,
+            Map<String, String> widgetNameToId
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+            return;
+        }
+
+        String widgetId = widget.getWidgetId();
+        String widgetName = widget.getDisplayName() == null || widget.getDisplayName().isBlank()
+                ? widgetId : widget.getDisplayName();
+        String tableName = sanitizeWidgetTableName(widgetId);
+        if (!tableExists(conn, tableName)) {
+            return;
+        }
+
+        Map<LocalDate, Integer> series = zeroSeries(totalDaily);
+        String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
+                + " WHERE created_at >= ? AND created_at < ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
+            ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
+            try (ResultSet rs = ps.executeQuery()) {
+                accumulateTrendRows(rs, totalDaily, series);
+            }
+        }
+
+        widgetDaily.put(widgetName, series);
+        widgetNameToId.put(widgetName, widgetId);
+    }
+
+    private Map<LocalDate, Integer> zeroSeries(Map<LocalDate, Integer> totalDaily) {
+        Map<LocalDate, Integer> series = new LinkedHashMap<>();
+        for (LocalDate day : totalDaily.keySet()) {
+            series.put(day, Integer.valueOf(0));
+        }
+        return series;
+    }
+
+    private void accumulateTrendRows(ResultSet rs, Map<LocalDate, Integer> totalDaily, Map<LocalDate, Integer> series) throws SQLException {
+        while (rs.next()) {
+            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+            if (ts == null) {
+                continue;
+            }
+
+            LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            if (totalDaily.containsKey(entryDate)) {
+                incrementDate(totalDaily, entryDate);
+                incrementDate(series, entryDate);
+            }
+        }
+    }
+
+    private void incrementDate(Map<LocalDate, Integer> counts, LocalDate date) {
+        Integer current = counts.get(date);
+        int value = current == null ? 0 : current.intValue();
+        counts.put(date, Integer.valueOf(value + 1));
     }
 
     private void sendErrorSafe(HttpServletResponse resp, int status, String message) {

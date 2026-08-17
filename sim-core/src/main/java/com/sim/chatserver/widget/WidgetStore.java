@@ -322,7 +322,9 @@ public final class WidgetStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return validateDbText(sanitizeDbText(readAtMostChars(closeable, 4096), 4096), 4096);
+                    String raw = readAtMostChars(closeable, 4096);
+                    String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+                    return validateDbText(canonicalRaw, 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -333,18 +335,38 @@ public final class WidgetStore {
 
         try {
             byte[] bytes = rs.getBytes(column);
-            if (bytes == null) {
-                return null;
+            if (bytes != null) {
+                String raw = new String(bytes, StandardCharsets.UTF_8);
+                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+                return validateDbText(canonicalRaw, 4096);
             }
-            return validateDbText(sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096), 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary read failed for column " + column, ex);
-            return null;
         }
+
+        try {
+            String raw = rs.getString(column);
+            if (raw != null) {
+                return validateDbText(raw, 4096);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "String read failed for column " + column, ex);
+        }
+
+        try {
+            Object raw = rs.getObject(column);
+            if (raw != null) {
+                return validateDbText(String.valueOf(raw), 4096);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object read failed for column " + column, ex);
+        }
+
+        return null;
     }
 
     private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
+        if (reader == null || maxChars <= 0) {
             return "";
         }
 
@@ -356,6 +378,9 @@ public final class WidgetStore {
             int read = reader.read(buffer, 0, toRead);
             if (read < 0) {
                 break;
+            }
+            if (read == 0) {
+                continue;
             }
             builder.append(buffer, 0, read);
             remaining -= read;

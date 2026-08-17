@@ -92,126 +92,7 @@ public class WidgetTableDataServlet extends HttpServlet {
                 ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Table for widget does not exist.");
                 return;
             }
-
-                int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 256, true, true));
-                int page = parsePage(ServletRequestParamUtil.firstParam(req, "page", 256, true, true));
-            int offset = (page - 1) * limit;
-                String search = ServletRequestParamUtil.firstParam(req, "search", 256, true, true);
-                String sortColumn = parseSortColumn(ServletRequestParamUtil.firstParam(req, "sortColumn", 256, true, true));
-                String sortDir = parseSortDirection(ServletRequestParamUtil.firstParam(req, "sortDir", 256, true, true));
-
-            FilterState filters = new FilterState(
-                    ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
-                    ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),
-                    search,
-                    selectedDate
-            );
-
-            String whereClause = filters.buildWhereClause();
-            List<Object> whereParams = filters.params();
-
-            String countSql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName) + whereClause;
-            int totalRows;
-            try (PreparedStatement countPs = conn.prepareStatement(countSql)) {
-                bindParams(countPs, whereParams);
-                try (ResultSet rs = countPs.executeQuery()) {
-                    rs.next();
-                    totalRows = rs.getInt(1);
-                }
-            }
-
-            JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-            if (totalRows > 0) {
-                StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append("SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM ")
-                        .append(quoteIdentifier(tableName))
-                        .append(whereClause)
-                        .append(" ORDER BY ")
-                        .append(sortColumn)
-                    .append(' ')
-                        .append(sortDir)
-                        .append(" LIMIT ? OFFSET ?");
-
-                try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
-                    int idx = bindParams(ps, whereParams);
-                    ps.setInt(idx++, limit);
-                    ps.setInt(idx, offset);
-
-                    List<ChatRow> rows = new ArrayList<>();
-                    Set<String> sessionIds = new HashSet<>();
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String sessionId = rs.getString("session_id");
-                            if (sessionId != null && !sessionId.isBlank()) {
-                                sessionIds.add(sessionId);
-                            }
-
-                            Timestamp createdAtTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-
-                            rows.add(new ChatRow(
-                                    rs.getString("widget_chat_id"),
-                                    rs.getString("prompt"),
-                                    rs.getString("response_text"),
-                                    formatTimestampNullable(createdAtTs),
-                                    sessionId
-                            ));
-                        }
-                    }
-
-                    Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
-                            ? Collections.emptyMap()
-                            : SessionLabelStore.mapDisplayNames(sessionIds);
-
-                    for (ChatRow row : rows) {
-                        JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
-
-                        if (row.chatId == null) {
-                            rowBuilder.addNull("chatId"); 
-                        }else {
-                            rowBuilder.add("chatId", row.chatId);
-                        }
-
-                        if (row.prompt == null) {
-                            rowBuilder.addNull("prompt"); 
-                        }else {
-                            rowBuilder.add("prompt", row.prompt);
-                        }
-
-                        if (row.response == null) {
-                            rowBuilder.addNull("response"); 
-                        }else {
-                            rowBuilder.add("response", row.response);
-                        }
-
-                        if (row.createdAt == null) {
-                            rowBuilder.addNull("createdAt"); 
-                        }else {
-                            rowBuilder.add("createdAt", row.createdAt);
-                        }
-
-                        if (row.sessionId == null) {
-                            rowBuilder.addNull("sessionId"); 
-                        }else {
-                            rowBuilder.add("sessionId", row.sessionId);
-                        }
-
-                        String friendly = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
-                        rowBuilder.add("sessionIdDisplay", friendly);
-
-                        arrayBuilder.add(rowBuilder.build());
-                    }
-                }
-            }
-
-            int totalPages = totalRows == 0 ? 1 : (int) Math.ceil((double) totalRows / limit);
-            JsonObject body = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("rows", arrayBuilder)
-                    .add("totalRows", totalRows)
-                    .add("totalPages", totalPages)
-                    .add("page", page)
-                    .build();
+            JsonObject body = buildRowsPayload(conn, tableName, req, selectedDate);
             ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, body);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to read widget rows", e);
@@ -230,6 +111,124 @@ public class WidgetTableDataServlet extends HttpServlet {
                 }
             }
         }
+    }
+
+    private JsonObject buildRowsPayload(Connection conn, String tableName, HttpServletRequest req, LocalDate selectedDate)
+            throws SQLException {
+        int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 256, true, true));
+        int page = parsePage(ServletRequestParamUtil.firstParam(req, "page", 256, true, true));
+        int offset = (page - 1) * limit;
+        String search = ServletRequestParamUtil.firstParam(req, "search", 256, true, true);
+        String sortColumn = parseSortColumn(ServletRequestParamUtil.firstParam(req, "sortColumn", 256, true, true));
+        String sortDir = parseSortDirection(ServletRequestParamUtil.firstParam(req, "sortDir", 256, true, true));
+
+        FilterState filters = new FilterState(
+                ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
+                ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),
+                search,
+                selectedDate
+        );
+
+        String whereClause = filters.buildWhereClause();
+        List<Object> whereParams = filters.params();
+        int totalRows = countRows(conn, tableName, whereClause, whereParams);
+        JsonArrayBuilder arrayBuilder = totalRows > 0
+                ? fetchRowArray(conn, tableName, whereClause, whereParams, sortColumn, sortDir, limit, offset)
+                : Json.createArrayBuilder();
+
+        int totalPages = Math.max(1, (totalRows + limit - 1) / limit);
+        return Json.createObjectBuilder()
+                .add("status", "ok")
+                .add("rows", arrayBuilder)
+                .add("totalRows", totalRows)
+                .add("totalPages", totalPages)
+                .add("page", page)
+                .build();
+    }
+
+    private int countRows(Connection conn, String tableName, String whereClause, List<Object> whereParams) throws SQLException {
+        String countSql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName) + whereClause;
+        try (PreparedStatement countPs = conn.prepareStatement(countSql)) {
+            bindParams(countPs, whereParams);
+            try (ResultSet rs = countPs.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private JsonArrayBuilder fetchRowArray(
+            Connection conn,
+            String tableName,
+            String whereClause,
+            List<Object> whereParams,
+            String sortColumn,
+            String sortDir,
+            int limit,
+            int offset
+    ) throws SQLException {
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM ")
+                .append(quoteIdentifier(tableName))
+                .append(whereClause)
+                .append(" ORDER BY ")
+                .append(sortColumn)
+                .append(' ')
+                .append(sortDir)
+                .append(" LIMIT ? OFFSET ?");
+
+        List<ChatRow> rows = new ArrayList<>();
+        Set<String> sessionIds = new HashSet<>();
+        try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
+            int idx = bindParams(ps, whereParams);
+            ps.setInt(idx++, limit);
+            ps.setInt(idx, offset);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String sessionId = rs.getString("session_id");
+                    if (sessionId != null && !sessionId.isBlank()) {
+                        sessionIds.add(sessionId);
+                    }
+
+                    Timestamp createdAtTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    rows.add(new ChatRow(
+                            rs.getString("widget_chat_id"),
+                            rs.getString("prompt"),
+                            rs.getString("response_text"),
+                            formatTimestampNullable(createdAtTs),
+                            sessionId
+                    ));
+                }
+            }
+        }
+
+        Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
+                ? Collections.emptyMap()
+                : SessionLabelStore.mapDisplayNames(sessionIds);
+
+        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
+        for (ChatRow row : rows) {
+            JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
+            addNullableJson(rowBuilder, "chatId", row.chatId);
+            addNullableJson(rowBuilder, "prompt", row.prompt);
+            addNullableJson(rowBuilder, "response", row.response);
+            addNullableJson(rowBuilder, "createdAt", row.createdAt);
+            addNullableJson(rowBuilder, "sessionId", row.sessionId);
+
+            String friendly = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
+            rowBuilder.add("sessionIdDisplay", friendly);
+            arrayBuilder.add(rowBuilder.build());
+        }
+        return arrayBuilder;
+    }
+
+    private void addNullableJson(JsonObjectBuilder rowBuilder, String key, String value) {
+        if (value == null) {
+            rowBuilder.addNull(key);
+            return;
+        }
+        rowBuilder.add(key, value);
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
@@ -278,6 +277,9 @@ public class WidgetTableDataServlet extends HttpServlet {
     }
 
     private int parseLimit(String limitParam) {
+        if (limitParam == null || limitParam.isBlank()) {
+            return 10;
+        }
         try {
             int limit = Integer.parseInt(limitParam);
             if (limit == 10 || limit == 20 || limit == 25 || limit == 50 || limit == 100) {
@@ -290,6 +292,9 @@ public class WidgetTableDataServlet extends HttpServlet {
     }
 
     private int parsePage(String pageParam) {
+        if (pageParam == null || pageParam.isBlank()) {
+            return 1;
+        }
         try {
             int page = Integer.parseInt(pageParam);
             return Math.max(1, page);

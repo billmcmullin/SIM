@@ -60,11 +60,9 @@ public class UserService {
             AppDataSourceHolder legacyHolder = dsHolder;
             if (legacyHolder != null) {
                 EntityManagerFactory emf = legacyHolder.getEmf();
-                if (emf != null) {
-                    EntityManager legacyEntityManager = emf.createEntityManager();
-                    if (legacyEntityManager != null) {
-                        return legacyEntityManager;
-                    }
+                EntityManager legacyEntityManager = emf.createEntityManager();
+                if (legacyEntityManager != null) {
+                    return legacyEntityManager;
                 }
             }
             throw new IllegalStateException("Container-managed EntityManager is not initialized in UserService");

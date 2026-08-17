@@ -3,7 +3,6 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.io.IOException;
 import java.io.Reader;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -12,7 +11,6 @@ import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -20,6 +18,7 @@ import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 final class WidgetExportQueryService {
@@ -44,7 +43,7 @@ final class WidgetExportQueryService {
         String tableName = sanitizeWidgetTableName(widgetId);
         Connection conn = openConnectionSafe();
         try (conn) {
-            if (!tableExists(conn, tableName)) {
+            if (!DashboardSessionDataUtil.tableExists(conn, tableName, log)) {
                 return exportRows;
             }
 
@@ -107,22 +106,6 @@ final class WidgetExportQueryService {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
-        }
-        return false;
-    }
-
     private String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
             return "widget";
@@ -145,8 +128,9 @@ final class WidgetExportQueryService {
         if (input == null || input.isEmpty() || size <= 0) {
             return out;
         }
-        for (int i = 0; i < input.size(); i += size) {
-            out.add(input.subList(i, Math.min(i + size, input.size())));
+        int total = input.size();
+        for (int i = 0; i < total; i += size) {
+            out.add(input.subList(i, Math.min(i + size, total)));
         }
         return out;
     }

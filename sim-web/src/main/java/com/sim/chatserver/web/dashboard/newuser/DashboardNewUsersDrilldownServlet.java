@@ -120,7 +120,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
 
         int total = allRows.size();
-        int totalPages = Math.max(1, (int) Math.ceil(total / (double) pageSize));
+        int totalPages = Math.max(1, (total + pageSize - 1) / pageSize);
         if (page > totalPages) {
             page = totalPages;
         }

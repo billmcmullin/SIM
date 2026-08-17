@@ -20,6 +20,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.Database;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 public final class CustomerIdentityStore {
 
@@ -543,8 +544,9 @@ public final class CustomerIdentityStore {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    String raw = sanitizeDbText(readAtMostChars(closeable, 4096), 4096);
-                    return validateTaintedDbText(raw, 4096);
+                    String raw = TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
+                    String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+                    return validateTaintedDbText(canonicalRaw, 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -555,15 +557,36 @@ public final class CustomerIdentityStore {
 
         try {
             byte[] bytes = rs.getBytes(column);
-            if (bytes == null) {
-                return null;
+            if (bytes != null) {
+                String raw = new String(bytes, StandardCharsets.UTF_8);
+                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+                return validateTaintedDbText(canonicalRaw, 4096);
             }
-            String raw = sanitizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
-            return validateTaintedDbText(raw, 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary read failed for column " + column, ex);
-            return null;
         }
+
+        try {
+            String raw = rs.getString(column);
+            if (raw != null) {
+                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+                return validateTaintedDbText(canonicalRaw, 4096);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "String read failed for column " + column, ex);
+        }
+
+        try {
+            Object raw = rs.getObject(column);
+            if (raw != null) {
+                String canonicalRaw = Normalizer.normalize(String.valueOf(raw), Normalizer.Form.NFKC);
+                return validateTaintedDbText(canonicalRaw, 4096);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Object read failed for column " + column, ex);
+        }
+
+        return null;
     }
 
     private static Long validateTaintedLong(long value) {
@@ -574,9 +597,14 @@ public final class CustomerIdentityStore {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        StringBuilder safe = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        String sanitized = sanitizeDbText(canonical, maxChars);
+        if (sanitized == null || sanitized.isEmpty()) {
+            return sanitized;
+        }
+        StringBuilder safe = new StringBuilder(sanitized.length());
+        for (int i = 0; i < sanitized.length(); i++) {
+            char ch = sanitized.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
@@ -589,24 +617,5 @@ public final class CustomerIdentityStore {
         return normalized;
     }
 
-    private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
-            return "";
-        }
-
-        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
-        char[] buffer = new char[256];
-        int remaining = maxChars;
-        while (remaining > 0) {
-            int toRead = Math.min(buffer.length, remaining);
-            int read = reader.read(buffer, 0, toRead);
-            if (read < 0) {
-                break;
-            }
-            builder.append(buffer, 0, read);
-            remaining -= read;
-        }
-        return builder.toString();
-    }
 
 }

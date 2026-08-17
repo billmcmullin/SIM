@@ -79,10 +79,13 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     errorPayload("Invalid Salesforce request state."));
                 return;
-            } catch (IOException | InterruptedException | java.sql.SQLException ex) {
-                if (ex instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                logFailure("Salesforce lookup transport or persistence failure", ex);
+                writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
+                    errorPayload("Unable to query Salesforce right now."));
+                return;
+            } catch (IOException | java.sql.SQLException ex) {
                 logFailure("Salesforce lookup transport or persistence failure", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));

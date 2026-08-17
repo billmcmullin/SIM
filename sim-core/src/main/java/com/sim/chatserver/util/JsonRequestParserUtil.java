@@ -210,7 +210,7 @@ public final class JsonRequestParserUtil {
         return out;
     }
 
-    private static String readAtMost(java.io.Reader reader, int maxChars) throws IOException, BodyTooLargeException {
+    private static String readAtMost(java.io.Reader reader, int maxChars) throws IOException {
         if (reader == null) {
             return "";
         }

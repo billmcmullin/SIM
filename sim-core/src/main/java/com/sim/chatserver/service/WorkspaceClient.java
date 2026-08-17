@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -168,47 +169,17 @@ public class WorkspaceClient {
 
             try {
                 if (attempt == 1) {
-                    if (VERBOSE_WILDFLY_LOGS) {
-                        log.log(Level.INFO,
-                            "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6} messagePreview={7}",
-                            new Object[]{
-                                safeRequestId,
-                                safeMode,
-                                    reset,
-                                    safeMessage.length(),
-                                    body.length(),
-                                    safeAttachments.size(),
-                                safeTarget(targetUrl),
-                                truncateOneLine(safeMessage, MAX_LOG_MESSAGE_PREVIEW_CHARS)
-                            });
-                    } else {
-                        log.log(Level.INFO,
-                            "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6}",
-                            new Object[]{
-                                safeRequestId,
-                                safeMode,
-                                    reset,
-                                    safeMessage.length(),
-                                    body.length(),
-                                    safeAttachments.size(),
-                                safeTarget(targetUrl)
-                            });
-                    }
-
-                    ServerDiagnosticsLog.write(
-                        "workspace-client",
+                    logInitialSendAttempt(
                             safeRequestId,
-                        "send",
-                        "target=" + targetUri
-                            + "\nmode=" + safeMode
-                            + "\nreset=" + reset
-                            + "\nsessionIdIncluded=" + includeSessionId
-                            + "\nmessageChars=" + safeMessage.length()
-                            + "\npayloadChars=" + body.length()
-                            + "\nattachments=" + safeAttachments.size()
-                            + "\nauthCandidates=" + summarizeAuthCandidates(authCandidates)
-                            + "\nmessage=" + safeMessage
-                            + "\npayload=" + body
+                            safeMode,
+                            reset,
+                            safeMessage,
+                            safeAttachments,
+                            targetUrl,
+                            targetUri,
+                            includeSessionId,
+                            authCandidates,
+                            body
                     );
                 }
 
@@ -231,58 +202,19 @@ public class WorkspaceClient {
 
                     authAttemptTrace.append("=>").append(status);
 
-                    if (status >= 400 && status < 500) {
-                        if (VERBOSE_WILDFLY_LOGS) {
-                            log.log(Level.WARNING,
-                                "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
-                                new Object[]{
-                                    safeRequestId,
-                                        status,
-                                        attempt,
-                                        isLikelyContextTooLarge(wrapped),
-                                    truncate(responseBody, MAX_ERROR_LOG_CHARS)
-                                });
-                        } else {
-                            log.log(Level.WARNING,
-                                "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
-                                new Object[]{
-                                    safeRequestId,
-                                        status,
-                                        attempt,
-                                        isLikelyContextTooLarge(wrapped)
-                                });
-                        }
-
-                        ServerDiagnosticsLog.write(
-                            "workspace-client",
-                                safeRequestId,
-                            "upstream-4xx",
-                            "status=" + status
-                                + "\nattempt=" + attempt
-                                + "\nauthSource=" + usedAuthSource
-                                + "\nauthMode=" + usedMode.name()
-                                + "\nauthAttemptTrace=" + authAttemptTrace
-                                + "\ncontextTooLarge=" + isLikelyContextTooLarge(wrapped)
-                                + "\ncontentType=" + contentType
-                                + "\nresponseBody=" + responseBody
-                        );
-                    }
-
-                    boolean retryable = isRetryableStatus(status);
-                    if (retryable && attempt <= (maxRetries + 1)) {
-                        log.log(Level.WARNING,
-                            "[workspace-client][{0}] retryable status status={1} attempt={2}",
-                                new Object[]{safeRequestId, status, attempt});
-
-                        ServerDiagnosticsLog.write(
-                            "workspace-client",
+                    logUpstream4xxIfNeeded(
                             safeRequestId,
-                            "retryable-status",
-                            "status=" + status
-                                + "\nattempt=" + attempt
-                                + "\ncontentType=" + contentType
-                                + "\nresponseBody=" + responseBody
-                        );
+                            status,
+                            attempt,
+                            wrapped,
+                            usedAuthSource,
+                            usedMode,
+                            authAttemptTrace.toString(),
+                            contentType,
+                            responseBody
+                    );
+
+                    if (shouldRetryStatus(status, attempt, safeRequestId, contentType, responseBody)) {
                         continue;
                     }
 
@@ -357,58 +289,19 @@ public class WorkspaceClient {
 
                 WorkspaceResponse wrapped = new WorkspaceResponse(status, responseBody, contentType);
 
-                if (status >= 400 && status < 500) {
-                    if (VERBOSE_WILDFLY_LOGS) {
-                        log.log(Level.WARNING,
-                            "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
-                            new Object[]{
-                                safeRequestId,
-                                    status,
-                                    attempt,
-                                    isLikelyContextTooLarge(wrapped),
-                                truncate(responseBody, MAX_ERROR_LOG_CHARS)
-                            });
-                    } else {
-                        log.log(Level.WARNING,
-                            "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
-                            new Object[]{
-                                safeRequestId,
-                                    status,
-                                    attempt,
-                                    isLikelyContextTooLarge(wrapped)
-                            });
-                    }
-
-                    ServerDiagnosticsLog.write(
-                        "workspace-client",
-                            safeRequestId,
-                        "upstream-4xx",
-                        "status=" + status
-                            + "\nattempt=" + attempt
-                            + "\nauthSource=" + usedAuthSource
-                            + "\nauthMode=" + usedMode.name()
-                            + "\nauthAttemptTrace=" + authAttemptTrace
-                            + "\ncontextTooLarge=" + isLikelyContextTooLarge(wrapped)
-                            + "\ncontentType=" + contentType
-                            + "\nresponseBody=" + responseBody
-                    );
-                }
-
-                boolean retryable = isRetryableStatus(status);
-                if (retryable && attempt <= (maxRetries + 1)) {
-                    log.log(Level.WARNING,
-                        "[workspace-client][{0}] retryable status status={1} attempt={2}",
-                            new Object[]{safeRequestId, status, attempt});
-
-                    ServerDiagnosticsLog.write(
-                        "workspace-client",
+                logUpstream4xxIfNeeded(
                         safeRequestId,
-                        "retryable-status",
-                        "status=" + status
-                            + "\nattempt=" + attempt
-                            + "\ncontentType=" + contentType
-                            + "\nresponseBody=" + responseBody
-                    );
+                        status,
+                        attempt,
+                        wrapped,
+                        usedAuthSource,
+                        usedMode,
+                        authAttemptTrace.toString(),
+                        contentType,
+                        responseBody
+                );
+
+                if (shouldRetryStatus(status, attempt, safeRequestId, contentType, responseBody)) {
                     continue;
                 }
 
@@ -439,6 +332,135 @@ public class WorkspaceClient {
                 throw ex;
             }
         }
+    }
+
+    private void logInitialSendAttempt(
+            String safeRequestId,
+            String safeMode,
+            boolean reset,
+            String safeMessage,
+            JsonArray safeAttachments,
+            String targetUrl,
+            URI targetUri,
+            boolean includeSessionId,
+            List<ApiAuthResolver.ResolvedApiAuth> authCandidates,
+            String body
+    ) {
+        if (VERBOSE_WILDFLY_LOGS) {
+            log.log(Level.INFO,
+                    "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6} messagePreview={7}",
+                    new Object[]{
+                        safeRequestId,
+                        safeMode,
+                        reset,
+                        safeMessage.length(),
+                        body.length(),
+                        safeAttachments.size(),
+                        safeTarget(targetUrl),
+                        truncateOneLine(safeMessage, MAX_LOG_MESSAGE_PREVIEW_CHARS)
+                    });
+        } else {
+            log.log(Level.INFO,
+                    "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6}",
+                    new Object[]{
+                        safeRequestId,
+                        safeMode,
+                        reset,
+                        safeMessage.length(),
+                        body.length(),
+                        safeAttachments.size(),
+                        safeTarget(targetUrl)
+                    });
+        }
+
+        ServerDiagnosticsLog.write(
+                "workspace-client",
+                safeRequestId,
+                "send",
+                "target=" + targetUri
+                    + "\nmode=" + safeMode
+                    + "\nreset=" + reset
+                    + "\nsessionIdIncluded=" + includeSessionId
+                    + "\nmessageChars=" + safeMessage.length()
+                    + "\npayloadChars=" + body.length()
+                    + "\nattachments=" + safeAttachments.size()
+                    + "\nauthCandidates=" + summarizeAuthCandidates(authCandidates)
+                    + "\nmessage=" + safeMessage
+                    + "\npayload=" + body
+        );
+    }
+
+    private void logUpstream4xxIfNeeded(
+            String safeRequestId,
+            int status,
+            int attempt,
+            WorkspaceResponse response,
+            String authSource,
+            AuthHeaderMode authMode,
+            String authAttemptTrace,
+            String contentType,
+            String responseBody
+    ) {
+        if (status < 400 || status >= 500 || response == null) {
+            return;
+        }
+
+        if (VERBOSE_WILDFLY_LOGS) {
+            log.log(Level.WARNING,
+                    "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
+                    new Object[]{
+                        safeRequestId,
+                        status,
+                        attempt,
+                        isLikelyContextTooLarge(response),
+                        truncate(responseBody, MAX_ERROR_LOG_CHARS)
+                    });
+        } else {
+            log.log(Level.WARNING,
+                    "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
+                    new Object[]{
+                        safeRequestId,
+                        status,
+                        attempt,
+                        isLikelyContextTooLarge(response)
+                    });
+        }
+
+        ServerDiagnosticsLog.write(
+                "workspace-client",
+                safeRequestId,
+                "upstream-4xx",
+                "status=" + status
+                    + "\nattempt=" + attempt
+                    + "\nauthSource=" + authSource
+                    + "\nauthMode=" + authMode.name()
+                    + "\nauthAttemptTrace=" + authAttemptTrace
+                    + "\ncontextTooLarge=" + isLikelyContextTooLarge(response)
+                    + "\ncontentType=" + contentType
+                    + "\nresponseBody=" + responseBody
+        );
+    }
+
+    private boolean shouldRetryStatus(int status, int attempt, String safeRequestId, String contentType, String responseBody) {
+        boolean retryable = isRetryableStatus(status);
+        if (!retryable || attempt > (maxRetries + 1)) {
+            return false;
+        }
+
+        log.log(Level.WARNING,
+                "[workspace-client][{0}] retryable status status={1} attempt={2}",
+                new Object[]{safeRequestId, status, attempt});
+
+        ServerDiagnosticsLog.write(
+                "workspace-client",
+                safeRequestId,
+                "retryable-status",
+                "status=" + status
+                    + "\nattempt=" + attempt
+                    + "\ncontentType=" + contentType
+                    + "\nresponseBody=" + responseBody
+        );
+        return true;
     }
 
     /**
@@ -620,8 +642,8 @@ public class WorkspaceClient {
         byte[] bytes = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
         try {
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout((int) Math.min(Integer.MAX_VALUE, Duration.ofSeconds(20).toMillis()));
-            conn.setReadTimeout((int) Math.min(Integer.MAX_VALUE, requestTimeout.toMillis()));
+            conn.setConnectTimeout(toSafeInt(Duration.ofSeconds(20).toMillis()));
+            conn.setReadTimeout(toSafeInt(requestTimeout.toMillis()));
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
@@ -789,6 +811,16 @@ public class WorkspaceClient {
         return v == null ? "" : v.trim();
     }
 
+    private int toSafeInt(long value) {
+        if (value <= Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        if (value >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(value);
+    }
+
     private String safeTarget(String targetUrl) {
         try {
             URI u = URI.create(targetUrl);
@@ -813,19 +845,28 @@ public class WorkspaceClient {
             throw new IOException("Connection is not available.");
         }
         int rawCode = conn.getResponseCode();
-        if (rawCode < 100 || rawCode > 599) {
-            return 500;
-        }
-        return rawCode;
+        return validateTaintedStatusCode(rawCode);
     }
 
     private String safeContentType(HttpURLConnection conn) {
         if (conn == null) {
             return "";
         }
-        String headerValue = conn.getHeaderField("Content-Type");
+        String headerValue = validateTaintedHeaderValue(conn.getHeaderField("Content-Type"));
         String sanitizedHeader = sanitizeHeaderValue(headerValue);
         return sanitizeContentTypeValue(sanitizedHeader);
+    }
+
+    private int validateTaintedStatusCode(int rawCode) {
+        String normalizedCode = validateTaintedHeaderValue(Integer.toString(rawCode));
+        if (normalizedCode.length() != 3 || !isAsciiDigitsOnly(normalizedCode)) {
+            return 500;
+        }
+        try {
+            return sanitizeStatusCode(Integer.parseInt(normalizedCode));
+        } catch (NumberFormatException ex) {
+            return 500;
+        }
     }
 
     private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {
@@ -842,7 +883,16 @@ public class WorkspaceClient {
         if (headerValue == null) {
             return "";
         }
-        String normalized = headerValue.replace('\r', ' ').replace('\n', ' ').trim();
+        return validateTaintedHeaderValue(headerValue);
+    }
+
+    private String validateTaintedHeaderValue(String headerValue) {
+        if (headerValue == null || headerValue.isBlank()) {
+            return "";
+        }
+
+        String canonical = Normalizer.normalize(headerValue, Normalizer.Form.NFKC);
+        String normalized = canonical.replace('\r', ' ').replace('\n', ' ').trim();
         return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
     }
 
@@ -882,6 +932,19 @@ public class WorkspaceClient {
             boolean digit = ch >= '0' && ch <= '9';
             boolean safePunct = ch == '!' || ch == '#' || ch == '$' || ch == '&' || ch == '^' || ch == '_' || ch == '.' || ch == '+' || ch == '-';
             if (!(lowerAlpha || digit || safePunct)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isAsciiDigitsOnly(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch < '0' || ch > '9') {
                 return false;
             }
         }

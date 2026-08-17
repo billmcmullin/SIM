@@ -106,7 +106,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             }
 
             int totalSessions = sorted.size();
-            int totalPages = Math.max(1, (int) Math.ceil((double) totalSessions / (double) limit));
+            int totalPages = Math.max(1, (totalSessions + limit - 1) / limit);
 
             if (page > totalPages) {
                 page = totalPages;

@@ -37,11 +37,14 @@ import com.sim.chatserver.security.review.ReviewOutputValidator;
 import com.sim.chatserver.security.review.TrustedUrlValidator;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
+import com.sim.chatserver.service.ReviewSamplingService;
 import com.sim.chatserver.service.ReviewJobService;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -69,21 +72,21 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final int MAX_SESSION_ID_CHARS = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
-    private static final Object INIT_LOCK = new Object();
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
-    private static volatile MapReduceConfig mrConfig;
-    private static volatile WorkspaceClient workspaceClient;
-    private static volatile WidgetReviewMapReduceOrchestrator orchestrator;
-    private static volatile PromptTemplateService promptTemplateService;
-    private static volatile ReviewContextBuilderService reviewContextBuilderService;
-    private static volatile ReviewOutputValidator reviewOutputValidator;
-    private static volatile TrustedUrlValidator trustedUrlValidator;
+    private final Object initLock = new Object();
+    private volatile MapReduceConfig mrConfig;
+    private volatile WorkspaceClient workspaceClient;
+    private volatile WidgetReviewMapReduceOrchestrator orchestrator;
+    private volatile PromptTemplateService promptTemplateService;
+    private volatile ReviewContextBuilderService reviewContextBuilderService;
+    private volatile ReviewOutputValidator reviewOutputValidator;
+    private volatile TrustedUrlValidator trustedUrlValidator;
 
     @Override
     public void init() throws ServletException {
         super.init();
-        synchronized (INIT_LOCK) {
+        synchronized (initLock) {
             if (isRuntimeInitialized()) {
                 return;
             }
@@ -111,7 +114,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         );
 
         PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
-        ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService();
+        ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService(new ReviewSamplingService());
         ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
 
         Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
@@ -157,39 +160,64 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
-        final String requestId = UUID.randomUUID().toString();
-        final long startMs = System.currentTimeMillis();
+            final String requestId = UUID.randomUUID().toString();
+            final long startNanos = System.nanoTime();
 
+            ManualRequestContext requestContext = parseManualRequestContext(req, resp, requestId);
+            if (requestContext == null) {
+                return;
+            }
+
+            WorkspaceTargetContext targetContext = resolveWorkspaceTargetContext(resp, requestId);
+            if (targetContext == null) {
+                return;
+            }
+
+            executeManualRequest(resp, requestId, startNanos, requestContext, targetContext);
+    
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            if (!resp.isCommitted()) {
+                try {
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                } catch (java.io.IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                }
+            }
+        }
+    }
+
+    private ManualRequestContext parseManualRequestContext(HttpServletRequest req, HttpServletResponse resp, String requestId) {
         if (!isLoggedIn(req, resp)) {
-            return;
+            return null;
         }
 
         try {
             req.setCharacterEncoding(StandardCharsets.UTF_8.name());
         } catch (java.io.UnsupportedEncodingException ex) {
-            throw new IllegalStateException("UTF-8 character encoding was not accepted", ex);
+            log.log(Level.WARNING, "UTF-8 character encoding was not accepted", ex);
+            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            return null;
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
+            return null;
         }
 
-        JsonObject payload;
-        try (var reader = Json.createReader(new StringReader(readRequestBody(req)))) {
-            payload = reader.readObject();
-        } catch (JsonException | ClassCastException ex) {
-            log.log(Level.FINE, "Invalid manual-message payload", ex);
+        JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
+        if (payload == null || payload.isEmpty()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
+            return null;
         }
 
         String userMessage = payload.getString("message", "").trim();
         if (userMessage.isEmpty()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "message is required.");
-            return;
+            return null;
         }
-        userMessage = stripClientInjectedContext(userMessage);
 
         String mode = payload.getString("mode", "chat").trim().toLowerCase(Locale.ROOT);
         if (!ALLOWED_MODES.contains(mode)) {
@@ -203,12 +231,23 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean("reset", false));
         boolean async = payload.getBoolean("async", false);
-
         List<SelectedEntry> selectedEntries = parseSelectedEntries(payload);
         JsonArray normalizedAttachments = normalizeAttachments(payload);
 
         log.log(Level.INFO, "[manual-message][{0}] selectedEntriesParsed={1}", new Object[]{requestId, selectedEntries.size()});
 
+        return new ManualRequestContext(
+                stripClientInjectedContext(userMessage),
+                mode,
+                sessionId,
+                requestReset,
+                async,
+                selectedEntries,
+                normalizedAttachments
+        );
+    }
+
+    private WorkspaceTargetContext resolveWorkspaceTargetContext(HttpServletResponse resp, String requestId) {
         EncryptedDbConfigStore.setAppDataSourceHolder(dataSourceHolder());
         ServerConfig config;
         try {
@@ -216,30 +255,30 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         } catch (SQLException | IllegalStateException ex) {
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] Unable to load server configuration", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration not available.");
-            return;
+            return null;
         }
 
         if (config == null) {
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server configuration missing.");
-            return;
+            return null;
         }
 
         String workspaceSlug = buildSlug(config.getWorkspaceName());
         if (workspaceSlug == null || workspaceSlug.isBlank()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace slug not configured.");
-            return;
+            return null;
         }
 
         String baseUrl = sanitizeBaseUrl(buildBaseUrl(config));
         if (baseUrl == null || baseUrl.isBlank()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Server connection information is incomplete.");
-            return;
+            return null;
         }
 
         String apiKey = config.getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "API key not configured.");
-            return;
+            return null;
         }
 
         String encodedSlug = URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8);
@@ -250,33 +289,69 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (!trust.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}] blocked untrusted targetUrl reason={1}", new Object[]{requestId, trust.getReason()});
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace URL failed trust validation.");
-            return;
+            return null;
         }
 
+        return new WorkspaceTargetContext(targetUrl, apiKey);
+    }
+
+    private void executeManualRequest(
+            HttpServletResponse resp,
+            String requestId,
+            long startNanos,
+            ManualRequestContext requestContext,
+            WorkspaceTargetContext targetContext
+    ) {
         try {
-            if (async) {
+            if (requestContext.async) {
                 handleAsyncSubmission(
-                        resp, targetUrl, apiKey, userMessage, mode, sessionId, requestReset,
-                        normalizedAttachments, selectedEntries, requestId
+                        resp,
+                        targetContext.targetUrl,
+                        targetContext.apiKey,
+                        requestContext.userMessage,
+                        requestContext.mode,
+                        requestContext.sessionId,
+                        requestContext.requestReset,
+                        requestContext.normalizedAttachments,
+                        requestContext.selectedEntries,
+                        requestId
                 );
                 return;
             }
 
-            boolean useMapReduce = shouldUseMapReduce(selectedEntries);
-
+            boolean useMapReduce = shouldUseMapReduce(requestContext.selectedEntries);
             WorkspaceResponse upstream = useMapReduce
-                    ? runMapReduce(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, normalizedAttachments, selectedEntries, requestId).response
-                    : runSinglePass(targetUrl, apiKey, userMessage, mode, sessionId, requestReset, normalizedAttachments, selectedEntries, requestId);
+                    ? runMapReduce(
+                        targetContext.targetUrl,
+                        targetContext.apiKey,
+                        requestContext.userMessage,
+                        requestContext.mode,
+                        requestContext.sessionId,
+                        requestContext.requestReset,
+                        requestContext.normalizedAttachments,
+                        requestContext.selectedEntries,
+                        requestId
+                    ).response
+                    : runSinglePass(
+                        targetContext.targetUrl,
+                        targetContext.apiKey,
+                        requestContext.userMessage,
+                        requestContext.mode,
+                        requestContext.sessionId,
+                        requestContext.requestReset,
+                        requestContext.normalizedAttachments,
+                        requestContext.selectedEntries,
+                        requestId
+                    );
 
             mirrorWorkspaceResponse(resp, upstream);
-
-                String completionLog = "[manual-message][" + requestId + "] completed"
-                        + " status=" + upstream.statusCode()
-                        + " latencyMs=" + (System.currentTimeMillis() - startMs)
-                        + " mode=" + mode
-                        + " selected=" + selectedEntries.size()
-                        + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
-                log.info(completionLog);
+            String completionLog = "[manual-message][" + requestId + "] completed"
+                    + " status=" + upstream.statusCode()
+                    + " latencyMs=" + ((System.nanoTime() - startNanos) / 1_000_000L)
+                    + " mode=" + requestContext.mode
+                    + " selected=" + requestContext.selectedEntries.size()
+                    + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
+            log.info(completionLog);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
@@ -284,18 +359,45 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             log.log(Level.SEVERE, "[manual-message][" + requestId + "] execution failed", ex);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to process manual message.");
         }
-    
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (!resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
+    }
+
+    private static final class ManualRequestContext {
+
+        private final String userMessage;
+        private final String mode;
+        private final String sessionId;
+        private final boolean requestReset;
+        private final boolean async;
+        private final List<SelectedEntry> selectedEntries;
+        private final JsonArray normalizedAttachments;
+
+        private ManualRequestContext(
+                String userMessage,
+                String mode,
+                String sessionId,
+                boolean requestReset,
+                boolean async,
+                List<SelectedEntry> selectedEntries,
+                JsonArray normalizedAttachments
+        ) {
+            this.userMessage = userMessage;
+            this.mode = mode;
+            this.sessionId = sessionId;
+            this.requestReset = requestReset;
+            this.async = async;
+            this.selectedEntries = selectedEntries;
+            this.normalizedAttachments = normalizedAttachments;
+        }
+    }
+
+    private static final class WorkspaceTargetContext {
+
+        private final String targetUrl;
+        private final String apiKey;
+
+        private WorkspaceTargetContext(String targetUrl, String apiKey) {
+            this.targetUrl = targetUrl;
+            this.apiKey = apiKey;
         }
     }
 
@@ -336,298 +438,19 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         ReviewJobService jobs = WidgetReviewJobStatusServlet.jobService();
 
-        String jobId = jobs.submit(requestId, selectedEntries.size(), (jid) -> {
-            try {
-                List<String> allIds = distinctIds(extractAllIds(selectedEntries));
-
-                jobs.updateMapProgress(
-                        jid, 0, 0, 0, 0,
-                        allIds, List.of(), allIds, List.of(), "Starting"
-                );
-
-                boolean useMapReduce = shouldUseMapReduce(selectedEntries);
-
-                if (!useMapReduce) {
-                    WorkspaceResponse upstream = runSinglePass(
-                            targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId
-                    );
-
-                    int httpStatus = upstream == null ? 500 : upstream.statusCode();
-                    String body = upstream == null ? "" : upstream.body();
-                    String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
-                    String finalReport = extractPrimaryText(body);
-                        String finalReportForValidation = canonicalizeForValidation(finalReport);
-
-                        List<String> usedIdsFromText = extractUsedIdsFromText(finalReportForValidation, allIds);
-                    List<String> usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
-                    List<String> missingIds = subtract(allIds, usedIds);
-
-                    ReviewOutputValidator.ValidationResult finalValidation
-                            = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
-                    boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
-
-                    boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
-                    boolean httpOk = upstream != null && httpStatus < 400;
-                    boolean ok = httpOk && coverageComplete;
-
-                    String completionMsg = ok
-                            ? "Completed"
-                            : (httpOk
-                                ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
-                                : ("Completed with upstream errors (status=" + httpStatus + ')'));
-
-                    String errMsg = ok ? ""
-                            : (!httpOk
-                                    ? "Upstream returned status " + httpStatus
-                                    : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
-
-                    List<String> warnings = new ArrayList<>();
-                    if (!coverageComplete) {
-                        warnings.add("coverage incomplete");
-                    }
-                    if (metadataMismatch) {
-                        warnings.add("coverage metadata mismatch");
-                    }
-
-                    jobs.updateReduceProgress(
-                            jid, 1, 1, ok ? 0 : 1, 0,
-                            allIds, usedIds, missingIds, List.of(), completionMsg
-                    );
-
-                    return new ReviewJobService.JobResult(
-                            httpStatus, ok, completionMsg, errMsg,
-                            1, 1, ok ? 0 : 1, 0,
-                            allIds, usedIds, missingIds, List.of(), warnings,
-                            finalReport, body, contentType
-                    );
-                }
-
-                AtomicInteger liveTotalBatches = new AtomicInteger(0);
-                AtomicInteger liveCompletedBatches = new AtomicInteger(0);
-                AtomicInteger liveFailedBatches = new AtomicInteger(0);
-
-                final int reduceFinalAttemptTotal = mrConfig.getFinalReduceMaxAttempts();
-
-                WidgetReviewMapReduceOrchestrator.ProgressListener progressListener = new WidgetReviewMapReduceOrchestrator.ProgressListener() {
-                    @Override
-                    public void onMapRoundStarted(String reqId, int round, int totalRounds, int remainingBeforeRound, int entriesInRound) {
-                        jobs.updateMapProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), allIds, List.of(),
-                                "Map round " + round + '/' + totalRounds + " started - remaining=" + remainingBeforeRound
-                        );
-                    }
-
-                    @Override
-                    public void onMapBatchStarted(String reqId, int batchIndex, int totalBatchesSoFar, int expectedIdsInBatch, int round) {
-                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
-                        jobs.updateMapProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), allIds, List.of(),
-                                "Sending batch " + batchIndex + " (round " + round + ", size=" + expectedIdsInBatch + ")..."
-                        );
-                    }
-
-                    @Override
-                    public void onMapBatchCompleted(String reqId, int batchIndex, int totalBatchesSoFar, boolean success, int usedSoFar, int missingSoFar, int round) {
-                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
-                        if (success) {
-                            liveCompletedBatches.incrementAndGet(); 
-                        }else {
-                            liveFailedBatches.incrementAndGet();
-                        }
-
-                        jobs.updateMapProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
-                                + " - " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
-                                + " complete"
-                        );
-                    }
-
-                    @Override
-                    public void onReduceStarted(String reqId, int totalSelected, int totalBatches, int mapOutputsCount, int missingCount) {
-                        liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatches));
-                        jobs.updateReduceProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                "Synthesizing final report..."
-                        );
-                    }
-
-                    @Override
-                    public void onReduceChunkStarted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, int chunkSize, int currentChunkSizeConfig) {
-                        if (level == 999) {
-                            jobs.updateReduceProgress(
-                                    jid,
-                                    Math.max(liveTotalBatches.get(), 0),
-                                    Math.max(liveCompletedBatches.get(), 0),
-                                    Math.max(liveFailedBatches.get(), 0),
-                                    0,
-                                    allIds, List.of(), List.of(), List.of(),
-                                    "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " - summaries=" + chunkSize
-                            );
-                            return;
-                        }
-
-                        jobs.updateReduceProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                "Synthesis L" + level + " - chunk " + chunkIndex + '/' + totalChunksAtLevel
-                                + " - size=" + chunkSize + " - cfg=" + currentChunkSizeConfig
-                        );
-                    }
-
-                    @Override
-                    public void onReduceChunkCompleted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, boolean success, int httpStatus) {
-                        String phaseText = (level == 999)
-                                ? ("Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal)
-                                : ("Synthesis L" + level + " chunk " + chunkIndex + '/' + totalChunksAtLevel);
-
-                        jobs.updateReduceProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                phaseText + ' ' + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ')'
-                        );
-                    }
-
-                    @Override
-                    public void onReduceLevelCompleted(String reqId, int level, int totalChunksAtLevel, int producedSummaries) {
-                        jobs.updateReduceProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                "Synthesis level " + level + " complete - chunks=" + totalChunksAtLevel + " - summaries=" + producedSummaries
-                        );
-                    }
-
-                    @Override
-                    public void onReduceCompleted(String reqId, boolean success, int httpStatus, int missingCount) {
-                        jobs.updateReduceProgress(
-                                jid,
-                                Math.max(liveTotalBatches.get(), 0),
-                                Math.max(liveCompletedBatches.get(), 0),
-                                Math.max(liveFailedBatches.get(), 0),
-                                0,
-                                allIds, List.of(), List.of(), List.of(),
-                                "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ')'
-                        );
-                    }
-                };
-
-                MapReduceExecutionResult mr = runMapReduce(
-                        targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
-                );
-
-                WorkspaceResponse upstream = mr.response;
-                WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = mr.orchestration;
-                ReduceResult reduceResult = orchestration == null ? null : orchestration.reduceResult();
-
-                int httpStatus = upstream == null ? 500 : upstream.statusCode();
-                String body = upstream == null ? "" : upstream.body();
-                String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
-                String finalReport = extractPrimaryText(body);
-                String finalReportForValidation = canonicalizeForValidation(finalReport);
-
-                List<String> missingIds = reduceResult != null
-                        ? distinctIds(reduceResult.getMissingChatIds())
-                        : distinctIds(orchestration == null ? allIds : orchestration.missingChatIds());
-
-                missingIds = intersect(allIds, missingIds);
-                List<String> usedIds = subtract(allIds, missingIds);
-
-                ReviewOutputValidator.ValidationResult finalValidation
-                    = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
-                boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
-
-                boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
-                boolean httpOk = upstream != null && httpStatus < 400;
-                boolean ok = httpOk && coverageComplete;
-
-                String completionMsg = ok
-                        ? "Completed"
-                        : (httpOk
-                        ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
-                        : ("Completed with upstream errors (status=" + httpStatus + ')'));
-
-                String errMsg = ok ? ""
-                        : (!httpOk
-                                ? "Upstream returned status " + httpStatus
-                                : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
-
-                List<String> warnings = new ArrayList<>();
-                if (!coverageComplete) {
-                    warnings.add("coverage incomplete");
-                }
-                if (metadataMismatch) {
-                    warnings.add("coverage metadata mismatch");
-                }
-
-                jobs.updateReduceProgress(
-                        jid,
-                        orchestration == null ? 0 : orchestration.totalBatches(),
-                        orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
-                        orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
-                        0,
-                        allIds, usedIds, missingIds,
-                        orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
-                        completionMsg
-                );
-
-                return new ReviewJobService.JobResult(
-                        httpStatus, ok, completionMsg, errMsg,
-                        orchestration == null ? 0 : orchestration.totalBatches(),
-                        orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
-                        orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
-                        0,
-                        allIds, usedIds, missingIds,
-                        orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
-                        warnings,
-                        finalReport, body, contentType
-                );
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                if (causedByInterrupted(e)) {
-                    Thread.currentThread().interrupt();
-                }
-                log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
-                return new ReviewJobService.JobResult(
-                        500, false, "Failed",
-                        e.getMessage() == null ? "Async execution failed." : e.getMessage(),
-                        0, 0, 1, 0,
-                        List.of(), List.of(), List.of(),
-                        List.of(), List.of(),
-                        "", "", "application/json"
-                );
-            }
-        });
+        String jobId = jobs.submit(requestId, selectedEntries.size(), (jid) -> executeAsyncJob(
+            jobs,
+            jid,
+            targetUrl,
+            apiKey,
+            userMessage,
+            mode,
+            sessionId,
+            requestReset,
+            attachments,
+            selectedEntries,
+            requestId
+        ));
 
         resp.setStatus(HttpServletResponse.SC_ACCEPTED);
         resp.setContentType("application/json; charset=UTF-8");
@@ -643,6 +466,385 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to write async accepted response", e);
             respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
         }
+    }
+
+        private ReviewJobService.JobResult executeAsyncJob(
+            ReviewJobService jobs,
+            String jobId,
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            String requestId
+        ) {
+        try {
+            List<String> allIds = distinctIds(extractAllIds(selectedEntries));
+            jobs.updateMapProgress(
+                jobId, 0, 0, 0, 0,
+                allIds, List.of(), allIds, List.of(), "Starting"
+            );
+
+            if (!shouldUseMapReduce(selectedEntries)) {
+            return executeSinglePassAsyncJob(
+                jobs,
+                jobId,
+                targetUrl,
+                apiKey,
+                userMessage,
+                mode,
+                sessionId,
+                requestReset,
+                attachments,
+                selectedEntries,
+                allIds,
+                requestId
+            );
+            }
+
+            return executeMapReduceAsyncJob(
+                jobs,
+                jobId,
+                targetUrl,
+                apiKey,
+                userMessage,
+                mode,
+                sessionId,
+                requestReset,
+                attachments,
+                selectedEntries,
+                allIds,
+                requestId
+            );
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            if (causedByInterrupted(e)) {
+            Thread.currentThread().interrupt();
+            }
+            log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
+            return new ReviewJobService.JobResult(
+                500, false, "Failed",
+                e.getMessage() == null ? "Async execution failed." : e.getMessage(),
+                0, 0, 1, 0,
+                List.of(), List.of(), List.of(),
+                List.of(), List.of(),
+                "", "", "application/json"
+            );
+        }
+        }
+
+        private ReviewJobService.JobResult executeSinglePassAsyncJob(
+            ReviewJobService jobs,
+            String jobId,
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            List<String> allIds,
+            String requestId
+        ) {
+        WorkspaceResponse upstream = runSinglePass(
+            targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId
+        );
+
+        int httpStatus = upstream == null ? 500 : upstream.statusCode();
+        String body = upstream == null ? "" : upstream.body();
+        String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
+        String finalReport = extractPrimaryText(body);
+        String finalReportForValidation = canonicalizeForValidation(finalReport);
+
+        List<String> usedIdsFromText = extractUsedIdsFromText(finalReportForValidation, allIds);
+        List<String> usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
+        List<String> missingIds = subtract(allIds, usedIds);
+
+        ReviewOutputValidator.ValidationResult finalValidation
+            = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
+        boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+
+        boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
+        boolean httpOk = upstream != null && httpStatus < 400;
+        boolean ok = httpOk && coverageComplete;
+
+        String completionMsg = ok
+            ? "Completed"
+            : (httpOk
+                ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
+                : ("Completed with upstream errors (status=" + httpStatus + ')'));
+
+        String errMsg = ok ? ""
+            : (!httpOk
+                ? "Upstream returned status " + httpStatus
+                : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
+
+        List<String> warnings = new ArrayList<>();
+        if (!coverageComplete) {
+            warnings.add("coverage incomplete");
+        }
+        if (metadataMismatch) {
+            warnings.add("coverage metadata mismatch");
+        }
+
+        jobs.updateReduceProgress(
+            jobId, 1, 1, ok ? 0 : 1, 0,
+            allIds, usedIds, missingIds, List.of(), completionMsg
+        );
+
+        return new ReviewJobService.JobResult(
+            httpStatus, ok, completionMsg, errMsg,
+            1, 1, ok ? 0 : 1, 0,
+            allIds, usedIds, missingIds, List.of(), warnings,
+            finalReport, body, contentType
+        );
+        }
+
+    private ReviewJobService.JobResult executeMapReduceAsyncJob(
+            ReviewJobService jobs,
+            String jobId,
+            String targetUrl,
+            String apiKey,
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            JsonArray attachments,
+            List<SelectedEntry> selectedEntries,
+            List<String> allIds,
+            String requestId
+    ) {
+        AtomicInteger liveTotalBatches = new AtomicInteger(0);
+        AtomicInteger liveCompletedBatches = new AtomicInteger(0);
+        AtomicInteger liveFailedBatches = new AtomicInteger(0);
+        int reduceFinalAttemptTotal = mrConfig.getFinalReduceMaxAttempts();
+
+        WidgetReviewMapReduceOrchestrator.ProgressListener progressListener = createProgressListener(
+                jobs,
+                jobId,
+                allIds,
+                liveTotalBatches,
+                liveCompletedBatches,
+                liveFailedBatches,
+                reduceFinalAttemptTotal
+        );
+
+        MapReduceExecutionResult mr = runMapReduce(
+                targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId, progressListener
+        );
+
+        WorkspaceResponse upstream = mr.response;
+        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = mr.orchestration;
+        ReduceResult reduceResult = orchestration == null ? null : orchestration.reduceResult();
+
+        int httpStatus = upstream == null ? 500 : upstream.statusCode();
+        String body = upstream == null ? "" : upstream.body();
+        String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
+        String finalReport = extractPrimaryText(body);
+        String finalReportForValidation = canonicalizeForValidation(finalReport);
+
+        List<String> missingIds = reduceResult != null
+                ? distinctIds(reduceResult.getMissingChatIds())
+                : distinctIds(orchestration == null ? allIds : orchestration.missingChatIds());
+        missingIds = intersect(allIds, missingIds);
+        List<String> usedIds = subtract(allIds, missingIds);
+
+        ReviewOutputValidator.ValidationResult finalValidation
+                = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
+        boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+
+        boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
+        boolean httpOk = upstream != null && httpStatus < 400;
+        boolean ok = httpOk && coverageComplete;
+
+        String completionMsg = ok
+                ? "Completed"
+                : (httpOk
+                    ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
+                    : ("Completed with upstream errors (status=" + httpStatus + ')'));
+        String errMsg = ok ? ""
+                : (!httpOk
+                    ? "Upstream returned status " + httpStatus
+                    : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
+
+        List<String> warnings = new ArrayList<>();
+        if (!coverageComplete) {
+            warnings.add("coverage incomplete");
+        }
+        if (metadataMismatch) {
+            warnings.add("coverage metadata mismatch");
+        }
+
+        jobs.updateReduceProgress(
+                jobId,
+                orchestration == null ? 0 : orchestration.totalBatches(),
+                orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
+                orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
+                0,
+                allIds, usedIds, missingIds,
+                orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
+                completionMsg
+        );
+
+        return new ReviewJobService.JobResult(
+                httpStatus, ok, completionMsg, errMsg,
+                orchestration == null ? 0 : orchestration.totalBatches(),
+                orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
+                orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
+                0,
+                allIds, usedIds, missingIds,
+                orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
+                warnings,
+                finalReport, body, contentType
+        );
+    }
+
+    private WidgetReviewMapReduceOrchestrator.ProgressListener createProgressListener(
+            ReviewJobService jobs,
+            String jobId,
+            List<String> allIds,
+            AtomicInteger liveTotalBatches,
+            AtomicInteger liveCompletedBatches,
+            AtomicInteger liveFailedBatches,
+            int reduceFinalAttemptTotal
+    ) {
+        return new WidgetReviewMapReduceOrchestrator.ProgressListener() {
+            @Override
+            public void onMapRoundStarted(String reqId, int round, int totalRounds, int remainingBeforeRound, int entriesInRound) {
+                jobs.updateMapProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), allIds, List.of(),
+                        "Map round " + round + '/' + totalRounds + " started - remaining=" + remainingBeforeRound
+                );
+            }
+
+            @Override
+            public void onMapBatchStarted(String reqId, int batchIndex, int totalBatchesSoFar, int expectedIdsInBatch, int round) {
+                liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
+                jobs.updateMapProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), allIds, List.of(),
+                        "Sending batch " + batchIndex + " (round " + round + ", size=" + expectedIdsInBatch + ")..."
+                );
+            }
+
+            @Override
+            public void onMapBatchCompleted(String reqId, int batchIndex, int totalBatchesSoFar, boolean success, int usedSoFar, int missingSoFar, int round) {
+                liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatchesSoFar));
+                if (success) {
+                    liveCompletedBatches.incrementAndGet();
+                } else {
+                    liveFailedBatches.incrementAndGet();
+                }
+
+                jobs.updateMapProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
+                        + " - " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
+                        + " complete"
+                );
+            }
+
+            @Override
+            public void onReduceStarted(String reqId, int totalSelected, int totalBatches, int mapOutputsCount, int missingCount) {
+                liveTotalBatches.set(Math.max(liveTotalBatches.get(), totalBatches));
+                jobs.updateReduceProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        "Synthesizing final report..."
+                );
+            }
+
+            @Override
+            public void onReduceChunkStarted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, int chunkSize, int currentChunkSizeConfig) {
+                if (level == 999) {
+                    jobs.updateReduceProgress(
+                            jobId,
+                            Math.max(liveTotalBatches.get(), 0),
+                            Math.max(liveCompletedBatches.get(), 0),
+                            Math.max(liveFailedBatches.get(), 0),
+                            0,
+                            allIds, List.of(), List.of(), List.of(),
+                            "Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal + " - summaries=" + chunkSize
+                    );
+                    return;
+                }
+
+                jobs.updateReduceProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        "Synthesis L" + level + " - chunk " + chunkIndex + '/' + totalChunksAtLevel
+                        + " - size=" + chunkSize + " - cfg=" + currentChunkSizeConfig
+                );
+            }
+
+            @Override
+            public void onReduceChunkCompleted(String reqId, int level, int chunkIndex, int totalChunksAtLevel, boolean success, int httpStatus) {
+                String phaseText = (level == 999)
+                        ? ("Final synthesis attempt " + chunkIndex + '/' + reduceFinalAttemptTotal)
+                        : ("Synthesis L" + level + " chunk " + chunkIndex + '/' + totalChunksAtLevel);
+
+                jobs.updateReduceProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        phaseText + ' ' + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ')'
+                );
+            }
+
+            @Override
+            public void onReduceLevelCompleted(String reqId, int level, int totalChunksAtLevel, int producedSummaries) {
+                jobs.updateReduceProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        "Synthesis level " + level + " complete - chunks=" + totalChunksAtLevel + " - summaries=" + producedSummaries
+                );
+            }
+
+            @Override
+            public void onReduceCompleted(String reqId, boolean success, int httpStatus, int missingCount) {
+                jobs.updateReduceProgress(
+                        jobId,
+                        Math.max(liveTotalBatches.get(), 0),
+                        Math.max(liveCompletedBatches.get(), 0),
+                        Math.max(liveFailedBatches.get(), 0),
+                        0,
+                        allIds, List.of(), List.of(), List.of(),
+                        "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ')'
+                );
+            }
+        };
     }
 
     private WorkspaceResponse runSinglePass(
@@ -889,36 +1091,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String extractPrimaryText(String body) {
-        if (body == null || body.isBlank()) {
-            return "";
-        }
-        try (var reader = Json.createReader(new StringReader(body))) {
-            JsonObject o = reader.readObject();
-            String t = o.getString("textResponse", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("response", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("message", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("answer", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("output", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            return body;
-        } catch (JsonException | ClassCastException ex) {
-            log.log(Level.FINE, "Unable to parse upstream response payload", ex);
-            return body;
-        }
+        return JsonPrimaryTextUtil.extractPrimaryText(body, log, "Unable to parse upstream response payload");
     }
 
     private List<String> extractAllIds(List<SelectedEntry> entries) {
@@ -1155,7 +1328,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
         s = s.replaceFirst("^(https?://)+(https?://)", "$2");
-        s = s.replaceFirst("^(https?://)(https?://)+", "$1");
         s = s.replace("https://https://", "https://")
                 .replace("http://http://", "http://")
                 .replace("http://https://", "https://")
@@ -1210,38 +1382,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         } catch (IllegalArgumentException ex) {
             log.log(Level.FINE, "Invalid URI syntax", ex);
             return null;
-        }
-    }
-
-    private String readRequestBody(HttpServletRequest req) {
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            return "";
-        }
-
-        try {
-            Reader requestReader = req.getReader();
-            if (requestReader == null) {
-                return "";
-            }
-            String body = readRequestBody(requestReader);
-            return validateTaintedRequestBody(body);
-        } catch (IOException | IllegalStateException ex) {
-            log.log(Level.FINE, "Unable to read manual-message request body from reader", ex);
-            return "";
-        }
-    }
-
-    private String readRequestBody(Reader reader) {
-        if (reader == null) {
-            return "";
-        }
-
-        try (Reader bodyReader = reader) {
-            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(bodyReader, MAX_JSON_PAYLOAD_BYTES);
-            return validateTaintedRequestBody(canonicalizeForValidation(body));
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to decode manual-message request payload", ex);
-            return "";
         }
     }
 

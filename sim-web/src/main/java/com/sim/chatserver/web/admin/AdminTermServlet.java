@@ -255,10 +255,14 @@ public class AdminTermServlet extends HttpServlet {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        StringBuilder safe = new StringBuilder(Math.min(value.length(), MAX_JSON_PAYLOAD_BYTES));
-        int limit = Math.min(value.length(), MAX_JSON_PAYLOAD_BYTES);
+        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(value, MAX_JSON_PAYLOAD_BYTES, false);
+        if (normalizedInput.isEmpty()) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(Math.min(normalizedInput.length(), MAX_JSON_PAYLOAD_BYTES));
+        int limit = Math.min(normalizedInput.length(), MAX_JSON_PAYLOAD_BYTES);
         for (int i = 0; i < limit; i++) {
-            char ch = value.charAt(i);
+            char ch = normalizedInput.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }

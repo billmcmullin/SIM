@@ -50,23 +50,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
 
     private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
-    private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
-    private static final Pattern LOGGER_TOKEN = Pattern.compile("\\b(INFO|DEBUG|TRACE|WARN|WARNING|ERROR|FATAL)\\b");
-    private static final Pattern PROFANITY_PATTERN = Pattern.compile(
-            "\\b(fuck|fucking|shit|bullshit|damn|wtf|crap|asshole)\\b",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Pattern FRUSTRATION_PHRASE_PATTERN = Pattern.compile(
-            "\\b(not what i asked|that is not what i asked|you (didn'?t|do not) understand|wrong answer|incorrect answer|"
-            + "you (are|re) not listening|this (still )?doesn'?t work|not working|still broken|fix this|"
-            + "answer the question|stop ignoring|why is this wrong)\\b",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Set<String> SAFE_ACRONYMS = Set.of(
-            "API", "SDK", "CLI", "GUI", "SQL", "JSON", "XML", "HTTP", "HTTPS", "URL", "URI", "JWT", "SSO", "SAML", "OIDC", "TLS", "SSL",
-            "TCP", "UDP", "DNS", "IP", "CPU", "GPU", "RAM", "OS", "DB", "ETL", "CI", "CD", "IDE", "LTS", "JDK", "JVM",
-            "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
-    );
 
     static final class Row {
 
@@ -178,7 +161,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         allRows.sort(Comparator.comparing((Row r) -> r.lastEntry, Comparator.nullsLast(Comparator.reverseOrder())));
 
         int total = allRows.size();
-        int totalPages = Math.max(1, (int) Math.ceil((double) total / (double) limit));
+        long pagesLong = (Math.max(0L, (long) total) + Math.max(1L, (long) limit) - 1L) / Math.max(1L, (long) limit);
+        pagesLong = Math.max(1L, pagesLong);
+        int totalPages = pagesLong > Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.toIntExact(pagesLong);
         if (page > totalPages) {
             page = totalPages;
         }
@@ -246,7 +231,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         String[] strong = {"frustrated", "angry", "annoyed", "furious", "ridiculous", "useless", "terrible"};
         String[] misunderstood = {"you don't understand", "you dont understand", "not what i asked", "wrong again", "not listening", "misunderstood"};
 
-        boolean consistentCapsStyle = isConsistentCapsStyle(prompts);
+        boolean consistentCapsStyle = InactiveUsersFrustrationTextUtil.isConsistentCapsStyle(prompts);
 
         for (String raw : prompts) {
             String t = raw == null ? "" : raw.trim();
@@ -275,9 +260,11 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 }
             }
 
-            boolean nonFrustrationContext = looksLikeCodeText(t) || looksLikeLogText(t) || containsOnlySafeAcronymCaps(t);
+            boolean nonFrustrationContext = InactiveUsersFrustrationTextUtil.isNonFrustrationContext(t);
 
-            if (!nonFrustrationContext && hasExplicitFrustrationSignal(t) && !consistentCapsStyle) {
+            if (!nonFrustrationContext
+                    && InactiveUsersFrustrationTextUtil.hasExplicitFrustrationSignal(t)
+                    && !consistentCapsStyle) {
                 score += 0.20;
                 if (reason.isEmpty()) {
                     reason = "frustration_phrase";
@@ -292,137 +279,6 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         out.detected = score >= 0.40;
         out.reason = reason;
         return out;
-    }
-
-    private boolean looksLikeCodeText(String t) {
-        if (t == null || t.isBlank()) {
-            return false;
-        }
-        String s = t;
-        String lower = s.toLowerCase();
-
-        if (s.contains("```")) {
-            return true;
-        }
-
-        int codeHints = 0;
-        String[] keywords = {
-            "select ", " from ", " where ", " join ", "insert ", "update ", "delete ",
-            " function ", " class ", " public ", " private ", " protected ", " return ",
-            " if(", " if (", " for(", " for (", " while(", " while ("
-        };
-        for (String k : keywords) {
-            if (lower.contains(k)) {
-                codeHints++;
-            }
-        }
-
-        if (s.contains("{") || s.contains("}") || s.contains(";") || s.contains("=>") || s.contains("::")) {
-            codeHints++;
-        }
-
-        int sym = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if ("{}[]();=<>/_\\|".indexOf(c) >= 0) {
-                sym++;
-            }
-        }
-        double symRatio = s.isEmpty() ? 0.0 : ((double) sym / (double) s.length());
-        if (symRatio > 0.08) {
-            codeHints++;
-        }
-
-        return codeHints >= 2;
-    }
-
-    private boolean looksLikeLogText(String t) {
-        if (t == null || t.isBlank()) {
-            return false;
-        }
-        String s = t;
-
-        int hints = 0;
-        if (LOGGER_TOKEN.matcher(s).find()) {
-            hints++;
-        }
-        if (s.matches(".*\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*")) {
-            hints++;
-        }
-        if (s.matches(".*\\b\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\b.*")) {
-            hints++;
-        }
-        if (s.contains(" - ") || s.contains(" | ") || s.contains("::")) {
-            hints++;
-        }
-        if (s.contains("Exception") || s.contains("Stacktrace") || s.contains("at com.")) {
-            hints++;
-        }
-
-        return hints >= 2;
-    }
-
-    private boolean containsOnlySafeAcronymCaps(String t) {
-        if (t == null || t.isBlank()) {
-            return false;
-        }
-        String[] tokens = t.split("[^A-Za-z0-9_]+");
-        boolean sawCapsToken = false;
-        for (String tok : tokens) {
-            if (tok == null || tok.isBlank()) {
-                continue;
-            }
-            if (tok.length() < 2) {
-                continue;
-            }
-            boolean isAllCaps = tok.equals(tok.toUpperCase()) && tok.matches("[A-Z0-9_]+");
-            if (!isAllCaps) {
-                continue;
-            }
-            sawCapsToken = true;
-            if (!SAFE_ACRONYMS.contains(tok)) {
-                return false;
-            }
-        }
-        return sawCapsToken;
-    }
-
-    private boolean hasExplicitFrustrationSignal(String t) {
-        if (t == null || t.isBlank()) {
-            return false;
-        }
-        if (PROFANITY_PATTERN.matcher(t).find()) {
-            return true;
-        }
-        return FRUSTRATION_PHRASE_PATTERN.matcher(t).find();
-    }
-
-    private boolean isConsistentCapsStyle(List<String> prompts) {
-        if (prompts == null || prompts.size() < 3) {
-            return false;
-        }
-
-        int capsCount = 0;
-        int nonCodeCount = 0;
-
-        for (String p : prompts) {
-            if (p == null || p.isBlank()) {
-                continue;
-            }
-            if (looksLikeCodeText(p) || looksLikeLogText(p) || containsOnlySafeAcronymCaps(p)) {
-                continue;
-            }
-            nonCodeCount++;
-            if (ALL_CAPS_WORD.matcher(p).find()) {
-                capsCount++;
-            }
-        }
-
-        if (nonCodeCount < 3) {
-            return false;
-        }
-
-        return ((double) capsCount / (double) nonCodeCount) >= 0.60;
     }
 
     private String buildJson(List<Row> rows) {

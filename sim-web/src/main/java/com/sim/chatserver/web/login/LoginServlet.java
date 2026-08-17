@@ -12,6 +12,7 @@ import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,7 +31,7 @@ public class LoginServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null || resp == null) {
             return;
         }
@@ -39,15 +40,15 @@ public class LoginServlet extends HttpServlet {
 
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
-            req.getRequestDispatcher("/dashboard").forward(req, resp);
+            safeForward(req, resp, "/dashboard");
             return;
         }
 
-        req.getRequestDispatcher(VIEW).forward(req, resp);
+        safeForward(req, resp, VIEW);
     }
 
     @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null || resp == null) {
             return;
         }
@@ -57,7 +58,7 @@ public class LoginServlet extends HttpServlet {
         if (username == null || password == null) {
             req.setAttribute("loginError", "missing");
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            req.getRequestDispatcher(VIEW).forward(req, resp);
+            safeForward(req, resp, VIEW);
             return;
         }
 
@@ -65,7 +66,7 @@ public class LoginServlet extends HttpServlet {
         if (authenticatedUser == null || authenticatedUser.getUsername() == null || authenticatedUser.getUsername().isBlank()) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            req.getRequestDispatcher(VIEW).forward(req, resp);
+            safeForward(req, resp, VIEW);
             return;
         }
 
@@ -73,7 +74,7 @@ public class LoginServlet extends HttpServlet {
         if (sessionUser == null) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            req.getRequestDispatcher(VIEW).forward(req, resp);
+            safeForward(req, resp, VIEW);
             return;
         }
 
@@ -85,11 +86,68 @@ public class LoginServlet extends HttpServlet {
         HttpSession session = req.getSession(true);
         session.setAttribute("user", sessionUser);
         session.setMaxInactiveInterval(30 * 60);
-        String contextPath = req.getContextPath();
-        if (contextPath == null) {
-            contextPath = "";
+
+        String redirectTarget = buildDashboardRedirect(req);
+        if (redirectTarget == null) {
+            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Invalid redirect target.");
+            return;
         }
-        resp.sendRedirect(contextPath + "/dashboard");
+        safeRedirect(resp, redirectTarget);
+    }
+
+    private void safeForward(HttpServletRequest req, HttpServletResponse resp, String target) {
+        if (req == null || resp == null || target == null || target.isBlank()) {
+            return;
+        }
+        try {
+            RequestDispatcher dispatcher = req.getRequestDispatcher(target);
+            if (dispatcher == null) {
+                safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to dispatch request.");
+                return;
+            }
+            dispatcher.forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.WARNING, "Login request forward failed", ex);
+            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        }
+    }
+
+    private void safeRedirect(HttpServletResponse resp, String redirectTarget) {
+        if (resp == null || redirectTarget == null || redirectTarget.isBlank()) {
+            return;
+        }
+        try {
+            resp.sendRedirect(resp.encodeRedirectURL(redirectTarget));
+        } catch (IOException ex) {
+            log.log(Level.WARNING, "Login redirect failed", ex);
+            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        }
+    }
+
+    private void safeSendError(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException ex) {
+            log.log(Level.FINE, "Unable to send login error response", ex);
+        }
+    }
+
+    private String buildDashboardRedirect(HttpServletRequest req) {
+        if (req == null) {
+            return null;
+        }
+        String contextPath = req.getContextPath();
+        if (contextPath == null || contextPath.isBlank()) {
+            return "/dashboard";
+        }
+        String trimmed = contextPath.trim();
+        if (!trimmed.startsWith("/") || trimmed.contains(":") || trimmed.contains("//")) {
+            return null;
+        }
+        return trimmed + "/dashboard";
     }
 
     protected UserService resolveUserService() {

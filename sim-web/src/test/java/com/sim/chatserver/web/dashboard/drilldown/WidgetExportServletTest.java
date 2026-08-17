@@ -654,12 +654,7 @@ public class WidgetExportServletTest
             };
         }
     private WidgetExportServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
-        return new WidgetExportServlet() {
-            @Override
-            protected AppDataSourceHolder dataSourceHolder() {
-                return dsHolder;
-            }
-        };
+        return new WidgetExportServlet(dsHolder);
     }
 }
 

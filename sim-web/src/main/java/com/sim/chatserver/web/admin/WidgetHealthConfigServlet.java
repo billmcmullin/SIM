@@ -298,7 +298,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         if (seconds > Integer.MAX_VALUE) {
             return Integer.MAX_VALUE;
         }
-        return (int) seconds;
+        return Math.toIntExact(seconds);
     }
 
     private int secondsToMinutes(int seconds) {

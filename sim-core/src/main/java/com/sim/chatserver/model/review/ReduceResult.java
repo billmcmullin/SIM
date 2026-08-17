@@ -391,7 +391,7 @@ public final class ReduceResult {
         if (total <= 0) {
             return 0;
         }
-        int p = (int) Math.round((used * 100.0) / total);
+        int p = Math.toIntExact(Math.round((used * 100.0) / total));
         if (p < 0) {
             return 0;
         }

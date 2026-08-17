@@ -286,9 +286,13 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        StringBuilder safe = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
+        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(value, MAX_JSON_PAYLOAD_BYTES, false);
+        if (normalizedInput.isEmpty()) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(normalizedInput.length());
+        for (int i = 0; i < normalizedInput.length(); i++) {
+            char ch = normalizedInput.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
@@ -388,7 +392,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (seconds > Integer.MAX_VALUE) {
             return Integer.MAX_VALUE;
         }
-        return (int) seconds;
+        return Math.toIntExact(seconds);
     }
 
     private int secondsToMinutes(int seconds) {

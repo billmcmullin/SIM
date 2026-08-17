@@ -37,18 +37,14 @@ import static org.mockito.Mockito.when;
     @Test
     void readNonNegativeInt_coversTypedAndFallbackPaths() throws Exception {
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getInt("id")).thenReturn(7);
-        when(typed.wasNull()).thenReturn(false);
+        when(typed.getBytes("id")).thenReturn("7".getBytes(StandardCharsets.UTF_8));
         assertEquals(7, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, typed, "id"));
 
         ResultSet negative = mock(ResultSet.class);
-        when(negative.getInt("id")).thenReturn(-9);
-        when(negative.wasNull()).thenReturn(false);
+        when(negative.getBytes("id")).thenReturn("-9".getBytes(StandardCharsets.UTF_8));
         assertEquals(0, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, negative, "id"));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getInt("id")).thenReturn(0);
-        when(fallback.wasNull()).thenReturn(true);
         when(fallback.getBytes("id")).thenReturn("17".getBytes(StandardCharsets.UTF_8));
         assertEquals(17, invoke("readNonNegativeInt", new Class<?>[] { ResultSet.class, String.class }, fallback, "id"));
     }
@@ -58,16 +54,14 @@ import static org.mockito.Mockito.when;
         Instant now = Instant.parse("2026-08-07T10:20:30Z");
 
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getTimestamp("created_at")).thenReturn(Timestamp.from(now));
+        when(typed.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
         assertEquals(now, ((Instant) invoke("readCreatedAt", new Class<?>[] { ResultSet.class }, typed)));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getTimestamp("created_at")).thenThrow(new SQLException("no typed timestamp"));
         when(fallback.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
         assertEquals(now, ((Instant) invoke("readCreatedAt", new Class<?>[] { ResultSet.class }, fallback)));
 
         ResultSet invalid = mock(ResultSet.class);
-        when(invalid.getTimestamp("created_at")).thenThrow(new SQLException("no typed timestamp"));
         when(invalid.getBytes("created_at")).thenReturn("bad".getBytes(StandardCharsets.UTF_8));
         assertEquals(Instant.EPOCH, ((Instant) invoke("readCreatedAt", new Class<?>[] { ResultSet.class }, invalid)));
     }
@@ -76,11 +70,10 @@ import static org.mockito.Mockito.when;
     void mapRow_andFlags_coverUtilityBranches() throws Exception {
         Instant now = Instant.parse("2026-08-07T10:20:30Z");
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getInt("id")).thenReturn(5);
-        when(rs.wasNull()).thenReturn(false);
+        when(rs.getBytes("id")).thenReturn("5".getBytes(StandardCharsets.UTF_8));
         when(rs.getBytes("widget_id")).thenReturn(" wid ".getBytes(StandardCharsets.UTF_8));
         when(rs.getBytes("display_name")).thenReturn(" name ".getBytes(StandardCharsets.UTF_8));
-        when(rs.getTimestamp("created_at")).thenReturn(Timestamp.from(now));
+        when(rs.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
 
         WidgetEntry entry = (WidgetEntry) invoke("mapRow", new Class<?>[] { ResultSet.class }, rs);
         assertEquals(5, entry.getId());

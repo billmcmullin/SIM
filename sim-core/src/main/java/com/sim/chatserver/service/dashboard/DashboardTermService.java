@@ -115,84 +115,110 @@ public class DashboardTermService {
             if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
                 continue;
             }
-
-            String sql;
-            if (useDateRange) {
-                sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + DashboardDbUtil.quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-            } else {
-                sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + DashboardDbUtil.quoteIdentifier(tableName);
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                if (useDateRange) {
-                    ps.setTimestamp(1, startTs);
-                    ps.setTimestamp(2, endExclusiveTs);
-                }
-
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String chatId = rs.getString("widget_chat_id");
-                        if (chatId == null) {
-                            chatId = "";
-                        }
-
-                        String prompt = rs.getString("prompt");
-                        if (prompt == null) {
-                            prompt = "";
-                        }
-
-                        String response = rs.getString("response_text");
-                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                        String sessionId = rs.getString("session_id");
-
-                        final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
-                        TermDefinition bestTerm = null;
-                        int bestStart = Integer.MAX_VALUE;
-
-                        for (int i = 0; i < compiledPatterns.size(); i++) {
-                            Pattern pattern = compiledPatterns.get(i);
-                            if (pattern == null) {
-                                continue;
-                            }
-                            try {
-                                Matcher m = pattern.matcher(sanitizedPrompt);
-                                if (m.find()) {
-                                    int start = m.start();
-                                    if (start < bestStart) {
-                                        bestStart = start;
-                                        bestTerm = activeTerms.get(i);
-                                        if (bestStart == 0) {
-                                            break;
-                                        }
-                                    }
-                                }
-                            } catch (IllegalStateException ex) {
-                                LOG.log(Level.FINE, "Term pattern evaluation failed", ex);
-                            }
-                        }
-
-                        String snapshotTerm = bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
-
-                        TermChatSnapshot snapshot = new TermChatSnapshot(
-                                snapshotTerm,
-                                widgetId,
-                                chatId,
-                                prompt,
-                                response,
-                                createdAt,
-                                sessionId
-                        );
-
-                        summary.recordMatch(snapshotTerm, snapshot);
-                    }
-                }
-            }
+            processWidgetRows(
+                    conn,
+                    tableName,
+                    useDateRange,
+                    startTs,
+                    endExclusiveTs,
+                    activeTerms,
+                    compiledPatterns,
+                    summary,
+                    widgetId
+            );
         }
 
         return summary;
+    }
+
+    private void processWidgetRows(
+            Connection conn,
+            String tableName,
+            boolean useDateRange,
+            Timestamp startTs,
+            Timestamp endExclusiveTs,
+            List<TermDefinition> activeTerms,
+            List<Pattern> compiledPatterns,
+            TermSummary summary,
+            String widgetId
+    ) throws SQLException {
+        String sql;
+        if (useDateRange) {
+            sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                    + DashboardDbUtil.quoteIdentifier(tableName)
+                    + " WHERE created_at >= ? AND created_at < ?";
+        } else {
+            sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                    + DashboardDbUtil.quoteIdentifier(tableName);
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (useDateRange) {
+                ps.setTimestamp(1, startTs);
+                ps.setTimestamp(2, endExclusiveTs);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String chatId = rs.getString("widget_chat_id");
+                    if (chatId == null) {
+                        chatId = "";
+                    }
+
+                    String prompt = rs.getString("prompt");
+                    if (prompt == null) {
+                        prompt = "";
+                    }
+
+                    String response = rs.getString("response_text");
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    String sessionId = rs.getString("session_id");
+
+                    String snapshotTerm = resolveSnapshotTerm(prompt, activeTerms, compiledPatterns);
+                    TermChatSnapshot snapshot = new TermChatSnapshot(
+                            snapshotTerm,
+                            widgetId,
+                            chatId,
+                            prompt,
+                            response,
+                            createdAt,
+                            sessionId
+                    );
+                    summary.recordMatch(snapshotTerm, snapshot);
+                }
+            }
+        }
+    }
+
+    private String resolveSnapshotTerm(String prompt, List<TermDefinition> activeTerms, List<Pattern> compiledPatterns) {
+        final String sanitizedPrompt = TextSanitizer.sanitizeForMatching(prompt);
+        TermDefinition bestTerm = null;
+        int bestStart = Integer.MAX_VALUE;
+
+        for (int i = 0; i < compiledPatterns.size(); i++) {
+            Pattern pattern = compiledPatterns.get(i);
+            if (pattern == null) {
+                continue;
+            }
+            try {
+                Matcher m = pattern.matcher(sanitizedPrompt);
+                if (!m.find()) {
+                    continue;
+                }
+                int start = m.start();
+                if (start < bestStart) {
+                    bestStart = start;
+                    bestTerm = activeTerms.get(i);
+                    if (bestStart == 0) {
+                        break;
+                    }
+                }
+            } catch (IllegalStateException ex) {
+                LOG.log(Level.FINE, "Term pattern evaluation failed", ex);
+            }
+        }
+
+        return bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
     }
 
     public String toChartJson(TermSummary summary) {

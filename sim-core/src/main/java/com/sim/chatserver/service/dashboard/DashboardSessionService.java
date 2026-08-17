@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -32,6 +33,7 @@ import com.sim.chatserver.model.DashboardViewModels.SessionStat;
 import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 import jakarta.json.Json;
@@ -219,7 +221,7 @@ public class DashboardSessionService {
         );
     }
 
-    SessionTimeline buildSessionTimeline(
+    final SessionTimeline buildSessionTimeline(
             Connection conn,
             List<WidgetEntry> widgets,
             List<String> sessionIds,
@@ -299,7 +301,7 @@ public class DashboardSessionService {
                             continue;
                         }
 
-                        int position = (int) dayIndex;
+                        int position = Math.toIntExact(dayIndex);
                         int current = readCountValue(bucket, position);
                         bucket.set(position, Integer.valueOf(current + dayCount));
                     }
@@ -394,14 +396,18 @@ public class DashboardSessionService {
         if (raw == null) {
             return "";
         }
-        return normalizeDbText(raw, maxLen);
+        String canonical = Normalizer.normalize(raw, Normalizer.Form.NFKC);
+        return validateTaintedDbText(canonical, maxLen);
     }
 
     private String normalizeDbText(String value, int maxLen) {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .replace('\u0000', ' ')
+                .replace("\r", "")
+                .trim();
         if (maxLen > 0 && normalized.length() > maxLen) {
             return normalized.substring(0, maxLen);
         }
@@ -421,36 +427,58 @@ public class DashboardSessionService {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    String value = normalizeDbText(readAtMostChars(closeable, 4096), 4096);
-                    return validateTaintedDbText(value, 4096);
+                    return TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB text stream for column " + column, ex);
+            log.log(Level.FINE, "Unable to read DB character stream for column " + column, ex);
         } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to decode DB text stream for column " + column, ex);
+            log.log(Level.FINE, "Unable to decode DB character stream for column " + column, ex);
         }
 
         try {
-            byte[] bytes = rs.getBytes(column);
-            if (bytes == null) {
-                return null;
+            byte[] rawBytes = rs.getBytes(column);
+            if (rawBytes != null) {
+                return new String(rawBytes, StandardCharsets.UTF_8);
             }
-            String value = normalizeDbText(new String(bytes, StandardCharsets.UTF_8), 4096);
-            return validateTaintedDbText(value, 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
+        }
+
+        try {
+            String raw = rs.getString(column);
+            if (raw != null) {
+                return normalizeDbText(raw, 4096);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to read DB string for column " + column, ex);
+        }
+
+        try {
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return null;
+            }
+            return String.valueOf(raw);
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "Unable to read DB object text for column " + column, ex);
             return null;
         }
     }
 
+
     private String validateTaintedDbText(String value, int maxLen) {
-        if (value == null || value.isBlank()) {
-            return value;
+        if (value == null) {
+            return null;
         }
-        StringBuilder safe = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        String normalizedInput = normalizeDbText(canonical, maxLen);
+        if (normalizedInput.isBlank()) {
+            return normalizedInput;
+        }
+        StringBuilder safe = new StringBuilder(normalizedInput.length());
+        for (int i = 0; i < normalizedInput.length(); i++) {
+            char ch = normalizedInput.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
@@ -463,27 +491,7 @@ public class DashboardSessionService {
         return normalized;
     }
 
-    private String readAtMostChars(Reader reader, int maxChars) throws IOException {
-        if (maxChars <= 0) {
-            return "";
-        }
-
-        StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
-        char[] buffer = new char[256];
-        int remaining = maxChars;
-        while (remaining > 0) {
-            int toRead = Math.min(buffer.length, remaining);
-            int read = reader.read(buffer, 0, toRead);
-            if (read < 0) {
-                break;
-            }
-            builder.append(buffer, 0, read);
-            remaining -= read;
-        }
-        return builder.toString();
-    }
-
-    String formatTimestamp(Timestamp ts) {
+    final String formatTimestamp(Timestamp ts) {
         if (ts == null) {
             return "-";
         }

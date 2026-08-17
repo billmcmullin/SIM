@@ -61,6 +61,7 @@ import com.sim.chatserver.security.review.ReviewOutputValidator;
 import com.sim.chatserver.security.review.TrustedUrlValidator;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
+import com.sim.chatserver.service.ReviewSamplingService;
 import com.sim.chatserver.service.ApiAuthResolver;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
@@ -71,6 +72,7 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore;
@@ -504,7 +506,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             STATE.orchestrator = new WidgetReviewMapReduceOrchestrator(
                     STATE.workspaceClient,
-                    new ReviewContextBuilderService(),
+                    new ReviewContextBuilderService(new ReviewSamplingService()),
                     new PromptTemplateService(),
                     STATE.reviewOutputValidator,
                     STATE.mrConfig.getBatchSize(),
@@ -1017,7 +1019,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
         Throwable cause = throwable.getCause();
-        if (cause == throwable) {
+        if (throwable.equals(cause)) {
             return false;
         }
         return causedByInterrupted(cause);
@@ -1215,7 +1217,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             int safeTotal = Math.max(0, totalWidgets);
             if (safeTotal > 0) {
-                int scaledPercent = 5 + (int) Math.round(((Math.max(0, widgetIndex - 1) * 100.0d) / safeTotal) * 0.85d);
+                int scaledPercent = 5 + toSafeInt(Math.round(((Math.max(0, widgetIndex - 1) * 100.0d) / safeTotal) * 0.85d));
                 STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
@@ -1241,8 +1243,8 @@ public class WidgetSyncServlet extends HttpServlet {
         withSyncProgressLock(() -> {
             int total = Math.max(0, STATE.syncTotalWidgets);
             if (total > 0) {
-                int widgetPercent = (int) Math.round((completed * 100.0d) / total);
-                int scaledPercent = 5 + (int) Math.round(widgetPercent * 0.85d);
+                int widgetPercent = toSafeInt(Math.round((completed * 100.0d) / total));
+                int scaledPercent = 5 + toSafeInt(Math.round(widgetPercent * 0.85d));
                 STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
@@ -1295,7 +1297,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private int computeSyncProgressPercent(boolean running, int totalWidgets, int completedWidgets) {
         int percent = clampPercent(STATE.syncProgressPercent);
         if (totalWidgets > 0) {
-            int computed = (int) Math.round((Math.max(0, completedWidgets) * 100.0d) / totalWidgets);
+            int computed = toSafeInt(Math.round((Math.max(0, completedWidgets) * 100.0d) / totalWidgets));
             percent = Math.max(percent, clampPercent(computed));
         }
         if (running && percent >= 100) {
@@ -1356,70 +1358,14 @@ public class WidgetSyncServlet extends HttpServlet {
 
             STATE.summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
 
-            ServerConfig cfg = loadServerConfig("daily summary generation");
-            if (cfg == null) {
-                return failDailySummary(day, slot, entryCount,
-                        "Server configuration missing.",
-                        "Unable to generate summary: missing server configuration.");
+            SummaryRequestContext requestContext = prepareSummaryRequestContext(day, slot, entryCount);
+            if (requestContext == null) {
+                return false;
             }
-
-            String workspaceSlug = buildSlug(cfg.getWorkspaceName());
-            String baseUrl = sanitizeBaseUrl(buildBaseUrl(cfg));
-            // Daily summary must use the API key from Server/Workspace configuration only.
-            // Do not silently fall back to Widget Health credentials.
-            String apiKey = defaultIfBlank(cfg.getApiKey(), null);
-            ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
-            boolean hasSummaryAuth = resolvedSummaryAuth.hasToken();
-
-            if (workspaceSlug == null || workspaceSlug.isBlank() || baseUrl == null || baseUrl.isBlank()) {
-                return failDailySummary(day, slot, entryCount,
-                        "Workspace configuration incomplete.",
-                        "Unable to generate summary: workspace configuration incomplete.");
-            }
-
-            if (!hasSummaryAuth) {
-                return failDailySummary(day, slot, entryCount,
-                        "Server/workspace API authentication configuration incomplete.",
-                        "Unable to generate summary: configure API key in the Server and Workspace section.");
-            }
-
-            String targetUrl = stripTrailingSlash(baseUrl)
-                    + "/api/v1/workspace/"
-                    + URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8)
-                    + "/chat";
-
-            String canonicalTargetUrl = canonicalizeHttpUrl(targetUrl);
-            if (canonicalTargetUrl.isBlank()) {
-                return failDailySummary(day, slot, entryCount,
-                        "Workspace URL canonicalization failed.",
-                        "Unable to generate summary: workspace URL canonicalization failed.");
-            }
-
-            boolean requireHttpsWithAuth = isHttpsRequiredWithAuth();
-            if (hasSummaryAuth && !isHttpsUrl(canonicalTargetUrl) && requireHttpsWithAuth) {
-                return failDailySummary(day, slot, entryCount,
-                        "Workspace URL must be HTTPS when API key is configured.",
-                        "Unable to generate summary: API key requires HTTPS workspace URL.");
-            }
-
-            if (hasSummaryAuth && !isHttpsUrl(canonicalTargetUrl) && !requireHttpsWithAuth) {
-                log.info(() -> "Widget summary generation allowing HTTP workspace URL with API key because "
-                        + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + canonicalTargetUrl);
-            }
-
-            TrustedUrlValidator.ValidationResult trust = STATE.trustedUrlValidator.validate(canonicalTargetUrl);
-            if (!trust.isValid()) {
-                String trustReason = defaultIfBlank(trust.getReason(), "unspecified trust validation failure.");
-                if (isSummaryTargetFromConfiguredServer(canonicalTargetUrl, cfg)) {
-                    log.log(Level.INFO,
-                        "Bypassing summary URL trust validation for DB-configured workspace target. reason={0}, url={1}",
-                        new Object[]{trustReason, canonicalTargetUrl});
-                } else {
-                return failDailySummary(day, slot, entryCount,
-                        "Workspace URL trust validation failed.",
-                    "Unable to generate summary: workspace URL trust validation failed. Reason: " + trustReason);
-                }
-            }
+            String workspaceSlug = requestContext.workspaceSlug;
+            String apiKey = requestContext.apiKey;
+            String canonicalTargetUrl = requestContext.canonicalTargetUrl;
+            ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = requestContext.resolvedSummaryAuth;
 
             STATE.summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
 
@@ -1596,6 +1542,126 @@ public class WidgetSyncServlet extends HttpServlet {
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
                     "Summary generation failed due to an internal error: " + defaultString(e.getMessage()));
+        }
+    }
+
+    private SummaryRequestContext prepareSummaryRequestContext(LocalDate day, int slot, int entryCount) {
+        ServerConfig cfg = loadServerConfig("daily summary generation");
+        if (cfg == null) {
+            failDailySummary(
+                    day,
+                    slot,
+                    entryCount,
+                    "Server configuration missing.",
+                    "Unable to generate summary: missing server configuration."
+            );
+            return null;
+        }
+
+        String workspaceSlug = buildSlug(cfg.getWorkspaceName());
+        String baseUrl = sanitizeBaseUrl(buildBaseUrl(cfg));
+        String apiKey = defaultIfBlank(cfg.getApiKey(), null);
+        ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
+
+        if (workspaceSlug == null || workspaceSlug.isBlank() || baseUrl == null || baseUrl.isBlank()) {
+            failDailySummary(
+                    day,
+                    slot,
+                    entryCount,
+                    "Workspace configuration incomplete.",
+                    "Unable to generate summary: workspace configuration incomplete."
+            );
+            return null;
+        }
+
+        if (!resolvedSummaryAuth.hasToken()) {
+            failDailySummary(
+                    day,
+                    slot,
+                    entryCount,
+                    "Server/workspace API authentication configuration incomplete.",
+                    "Unable to generate summary: configure API key in the Server and Workspace section."
+            );
+            return null;
+        }
+
+        String targetUrl = stripTrailingSlash(baseUrl)
+                + "/api/v1/workspace/"
+                + URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8)
+                + "/chat";
+        String canonicalTargetUrl = canonicalizeHttpUrl(targetUrl);
+        if (canonicalTargetUrl.isBlank()) {
+            failDailySummary(
+                    day,
+                    slot,
+                    entryCount,
+                    "Workspace URL canonicalization failed.",
+                    "Unable to generate summary: workspace URL canonicalization failed."
+            );
+            return null;
+        }
+
+        boolean requireHttpsWithAuth = isHttpsRequiredWithAuth();
+        if (!isHttpsUrl(canonicalTargetUrl) && requireHttpsWithAuth) {
+            failDailySummary(
+                    day,
+                    slot,
+                    entryCount,
+                    "Workspace URL must be HTTPS when API key is configured.",
+                    "Unable to generate summary: API key requires HTTPS workspace URL."
+            );
+            return null;
+        }
+
+        if (!isHttpsUrl(canonicalTargetUrl) && !requireHttpsWithAuth) {
+            log.info(() -> "Widget summary generation allowing HTTP workspace URL with API key because "
+                    + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + canonicalTargetUrl);
+        }
+
+        TrustedUrlValidator.ValidationResult trust = STATE.trustedUrlValidator.validate(canonicalTargetUrl);
+        if (!trust.isValid()) {
+            String trustReason = defaultIfBlank(trust.getReason(), "unspecified trust validation failure.");
+            if (!isSummaryTargetFromConfiguredServer(canonicalTargetUrl, cfg)) {
+                failDailySummary(
+                        day,
+                        slot,
+                        entryCount,
+                        "Workspace URL trust validation failed.",
+                        "Unable to generate summary: workspace URL trust validation failed. Reason: " + trustReason
+                );
+                return null;
+            }
+
+            log.log(
+                    Level.INFO,
+                    "Bypassing summary URL trust validation for DB-configured workspace target. reason={0}, url={1}",
+                    new Object[]{trustReason, canonicalTargetUrl}
+            );
+        }
+
+        return new SummaryRequestContext(cfg, workspaceSlug, apiKey, canonicalTargetUrl, resolvedSummaryAuth);
+    }
+
+    private static final class SummaryRequestContext {
+
+        private final ServerConfig config;
+        private final String workspaceSlug;
+        private final String apiKey;
+        private final String canonicalTargetUrl;
+        private final ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth;
+
+        private SummaryRequestContext(
+                ServerConfig config,
+                String workspaceSlug,
+                String apiKey,
+                String canonicalTargetUrl,
+                ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth
+        ) {
+            this.config = config;
+            this.workspaceSlug = workspaceSlug;
+            this.apiKey = apiKey;
+            this.canonicalTargetUrl = canonicalTargetUrl;
+            this.resolvedSummaryAuth = resolvedSummaryAuth;
         }
     }
 
@@ -2178,7 +2244,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private int computeOverallSummaryScore(double qualityScore, double responseScore, double usageScore) {
         double weighted = (qualityScore * 0.40d) + (responseScore * 0.40d) + (usageScore * 0.20d);
-        int normalized = (int) Math.round((weighted / 5.0d) * 100.0d);
+        int normalized = toSafeInt(Math.round((weighted / 5.0d) * 100.0d));
         if (normalized < 0) {
             return 0;
         }
@@ -2422,36 +2488,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String extractPrimaryText(String body) {
-        if (body == null || body.isBlank()) {
-            return "";
-        }
-        try (var reader = Json.createReader(new StringReader(body))) {
-            JsonObject o = reader.readObject();
-            String t = o.getString("textResponse", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("response", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("message", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("answer", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            t = o.getString("output", "");
-            if (!t.isBlank()) {
-                return t;
-            }
-            return body;
-        } catch (JsonException | ClassCastException ex) {
-            log.log(Level.FINE, "Unable to parse primary text response as JSON", ex);
-            return body;
-        }
+        return JsonPrimaryTextUtil.extractPrimaryText(body, log, "Unable to parse primary text response as JSON");
     }
 
     // ---------- Existing sync implementation ----------
@@ -2580,7 +2617,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     throw new IllegalStateException("Invalid JSON received from sync API", je);
                 }
             }
-        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -2591,9 +2628,18 @@ public class WidgetSyncServlet extends HttpServlet {
                     "url=" + uri + "\nwidgetId=" + defaultString(widgetId) + "\nmessage=" + defaultString(e.getMessage()),
                     e
             );
-            if (e instanceof IllegalStateException stateEx) {
-                throw stateEx;
+            throw e;
+        } catch (IOException | IllegalArgumentException e) {
+            if (causedByInterrupted(e)) {
+                Thread.currentThread().interrupt();
             }
+            ServerDiagnosticsLog.write(
+                    "widget-sync",
+                    requestId,
+                    "sync-error",
+                    "url=" + uri + "\nwidgetId=" + defaultString(widgetId) + "\nmessage=" + defaultString(e.getMessage()),
+                    e
+            );
             throw new IllegalStateException("Sync API communication failed", e);
         }
     }
@@ -2690,13 +2736,23 @@ public class WidgetSyncServlet extends HttpServlet {
         if (waitNanos > 0L) {
             try {
                 long waitMs = TimeUnit.NANOSECONDS.toMillis(waitNanos);
-                int extraNanos = (int) (waitNanos - TimeUnit.MILLISECONDS.toNanos(waitMs));
+                int extraNanos = toSafeInt(waitNanos - TimeUnit.MILLISECONDS.toNanos(waitMs));
                 Thread.sleep(waitMs, extraNanos);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Sync request throttling interrupted", e);
             }
         }
+    }
+
+    private int toSafeInt(long value) {
+        if (value <= Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        if (value >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(value);
     }
 
     private void withSyncRateLimitLock(Runnable action) {

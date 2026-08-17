@@ -130,10 +130,18 @@ public class DefaultTranslationService implements TranslationService {
                             + "\ntranslated=" + translated
             );
             return TranslationResult.ok(source, target, translated);
-        } catch (IOException | InterruptedException ex) {
-            if (ex instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.log(Level.WARNING, "Translation failed", ex);
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "translation-error",
+                    "message=" + safe(ex.getMessage()),
+                    ex
+            );
+            return TranslationResult.fail("Unable to translate at this time.");
+        } catch (IOException ex) {
             log.log(Level.WARNING, "Translation failed", ex);
             ServerDiagnosticsLog.write(
                     "translation-service",
@@ -267,10 +275,18 @@ public class DefaultTranslationService implements TranslationService {
                 }
                 return top.getString("language", "").toLowerCase(Locale.ROOT);
             }
-        } catch (IOException | InterruptedException | JsonException | ClassCastException | IllegalStateException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.log(Level.FINE, "Provider language detect failed, using heuristic fallback", e);
+            ServerDiagnosticsLog.write(
+                    "translation-service",
+                    requestId,
+                    "detect-error",
+                    "message=" + safe(e.getMessage()),
+                    e
+            );
+            return "";
+        } catch (IOException | JsonException | ClassCastException | IllegalStateException e) {
             log.log(Level.FINE, "Provider language detect failed, using heuristic fallback", e);
             ServerDiagnosticsLog.write(
                     "translation-service",

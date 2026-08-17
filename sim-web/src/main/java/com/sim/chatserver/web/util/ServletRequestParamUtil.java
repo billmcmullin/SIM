@@ -2,6 +2,7 @@ package com.sim.chatserver.web.util;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.text.Normalizer;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -63,7 +64,8 @@ public final class ServletRequestParamUtil {
             return null;
         }
 
-        String normalized = value.replace("\u0000", "")
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
+            .replace("\u0000", "")
                 .replace("\r", "")
                 .trim();
 
@@ -149,7 +151,7 @@ public final class ServletRequestParamUtil {
             return null;
         }
 
-        String normalized = value;
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         if (stripNullByte) {
             normalized = normalized.replace("\u0000", "");
         }

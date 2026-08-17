@@ -718,13 +718,16 @@ public class WidgetReviewMapReduceOrchestrator {
         }
         int limit = Math.max(1, maxItems);
         int chars = Math.max(200, maxCharsPerItem);
+        int inputSize = inputs.size();
+        int accepted = 0;
 
-        for (int i = 0; i < inputs.size() && out.size() < limit; i++) {
+        for (int i = 0; i < inputSize && accepted < limit; i++) {
             String s = inputs.get(i);
             if (s == null || s.isBlank()) {
                 continue;
             }
             out.add(trimTo(s, chars));
+            accepted++;
         }
 
         if (out.isEmpty()) {
@@ -748,8 +751,9 @@ public class WidgetReviewMapReduceOrchestrator {
             return out;
         }
         int s = Math.max(1, size);
-        for (int i = 0; i < src.size(); i += s) {
-            out.add(new ArrayList<>(src.subList(i, Math.min(src.size(), i + s))));
+        int srcSize = src.size();
+        for (int i = 0; i < srcSize; i += s) {
+            out.add(new ArrayList<>(src.subList(i, Math.min(srcSize, i + s))));
         }
         return out;
     }

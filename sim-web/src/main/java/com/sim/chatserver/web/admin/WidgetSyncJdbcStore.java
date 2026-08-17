@@ -30,6 +30,7 @@ import javax.sql.DataSource;
 import com.sim.chatserver.model.SelectedEntry;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 import jakarta.json.JsonObject;
 
@@ -613,7 +614,7 @@ final class WidgetSyncJdbcStore {
             return "";
         }
         text = Normalizer.normalize(text, Normalizer.Form.NFKC);
-        text = stripControlCharacters(text);
+        text = TextIoSanitizerUtil.stripControlCharacters(text);
         if (text.indexOf('\u0000') >= 0) {
             text = text.replace('\u0000', ' ');
         }
@@ -632,7 +633,7 @@ final class WidgetSyncJdbcStore {
             Reader reader = rs.getCharacterStream(columnName);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    String raw = readAtMostChars(closeable, maxLen);
+                    String raw = Normalizer.normalize(readAtMostChars(closeable, maxLen), Normalizer.Form.NFKC);
                     return validateTaintedDbText(raw, maxLen);
                 }
             }
@@ -642,7 +643,7 @@ final class WidgetSyncJdbcStore {
 
         try {
             byte[] bytes = rs.getBytes(columnName);
-            String raw = readAtMostBytes(bytes, maxLen);
+            String raw = Normalizer.normalize(readAtMostBytes(bytes, maxLen), Normalizer.Form.NFKC);
             return validateTaintedDbText(raw, maxLen);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes failed for column " + columnName, ex);
@@ -654,7 +655,8 @@ final class WidgetSyncJdbcStore {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        String sanitized = stripControlCharacters(value);
+        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
+        String sanitized = TextIoSanitizerUtil.stripControlCharacters(canonical);
         if (maxLen > 0 && sanitized.length() > maxLen) {
             return sanitized.substring(0, maxLen);
         }
@@ -694,19 +696,6 @@ final class WidgetSyncJdbcStore {
         return new String(bytes, 0, length, StandardCharsets.UTF_8);
     }
 
-    private String stripControlCharacters(String input) {
-        if (input == null || input.isEmpty()) {
-            return "";
-        }
-        StringBuilder sanitized = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if (c == '\n' || c == '\r' || c == '\t' || !Character.isISOControl(c)) {
-                sanitized.append(c);
-            }
-        }
-        return sanitized.toString();
-    }
 
     private String normalizeSummaryPrompt(String prompt) {
         String normalized = prompt == null ? "" : prompt.replace("\r\n", "\n").replace('\r', '\n').trim();

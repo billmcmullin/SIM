@@ -51,7 +51,7 @@ public class ReviewContextBuilderService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public ReviewContextBuilderService() {
+    private ReviewContextBuilderService() {
         this(new ReviewSamplingService());
     }
 
@@ -125,15 +125,16 @@ public class ReviewContextBuilderService {
         return trimTo(sb.toString(), maxChars);
     }
 
-    final List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
+    private List<List<SelectedEntry>> splitForMap(List<SelectedEntry> entries, int batchSize) {
         List<List<SelectedEntry>> out = new ArrayList<>();
         if (entries == null || entries.isEmpty()) {
             return out;
         }
 
         int size = batchSize <= 0 ? DEFAULT_MAP_BATCH_SIZE : batchSize;
-        for (int i = 0; i < entries.size(); i += size) {
-            out.add(new ArrayList<>(entries.subList(i, Math.min(entries.size(), i + size))));
+        int totalEntries = entries.size();
+        for (int i = 0; i < totalEntries; i += size) {
+            out.add(new ArrayList<>(entries.subList(i, Math.min(totalEntries, i + size))));
         }
         return out;
     }
@@ -217,7 +218,7 @@ public class ReviewContextBuilderService {
         return buildReduceContext(userMessage, mapOutputs, List.of(), maxChars);
     }
 
-    final String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
+    private String buildReduceContext(String userMessage, List<String> mapOutputs, List<Integer> failedBatchIndexes, int maxChars) {
         return buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, List.of(), List.of(), maxChars);
     }
 
@@ -320,7 +321,7 @@ public class ReviewContextBuilderService {
         return sb.toString();
     }
 
-    final List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
+    private List<SelectedEntry> explodeLargeEntryToSegments(SelectedEntry entry, int promptChunkChars, int responseChunkChars) {
         if (entry == null) {
             return List.of();
         }
@@ -566,7 +567,7 @@ public class ReviewContextBuilderService {
         StringBuilder out = new StringBuilder();
 
         int total = sample.size();
-        int batches = (int) Math.ceil(total / (double) batchSize);
+        int batches = (total + batchSize - 1) / batchSize;
 
         for (int b = 0; b < batches; b++) {
             int from = b * batchSize;
@@ -687,7 +688,7 @@ public class ReviewContextBuilderService {
         final int randomCount;
         final int maxHashLines;
 
-        Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
+        private Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
             this.name = name;
             this.topRelevantCount = topRelevantCount;
             this.newestCount = newestCount;

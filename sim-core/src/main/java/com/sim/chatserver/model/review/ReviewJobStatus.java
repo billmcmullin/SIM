@@ -323,7 +323,7 @@ public final class ReviewJobStatus {
                     yield 20;
                 }
                 double ratio = Math.min(1.0, completedBatches / (double) totalBatches);
-                yield 5 + (int) Math.round(ratio * 75.0);
+                yield 5 + safeRoundedPercent(ratio * 75.0);
             }
             case REDUCE ->
                 90;
@@ -614,7 +614,7 @@ public final class ReviewJobStatus {
         if (missingIds != null && !missingIds.isEmpty()) {
             used = Math.max(0, total - missingIds.size());
         }
-        return (int) Math.round((used * 100.0) / total);
+        return safeRoundedPercent((used * 100.0) / total);
     }
 
     private static int deriveBatchProgressPercent(int totalBatches, int completedBatches, Phase phase, boolean done) {
@@ -630,7 +630,18 @@ public final class ReviewJobStatus {
         if (totalBatches <= 0) {
             return phase == Phase.MAP ? 20 : 0;
         }
-        return clampPercent((int) Math.round((Math.max(0, completedBatches) * 100.0) / totalBatches));
+        return clampPercent(safeRoundedPercent((Math.max(0, completedBatches) * 100.0) / totalBatches));
+    }
+
+    private static int safeRoundedPercent(double value) {
+        long rounded = Math.round(value);
+        if (rounded <= Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        if (rounded >= Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(rounded);
     }
 
     private static String deriveDefaultActivity(Phase phase, boolean done, int totalBatches, int completedBatches, int failedBatches) {

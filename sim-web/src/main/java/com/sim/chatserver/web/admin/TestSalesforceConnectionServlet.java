@@ -101,10 +101,14 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 if (isBlank(instanceUrl)) {
                     instanceUrl = authResult == null ? null : authResult.instanceUrl;
                 }
-            } catch (IOException | InterruptedException | SQLException | RuntimeException e) {
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
+                        Json.createObjectBuilder().add("status", "error")
+                                .add("message", "Unable to acquire Salesforce access token from configured credentials.").build());
+                return;
+            } catch (IOException | SQLException | RuntimeException e) {
                 log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder().add("status", "error")
@@ -169,10 +173,20 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 writeJson(resp, response.statusCode(),
                         Json.createObjectBuilder().add("status", "error").add("message", body).build());
             }
-        } catch (IOException | InterruptedException | IllegalArgumentException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.log(Level.WARNING, "Salesforce connection test failed", e);
+            ServerDiagnosticsLog.write(
+                "test-salesforce-connection-servlet",
+                requestId,
+                "http-error",
+                "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                e
+            );
+            writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
+                Json.createObjectBuilder().add("status", "error")
+                    .add("message", "Unable to contact Salesforce endpoint.").build());
+        } catch (IOException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Salesforce connection test failed", e);
             ServerDiagnosticsLog.write(
                     "test-salesforce-connection-servlet",

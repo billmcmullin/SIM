@@ -709,7 +709,7 @@ public class ReviewJobService {
             usedCount = Math.max(0, total - missing.size());
         }
 
-        int p = (int) Math.round((usedCount * 100.0) / total);
+        int p = Math.toIntExact(Math.round((usedCount * 100.0) / total));
         return Math.max(0, Math.min(100, p));
     }
 
@@ -776,75 +776,75 @@ public class ReviewJobService {
             this.contentType = contentType == null || contentType.isBlank() ? "application/json" : contentType;
         }
 
-        public int httpStatus() {
+        int httpStatus() {
             return httpStatus;
         }
 
-        public boolean success() {
+        boolean success() {
             return success;
         }
 
-        public String message() {
+        String message() {
             return message;
         }
 
-        public String errorMessage() {
+        String errorMessage() {
             return errorMessage;
         }
 
-        public int totalBatches() {
+        int totalBatches() {
             return totalBatches;
         }
 
-        public int completedBatches() {
+        int completedBatches() {
             return completedBatches;
         }
 
-        public int failedBatches() {
+        int failedBatches() {
             return failedBatches;
         }
 
-        public int retries() {
+        int retries() {
             return retries;
         }
 
-        public int coveragePercent() {
+        int coveragePercent() {
             return 0;
         } // compatibility
 
-        public boolean coverageComplete() {
+        boolean coverageComplete() {
             return missingChatIds.isEmpty();
         }
 
-        public List<String> allSelectedChatIds() {
+        List<String> allSelectedChatIds() {
             return allSelectedChatIds;
         }
 
-        public List<String> usedChatIds() {
+        List<String> usedChatIds() {
             return usedChatIds;
         }
 
-        public List<String> missingChatIds() {
+        List<String> missingChatIds() {
             return missingChatIds;
         }
 
-        public List<Integer> failedBatchIndexes() {
+        List<Integer> failedBatchIndexes() {
             return failedBatchIndexes;
         }
 
-        public List<String> warnings() {
+        List<String> warnings() {
             return warnings;
         }
 
-        public String finalReport() {
+        String finalReport() {
             return finalReport;
         }
 
-        public String rawResponseBody() {
+        String rawResponseBody() {
             return rawResponseBody;
         }
 
-        public String contentType() {
+        String contentType() {
             return contentType;
         }
     }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.service;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,7 +34,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -54,7 +55,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -75,7 +76,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -100,7 +101,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader4() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -125,7 +126,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader5() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -154,7 +155,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildBatchDeterministicHeader6() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         int totalSelected = 1; // UTA: default value
@@ -183,7 +184,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildContext() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -202,7 +203,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildContext2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -370,7 +371,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildContext9() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -390,7 +391,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildContext10() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -410,7 +411,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildContext11() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -587,7 +588,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -609,7 +610,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -631,7 +632,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -734,7 +735,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext7() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -759,7 +760,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext8() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -784,7 +785,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildMapBatchContext9() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -919,7 +920,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -941,7 +942,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -961,7 +962,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: configured value
@@ -981,7 +982,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext4() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1001,7 +1002,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext5() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1021,7 +1022,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext6() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1043,7 +1044,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext7() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1054,7 +1055,7 @@ public class ReviewContextBuilderServiceTest
         Integer item2 = 1; // UTA: default value
         failedBatchIndexes.add(item2);
         int maxChars = 0; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1068,14 +1069,14 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext8() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
         List<String> mapOutputs = null; // UTA: configured value
         List<Integer> failedBatchIndexes = null; // UTA: configured value
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1089,14 +1090,14 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext9() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: configured value
         List<String> mapOutputs = null; // UTA: configured value
         List<Integer> failedBatchIndexes = null; // UTA: configured value
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1110,14 +1111,14 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext10() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
         List<String> mapOutputs = null; // UTA: configured value
         List<Integer> failedBatchIndexes = new ArrayList<Integer>(); // UTA: default value
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1131,14 +1132,14 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext11() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
         List<String> mapOutputs = new ArrayList<String>(); // UTA: default value
         List<Integer> failedBatchIndexes = null; // UTA: configured value
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1152,14 +1153,14 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext12() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
         List<String> mapOutputs = null; // UTA: configured value
         List<Integer> failedBatchIndexes = null; // UTA: configured value
         int maxChars = 2; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1173,7 +1174,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext13() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1184,7 +1185,7 @@ public class ReviewContextBuilderServiceTest
         Integer item2 = 1; // UTA: default value
         failedBatchIndexes.add(item2);
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1198,7 +1199,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext14() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1207,7 +1208,7 @@ public class ReviewContextBuilderServiceTest
         Integer item = 1; // UTA: default value
         failedBatchIndexes.add(item);
         int maxChars = 1; // UTA: configured value
-        String result = underTest.buildReduceContext(userMessage, mapOutputs, failedBatchIndexes, maxChars);
+        String result = invokeBuildReduceContextWithFailedBatches(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
 
     }
 
@@ -1221,7 +1222,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext15() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1252,7 +1253,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext16() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1275,7 +1276,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext17() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: configured value
@@ -1298,7 +1299,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext18() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1321,7 +1322,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext19() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1344,7 +1345,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext20() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1367,7 +1368,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext21() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1390,7 +1391,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext22() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = null; // UTA: configured value
@@ -1413,7 +1414,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext23() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1444,7 +1445,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext24() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1471,7 +1472,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext25() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1500,7 +1501,7 @@ public class ReviewContextBuilderServiceTest
     public void testBuildReduceContext26() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         String userMessage = "userMessage"; // UTA: default value
@@ -1525,7 +1526,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
@@ -1545,7 +1546,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1565,7 +1566,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1587,7 +1588,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments4() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1614,7 +1615,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments5() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1641,7 +1642,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments6() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1668,7 +1669,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments7() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1702,7 +1703,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments8() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1738,7 +1739,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments9() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1774,7 +1775,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments10() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1810,7 +1811,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments11() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1846,7 +1847,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments12() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1882,7 +1883,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments13() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1918,7 +1919,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments14() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1954,7 +1955,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments15() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -1990,7 +1991,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments16() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2042,7 +2043,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments17() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2094,7 +2095,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments18() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2146,7 +2147,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments19() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2198,7 +2199,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments20() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2250,7 +2251,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments21() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2302,7 +2303,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments22() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2354,7 +2355,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments23() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2406,7 +2407,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments24() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2445,7 +2446,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntriesToSegments25() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -2484,13 +2485,13 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = null; // UTA: configured value
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2504,7 +2505,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2515,7 +2516,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getResponse()).thenReturn(getResponseResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2529,7 +2530,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2540,7 +2541,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getResponse()).thenReturn(getResponseResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2554,7 +2555,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments4() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2565,7 +2566,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getResponse()).thenReturn(getResponseResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2579,7 +2580,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments5() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2599,7 +2600,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2613,7 +2614,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments6() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2633,7 +2634,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2647,7 +2648,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments7() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2667,7 +2668,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2681,7 +2682,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments8() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2701,7 +2702,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2715,7 +2716,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments9() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2735,7 +2736,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2749,7 +2750,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments10() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2769,7 +2770,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2783,7 +2784,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments11() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2803,7 +2804,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2817,7 +2818,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments12() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2837,7 +2838,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2851,7 +2852,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments13() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2874,7 +2875,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult, getSessionIdResult2);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2888,7 +2889,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments14() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2910,7 +2911,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2924,7 +2925,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments15() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2947,7 +2948,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult, getSessionIdResult2);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2961,7 +2962,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments16() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -2983,7 +2984,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult, getSessionIdResult2);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -2997,7 +2998,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments17() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -3018,7 +3019,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -3032,7 +3033,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments18() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -3054,7 +3055,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getSessionId()).thenReturn(getSessionIdResult, getSessionIdResult2);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -3068,7 +3069,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments19() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -3076,7 +3077,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getPrompt()).thenReturn(getPromptResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -3090,7 +3091,7 @@ public class ReviewContextBuilderServiceTest
     public void testExplodeLargeEntryToSegments20() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         SelectedEntry entry = mock(SelectedEntry.class);
@@ -3098,7 +3099,7 @@ public class ReviewContextBuilderServiceTest
         when(entry.getPrompt()).thenReturn(getPromptResult);
         int promptChunkChars = 1; // UTA: default value
         int responseChunkChars = 1; // UTA: default value
-        List<SelectedEntry> result = underTest.explodeLargeEntryToSegments(entry, promptChunkChars, responseChunkChars);
+        List<SelectedEntry> result = invokeExplodeLargeEntryToSegments(underTest, entry, promptChunkChars, responseChunkChars);
 
     }
 
@@ -3112,12 +3113,12 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMap() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
         int batchSize = 1; // UTA: default value
-        List<List<SelectedEntry>> result = underTest.splitForMap(entries, batchSize);
+        List<List<SelectedEntry>> result = invokeSplitForMap(underTest, entries, batchSize);
 
     }
 
@@ -3131,12 +3132,12 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMap2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         int batchSize = 1; // UTA: default value
-        List<List<SelectedEntry>> result = underTest.splitForMap(entries, batchSize);
+        List<List<SelectedEntry>> result = invokeSplitForMap(underTest, entries, batchSize);
 
     }
 
@@ -3150,12 +3151,12 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMap3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         int batchSize = 0; // UTA: configured value
-        List<List<SelectedEntry>> result = underTest.splitForMap(entries, batchSize);
+        List<List<SelectedEntry>> result = invokeSplitForMap(underTest, entries, batchSize);
 
     }
 
@@ -3169,14 +3170,14 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMap4() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int batchSize = 0; // UTA: configured value
-        List<List<SelectedEntry>> result = underTest.splitForMap(entries, batchSize);
+        List<List<SelectedEntry>> result = invokeSplitForMap(underTest, entries, batchSize);
 
     }
 
@@ -3190,14 +3191,14 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMap5() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
         SelectedEntry item = mock(SelectedEntry.class);
         entries.add(item);
         int batchSize = 1; // UTA: configured value
-        List<List<SelectedEntry>> result = underTest.splitForMap(entries, batchSize);
+        List<List<SelectedEntry>> result = invokeSplitForMap(underTest, entries, batchSize);
 
     }
 
@@ -3211,7 +3212,7 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMapAdaptive() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = null; // UTA: configured value
@@ -3231,7 +3232,7 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMapAdaptive2() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -3251,7 +3252,7 @@ public class ReviewContextBuilderServiceTest
     public void testSplitForMapAdaptive3() throws Throwable
     {
         // Given
-        ReviewContextBuilderService underTest = new ReviewContextBuilderService();
+        ReviewContextBuilderService underTest = new ReviewContextBuilderService(new ReviewSamplingService());
 
         // When
         List<SelectedEntry> entries = new ArrayList<SelectedEntry>(); // UTA: default value
@@ -3261,5 +3262,51 @@ public class ReviewContextBuilderServiceTest
         int minBatchSize = 1; // UTA: default value
         List<List<SelectedEntry>> result = underTest.splitForMapAdaptive(entries, preferredBatchSize, minBatchSize);
 
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<List<SelectedEntry>> invokeSplitForMap(
+            ReviewContextBuilderService underTest,
+            List<SelectedEntry> entries,
+            int batchSize
+    ) throws Exception {
+        Method method = ReviewContextBuilderService.class.getDeclaredMethod("splitForMap", List.class, int.class);
+        method.setAccessible(true);
+        return (List<List<SelectedEntry>>) method.invoke(underTest, entries, batchSize);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<SelectedEntry> invokeExplodeLargeEntryToSegments(
+            ReviewContextBuilderService underTest,
+            SelectedEntry entry,
+            int promptChunkChars,
+            int responseChunkChars
+    ) throws Exception {
+        Method method = ReviewContextBuilderService.class.getDeclaredMethod(
+                "explodeLargeEntryToSegments",
+                SelectedEntry.class,
+                int.class,
+                int.class
+        );
+        method.setAccessible(true);
+        return (List<SelectedEntry>) method.invoke(underTest, entry, promptChunkChars, responseChunkChars);
+    }
+
+    private static String invokeBuildReduceContextWithFailedBatches(
+            ReviewContextBuilderService underTest,
+            String userMessage,
+            List<String> mapOutputs,
+            List<Integer> failedBatchIndexes,
+            int maxChars
+    ) throws Exception {
+        Method method = ReviewContextBuilderService.class.getDeclaredMethod(
+                "buildReduceContext",
+                String.class,
+                List.class,
+                List.class,
+                int.class
+        );
+        method.setAccessible(true);
+        return (String) method.invoke(underTest, userMessage, mapOutputs, failedBatchIndexes, maxChars);
     }
 }

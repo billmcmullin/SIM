@@ -171,10 +171,18 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             EncryptedDbConfigStore.save(cfg);
 
             redirectWithMessage(resp, req, true, "Salesforce OAuth connected successfully.");
-        } catch (IOException | InterruptedException | SQLException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.log(Level.WARNING, "Salesforce OAuth callback failed", e);
+            ServerDiagnosticsLog.write(
+                    "salesforce-oauth-callback",
+                    requestId,
+                    "token-error",
+                    "url=" + tokenUrl + "\nmessage=" + safe(e.getMessage()),
+                    e
+            );
+            redirectWithMessage(resp, req, false, "Salesforce OAuth connection failed.");
+        } catch (IOException | SQLException e) {
             log.log(Level.WARNING, "Salesforce OAuth callback failed", e);
             ServerDiagnosticsLog.write(
                     "salesforce-oauth-callback",
