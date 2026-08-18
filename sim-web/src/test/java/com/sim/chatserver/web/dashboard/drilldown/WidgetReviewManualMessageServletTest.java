@@ -994,19 +994,11 @@ public class WidgetReviewManualMessageServletTest
             assertNotNull(invoke(servlet, "toSafeUri", new Class[]{String.class}, "https://example.com/a"));
             assertNull(invoke(servlet, "toSafeUri", new Class[]{String.class}, "noscheme.example.com"));
     
-            HttpServletRequest reqTooLarge = mock(HttpServletRequest.class);
-            when(reqTooLarge.getContentLengthLong()).thenReturn(200_000L);
-            assertEquals("", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, reqTooLarge));
-    
-            HttpServletRequest reqIo = mock(HttpServletRequest.class);
-            when(reqIo.getContentLengthLong()).thenReturn(12L);
-            when(reqIo.getReader()).thenThrow(new IOException("cannot read"));
-            assertEquals("", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, reqIo));
-    
-            HttpServletRequest reqBody = mock(HttpServletRequest.class);
-            when(reqBody.getContentLengthLong()).thenReturn(16L);
-            when(reqBody.getReader()).thenReturn(new BufferedReader(new StringReader("  ab\r\n\u0000c  ")));
-            assertEquals("ab\nc", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, reqBody));
+            assertEquals("", invoke(servlet, "validateTaintedRequestBody", new Class[]{String.class}, new Object[]{null}));
+            String cleaned = (String) invoke(servlet, "validateTaintedRequestBody", new Class[]{String.class}, "  ab\r\n\u0000c  ");
+            assertTrue(cleaned.contains("ab"));
+            assertTrue(cleaned.contains("c"));
+            assertFalse(cleaned.contains("\u0000"));
         }
     
         @Test
@@ -2079,12 +2071,10 @@ public class WidgetReviewManualMessageServletTest
             assertNull(invoke(servlet, "toSafeUri", new Class[]{String.class}, "mailto:test@example.com"));
             assertNull(invoke(servlet, "toSafeUri", new Class[]{String.class}, "https://[broken"));
     
-            HttpServletRequest reqHuge = mock(HttpServletRequest.class);
-            when(reqHuge.getContentLengthLong()).thenReturn(1L);
             char[] chunk = new char[140_000];
             java.util.Arrays.fill(chunk, 'a');
-            when(reqHuge.getReader()).thenReturn(new BufferedReader(new StringReader(new String(chunk))));
-            assertEquals("", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, reqHuge));
+            String sanitizedLarge = (String) invoke(servlet, "validateTaintedRequestBody", new Class[]{String.class}, new String(chunk));
+            assertEquals(128 * 1024, sanitizedLarge.length());
     
             assertEquals("", invoke(servlet, "canonicalizeForValidation", new Class[]{String.class}, new Object[]{null}));
     
@@ -2188,9 +2178,16 @@ public class WidgetReviewManualMessageServletTest
         }
     
             private static Object getStaticField(Class<?> owner, String fieldName) throws Exception {
-            Field field = owner.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return field.get(null);
+            try {
+                Field field = owner.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(null);
+            } catch (NoSuchFieldException ex) {
+                Object runtime = getRuntimeHolderInstance(owner);
+                Field field = runtime.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(runtime);
+            }
             }
     
             private static ReviewJobStatus awaitJobDone(String jobId, long timeoutMs) throws Exception {
@@ -2278,9 +2275,23 @@ public class WidgetReviewManualMessageServletTest
             }
     
         private static void setStaticField(Class<?> owner, String fieldName, Object value) throws Exception {
-            Field field = owner.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(null, value);
+            try {
+                Field field = owner.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.set(null, value);
+            } catch (NoSuchFieldException ex) {
+                Object runtime = getRuntimeHolderInstance(owner);
+                Field field = runtime.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.set(runtime, value);
+            }
+        }
+
+        private static Object getRuntimeHolderInstance(Class<?> owner) throws Exception {
+            Class<?> holder = Class.forName(owner.getName() + "$RuntimeHolder");
+            Field instance = holder.getDeclaredField("INSTANCE");
+            instance.setAccessible(true);
+            return instance.get(null);
         }
     
         private static WorkspaceClient.WorkspaceResponse workspaceResponse(int code, String body, String contentType) throws Exception {

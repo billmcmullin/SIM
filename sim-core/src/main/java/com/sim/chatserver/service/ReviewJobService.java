@@ -27,7 +27,7 @@ import com.sim.chatserver.model.review.ReviewJobStatus;
  * in fixed-window batch mode, all IDs must be covered for success
  *
  * UX progress behavior: - supports step-level status details via message: "Map
- * round 1/3 · batch 2/8 running", "Reduce synthesis in progress", etc.
+ * round 1/3 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch 2/8 running", "Reduce synthesis in progress", etc.
  */
 public class ReviewJobService {
 
@@ -65,7 +65,7 @@ public class ReviewJobService {
         return new ReviewJobService();
     }
 
-    public static ReviewJobService createWithPoolSize(int poolSize) {
+    static ReviewJobService createWithPoolSize(int poolSize) {
         return new ReviewJobService(poolSize);
     }
 
@@ -122,7 +122,7 @@ public class ReviewJobService {
                         result.rawResponseBody(),
                         result.contentType()
                 );
-            } catch (RuntimeException ex) {
+            } catch (Throwable ex) {
                 log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", ex);
                 failJob(jobId, 500, ex.getMessage() == null ? "Async job failed." : ex.getMessage());
             } finally {
@@ -201,7 +201,7 @@ public class ReviewJobService {
     }
 
     // ---------- Existing phase update APIs ----------
-    public void updateMapProgress(
+    final void updateMapProgress(
             String jobId,
             int totalBatches,
             int completedBatches,
@@ -261,7 +261,7 @@ public class ReviewJobService {
         );
     }
 
-    public void updateReduceProgress(
+    final void updateReduceProgress(
             String jobId,
             int totalBatches,
             int completedBatches,
@@ -322,7 +322,7 @@ public class ReviewJobService {
     }
 
     // ---------- New convenience progress APIs (for orchestrator hooks) ----------
-    public void updateMapBatchStarted(
+    final void updateMapBatchStarted(
             String jobId,
             int round,
             int maxRounds,
@@ -333,7 +333,7 @@ public class ReviewJobService {
             List<String> missingChatIds
     ) {
         String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
-            + " · batch " + batchIndex + '/' + Math.max(1, totalBatches)
+            + " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch " + batchIndex + '/' + Math.max(1, totalBatches)
                 + " running...";
         updateMapProgress(
                 jobId,
@@ -349,7 +349,7 @@ public class ReviewJobService {
         );
     }
 
-    public void updateMapBatchCompleted(
+    final void updateMapBatchCompleted(
             String jobId,
             int round,
             int maxRounds,
@@ -361,7 +361,7 @@ public class ReviewJobService {
             List<String> missingChatIds
     ) {
         String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
-                + " · batch " + batchIndex + '/' + Math.max(1, totalBatches)
+                + " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch " + batchIndex + '/' + Math.max(1, totalBatches)
                 + " completed";
         updateMapProgress(
                 jobId,
@@ -377,7 +377,7 @@ public class ReviewJobService {
         );
     }
 
-    public void updateReduceStarted(
+    final void updateReduceStarted(
             String jobId,
             int totalBatches,
             int completedBatches,
@@ -554,7 +554,7 @@ public class ReviewJobService {
         statuses.put(jobId, completed);
     }
 
-    public int cleanupFinishedBefore(long cutoffEpochMs) {
+    final int cleanupFinishedBefore(long cutoffEpochMs) {
         int removed = 0;
         List<String> toRemove = new ArrayList<>();
 
@@ -576,11 +576,11 @@ public class ReviewJobService {
         return removed;
     }
 
-    public int size() {
+    final int size() {
         return statuses.size();
     }
 
-    public void shutdownNow() {
+    final void shutdownNow() {
         for (Future<?> f : futures.values()) {
             try {
                 f.cancel(true);

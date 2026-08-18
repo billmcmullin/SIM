@@ -94,6 +94,145 @@ public class WidgetReviewIT extends BaseUiIT {
         assertTrue(page.evaluate("() => !!window.widgetReviewConfig.selectionId").equals(Boolean.TRUE));
     }
 
+    @Test
+    @Order(5)
+    void manualMessage_requiresAuth() {
+        APIResponse response = postJson(
+                "/dashboard/drilldown/widget-review/manual-message",
+                "{\"message\":\"hello\"}"
+        );
+
+        assertEquals(401, response.status(), "Expected 401 when calling manual-message without authentication");
+        assertTrue(response.text().contains("Authentication required."));
+    }
+
+    @Test
+    @Order(6)
+    void manualMessage_rejectsInvalidPayload() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = postJson(
+                "/dashboard/drilldown/widget-review/manual-message",
+                "{}"
+        );
+
+        assertEquals(400, response.status(), "Expected 400 for empty manual-message payload");
+        assertTrue(response.text().contains("Invalid JSON payload."));
+    }
+
+    @Test
+    @Order(7)
+    void manualMessage_requiresMessageField() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = postJson(
+                "/dashboard/drilldown/widget-review/manual-message",
+                "{\"message\":\"   \",\"mode\":\"chat\"}"
+        );
+
+        assertEquals(400, response.status(), "Expected 400 when message is blank");
+        assertTrue(response.text().contains("message is required."));
+    }
+
+    @Test
+    @Order(8)
+    void exportEndpoint_requiresAuth() {
+        APIResponse response = postJson(
+                "/dashboard/widgets/drilldown/export",
+                "{\"selectionId\":\"test\"}"
+        );
+
+        assertEquals(401, response.status(), "Expected 401 when calling export without authentication");
+        assertTrue(response.text().contains("Authentication required."));
+    }
+
+    @Test
+    @Order(9)
+    void exportEndpoint_requiresSelectionId() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = postJson(
+                "/dashboard/widgets/drilldown/export",
+                "{\"format\":\"csv\"}"
+        );
+
+        assertEquals(400, response.status(), "Expected 400 when selectionId is missing");
+        assertTrue(response.text().contains("selectionId required."));
+    }
+
+    @Test
+    @Order(10)
+    void exportEndpoint_unknownSelection_returns404() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = postJson(
+                "/dashboard/widgets/drilldown/export",
+                "{\"selectionId\":\"does-not-exist\",\"format\":\"csv\"}"
+        );
+
+        assertEquals(404, response.status(), "Expected 404 when selection is not found for export");
+        assertTrue(response.text().contains("Selection not found."));
+    }
+
+    @Test
+    @Order(11)
+    void jobStatus_requiresAuth() {
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/drilldown/widget-review/job-status?jobId=test-job"
+        );
+
+        assertEquals(401, response.status(), "Expected 401 for unauthenticated job-status request");
+        assertTrue(response.text().contains("Authentication required."));
+    }
+
+    @Test
+    @Order(12)
+    void jobStatus_requiresJobId() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/drilldown/widget-review/job-status"
+        );
+
+        assertEquals(400, response.status(), "Expected 400 when jobId is missing");
+        assertTrue(response.text().contains("jobId is required."));
+    }
+
+    @Test
+    @Order(13)
+    void jobStatus_unknownJob_returns404() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/drilldown/widget-review/job-status?jobId=does-not-exist"
+        );
+
+        assertEquals(404, response.status(), "Expected 404 when job does not exist");
+        assertTrue(response.text().contains("Job not found."));
+    }
+
+    @Test
+    @Order(14)
+    void jobStatusDelete_unknownJob_returns404() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().delete(
+                baseUrl + "/dashboard/drilldown/widget-review/job-status?jobId=does-not-exist"
+        );
+
+        assertEquals(404, response.status(), "Expected 404 when deleting unknown job");
+        assertTrue(response.text().contains("Job not found."));
+    }
+
+    private APIResponse postJson(String path, String jsonBody) {
+        return page.request().post(
+                baseUrl + path,
+                RequestOptions.create()
+                        .setHeader("Content-Type", "application/json")
+                        .setData(jsonBody)
+        );
+    }
+
     private String findAnySessionId() {
         APIResponse response = page.request().get(baseUrl + "/dashboard/sessions/data?all=true");
         if (response.status() != 200) {

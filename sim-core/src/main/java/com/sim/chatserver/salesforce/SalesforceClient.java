@@ -59,7 +59,7 @@ public class SalesforceClient {
                 .build());
     }
 
-    public SalesforceClient(HttpClient httpClient) {
+    SalesforceClient(HttpClient httpClient) {
         this.httpClient = httpClient;
         this.authClient = new SalesforceAuthClient(httpClient);
     }
@@ -76,7 +76,7 @@ public class SalesforceClient {
      * Search Salesforce Contact by friendly name. If instanceUrl/apiKey are
      * null/blank, falls back to persisted config.
      */
-    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey)
+    final SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey)
             throws IOException, InterruptedException, SQLException, SalesforceClientException {
         String searchName = trimToNull(friendlyName);
         if (searchName == null) {
@@ -317,7 +317,7 @@ public class SalesforceClient {
         final String instanceUrl;
         final String apiKey;
 
-        Credentials(String instanceUrl, String apiKey) {
+        private Credentials(String instanceUrl, String apiKey) {
             this.instanceUrl = instanceUrl;
             this.apiKey = apiKey;
         }
@@ -327,7 +327,7 @@ public class SalesforceClient {
 
         private final transient int statusCode;
 
-        public SalesforceClientException(int statusCode, String message) {
+        SalesforceClientException(int statusCode, String message) {
             super(message);
             this.statusCode = statusCode;
         }

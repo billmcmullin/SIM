@@ -91,7 +91,7 @@ public final class CustomerProfileStore {
     private CustomerProfileStore() {
     }
 
-    public static void setAppDataSourceHolder(AppDataSourceHolder holder) {
+    static void setAppDataSourceHolder(AppDataSourceHolder holder) {
         dsHolder = holder;
     }
 

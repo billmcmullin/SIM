@@ -27,7 +27,7 @@ public class PromptTemplateService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public String addReportRubricIfMissing(String message) {
+    final String addReportRubricIfMissing(String message) {
         String m = safe(message);
         if (m.isBlank()) {
             return baseRubric();
@@ -40,7 +40,7 @@ public class PromptTemplateService {
         return baseRubric() + "\n\nUser request:\n" + m;
     }
 
-    public String withPromptInjectionGuardrails(String message) {
+    final String withPromptInjectionGuardrails(String message) {
         String m = safe(message);
         String guardrails = defaultGuardrails();
 
@@ -50,7 +50,7 @@ public class PromptTemplateService {
         return guardrails + "\n\nTask:\n" + m;
     }
 
-    public String buildControlledPrompt(String userMessage, boolean enforceRubric) {
+    final String buildControlledPrompt(String userMessage, boolean enforceRubric) {
         return buildControlledPrompt(userMessage, enforceRubric, false, true);
     }
 
@@ -67,7 +67,7 @@ public class PromptTemplateService {
         return withPromptInjectionGuardrails(m, enforceMarkdownOnly);
     }
 
-    public String addReportRubricIfMissing(String message, boolean compactRubric) {
+    final String addReportRubricIfMissing(String message, boolean compactRubric) {
         String m = safe(message);
         if (m.isBlank()) {
             return compactRubric ? compactRubric() : baseRubric();
@@ -81,7 +81,7 @@ public class PromptTemplateService {
         return rubric + "\n\nUser request:\n" + m;
     }
 
-    public String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
+    final String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
         String m = safe(message);
         String guardrails = enforceMarkdownOnly
                 ? defaultGuardrails()
@@ -93,7 +93,7 @@ public class PromptTemplateService {
         return guardrails + "\n\nTask:\n" + m;
     }
 
-    public boolean looksStructuredAlready(String message) {
+    final boolean looksStructuredAlready(String message) {
         String lower = safe(message).toLowerCase(Locale.ROOT);
 
         return lower.contains("## executive summary")

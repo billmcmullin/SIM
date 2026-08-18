@@ -27,7 +27,7 @@ public class DbConfig {
         return host;
     }
 
-    public void setHost(String host) {
+    final void setHost(String host) {
         this.host = host;
     }
 
@@ -35,7 +35,7 @@ public class DbConfig {
         return port;
     }
 
-    public void setPort(String port) {
+    final void setPort(String port) {
         this.port = port;
     }
 
@@ -43,7 +43,7 @@ public class DbConfig {
         return dbName;
     }
 
-    public void setDbName(String dbName) {
+    final void setDbName(String dbName) {
         this.dbName = dbName;
     }
 
@@ -51,7 +51,7 @@ public class DbConfig {
         return jdbcUrl;
     }
 
-    public void setJdbcUrl(String jdbcUrl) {
+    final void setJdbcUrl(String jdbcUrl) {
         this.jdbcUrl = jdbcUrl;
     }
 
@@ -59,7 +59,7 @@ public class DbConfig {
         return username;
     }
 
-    public void setUsername(String username) {
+    final void setUsername(String username) {
         this.username = username;
     }
 
@@ -67,7 +67,7 @@ public class DbConfig {
         return password;
     }
 
-    public void setPassword(String password) {
+    final void setPassword(String password) {
         this.password = password;
     }
 
@@ -75,7 +75,7 @@ public class DbConfig {
         return maxPoolSize;
     }
 
-    public void setMaxPoolSize(int maxPoolSize) {
+    final void setMaxPoolSize(int maxPoolSize) {
         this.maxPoolSize = maxPoolSize;
     }
 }

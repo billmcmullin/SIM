@@ -46,7 +46,7 @@ public class AttachmentSanitizer {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public AttachmentSanitizer() {
+    AttachmentSanitizer() {
         this(
                 DEFAULT_MAX_ATTACHMENT_COUNT,
                 DEFAULT_MAX_NAME_CHARS,
@@ -56,11 +56,11 @@ public class AttachmentSanitizer {
         );
     }
 
-    public AttachmentSanitizer(int maxAttachmentCount, int maxNameChars, int maxMimeChars, int maxContentChars) {
+    AttachmentSanitizer(int maxAttachmentCount, int maxNameChars, int maxMimeChars, int maxContentChars) {
         this(maxAttachmentCount, maxNameChars, maxMimeChars, maxContentChars, true);
     }
 
-    public AttachmentSanitizer(int maxAttachmentCount,
+    private AttachmentSanitizer(int maxAttachmentCount,
             int maxNameChars,
             int maxMimeChars,
             int maxContentChars,
@@ -72,7 +72,7 @@ public class AttachmentSanitizer {
         this.validateBase64Payload = validateBase64Payload;
     }
 
-    public JsonArray sanitize(JsonArray rawAttachments) {
+    final JsonArray sanitize(JsonArray rawAttachments) {
         if (rawAttachments == null || rawAttachments.isEmpty()) {
             return Json.createArrayBuilder().build();
         }
@@ -162,6 +162,7 @@ public class AttachmentSanitizer {
             Base64.getDecoder().decode(v);
             return true;
         } catch (IllegalArgumentException ex) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             return false;
         }
     }

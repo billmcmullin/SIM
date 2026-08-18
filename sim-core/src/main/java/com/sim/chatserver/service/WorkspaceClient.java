@@ -990,7 +990,7 @@ public class WorkspaceClient {
             return contentType;
         }
 
-        public boolean isError() {
+        boolean isError() {
             return statusCode >= 400;
         }
     }

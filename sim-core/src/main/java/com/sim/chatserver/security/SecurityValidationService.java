@@ -77,7 +77,7 @@ public final class SecurityValidationService {
         this.resolveDnsForValidation = resolveDnsForValidation;
     }
 
-    public boolean isJsonRequest(HttpServletRequest req) {
+    boolean isJsonRequest(HttpServletRequest req) {
         if (req == null) {
             return false;
         }
@@ -100,7 +100,7 @@ public final class SecurityValidationService {
         return allowedModes.contains(mode.trim().toLowerCase(Locale.ROOT));
     }
 
-    public String normalizeModeOrDefault(String mode, String defaultMode) {
+    String normalizeModeOrDefault(String mode, String defaultMode) {
         String safeDefault = (defaultMode == null || defaultMode.isBlank())
                 ? "chat"
                 : defaultMode.trim().toLowerCase(Locale.ROOT);
@@ -110,7 +110,7 @@ public final class SecurityValidationService {
     /**
      * Backward-compatible boolean validation.
      */
-    public boolean isAllowedUpstreamUrl(String baseUrl) {
+    boolean isAllowedUpstreamUrl(String baseUrl) {
         return validateUpstreamUrl(canonicalizeUrlInput(baseUrl)).isAllowed();
     }
 
@@ -194,7 +194,7 @@ public final class SecurityValidationService {
         }
     }
 
-    public String extractClientIp(HttpServletRequest req) {
+    String extractClientIp(HttpServletRequest req) {
         if (req == null) {
             return "(unknown)";
         }
@@ -388,15 +388,15 @@ public final class SecurityValidationService {
             return allowed;
         }
 
-        public String getReason() {
+        String getReason() {
             return reason;
         }
 
-        public String getHost() {
+        String getHost() {
             return host;
         }
 
-        public String getScheme() {
+        String getScheme() {
             return scheme;
         }
 

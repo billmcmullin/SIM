@@ -46,8 +46,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.AfterEach;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -498,6 +500,7 @@ public class WidgetExportServletTest
         @Test
         void privateHelpers_coverParserChunkDbAndPdfFallbackBranches() throws Exception {
             WidgetExportServlet servlet = new WidgetExportServlet();
+            WidgetExportQueryService queryService = new WidgetExportQueryService(mock(AppDataSourceHolder.class), Logger.getLogger("test"));
     
             JsonObject mixedPayload = Json.createObjectBuilder()
                     .add("selectedChatIds", Json.createArrayBuilder().add("a").add(4).add("a").addNull().add(" b "))
@@ -514,10 +517,10 @@ public class WidgetExportServletTest
             assertEquals("json", invoke(servlet, "normalizeFormat", new Class[]{String.class}, " JSON "));
             assertEquals("pdf", invoke(servlet, "extensionFor", new Class[]{String.class}, "pdf"));
     
-            assertEquals("widget", invoke(servlet, "sanitizeWidgetTableName", new Class[]{String.class}, ""));
-            assertEquals("w_123", invoke(servlet, "sanitizeWidgetTableName", new Class[]{String.class}, "123"));
-            assertEquals("\"ok_name\"", invoke(servlet, "quoteIdentifier", new Class[]{String.class}, "ok_name"));
-            assertThrowsIllegalArgument(() -> invoke(servlet, "quoteIdentifier", new Class[]{String.class}, "bad-name"));
+            assertEquals("widget", DashboardSessionDataUtil.sanitizeWidgetTableName(""));
+            assertEquals("w_123", DashboardSessionDataUtil.sanitizeWidgetTableName("123"));
+            assertEquals("\"ok_name\"", invoke(queryService, "quoteIdentifier", new Class[]{String.class}, "ok_name"));
+            assertThrowsIllegalArgument(() -> invoke(queryService, "quoteIdentifier", new Class[]{String.class}, "bad-name"));
     
             Connection conn = mock(Connection.class);
             DatabaseMetaData meta = mock(DatabaseMetaData.class);
@@ -525,14 +528,14 @@ public class WidgetExportServletTest
             when(conn.getMetaData()).thenReturn(meta);
             when(meta.getTables(null, null, "tbl", new String[]{"TABLE"})).thenReturn(rs);
             when(rs.next()).thenReturn(true);
-            assertTrue((Boolean) invoke(servlet, "tableExists", new Class[]{Connection.class, String.class}, conn, "tbl"));
+            assertTrue(DashboardSessionDataUtil.tableExists(conn, "tbl", null));
     
             Connection badConn = mock(Connection.class);
             when(badConn.getMetaData()).thenThrow(new SQLException("fail"));
-            assertFalse((Boolean) invoke(servlet, "tableExists", new Class[]{Connection.class, String.class}, badConn, "tbl"));
+            assertFalse(DashboardSessionDataUtil.tableExists(badConn, "tbl", null));
     
             @SuppressWarnings("unchecked")
-            List<List<String>> chunks = (List<List<String>>) invokeStatic(WidgetExportServlet.class, "chunk", new Class[]{List.class, int.class}, List.of("a", "b", "c"), 2);
+            List<List<String>> chunks = (List<List<String>>) invoke(queryService, "chunk", new Class[]{List.class, int.class}, List.of("a", "b", "c"), 2);
             assertEquals(2, chunks.size());
     
             String line = (String) invokeStatic(WidgetExportServlet.class, "csvLine", new Class[]{String[].class}, (Object) new String[]{"a,b", "x\"y"});
@@ -540,16 +543,18 @@ public class WidgetExportServletTest
             assertTrue(line.contains("\"x\"\"y\""));
     
             ResultSet textRs = mock(ResultSet.class);
-            when(textRs.getBytes("c")).thenReturn(" x\n\u0000y ".getBytes(StandardCharsets.UTF_8));
-            assertEquals("x y", invoke(servlet, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, textRs, "c", 10));
+            when(textRs.getCharacterStream("c")).thenReturn(new StringReader(" x\n\u0000y "));
+            assertEquals("x\ny", invoke(queryService, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, textRs, "c", 10));
     
             ResultSet tsRs = mock(ResultSet.class);
-            when(tsRs.getBytes("t")).thenReturn("2026-08-01T10:15:30Z".getBytes(StandardCharsets.UTF_8));
-            assertNotNull(invoke(servlet, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsRs, "t"));
+            when(tsRs.getTimestamp("t")).thenReturn(null);
+            when(tsRs.getCharacterStream("t")).thenReturn(new StringReader("2026-08-01T10:15:30Z"));
+            assertNotNull(invoke(queryService, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsRs, "t"));
     
             ResultSet tsFallbackRs = mock(ResultSet.class);
-            when(tsFallbackRs.getBytes("t")).thenReturn("2026-08-01 10:15:30".getBytes(StandardCharsets.UTF_8));
-            assertNotNull(invoke(servlet, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsFallbackRs, "t"));
+            when(tsFallbackRs.getTimestamp("t")).thenReturn(null);
+            when(tsFallbackRs.getCharacterStream("t")).thenReturn(new StringReader("2026-08-01 10:15:30"));
+            assertNotNull(invoke(queryService, "readDbTimestamp", new Class[]{ResultSet.class, String.class}, tsFallbackRs, "t"));
     
             HttpServletResponse resp = mock(HttpServletResponse.class);
             ByteArrayOutputStream fallbackOut = new ByteArrayOutputStream();

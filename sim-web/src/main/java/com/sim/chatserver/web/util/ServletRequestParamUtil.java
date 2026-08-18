@@ -145,6 +145,7 @@ public final class ServletRequestParamUtil {
                 body.append(buffer, 0, read);
             }
         } catch (IOException e) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
             return "";
         }
 

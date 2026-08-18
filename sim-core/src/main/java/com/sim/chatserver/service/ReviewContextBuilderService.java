@@ -59,7 +59,7 @@ public class ReviewContextBuilderService {
         this.samplingService = samplingService;
     }
 
-    public String buildContext(String userMessage, List<SelectedEntry> entries) {
+    final String buildContext(String userMessage, List<SelectedEntry> entries) {
         return buildContext(userMessage, entries, DEFAULT_MAX_CONTEXT_CHARS);
     }
 
@@ -639,7 +639,7 @@ public class ReviewContextBuilderService {
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return normalized.substring(0, Math.max(0, maxChars - 1)) + "â€¦";
+        return normalized.substring(0, Math.max(0, maxChars - 1)) + "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦";
     }
 
     private String trimTo(String value, int maxChars) {

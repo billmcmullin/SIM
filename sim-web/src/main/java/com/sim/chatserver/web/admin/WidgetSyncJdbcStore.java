@@ -248,7 +248,7 @@ final class WidgetSyncJdbcStore {
         }
         try {
             return holder.getDataSource();
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (Throwable ex) {
             throw new IllegalStateException("Data source holder is unavailable.", ex);
         }
     }

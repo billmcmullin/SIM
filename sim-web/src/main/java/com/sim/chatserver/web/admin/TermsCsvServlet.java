@@ -130,13 +130,8 @@ public class TermsCsvServlet extends HttpServlet {
             return;
         }
 
-        // Redirect back to admin terms page with stats (URL-encode)
-        StringBuilder msg = new StringBuilder();
-        msg.append("imported=").append(created).append("&updated=").append(updated);
-        if (!errors.isEmpty()) {
-            msg.append("&errors=").append(URLEncoder.encode(String.join("; ", errors), StandardCharsets.UTF_8));
-        }
-        sendRedirectSafe(resp, safeRedirectTarget(req, msg.toString()));
+        // Redirect to a fixed local route after import completion.
+        forwardToAdminTerms(req, resp);
 
         } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doPost", e);
@@ -196,7 +191,7 @@ public class TermsCsvServlet extends HttpServlet {
             } else {
                 counters.updated++;
             }
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.FINE, "Skipping invalid CSV data line", e);
             errors.add("line " + lineNum + ": " + e.getMessage());
         }
@@ -206,15 +201,6 @@ public class TermsCsvServlet extends HttpServlet {
 
         int created = 0;
         int updated = 0;
-    }
-
-    private String safeRedirectTarget(HttpServletRequest req, String query) {
-        String contextPath = req == null ? "" : req.getContextPath();
-        String safeContext = (contextPath == null || contextPath.isBlank()) ? "" : contextPath.trim();
-        if (!safeContext.isEmpty() && (safeContext.charAt(0) != '/' || safeContext.contains("://") || safeContext.contains("\r") || safeContext.contains("\n"))) {
-            safeContext = "";
-        }
-        return safeContext + "/admin/terms?" + (query == null ? "" : query);
     }
 
     /**
@@ -298,7 +284,7 @@ public class TermsCsvServlet extends HttpServlet {
             // If you need to set system-flag on existing rows, add a TermsStore API to do so and call it here.
             return false; // existing updated
         } else {
-            // No existing term found â€” create new term using CSV columns.
+            // No existing term found Ã¢â‚¬â€ create new term using CSV columns.
             TermDefinition created;
             try {
                 created = termsStore().createTerm(name, description, matchPattern, matchType);
@@ -347,27 +333,13 @@ public class TermsCsvServlet extends HttpServlet {
         }
     }
 
-    private void sendRedirectSafe(HttpServletResponse resp, String target) {
-        String safeTarget = isSafeRedirectTarget(target) ? target : "/admin/terms";
+    private void forwardToAdminTerms(HttpServletRequest req, HttpServletResponse resp) {
         try {
-            resp.sendRedirect(safeTarget);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to redirect after CSV import", ex);
+            req.getRequestDispatcher("/admin/terms").forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.FINE, "Unable to forward after CSV import", ex);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "CSV import completed but redirect failed.");
         }
-    }
-
-    private boolean isSafeRedirectTarget(String target) {
-        if (target == null || target.isBlank()) {
-            return false;
-        }
-        if (target.contains("\r") || target.contains("\n")) {
-            return false;
-        }
-        if (target.contains("://")) {
-            return false;
-        }
-        return target.startsWith("/");
     }
 
     // Minimal CSV parser supporting quoted fields ("" -> ")

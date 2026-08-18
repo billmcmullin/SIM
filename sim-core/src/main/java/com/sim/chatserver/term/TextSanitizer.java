@@ -45,7 +45,7 @@ public final class TextSanitizer {
         m.put("copy", "(c)");
         m.put("reg", "(r)");
         m.put("trade", "(tm)");
-        m.put("euro", "€");
+        m.put("euro", "â‚¬");
         return m;
     }
 
@@ -68,11 +68,11 @@ public final class TextSanitizer {
         return s;
     }
 
-    public static String sanitizeForStorage(String input) {
+    static String sanitizeForStorage(String input) {
         return sanitizeForMatching(input);
     }
 
-    public static String sanitizePatternForStorage(String pattern, String matchType) {
+    static String sanitizePatternForStorage(String pattern, String matchType) {
         if (pattern == null) {
             return "";
         }
@@ -104,7 +104,7 @@ public final class TextSanitizer {
      * then sanitize the rendered HTML with a trusted HTML sanitizer (e.g.,
      * DOMPurify).
      */
-    public static String sanitizeMarkdownForDisplay(String markdown) {
+    static String sanitizeMarkdownForDisplay(String markdown) {
         if (markdown == null || markdown.isEmpty()) {
             return "";
         }

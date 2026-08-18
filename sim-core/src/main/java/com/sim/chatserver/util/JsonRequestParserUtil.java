@@ -38,7 +38,7 @@ public final class JsonRequestParserUtil {
      * Backward-compatible parser. Returns empty object on any failure (existing
      * behavior), with better logging.
      */
-    public static JsonObject parseObject(jakarta.servlet.http.HttpServletRequest req) {
+    static JsonObject parseObject(jakarta.servlet.http.HttpServletRequest req) {
         return parseObject(req, DEFAULT_MAX_BODY_BYTES);
     }
 
@@ -127,7 +127,7 @@ public final class JsonRequestParserUtil {
         return v.toString();
     }
 
-    public static boolean getBoolean(JsonObject obj, String key, boolean defaultValue) {
+    static boolean getBoolean(JsonObject obj, String key, boolean defaultValue) {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return defaultValue;
         }
@@ -152,7 +152,7 @@ public final class JsonRequestParserUtil {
         }
     }
 
-    public static int getInt(JsonObject obj, String key, int defaultValue, int min, int max) {
+    static int getInt(JsonObject obj, String key, int defaultValue, int min, int max) {
         if (obj == null || key == null || !obj.containsKey(key)) {
             return defaultValue;
         }
@@ -190,7 +190,7 @@ public final class JsonRequestParserUtil {
         return arr == null ? Json.createArrayBuilder().build() : arr;
     }
 
-    public static List<JsonObject> getObjectArray(JsonObject obj, String key, int maxItems) {
+    static List<JsonObject> getObjectArray(JsonObject obj, String key, int maxItems) {
         JsonArray arr = getArray(obj, key);
         int cap = Math.max(0, maxItems);
 

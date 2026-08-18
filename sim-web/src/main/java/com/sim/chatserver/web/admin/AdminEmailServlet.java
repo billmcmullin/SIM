@@ -105,9 +105,9 @@ public class AdminEmailServlet extends HttpServlet {
             if (!from.isBlank()) {
                 b.from(from);
             }
-            to.forEach(b::to);
-            cc.forEach(b::cc);
-            bcc.forEach(b::bcc);
+            to.forEach(b::addTo);
+            cc.forEach(b::addCc);
+            bcc.forEach(b::addBcc);
 
             emailService.send(b.build());
 

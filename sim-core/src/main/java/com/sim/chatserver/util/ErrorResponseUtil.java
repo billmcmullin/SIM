@@ -22,15 +22,15 @@ public final class ErrorResponseUtil {
         // util
     }
 
-    public static void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+    static void writeError(HttpServletResponse resp, int status, String message) throws IOException {
         writeError(resp, status, DEFAULT_ERROR_CODE, message, null);
     }
 
-    public static void writeError(HttpServletResponse resp, int status, String message, String requestId) throws IOException {
+    static void writeError(HttpServletResponse resp, int status, String message, String requestId) throws IOException {
         writeError(resp, status, DEFAULT_ERROR_CODE, message, requestId);
     }
 
-    public static void writeError(HttpServletResponse resp,
+    static void writeError(HttpServletResponse resp,
             int status,
             String code,
             String message,

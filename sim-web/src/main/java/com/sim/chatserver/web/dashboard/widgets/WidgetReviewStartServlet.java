@@ -246,7 +246,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         return selections.get(selectionId.trim());
     }
 
-    public static String createSelectionFromGlobalChatIds(HttpSession session,
+    static String createSelectionFromGlobalChatIds(HttpSession session,
             List<String> chatIds,
             String label,
             String backUrl) {

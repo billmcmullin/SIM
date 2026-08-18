@@ -89,7 +89,7 @@ public final class TrustedUrlValidator {
         return ValidationResult.valid(host, scheme, uri.getPort());
     }
 
-    public boolean isTrusted(String rawUrl) {
+    boolean isTrusted(String rawUrl) {
         String canonicalUrl = canonicalizeUrlInput(rawUrl);
         if (canonicalUrl.isBlank()) {
             return false;
@@ -192,15 +192,15 @@ public final class TrustedUrlValidator {
             return reason;
         }
 
-        public String getHost() {
+        String getHost() {
             return host;
         }
 
-        public String getScheme() {
+        String getScheme() {
             return scheme;
         }
 
-        public int getPort() {
+        int getPort() {
             return port;
         }
 

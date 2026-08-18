@@ -114,6 +114,7 @@ public final class SessionLabelStore {
         try {
             return rs.getObject(column);
         } catch (SQLException ex) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             return null;
         }
     }
@@ -152,7 +153,7 @@ public final class SessionLabelStore {
         private final String displayName;
         private final String email;
 
-        public SessionLabel(String displayName, String email) {
+        SessionLabel(String displayName, String email) {
             this.displayName = displayName == null ? "" : displayName;
             this.email = email == null ? "" : email;
         }

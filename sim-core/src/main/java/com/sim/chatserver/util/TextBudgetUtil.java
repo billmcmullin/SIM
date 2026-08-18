@@ -60,16 +60,16 @@ public final class TextBudgetUtil {
         }
 
         if (maxChars == 1) {
-            return "…";
+            return "â€¦";
         }
-        return normalized.substring(0, maxChars - 1) + "…";
+        return normalized.substring(0, maxChars - 1) + "â€¦";
     }
 
     /**
      * Builds a safe concatenation of base + suffix under a hard cap. Priority
      * is given to base text; suffix is appended only if room exists.
      */
-    public static String concatWithBudget(String base, String suffix, int maxChars) {
+    static String concatWithBudget(String base, String suffix, int maxChars) {
         String b = defaultString(base).trim();
         String s = defaultString(suffix);
 
@@ -102,7 +102,7 @@ public final class TextBudgetUtil {
     /**
      * Converts token budget to approximate char budget.
      */
-    public static int approxCharsForTokens(int tokens) {
+    static int approxCharsForTokens(int tokens) {
         if (tokens <= 0) {
             return 0;
         }

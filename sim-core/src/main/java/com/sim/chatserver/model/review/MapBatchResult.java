@@ -143,7 +143,7 @@ public final class MapBatchResult {
         return new Builder();
     }
 
-    public static MapBatchResult failed(
+    static MapBatchResult failed(
             String requestId,
             int batchIndex,
             int totalBatches,
@@ -162,19 +162,19 @@ public final class MapBatchResult {
                 .build();
     }
 
-    public String getRequestId() {
+    String getRequestId() {
         return requestId;
     }
 
-    public int getBatchIndex() {
+    int getBatchIndex() {
         return batchIndex;
     }
 
-    public int getTotalBatches() {
+    int getTotalBatches() {
         return totalBatches;
     }
 
-    public String getBatchId() {
+    String getBatchId() {
         return batchId;
     }
 
@@ -194,7 +194,7 @@ public final class MapBatchResult {
         return contextTooLargeDetected;
     }
 
-    public String getModelOutput() {
+    String getModelOutput() {
         return modelOutput;
     }
 
@@ -202,27 +202,27 @@ public final class MapBatchResult {
         return errorMessage;
     }
 
-    public int getInputEntriesCount() {
+    int getInputEntriesCount() {
         return inputEntriesCount;
     }
 
-    public int getUsedEntriesCount() {
+    int getUsedEntriesCount() {
         return usedEntriesCount;
     }
 
-    public int getOmittedEntriesCount() {
+    int getOmittedEntriesCount() {
         return omittedEntriesCount;
     }
 
-    public List<String> getBatchChatIds() {
+    List<String> getBatchChatIds() {
         return batchChatIds;
     }
 
-    public List<String> getUsedChatIds() {
+    List<String> getUsedChatIds() {
         return usedChatIds;
     }
 
-    public List<String> getOmittedChatIds() {
+    List<String> getOmittedChatIds() {
         return omittedChatIds;
     }
 
@@ -230,15 +230,15 @@ public final class MapBatchResult {
         return expectedChatIds;
     }
 
-    public List<String> getFoundChatIds() {
+    List<String> getFoundChatIds() {
         return foundChatIds;
     }
 
-    public List<String> getMissingExpectedChatIds() {
+    List<String> getMissingExpectedChatIds() {
         return missingExpectedChatIds;
     }
 
-    public boolean isCoverageComplete() {
+    boolean isCoverageComplete() {
         return coverageComplete;
     }
 
@@ -246,11 +246,11 @@ public final class MapBatchResult {
         return latencyMs;
     }
 
-    public boolean hasModelOutput() {
+    boolean hasModelOutput() {
         return !modelOutput.isBlank();
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         return Json.createObjectBuilder()
                 .add("requestId", requestId)
                 .add("batchIndex", batchIndex)

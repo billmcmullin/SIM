@@ -133,7 +133,7 @@ public final class EmailSecretCrypto {
     /**
      * Helper to generate a Base64 AES-256 key for local setup.
      */
-    public static String generateBase64Key() {
+    static String generateBase64Key() {
         try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
             keyGenerator.init(256);

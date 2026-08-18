@@ -141,27 +141,27 @@ public class InactiveUsersPageServletTest
             assertTrue((Double) field(detected, "score") >= 0.40);
             assertTrue((Boolean) field(detected, "detected"));
     
-            assertTrue((Boolean) invoke(servlet, "looksLikeCodeText", new Class[]{String.class}, "SELECT * FROM t WHERE id = 1;"));
-            assertFalse((Boolean) invoke(servlet, "looksLikeCodeText", new Class[]{String.class}, "normal sentence"));
+            assertTrue((Boolean) invokeUtil("looksLikeCodeText", new Class[]{String.class}, "SELECT * FROM t WHERE id = 1;"));
+            assertFalse((Boolean) invokeUtil("looksLikeCodeText", new Class[]{String.class}, "normal sentence"));
     
-            assertTrue((Boolean) invoke(servlet, "looksLikeLogText", new Class[]{String.class}, "2026-08-07 10:01:02 INFO :: service started"));
-            assertFalse((Boolean) invoke(servlet, "looksLikeLogText", new Class[]{String.class}, "plain chat line"));
+            assertTrue((Boolean) invokeUtil("looksLikeLogText", new Class[]{String.class}, "2026-08-07 10:01:02 INFO :: service started"));
+            assertFalse((Boolean) invokeUtil("looksLikeLogText", new Class[]{String.class}, "plain chat line"));
     
-            assertTrue((Boolean) invoke(servlet, "containsOnlySafeAcronymCaps", new Class[]{String.class}, "API SDK HTTP JSON"));
-            assertFalse((Boolean) invoke(servlet, "containsOnlySafeAcronymCaps", new Class[]{String.class}, "API OMG"));
+            assertTrue((Boolean) invokeUtil("containsOnlySafeAcronymCaps", new Class[]{String.class}, "API SDK HTTP JSON"));
+            assertFalse((Boolean) invokeUtil("containsOnlySafeAcronymCaps", new Class[]{String.class}, "API OMG"));
     
-            assertTrue((Boolean) invoke(servlet, "hasExplicitFrustrationSignal", new Class[]{String.class}, "what the fuck is this"));
-            assertTrue((Boolean) invoke(servlet, "hasExplicitFrustrationSignal", new Class[]{String.class}, "this still doesn't work"));
-            assertFalse((Boolean) invoke(servlet, "hasExplicitFrustrationSignal", new Class[]{String.class}, "all good"));
+            assertTrue((Boolean) invokeUtil("hasExplicitFrustrationSignal", new Class[]{String.class}, "what the fuck is this"));
+            assertTrue((Boolean) invokeUtil("hasExplicitFrustrationSignal", new Class[]{String.class}, "this still doesn't work"));
+            assertFalse((Boolean) invokeUtil("hasExplicitFrustrationSignal", new Class[]{String.class}, "all good"));
         }
     
         @Test
         void isConsistentCapsStyle_detectsPattern() throws Exception {
             InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
     
-            assertFalse((Boolean) invoke(servlet, "isConsistentCapsStyle", new Class[]{List.class}, List.of("ONE", "TWO")));
+            assertFalse((Boolean) invokeUtil("isConsistentCapsStyle", new Class[]{List.class}, List.of("ONE", "TWO")));
     
-            boolean consistent = (Boolean) invoke(servlet, "isConsistentCapsStyle", new Class[]{List.class}, List.of(
+            boolean consistent = (Boolean) invokeUtil("isConsistentCapsStyle", new Class[]{List.class}, List.of(
                     "THIS TOOL IS BROKEN",
                     "I AM STILL WAITING",
                     "WHY IS THIS WRONG AGAIN",
@@ -279,12 +279,18 @@ public class InactiveUsersPageServletTest
             assertNull(invoke(servlet, "sanitizeSessionId", new Class[]{String.class}, "bad id"));
         }
     
+        private static Object invokeUtil(String methodName, Class<?>[] types, Object... args) throws Exception {
+            Method method = InactiveUsersFrustrationTextUtil.class.getDeclaredMethod(methodName, types);
+            method.setAccessible(true);
+            return method.invoke(null, args);
+        }
+
         private static Object invoke(Object target, String methodName, Class<?>[] types, Object... args) throws Exception {
             Method method = target.getClass().getDeclaredMethod(methodName, types);
             method.setAccessible(true);
             return method.invoke(target, args);
         }
-    
+
         private static Object field(Object target, String fieldName) throws Exception {
             var field = target.getClass().getDeclaredField(fieldName);
             field.setAccessible(true);

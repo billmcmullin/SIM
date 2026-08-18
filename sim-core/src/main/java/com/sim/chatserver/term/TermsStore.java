@@ -27,7 +27,7 @@ public class TermsStore {
 
     private AppDataSourceHolder dsHolder;
 
-    public TermsStore() {
+    TermsStore() {
         // proxyable no-arg constructor
     }
 
@@ -42,7 +42,7 @@ public class TermsStore {
     }
 
     @Inject
-    public void setDataSourceHolder(AppDataSourceHolder dsHolder) {
+    void setDataSourceHolder(AppDataSourceHolder dsHolder) {
         this.dsHolder = dsHolder;
     }
 
@@ -292,7 +292,7 @@ public class TermsStore {
         }
     }
 
-    public TermDefinition findFirstMatchingTermForPrompt(String prompt) throws SQLException {
+    TermDefinition findFirstMatchingTermForPrompt(String prompt) throws SQLException {
         if (prompt == null || prompt.isEmpty()) {
             return null;
         }
@@ -304,7 +304,7 @@ public class TermsStore {
         return findFirstMatchingTermForPromptFromTerms(sanitized, listAll());
     }
 
-    public TermDefinition findFirstMatchingTermInPrompts(Iterable<String> prompts) throws SQLException {
+    TermDefinition findFirstMatchingTermInPrompts(Iterable<String> prompts) throws SQLException {
         if (prompts == null) {
             return null;
         }

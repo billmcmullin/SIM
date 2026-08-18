@@ -145,7 +145,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
                     "AWS EC2 reboot request failed.", Level.WARNING);
                 writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
             }
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             Logger.getLogger(getClass().getName())
                     .log(Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {

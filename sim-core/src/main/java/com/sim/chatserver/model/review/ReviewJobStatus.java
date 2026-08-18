@@ -162,7 +162,7 @@ public final class ReviewJobStatus {
         return new Builder();
     }
 
-    public static ReviewJobStatus queued(String jobId, String requestId, int totalSelected) {
+    static ReviewJobStatus queued(String jobId, String requestId, int totalSelected) {
         long now = Instant.now().toEpochMilli();
         return builder()
                 .jobId(jobId)
@@ -257,7 +257,7 @@ public final class ReviewJobStatus {
         return finishedAtEpochMs;
     }
 
-    public int getHttpStatus() {
+    int getHttpStatus() {
         return httpStatus;
     }
 
@@ -289,19 +289,19 @@ public final class ReviewJobStatus {
         return warnings;
     }
 
-    public String getActivity() {
+    String getActivity() {
         return activity;
     }
 
-    public int getBatchProgressPercent() {
+    int getBatchProgressPercent() {
         return batchProgressPercent;
     }
 
-    public boolean isRunning() {
+    boolean isRunning() {
         return running;
     }
 
-    public boolean hasFinalReport() {
+    boolean hasFinalReport() {
         return !finalReport.isBlank();
     }
 
@@ -310,7 +310,7 @@ public final class ReviewJobStatus {
      *
      * QUEUED => 0..5 MAP => 5..80 REDUCE => 80..95 DONE => 100
      */
-    public int progressPercent() {
+    int progressPercent() {
         if (done) {
             return 100;
         }
@@ -434,7 +434,7 @@ public final class ReviewJobStatus {
         int batchProgressPercent = -1;
         Boolean running;
 
-        Builder() {
+        private Builder() {
         }
 
         public Builder jobId(String jobId) {
@@ -567,17 +567,17 @@ public final class ReviewJobStatus {
             return this;
         }
 
-        public Builder activity(String activity) {
+        private Builder activity(String activity) {
             this.activity = activity;
             return this;
         }
 
-        public Builder batchProgressPercent(int batchProgressPercent) {
+        private Builder batchProgressPercent(int batchProgressPercent) {
             this.batchProgressPercent = batchProgressPercent;
             return this;
         }
 
-        public Builder running(boolean running) {
+        private Builder running(boolean running) {
             this.running = running ? Boolean.TRUE : Boolean.FALSE;
             return this;
         }

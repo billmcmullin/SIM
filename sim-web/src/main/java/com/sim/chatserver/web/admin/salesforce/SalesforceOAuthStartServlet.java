@@ -104,16 +104,16 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
 
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
-        resp.sendRedirect(safeAuthorizeUrl);
+        safeRedirect(resp, safeAuthorizeUrl);
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -294,6 +294,31 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to normalize authorize URL", ex);
             return null;
         }
+    }
+
+    private void safeRedirect(HttpServletResponse resp, String target) throws IOException {
+        if (target == null || target.isBlank() || target.contains("\r") || target.contains("\n")) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            return;
+        }
+        java.net.URI parsed;
+        try {
+            parsed = java.net.URI.create(target).normalize();
+        } catch (IllegalArgumentException ex) {
+            log.log(Level.FINE, "Invalid authorize redirect URL", ex);
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            return;
+        }
+        String scheme = sanitizeScheme(parsed.getScheme());
+        String host = sanitizeHost(parsed.getHost());
+        String path = parsed.getPath();
+        if (isBlank(scheme) || isBlank(host) || path == null || !path.endsWith("/services/oauth2/authorize")) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            return;
+        }
+        String safeLocation = parsed.toString();
+        resp.setStatus(HttpServletResponse.SC_FOUND);
+        resp.setHeader("Location", safeLocation);
     }
 
     private String sanitizeHost(String host) {

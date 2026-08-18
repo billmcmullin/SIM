@@ -40,11 +40,11 @@ public class LoginServlet extends HttpServlet {
 
         HttpSession session = req.getSession(false);
         if (session != null && session.getAttribute("user") != null) {
-            safeForward(req, resp, "/dashboard");
+            forwardToDashboard(req, resp);
             return;
         }
 
-        safeForward(req, resp, VIEW);
+        forwardToLoginView(req, resp);
     }
 
     @Override
@@ -58,7 +58,7 @@ public class LoginServlet extends HttpServlet {
         if (username == null || password == null) {
             req.setAttribute("loginError", "missing");
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            safeForward(req, resp, VIEW);
+            forwardToLoginView(req, resp);
             return;
         }
 
@@ -66,7 +66,7 @@ public class LoginServlet extends HttpServlet {
         if (authenticatedUser == null || authenticatedUser.getUsername() == null || authenticatedUser.getUsername().isBlank()) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            safeForward(req, resp, VIEW);
+            forwardToLoginView(req, resp);
             return;
         }
 
@@ -74,7 +74,7 @@ public class LoginServlet extends HttpServlet {
         if (sessionUser == null) {
             req.setAttribute("loginError", "invalid");
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            safeForward(req, resp, VIEW);
+            forwardToLoginView(req, resp);
             return;
         }
 
@@ -87,20 +87,12 @@ public class LoginServlet extends HttpServlet {
         session.setAttribute("user", sessionUser);
         session.setMaxInactiveInterval(30 * 60);
 
-        String redirectTarget = buildDashboardRedirect(req);
-        if (redirectTarget == null) {
-            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Invalid redirect target.");
-            return;
-        }
-        safeRedirect(resp, redirectTarget);
+        forwardToDashboard(req, resp);
     }
 
-    private void safeForward(HttpServletRequest req, HttpServletResponse resp, String target) {
-        if (req == null || resp == null || target == null || target.isBlank()) {
-            return;
-        }
+    private void forwardToLoginView(HttpServletRequest req, HttpServletResponse resp) {
         try {
-            RequestDispatcher dispatcher = req.getRequestDispatcher(target);
+            RequestDispatcher dispatcher = req.getRequestDispatcher(VIEW);
             if (dispatcher == null) {
                 safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to dispatch request.");
                 return;
@@ -112,14 +104,16 @@ public class LoginServlet extends HttpServlet {
         }
     }
 
-    private void safeRedirect(HttpServletResponse resp, String redirectTarget) {
-        if (resp == null || redirectTarget == null || redirectTarget.isBlank()) {
-            return;
-        }
+    private void forwardToDashboard(HttpServletRequest req, HttpServletResponse resp) {
         try {
-            resp.sendRedirect(resp.encodeRedirectURL(redirectTarget));
-        } catch (IOException ex) {
-            log.log(Level.WARNING, "Login redirect failed", ex);
+            RequestDispatcher dispatcher = req.getRequestDispatcher("/dashboard");
+            if (dispatcher == null) {
+                safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to dispatch request.");
+                return;
+            }
+            dispatcher.forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.WARNING, "Login request forward failed", ex);
             safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }
@@ -135,25 +129,10 @@ public class LoginServlet extends HttpServlet {
         }
     }
 
-    private String buildDashboardRedirect(HttpServletRequest req) {
-        if (req == null) {
-            return null;
-        }
-        String contextPath = req.getContextPath();
-        if (contextPath == null || contextPath.isBlank()) {
-            return "/dashboard";
-        }
-        String trimmed = contextPath.trim();
-        if (!trimmed.startsWith("/") || trimmed.contains(":") || trimmed.contains("//")) {
-            return null;
-        }
-        return trimmed + "/dashboard";
-    }
-
     protected UserService resolveUserService() {
         try {
             return CDI.current().select(UserService.class).get();
-        } catch (RuntimeException ex) {
+        } catch (Throwable ex) {
             log.log(Level.SEVERE, "CDI UserService lookup failed", ex);
             throw new IllegalStateException(
                     "UserService is unavailable. WildFly-managed datasource/JPA model requires CDI wiring.",

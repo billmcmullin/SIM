@@ -239,7 +239,7 @@ public class GraphMailClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = trimToNull(System.getProperty(PROP_ENABLED));
+        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
         return isTruthy(enabledRaw);
     }
 

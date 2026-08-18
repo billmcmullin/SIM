@@ -29,7 +29,7 @@ public class CustomerIdentitySessionLink {
         this.sessionId = sessionId;
     }
 
-    public Long getIdentityId() {
+    final Long getIdentityId() {
         return identityId;
     }
 
@@ -53,7 +53,7 @@ public class CustomerIdentitySessionLink {
         this.contactEmailSnapshot = contactEmailSnapshot;
     }
 
-    public OffsetDateTime getLinkedAt() {
+    final OffsetDateTime getLinkedAt() {
         return linkedAt;
     }
 

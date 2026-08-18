@@ -239,7 +239,7 @@ public class DashboardCacheRegistry {
         }
     }
 
-    public void clearAll() {
+    final void clearAll() {
         synchronized (widgetLock) {
             widgetStatsCache = null;
         }
@@ -434,7 +434,7 @@ public class DashboardCacheRegistry {
         try {
             T value = loader.get();
             return value != null ? value : fallback;
-        } catch (RuntimeException ex) {
+        } catch (Throwable ex) {
             log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", ex);
             return fallback;
         }
@@ -465,7 +465,7 @@ public class DashboardCacheRegistry {
             this.refreshing = false;
         }
 
-        static <T> Entry<T> of(T value, long expiresAt, long staleUntil) {
+        private static <T> Entry<T> of(T value, long expiresAt, long staleUntil) {
             return new Entry<>(value, expiresAt, staleUntil);
         }
     }

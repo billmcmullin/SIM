@@ -131,7 +131,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
     
-        } catch (RuntimeException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -217,6 +217,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             try {
                 closeable.close();
             } catch (Exception e) {
+                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
                 // ignore close failure
             }
         }

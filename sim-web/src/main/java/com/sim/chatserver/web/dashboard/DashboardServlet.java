@@ -713,7 +713,7 @@ public class DashboardServlet extends HttpServlet {
             Throwable cause = ex.getCause();
             log.log(Level.WARNING, "Failed to compute " + label, cause == null ? ex : cause);
             return fallback;
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (Throwable ex) {
             log.log(Level.WARNING, "Failed to compute " + label, ex);
             return fallback;
         }

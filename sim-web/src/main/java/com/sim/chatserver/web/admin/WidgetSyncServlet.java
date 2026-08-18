@@ -667,7 +667,7 @@ public class WidgetSyncServlet extends HttpServlet {
             finishSyncProgress(true, completionMessage);
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -962,7 +962,7 @@ public class WidgetSyncServlet extends HttpServlet {
             }
 
             log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -1147,7 +1147,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             success = true;
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -1351,7 +1351,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (entries.isEmpty()) {
                 STATE.summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
-                        "No entries available for this day yet.", "—", "—", "—", 0, false, true);
+                        "No entries available for this day yet.", "â€”", "â€”", "â€”", 0, false, true);
                 resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
                 return true;
             }
@@ -1406,7 +1406,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         singlePassMessage,
                         summaryRequestId
                 );
-            } catch (IllegalArgumentException | IllegalStateException ex) {
+            } catch (Throwable ex) {
                 finalResp = null;
                 String summary = isUpstreamSummaryRequired()
                     ? "Single-pass summary request failed while upstream summary is required"
@@ -1469,7 +1469,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             finalResp = directFallback;
                             statusCode = finalResp.statusCode();
                         }
-                    } catch (IllegalArgumentException | IllegalStateException ex) {
+                    } catch (Throwable ex) {
                         logWarningWithDiagnostics(
                                 "summary-direct-fallback-failed",
                                 "Direct summary fallback failed after single-pass upstream failure",
@@ -1537,7 +1537,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     overall, quality, response, usage, entries.size(), false, true);
             resumeAutomaticSummaryGeneration("Summary generated successfully.");
             return true;
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Exception e) {
             logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
@@ -2111,7 +2111,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             incrementCount(counts, name);
                         }
                     }
-                } catch (IllegalArgumentException | IllegalStateException ex) {
+                } catch (Throwable ex) {
                     log.log(Level.FINE, "Term match evaluation failed during summary fallback", ex);
                 }
             }
@@ -2145,7 +2145,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         matched = true;
                         break;
                     }
-                } catch (IllegalArgumentException | IllegalStateException ex) {
+                } catch (Throwable ex) {
                     log.log(Level.FINE, "Term chat coverage evaluation failed", ex);
                 }
             }

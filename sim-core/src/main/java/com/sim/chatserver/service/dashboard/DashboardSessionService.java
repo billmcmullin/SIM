@@ -220,7 +220,7 @@ public class DashboardSessionService {
         );
     }
 
-    final SessionTimeline buildSessionTimeline(
+    private SessionTimeline buildSessionTimeline(
             Connection conn,
             List<WidgetEntry> widgets,
             List<String> sessionIds,
@@ -453,7 +453,7 @@ public class DashboardSessionService {
     }
 
 
-    final String formatTimestamp(Timestamp ts) {
+    private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
             return "-";
         }

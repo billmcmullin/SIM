@@ -69,7 +69,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         try {
             EmailConfig db = provider.load();
             dbConfigured = db != null && hasText(db.host()) && db.port() > 0;
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Failed checking DB SMTP config", e);
         }
 
@@ -81,14 +81,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, response);
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -119,14 +119,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         handleSave(req, payload, resp);
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -167,7 +167,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             EmailConfig existing = null;
             try {
                 existing = provider.load();
-            } catch (IllegalArgumentException | IllegalStateException e) {
+            } catch (Throwable e) {
                 log.log(Level.WARNING, "Unable to load existing SMTP config.", e);
             }
             finalPassword = existing == null ? "" : safe(existing.password());
@@ -191,7 +191,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .add("message", "SMTP configuration saved.")
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.SEVERE, "Failed to save SMTP configuration", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to save SMTP configuration.");
         }
@@ -237,7 +237,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                                 defaultFrom = safe(existing.defaultFrom());
                             }
                         }
-                    } catch (IllegalArgumentException | IllegalStateException e) {
+                    } catch (Throwable e) {
                         log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
                     }
                 }
@@ -272,7 +272,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
             EmailMessage message = EmailMessage.builder()
                     .from(from)
-                    .to(testTo)
+                    .addTo(testTo)
                     .subject("SIM SMTP Test Email")
                     .textBody("This is a test email from SIM Admin SMTP configuration.")
                     .build();
@@ -285,7 +285,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.SEVERE, "SMTP test failed", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "SMTP test failed.");
         }

@@ -72,7 +72,7 @@ public class CustomerIdentity {
         this.salesforceAccountId = salesforceAccountId;
     }
 
-    public String getEmail() {
+    final String getEmail() {
         return email;
     }
 
@@ -80,7 +80,7 @@ public class CustomerIdentity {
         this.email = email;
     }
 
-    public String getPhone() {
+    final String getPhone() {
         return phone;
     }
 
@@ -88,7 +88,7 @@ public class CustomerIdentity {
         this.phone = phone;
     }
 
-    public String getTitle() {
+    final String getTitle() {
         return title;
     }
 
@@ -96,7 +96,7 @@ public class CustomerIdentity {
         this.title = title;
     }
 
-    public String getDepartment() {
+    final String getDepartment() {
         return department;
     }
 
@@ -104,7 +104,7 @@ public class CustomerIdentity {
         this.department = department;
     }
 
-    public String getRawJson() {
+    final String getRawJson() {
         return rawJson;
     }
 
@@ -112,7 +112,7 @@ public class CustomerIdentity {
         this.rawJson = rawJson;
     }
 
-    public String getConfidence() {
+    final String getConfidence() {
         return confidence;
     }
 
@@ -120,7 +120,7 @@ public class CustomerIdentity {
         this.confidence = confidence;
     }
 
-    public OffsetDateTime getCreatedAt() {
+    final OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
@@ -128,7 +128,7 @@ public class CustomerIdentity {
         this.createdAt = createdAt;
     }
 
-    public OffsetDateTime getUpdatedAt() {
+    final OffsetDateTime getUpdatedAt() {
         return updatedAt;
     }
 

@@ -81,7 +81,7 @@ public final class CoverageSummary {
     /**
      * Build summary from authoritative all IDs and used IDs.
      */
-    public static CoverageSummary fromIds(
+    static CoverageSummary fromIds(
             List<String> allChatIds,
             List<String> usedChatIds,
             List<String> reasonsChatsNotUsed,
@@ -110,23 +110,23 @@ public final class CoverageSummary {
                 .build();
     }
 
-    public int getChatsProvided() {
+    int getChatsProvided() {
         return chatsProvided;
     }
 
-    public int getChatsUsedInAnalysis() {
+    int getChatsUsedInAnalysis() {
         return chatsUsedInAnalysis;
     }
 
-    public int getChatsNotUsed() {
+    int getChatsNotUsed() {
         return chatsNotUsed;
     }
 
-    public List<String> getAllSelectedChatIds() {
+    List<String> getAllSelectedChatIds() {
         return allSelectedChatIds;
     }
 
-    public List<String> getUsedChatIds() {
+    List<String> getUsedChatIds() {
         return usedChatIds;
     }
 
@@ -134,23 +134,23 @@ public final class CoverageSummary {
         return notUsedChatIds;
     }
 
-    public List<String> getReasonsChatsNotUsed() {
+    List<String> getReasonsChatsNotUsed() {
         return reasonsChatsNotUsed;
     }
 
-    public int getTotalBatches() {
+    int getTotalBatches() {
         return totalBatches;
     }
 
-    public int getSuccessfulBatches() {
+    int getSuccessfulBatches() {
         return successfulBatches;
     }
 
-    public int getFailedBatchCount() {
+    int getFailedBatchCount() {
         return failedBatchIndexes.size();
     }
 
-    public List<Integer> getFailedBatchIndexes() {
+    List<Integer> getFailedBatchIndexes() {
         return failedBatchIndexes;
     }
 
@@ -158,15 +158,15 @@ public final class CoverageSummary {
         return coverageComplete;
     }
 
-    public int getCoveragePercent() {
+    int getCoveragePercent() {
         return coveragePercent;
     }
 
-    public boolean hasFailures() {
+    boolean hasFailures() {
         return !failedBatchIndexes.isEmpty();
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         return Json.createObjectBuilder()
                 .add("chatsProvided", chatsProvided)
                 .add("chatsUsedInAnalysis", chatsUsedInAnalysis)

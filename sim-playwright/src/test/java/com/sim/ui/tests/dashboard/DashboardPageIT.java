@@ -116,6 +116,53 @@ public class DashboardPageIT extends BaseUiIT {
                                 "Expected no-yesterday message to be rendered as dashboard-info-banner.");
     }
 
+        @Test
+        @Order(6)
+        void bootstrapEndpoint_requiresAuthentication() {
+                APIResponse response = page.request().get(baseUrl + "/dashboard/bootstrap.json");
+
+                assertTrue(response.status() == 401, "Expected 401 for unauthenticated bootstrap endpoint");
+                assertTrue(response.text().contains("\"status\":\"unauthorized\""));
+        }
+
+        @Test
+        @Order(7)
+        void bootstrapEndpoint_returnsSections_whenAuthenticated() {
+                login(adminUsername, adminPassword);
+
+                APIResponse response = page.request().get(baseUrl + "/dashboard/bootstrap.json");
+
+                assertTrue(response.status() == 200, "Expected 200 from bootstrap endpoint for authenticated user");
+                String body = response.text();
+                assertTrue(body.contains("\"status\":\"ok\""));
+                assertTrue(body.contains("\"sections\""));
+                assertTrue(body.contains("\"sessions\""));
+                assertTrue(body.contains("\"summary\""));
+        }
+
+        @Test
+        @Order(8)
+        void dailySummaryEndpoint_requiresAuthentication() {
+                APIResponse response = page.request().get(baseUrl + "/dashboard/daily-summary.json");
+
+                assertTrue(response.status() == 401, "Expected 401 for unauthenticated daily-summary endpoint");
+                assertTrue(response.text().contains("Authentication required."));
+        }
+
+        @Test
+        @Order(9)
+        void dailySummaryEndpoint_acceptsInvalidQueryValues_andReturnsJson() {
+                login(adminUsername, adminPassword);
+
+                APIResponse response = page.request().get(
+                                baseUrl + "/dashboard/daily-summary.json?day=not-a-date&slot=999"
+                );
+
+                assertTrue(response.status() == 200, "Expected 200 from daily-summary endpoint with fallback parsing");
+                String body = response.text();
+                assertTrue(body.contains("\"status\":"), "Expected JSON status field in daily-summary response");
+        }
+
         private Path resolveProjectFile(String moduleName, String[] moduleRelativePath) {
                 Path moduleLocal = Paths.get("..", moduleName, moduleRelativePath[0]);
                 for (int i = 1; i < moduleRelativePath.length; i++) {

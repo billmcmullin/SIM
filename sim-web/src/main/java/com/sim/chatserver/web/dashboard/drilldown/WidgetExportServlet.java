@@ -63,7 +63,7 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final ThreadLocal<Supplier<AppDataSourceHolder>> DATA_SOURCE_HOLDER_OVERRIDE = new ThreadLocal<>();
 
-    public WidgetExportServlet() {
+    WidgetExportServlet() {
         DATA_SOURCE_HOLDER_OVERRIDE.remove();
     }
 

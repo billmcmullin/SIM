@@ -68,7 +68,7 @@ public class UpstreamRequestService {
      * Backward-compatible overload. If upstreamUrl is full endpoint, used
      * as-is. If it's origin-only, workspace is unknown and will fail fast.
      */
-    public UpstreamResponse sendChat(
+    final UpstreamResponse sendChat(
             String upstreamUrl,
             String apiKey,
             String message,
@@ -84,7 +84,7 @@ public class UpstreamRequestService {
     /**
      * Preferred overload: base origin OR full endpoint + workspace.
      */
-    public UpstreamResponse sendChat(
+    final UpstreamResponse sendChat(
             String upstreamBaseOrEndpoint,
             String workspace,
             String apiKey,
@@ -116,7 +116,7 @@ public class UpstreamRequestService {
         return first;
     }
 
-    public boolean isLikelyContextTooLarge(UpstreamResponse resp) {
+    final boolean isLikelyContextTooLarge(UpstreamResponse resp) {
         if (resp == null) {
             return false;
         }
@@ -461,12 +461,12 @@ public class UpstreamRequestService {
 
         private final transient String code;
 
-        public UpstreamConnectivityException(String code, String message, Throwable cause) {
+        UpstreamConnectivityException(String code, String message, Throwable cause) {
             super(message, cause);
             this.code = code;
         }
 
-        public String code() {
+        final String code() {
             return code == null ? "" : code;
         }
     }

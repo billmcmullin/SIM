@@ -109,7 +109,7 @@ public final class ReduceResult {
         return new Builder();
     }
 
-    public static ReduceResult failed(
+    static ReduceResult failed(
             String requestId,
             int httpStatus,
             String errorMessage,
@@ -130,11 +130,11 @@ public final class ReduceResult {
                 .build();
     }
 
-    public String getRequestId() {
+    String getRequestId() {
         return requestId;
     }
 
-    public int getHttpStatus() {
+    int getHttpStatus() {
         return httpStatus;
     }
 
@@ -142,7 +142,7 @@ public final class ReduceResult {
         return success;
     }
 
-    public boolean isRetryUsed() {
+    boolean isRetryUsed() {
         return retryUsed;
     }
 
@@ -158,31 +158,31 @@ public final class ReduceResult {
         return errorMessage;
     }
 
-    public int getTotalSelected() {
+    int getTotalSelected() {
         return totalSelected;
     }
 
-    public int getTotalBatches() {
+    int getTotalBatches() {
         return totalBatches;
     }
 
-    public int getMapOutputsReceived() {
+    int getMapOutputsReceived() {
         return mapOutputsReceived;
     }
 
-    public List<Integer> getFailedBatchIndexes() {
+    List<Integer> getFailedBatchIndexes() {
         return failedBatchIndexes;
     }
 
-    public List<String> getFailedBatchReasons() {
+    List<String> getFailedBatchReasons() {
         return failedBatchReasons;
     }
 
-    public List<String> getAllSelectedChatIds() {
+    List<String> getAllSelectedChatIds() {
         return allSelectedChatIds;
     }
 
-    public List<String> getUsedChatIds() {
+    List<String> getUsedChatIds() {
         return usedChatIds;
     }
 
@@ -194,27 +194,27 @@ public final class ReduceResult {
         return coverageComplete;
     }
 
-    public int getCoveragePercent() {
+    int getCoveragePercent() {
         return coveragePercent;
     }
 
-    public long getLatencyMs() {
+    long getLatencyMs() {
         return latencyMs;
     }
 
-    public int getFailedBatchCount() {
+    int getFailedBatchCount() {
         return failedBatchIndexes.size();
     }
 
-    public boolean hasFailures() {
+    boolean hasFailures() {
         return !failedBatchIndexes.isEmpty();
     }
 
-    public boolean hasFinalReport() {
+    boolean hasFinalReport() {
         return !finalReport.isBlank();
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         return Json.createObjectBuilder()
                 .add("requestId", requestId)
                 .add("httpStatus", httpStatus)

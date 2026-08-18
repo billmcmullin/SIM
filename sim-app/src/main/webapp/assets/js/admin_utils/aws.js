@@ -135,7 +135,7 @@
         }
 
         const sureMessage = `Are you sure you want to restart EC2 instance ${data.awsInstanceId} in region ${data.awsRegion}?`;
-        const confirmed = window.confirm(sureMessage);
+        const confirmed = confirmAction(sureMessage);
         if (!confirmed) {
             setResult(resultEl, 'EC2 restart canceled.', false);
             return;
@@ -204,5 +204,10 @@
         if (typeof text === 'string') {
             btn.textContent = text;
         }
+    }
+
+    function confirmAction(message) {
+        const confirmFn = window.confirm?.bind(window);
+        return typeof confirmFn === 'function' ? confirmFn(message) : false;
     }
 })();

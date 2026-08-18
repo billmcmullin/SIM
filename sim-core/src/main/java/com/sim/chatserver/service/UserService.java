@@ -73,7 +73,7 @@ public class UserService {
     /**
      * Find a user by username or return null.
      */
-    public UserAccount findByUsername(String username) {
+    UserAccount findByUsername(String username) {
         EntityManager entityManager = requireEntityManager();
         try {
             return entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
@@ -88,7 +88,7 @@ public class UserService {
         }
     }
 
-    public boolean userExists(String username) {
+    boolean userExists(String username) {
         return findByUsername(username) != null;
     }
 
@@ -153,7 +153,7 @@ public class UserService {
         } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to create user: " + e.getMessage(), e);
             throw e;
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             // Legacy generated tests exercise partially mocked JPA flows.
             log.log(Level.WARNING, "Failed to create user in non-container context", e);
             return null;
@@ -208,6 +208,7 @@ public class UserService {
             entityManager.remove(user);
             return true;
         } catch (NumberFormatException nfe) {
+            log.log(Level.FINE, "Invalid user id for delete operation", nfe);
             return false;
         } catch (PersistenceException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to delete user: " + e.getMessage(), e);
@@ -226,8 +227,6 @@ public class UserService {
             }
         } catch (PersistenceException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "ensureAdminExists failed: " + e.getMessage(), e);
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "ensureAdminExists runtime fallback: " + e.getMessage(), e);
         }
     }
 

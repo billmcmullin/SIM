@@ -30,6 +30,7 @@ import com.sim.chatserver.widget.WidgetStore;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -319,6 +320,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             try {
                 closeable.close();
             } catch (Exception e) {
+                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
                 // ignore close failure
             }
         }
@@ -358,7 +360,17 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
         try {
-            req.getRequestDispatcher(path).forward(req, resp);
+            RequestDispatcher dispatcher = null;
+            if ("/login".equals(path)) {
+                dispatcher = req.getRequestDispatcher("/login");
+            } else if (REVIEW_FORWARD_PATH.equals(path)) {
+                dispatcher = req.getRequestDispatcher(REVIEW_FORWARD_PATH);
+            }
+            if (dispatcher == null) {
+                sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST);
+                return;
+            }
+            dispatcher.forward(req, resp);
         } catch (ServletException | IOException ex) {
             log.log(Level.FINE, "Unable to forward term selection request", ex);
             sendErrorSafe(resp, fallbackStatus);

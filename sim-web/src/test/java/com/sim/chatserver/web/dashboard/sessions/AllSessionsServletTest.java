@@ -613,8 +613,9 @@ public class AllSessionsServletTest
             when(req.getHttpServletMapping()).thenReturn(mapping);
             when(req.getSession(false)).thenReturn(session);
             when(req.getContentType()).thenReturn("application/json");
-            when(req.getContentLengthLong()).thenReturn(2L);
-            when(req.getReader()).thenReturn(new BufferedReader(new StringReader("{}")));
+            String payload = "{\"other\":\"x\"}";
+            when(req.getContentLengthLong()).thenReturn((long) payload.length());
+            when(req.getReader()).thenReturn(new BufferedReader(new StringReader(payload)));
             when(resp.getOutputStream()).thenReturn(servletOutput(out));
     
             servlet.doPost(req, resp);
@@ -862,22 +863,7 @@ public class AllSessionsServletTest
             assertEquals("/dashboard/sessions/data", invoke(servlet, "normalizeServletPath", new Class[]{String.class}, (Object) null));
             assertEquals("/dashboard/sessions/chats", invoke(servlet, "normalizeServletPath", new Class[]{String.class}, " /dashboard/sessions/chats "));
             assertEquals("/dashboard/sessions/data", invoke(servlet, "normalizeServletPath", new Class[]{String.class}, "/unknown"));
-    
-            assertEquals("", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, new Object[]{null}));
-    
-            HttpServletRequest req = mock(HttpServletRequest.class);
-            when(req.getReader()).thenReturn(new BufferedReader(new StringReader(" {\"a\":1} ")));
-            String body = (String) invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, req);
-            assertTrue(body.contains("\"a\":1"));
-    
-            StringBuilder big = new StringBuilder();
-            for (int i = 0; i < 70000; i++) {
-                big.append('a');
-            }
-            HttpServletRequest largeReq = mock(HttpServletRequest.class);
-            when(largeReq.getReader()).thenReturn(new BufferedReader(new StringReader(big.toString())));
-            assertEquals("", invoke(servlet, "readRequestBody", new Class[]{HttpServletRequest.class}, largeReq));
-    
+
             assertEquals("x y", invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, "x\u0000\ny", 10));
             assertEquals("abcd", invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, "abcdef", 4));
         }

@@ -370,11 +370,11 @@ public final class MapReduceConfig {
         return exhaustiveMode;
     }
 
-    public boolean isRebatchOnContextLimit() {
+    boolean isRebatchOnContextLimit() {
         return rebatchOnContextLimit;
     }
 
-    public boolean isRetryReduceOnContextLimit() {
+    boolean isRetryReduceOnContextLimit() {
         return retryReduceOnContextLimit;
     }
 
@@ -434,11 +434,11 @@ public final class MapReduceConfig {
         return fixedBatchSize;
     }
 
-    public boolean isProgressEnabled() {
+    boolean isProgressEnabled() {
         return progressEnabled;
     }
 
-    public int getProgressPollMs() {
+    int getProgressPollMs() {
         return progressPollMs;
     }
 

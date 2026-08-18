@@ -80,7 +80,7 @@ public final class SelectedEntry {
         );
     }
 
-    public static JsonArray toJsonArray(List<SelectedEntry> entries) {
+    static JsonArray toJsonArray(List<SelectedEntry> entries) {
         JsonArrayBuilder b = Json.createArrayBuilder();
         if (entries != null) {
             for (SelectedEntry e : entries) {
@@ -92,7 +92,7 @@ public final class SelectedEntry {
         return b.build();
     }
 
-    public static List<SelectedEntry> fromJsonArray(JsonArray arr, int maxItems) {
+    static List<SelectedEntry> fromJsonArray(JsonArray arr, int maxItems) {
         if (arr == null || arr.isEmpty() || maxItems <= 0) {
             return Collections.emptyList();
         }

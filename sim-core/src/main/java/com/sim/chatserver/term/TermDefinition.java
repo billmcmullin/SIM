@@ -19,7 +19,7 @@ public class TermDefinition {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public TermDefinition(Long id, String name, String description, String matchPattern, String matchType, boolean systemFlag) {
+    TermDefinition(Long id, String name, String description, String matchPattern, String matchType, boolean systemFlag) {
         this.id = id;
         this.name = name;
         this.description = description;

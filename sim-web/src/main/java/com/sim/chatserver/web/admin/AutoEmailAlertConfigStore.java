@@ -571,7 +571,7 @@ public final class AutoEmailAlertConfigStore {
         private String updatedBy;
         private Instant updatedAt;
 
-        public int getId() {
+        int getId() {
             return id;
         }
 
