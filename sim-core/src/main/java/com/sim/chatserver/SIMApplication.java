@@ -10,4 +10,9 @@ import jakarta.ws.rs.core.Application;
 @ApplicationPath("/api")
 public class SIMApplication extends Application {
     static final String API_ROOT_PATH = "/api";
+
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
 }

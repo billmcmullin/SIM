@@ -23,6 +23,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
@@ -167,6 +168,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
         try (Ec2Client ec2 = Ec2Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .httpClientBuilder(UrlConnectionHttpClient.builder())
                 .build()) {
             try {
                 ec2.rebootInstances(RebootInstancesRequest.builder().instanceIds(instanceId).build());

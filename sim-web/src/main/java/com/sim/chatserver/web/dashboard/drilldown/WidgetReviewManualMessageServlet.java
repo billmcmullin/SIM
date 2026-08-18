@@ -74,87 +74,85 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
-    private final Object initLock = new Object();
-    private volatile MapReduceConfig mrConfig;
-    private volatile WorkspaceClient workspaceClient;
-    private volatile WidgetReviewMapReduceOrchestrator orchestrator;
-    private volatile PromptTemplateService promptTemplateService;
-    private volatile ReviewContextBuilderService reviewContextBuilderService;
-    private volatile ReviewOutputValidator reviewOutputValidator;
-    private volatile TrustedUrlValidator trustedUrlValidator;
+        private static Runtime runtime() {
+        return RuntimeHolder.INSTANCE;
+    }
 
     @Override
     public void init() throws ServletException {
         super.init();
-        synchronized (initLock) {
-            if (isRuntimeInitialized()) {
-                return;
-            }
-            initializeRuntime();
+        log.log(Level.INFO, "[manual-message][init] loaded config: {0}", RuntimeHolder.INSTANCE.mrConfig);
+    }
+
+    private static final class Runtime {
+        final MapReduceConfig mrConfig;
+        final WorkspaceClient workspaceClient;
+        final WidgetReviewMapReduceOrchestrator orchestrator;
+        final PromptTemplateService promptTemplateService;
+        final ReviewContextBuilderService reviewContextBuilderService;
+        final ReviewOutputValidator reviewOutputValidator;
+        final TrustedUrlValidator trustedUrlValidator;
+
+        Runtime() {
+            MapReduceConfig loadedConfig = MapReduceConfig.load();
+            HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(20))
+                .build();
+
+            WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
+                client,
+                loadedConfig.getWorkspaceMaxRetries(),
+                loadedConfig.getWorkspaceTimeout()
+            );
+
+            PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
+            ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService(new ReviewSamplingService());
+            ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
+
+            Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
+            Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
+            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
+            TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+
+            WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
+                configuredWorkspaceClient,
+                configuredReviewContextBuilderService,
+                configuredPromptTemplateService,
+                configuredReviewOutputValidator,
+                loadedConfig.getBatchSize(),
+                loadedConfig.getMaxParallel(),
+                loadedConfig.getMapMessageMaxChars(),
+                loadedConfig.getMapContextMaxChars(),
+                loadedConfig.getReduceMessageMaxChars(),
+                loadedConfig.getReduceContextMaxChars(),
+                loadedConfig.getRetryContextChars(),
+                loadedConfig.getRetryMessageMaxChars(),
+                loadedConfig.getMaxCoveragePasses(),
+                loadedConfig.getMinBatchSize(),
+                loadedConfig.getSegmentPromptChars(),
+                loadedConfig.getSegmentResponseChars(),
+                loadedConfig.getReduceInitialChunkSize(),
+                loadedConfig.getReduceMinChunkSize(),
+                loadedConfig.getReduceMaxLevels(),
+                loadedConfig.getReduceChunkSummaryMaxChars(),
+                loadedConfig.getFinalReduceMaxSummaries(),
+                loadedConfig.getFinalReduceSummaryMaxChars(),
+                loadedConfig.getFinalReduceMaxAttempts()
+            );
+
+            this.mrConfig = loadedConfig;
+            this.workspaceClient = configuredWorkspaceClient;
+            this.promptTemplateService = configuredPromptTemplateService;
+            this.reviewContextBuilderService = configuredReviewContextBuilderService;
+            this.reviewOutputValidator = configuredReviewOutputValidator;
+            this.trustedUrlValidator = configuredTrustedUrlValidator;
+            this.orchestrator = configuredOrchestrator;
         }
-
-        log.log(Level.INFO, "[manual-message][init] loaded config: {0}", mrConfig);
     }
 
-    private boolean isRuntimeInitialized() {
-        return mrConfig != null && orchestrator != null && trustedUrlValidator != null && workspaceClient != null;
-    }
-
-    private void initializeRuntime() {
-        MapReduceConfig loadedConfig = MapReduceConfig.load();
-        HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(Duration.ofSeconds(20))
-            .build();
-
-        WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
-            client,
-            loadedConfig.getWorkspaceMaxRetries(),
-            loadedConfig.getWorkspaceTimeout()
-        );
-
-        PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
-        ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService(new ReviewSamplingService());
-        ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
-
-        Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
-        Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
-        boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
-        TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
-
-        WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
-            configuredWorkspaceClient,
-            configuredReviewContextBuilderService,
-            configuredPromptTemplateService,
-            configuredReviewOutputValidator,
-            loadedConfig.getBatchSize(),
-            loadedConfig.getMaxParallel(),
-            loadedConfig.getMapMessageMaxChars(),
-            loadedConfig.getMapContextMaxChars(),
-            loadedConfig.getReduceMessageMaxChars(),
-            loadedConfig.getReduceContextMaxChars(),
-            loadedConfig.getRetryContextChars(),
-            loadedConfig.getRetryMessageMaxChars(),
-            loadedConfig.getMaxCoveragePasses(),
-            loadedConfig.getMinBatchSize(),
-            loadedConfig.getSegmentPromptChars(),
-            loadedConfig.getSegmentResponseChars(),
-            loadedConfig.getReduceInitialChunkSize(),
-            loadedConfig.getReduceMinChunkSize(),
-            loadedConfig.getReduceMaxLevels(),
-            loadedConfig.getReduceChunkSummaryMaxChars(),
-            loadedConfig.getFinalReduceMaxSummaries(),
-            loadedConfig.getFinalReduceSummaryMaxChars(),
-            loadedConfig.getFinalReduceMaxAttempts()
-        );
-
-        mrConfig = loadedConfig;
-        workspaceClient = configuredWorkspaceClient;
-        promptTemplateService = configuredPromptTemplateService;
-        reviewContextBuilderService = configuredReviewContextBuilderService;
-        reviewOutputValidator = configuredReviewOutputValidator;
-        trustedUrlValidator = configuredTrustedUrlValidator;
-        orchestrator = configuredOrchestrator;
+    private static final class RuntimeHolder {
+        static final Runtime INSTANCE = new Runtime();
     }
 
     @Override
@@ -285,7 +283,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String targetUrl = stripTrailingSlash(baseUrl) + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
         targetUrl = canonicalizeForValidation(targetUrl);
 
-        TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(targetUrl);
+        TrustedUrlValidator.ValidationResult trust = runtime().trustedUrlValidator.validate(targetUrl);
         if (!trust.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}] blocked untrusted targetUrl reason={1}", new Object[]{requestId, trust.getReason()});
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace URL failed trust validation.");
@@ -350,7 +348,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     + " latencyMs=" + ((System.nanoTime() - startNanos) / 1_000_000L)
                     + " mode=" + requestContext.mode
                     + " selected=" + requestContext.selectedEntries.size()
-                    + " strategy=" + (useMapReduce ? "map-reduce-orchestrator" : "single-pass");
+                    + " strategy=" + (useMapReduce ? "map-reduce-runtime().orchestrator" : "single-pass");
             log.info(completionLog);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             if (causedByInterrupted(ex)) {
@@ -404,21 +402,21 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private boolean shouldUseMapReduce(List<SelectedEntry> selectedEntries) {
         int n = selectedEntries == null ? 0 : selectedEntries.size();
 
-        if (mrConfig.isExhaustiveMode()) {
+        if (runtime().mrConfig.isExhaustiveMode()) {
             boolean use = n > 0;
                 log.log(
                     Level.INFO,
                     "[manual-message][strategy] exhaustiveMode=true selected={0} singlePassMaxSelected={1} -> useMapReduce={2}",
-                    new Object[]{n, mrConfig.getSinglePassMaxSelected(), use}
+                    new Object[]{n, runtime().mrConfig.getSinglePassMaxSelected(), use}
                 );
             return use;
         }
 
-        boolean use = n > mrConfig.getSinglePassMaxSelected();
+        boolean use = n > runtime().mrConfig.getSinglePassMaxSelected();
             log.log(
                 Level.INFO,
                 "[manual-message][strategy] exhaustiveMode=false selected={0} singlePassMaxSelected={1} -> useMapReduce={2}",
-                new Object[]{n, mrConfig.getSinglePassMaxSelected(), use}
+                new Object[]{n, runtime().mrConfig.getSinglePassMaxSelected(), use}
             );
         return use;
     }
@@ -564,7 +562,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         List<String> missingIds = subtract(allIds, usedIds);
 
         ReviewOutputValidator.ValidationResult finalValidation
-            = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
+            = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
         boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
         boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -620,7 +618,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         AtomicInteger liveTotalBatches = new AtomicInteger(0);
         AtomicInteger liveCompletedBatches = new AtomicInteger(0);
         AtomicInteger liveFailedBatches = new AtomicInteger(0);
-        int reduceFinalAttemptTotal = mrConfig.getFinalReduceMaxAttempts();
+        int reduceFinalAttemptTotal = runtime().mrConfig.getFinalReduceMaxAttempts();
 
         WidgetReviewMapReduceOrchestrator.ProgressListener progressListener = createProgressListener(
                 jobs,
@@ -653,7 +651,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         List<String> usedIds = subtract(allIds, missingIds);
 
         ReviewOutputValidator.ValidationResult finalValidation
-                = reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, mrConfig.getReduceMessageMaxChars());
+                = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
         boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
 
         boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
@@ -858,22 +856,25 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             List<SelectedEntry> selectedEntries,
             String requestId
             ) {
-        String controlledPrompt = promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
+        if (selectedEntries == null) {
+            selectedEntries = List.of();
+        }
+        String controlledPrompt = runtime().promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
         String deterministicHeader = "Deterministic metadata (use exactly; do not estimate):\n"
             + "- exact_total_selected: " + selectedEntries.size() + '\n'
             + "- execution_mode: single-pass\n";
 
         String promptWithMeta = controlledPrompt + "\n\n" + deterministicHeader;
-        String context = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getSinglePassContextMaxChars());
-        String outbound = buildOutboundMessage(promptWithMeta, context, mrConfig.getSinglePassMessageMaxChars());
+        String context = runtime().reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, runtime().mrConfig.getSinglePassContextMaxChars());
+        String outbound = buildOutboundMessage(promptWithMeta, context, runtime().mrConfig.getSinglePassMessageMaxChars());
 
         WorkspaceResponse response = sendChatHandled(
                 targetUrl, apiKey, outbound, mode, sessionId, requestReset, attachments, requestId
         );
 
-        if (workspaceClient.isLikelyContextTooLarge(response)) {
-            String retryContext = reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, mrConfig.getRetryContextChars());
-            String retryMsg = buildOutboundMessage(promptWithMeta, retryContext, mrConfig.getRetryMessageMaxChars());
+        if (runtime().workspaceClient.isLikelyContextTooLarge(response)) {
+            String retryContext = runtime().reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, runtime().mrConfig.getRetryContextChars());
+            String retryMsg = buildOutboundMessage(promptWithMeta, retryContext, runtime().mrConfig.getRetryMessageMaxChars());
                 response = sendChatHandled(
                     targetUrl, apiKey, retryMsg, mode, sessionId, true, attachments, requestId
             );
@@ -881,7 +882,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String text = extractPrimaryText(response.body());
         String textForValidation = canonicalizeForValidation(text);
-        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateFinalReport(textForValidation, mrConfig.getSinglePassMessageMaxChars());
+        ReviewOutputValidator.ValidationResult validation = runtime().reviewOutputValidator.validateFinalReport(textForValidation, runtime().mrConfig.getSinglePassMessageMaxChars());
         if (!validation.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}][single-pass] final validation errors={1}", new Object[]{requestId, validation.getErrors()});
         } else if (!validation.getWarnings().isEmpty()) {
@@ -921,7 +922,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
         try {
             orchestration = WidgetReviewOrchestrationRunner.run(
-                    orchestrator,
+                    runtime().orchestrator,
                     targetUrl,
                     apiKey,
                     userMessage,
@@ -976,7 +977,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String finalText = extractPrimaryText(finalResp.body());
         String finalTextForValidation = canonicalizeForValidation(finalText);
         ReviewOutputValidator.ValidationResult finalValidation
-            = reviewOutputValidator.validateFinalReportHierarchical(finalTextForValidation, allIds, mrConfig.getReduceMessageMaxChars());
+            = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalTextForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
 
         if (!finalValidation.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}][reduce-validation] errors={1}", new Object[]{requestId, finalValidation.getErrors()});
@@ -1007,11 +1008,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     + " coverageComplete=" + coverage.isCoverageComplete()
                     + " missingCount=" + coverage.getNotUsedChatIds().size()
                     + " metadataMismatch=" + metadataMismatch
-                    + " strictFixedBatchMode=" + mrConfig.isStrictFixedBatchMode()
-                    + " fixedBatchSize=" + mrConfig.getFixedBatchSize()
-                    + " reduceInitialChunkSize=" + mrConfig.getReduceInitialChunkSize()
-                    + " reduceMaxLevels=" + mrConfig.getReduceMaxLevels()
-                    + " finalReduceMaxAttempts=" + mrConfig.getFinalReduceMaxAttempts();
+                    + " strictFixedBatchMode=" + runtime().mrConfig.isStrictFixedBatchMode()
+                    + " fixedBatchSize=" + runtime().mrConfig.getFixedBatchSize()
+                    + " reduceInitialChunkSize=" + runtime().mrConfig.getReduceInitialChunkSize()
+                    + " reduceMaxLevels=" + runtime().mrConfig.getReduceMaxLevels()
+                    + " finalReduceMaxAttempts=" + runtime().mrConfig.getFinalReduceMaxAttempts();
             log.info(summaryLog);
 
         return new MapReduceExecutionResult(finalResp, orchestration);
@@ -1028,7 +1029,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             String requestId
     ) {
         try {
-            return workspaceClient.sendChat(
+            return runtime().workspaceClient.sendChat(
                     targetUrl,
                     apiKey,
                     message,
@@ -1113,7 +1114,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
     private List<String> extractUsedIdsFromText(String text, List<String> expected) {
         ReviewOutputValidator.ValidationResult v
-                = reviewOutputValidator.validateFinalReportHierarchical(text == null ? "" : text, expected, mrConfig.getReduceMessageMaxChars());
+                = runtime().reviewOutputValidator.validateFinalReportHierarchical(text == null ? "" : text, expected, runtime().mrConfig.getReduceMessageMaxChars());
         return distinctIds(v.getFoundChatIds());
     }
 
@@ -1334,8 +1335,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 .replace("https://http://", "http://");
 
         try {
-            if (trustedUrlValidator != null) {
-                TrustedUrlValidator.ValidationResult trust = trustedUrlValidator.validate(s);
+            if (runtime().trustedUrlValidator != null) {
+                TrustedUrlValidator.ValidationResult trust = runtime().trustedUrlValidator.validate(s);
                 if (!trust.isValid()) {
                     return "";
                 }
@@ -1469,7 +1470,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private Set<String> parseCsvToSet(String csv) {
+    private static Set<String> parseCsvToSet(String csv) {
         if (csv == null || csv.isBlank()) {
             return Set.of();
         }
@@ -1483,7 +1484,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return out;
     }
 
-    private String defaultIfBlank(String value, String fallback) {
+    private static String defaultIfBlank(String value, String fallback) {
         return (value == null || value.isBlank()) ? fallback : value;
     }
 

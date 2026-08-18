@@ -32,7 +32,11 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        ensureSummaryStoreInitialized();
+        try {
+            ensureSummaryStoreInitialized();
+        } catch (RuntimeException e) {
+            throw new ServletException("Failed to initialize daily summary store", e);
+        }
     }
 
     @Override
@@ -59,9 +63,6 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_OK,
                     payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (ServletException e) {
-            log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
-            writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
         } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
@@ -148,7 +149,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
     }
 
-    private DashboardDailySummaryStore ensureSummaryStoreInitialized() throws ServletException {
+    private DashboardDailySummaryStore ensureSummaryStoreInitialized() {
         DashboardDailySummaryStore local = summaryStore;
         if (local != null) {
             return local;
@@ -159,7 +160,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
     }
 
-    private DashboardDailySummaryStore getOrCreateSummaryStore() throws ServletException {
+    private DashboardDailySummaryStore getOrCreateSummaryStore() {
         DashboardDailySummaryStore existing = summaryStore;
         if (existing != null) {
             return existing;
@@ -172,7 +173,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             return created;
         } catch (RuntimeException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
-            throw new ServletException("Failed to initialize daily summary store", e);
+            throw new IllegalStateException("Failed to initialize daily summary store", e);
         }
     }
 

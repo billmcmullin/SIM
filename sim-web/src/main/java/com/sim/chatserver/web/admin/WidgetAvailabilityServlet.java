@@ -127,7 +127,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         return String.valueOf(session.getAttribute("role"));
     }
 
-    private void writeUnauthorized(HttpServletResponse resp) throws IOException {
+    private void writeUnauthorized(HttpServletResponse resp) {
         JsonObjectBuilder json = Json.createObjectBuilder()
                 .add("available", false)
                 .add("status", "UNAUTHORIZED")
@@ -138,8 +138,13 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, json.build());
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write widget availability response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 
     private String safe(String value, String fallback) {

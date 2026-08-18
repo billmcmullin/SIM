@@ -239,7 +239,10 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
             sql.append(" GROUP BY session_id");
 
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql.toString());
                 if (filter != null && !filter.isBlank()) {
                     String trimmedFilter = filter.trim();
                     ps.setString(1, new StringBuilder(trimmedFilter.length() + 2)
@@ -249,29 +252,41 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                             .toString());
                 }
 
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String sessionId = rs.getString("session_id");
-                        if (sessionId == null || sessionId.isBlank()) {
-                            continue;
-                        }
+                rs = ps.executeQuery();
+                while (rs.next()) {
+                    String sessionId = rs.getString("session_id");
+                    if (sessionId == null || sessionId.isBlank()) {
+                        continue;
+                    }
 
-                        sessionId = sessionId.trim();
-                        SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                        acc.count += rs.getInt("total");
+                    sessionId = sessionId.trim();
+                    SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
+                    acc.count += rs.getInt("total");
 
-                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                        if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
-                            acc.lastEntry = lastEntry;
-                        }
+                    Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
+                    if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
+                        acc.lastEntry = lastEntry;
                     }
                 }
             } catch (SQLException e) {
                 log.log(Level.FINE, "Unable to collect session accumulators for table " + tableName, e);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
 
         return accumulators;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private boolean tableExists(Connection conn, String tableName) {

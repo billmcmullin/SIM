@@ -75,7 +75,7 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
         if (context == null) {
             return "";
         }
@@ -92,6 +92,9 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load session names template: " + path, e);
+            return "";
         }
     }
 

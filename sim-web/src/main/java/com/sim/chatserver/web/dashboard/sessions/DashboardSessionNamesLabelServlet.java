@@ -101,7 +101,7 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
         return null;
     }
 
-    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
@@ -113,8 +113,13 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
         return true;
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write session label response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 
 }

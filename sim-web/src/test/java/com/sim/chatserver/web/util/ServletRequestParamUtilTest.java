@@ -57,7 +57,7 @@ import jakarta.servlet.http.HttpServletRequest;
         assertEquals("line1\nline2", ServletRequestParamUtil.readNormalizedBodyText(clean, 100));
 
         StringReader limited = new StringReader("123456789");
-        assertThrows(IOException.class, () -> ServletRequestParamUtil.readNormalizedBodyText(limited, 4, 2));
+        assertThrows(IllegalStateException.class, () -> ServletRequestParamUtil.readNormalizedBodyText(limited, 4, 2));
 
         StringReader emptyOnLimit = new StringReader("123456789");
         assertEquals("", ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(emptyOnLimit, 4));

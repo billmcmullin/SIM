@@ -164,8 +164,13 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+        try {
+            PrintWriter out = resp.getWriter();
+            try {
+                out.print(rendered);
+            } finally {
+                out.close();
+            }
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to render newest users drilldown page", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");

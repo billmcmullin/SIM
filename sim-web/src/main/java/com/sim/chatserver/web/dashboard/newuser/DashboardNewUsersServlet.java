@@ -154,8 +154,13 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+        try {
+            PrintWriter out = resp.getWriter();
+            try {
+                out.print(rendered);
+            } finally {
+                out.close();
+            }
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write dashboard new users page response", e);
         }
@@ -367,7 +372,11 @@ public class DashboardNewUsersServlet extends HttpServlet {
             String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM " + quoteIdentifier(table)
                     + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
 
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
+                rs = ps.executeQuery();
                 while (rs.next()) {
                     String sid = rs.getString("session_id");
                     Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
@@ -383,6 +392,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 }
             } catch (SQLException e) {
                 log.log(Level.FINE, "Unable to query earliest session rows for table " + table, e);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
         return earliestBySession;
@@ -402,7 +414,11 @@ public class DashboardNewUsersServlet extends HttpServlet {
             String sql = "SELECT session_id, COUNT(*) AS c FROM " + quoteIdentifier(table)
                     + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
 
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
+                rs = ps.executeQuery();
                 while (rs.next()) {
                     String sid = rs.getString("session_id");
                     if (sid == null || sid.isBlank()) {
@@ -414,9 +430,22 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 }
             } catch (SQLException e) {
                 log.log(Level.FINE, "Unable to query total chats for table " + table, e);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
         return totals;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private int getTotalChats(Map<String, Integer> totalsBySession, String sid) {

@@ -61,18 +61,18 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
-    private final Supplier<AppDataSourceHolder> dataSourceHolderOverride;
+    private static final ThreadLocal<Supplier<AppDataSourceHolder>> DATA_SOURCE_HOLDER_OVERRIDE = new ThreadLocal<>();
 
     public WidgetExportServlet() {
-        this.dataSourceHolderOverride = null;
+        DATA_SOURCE_HOLDER_OVERRIDE.remove();
     }
 
     WidgetExportServlet(AppDataSourceHolder dataSourceHolder) {
-        this.dataSourceHolderOverride = dataSourceHolder == null ? null : () -> dataSourceHolder;
+        DATA_SOURCE_HOLDER_OVERRIDE.set(dataSourceHolder == null ? null : () -> dataSourceHolder);
     }
 
     WidgetExportServlet(Supplier<AppDataSourceHolder> dataSourceHolderSupplier) {
-        this.dataSourceHolderOverride = dataSourceHolderSupplier;
+        DATA_SOURCE_HOLDER_OVERRIDE.set(dataSourceHolderSupplier);
     }
 
     @Override
@@ -712,7 +712,7 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        Supplier<AppDataSourceHolder> override = dataSourceHolderOverride;
+        Supplier<AppDataSourceHolder> override = DATA_SOURCE_HOLDER_OVERRIDE.get();
         if (override != null) {
             return override.get();
         }

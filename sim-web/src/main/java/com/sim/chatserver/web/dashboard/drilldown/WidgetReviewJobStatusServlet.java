@@ -233,7 +233,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         return JOB_SERVICE;
     }
 
-    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             respondError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
@@ -242,8 +242,21 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         return true;
     }
 
-    private void respondError(HttpServletResponse resp, int status, String message) throws IOException {
-        ServletJsonResponseUtil.writeError(resp, status, safe(message));
+    private void respondError(HttpServletResponse resp, int status, String message) {
+        try {
+            ServletJsonResponseUtil.writeError(resp, status, safe(message));
+        } catch (IOException e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unable to write job-status error response", e);
+            if (!resp.isCommitted()) {
+                try {
+                    resp.sendError(status);
+                } catch (IOException ioe) {
+                    java.util.logging.Logger.getLogger(getClass().getName())
+                            .log(java.util.logging.Level.FINE, "Fallback sendError failed", ioe);
+                }
+            }
+        }
     }
 
     private jakarta.json.JsonArray toJsonArray(List<String> values) {

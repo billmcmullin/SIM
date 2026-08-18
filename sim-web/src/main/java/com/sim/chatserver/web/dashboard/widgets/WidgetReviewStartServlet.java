@@ -301,8 +301,13 @@ public class WidgetReviewStartServlet extends HttpServlet {
         }
 
         String json;
-        try (var reader = req.getReader()) {
-            json = ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+        try {
+            var reader = req.getReader();
+            try {
+                json = ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
+            } finally {
+                reader.close();
+            }
         } catch (IOException e) {
             log.log(java.util.logging.Level.FINE, "Unable to read widget review start payload", e);
             return null;

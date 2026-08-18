@@ -150,26 +150,31 @@ public class TermsCsvServlet extends HttpServlet {
         }
     }
 
-    private ImportCounters processCsvRows(BufferedReader reader, List<String> errors) throws IOException {
+    private ImportCounters processCsvRows(BufferedReader reader, List<String> errors) {
         ImportCounters counters = new ImportCounters();
         String line;
         boolean sawHeader = false;
         int lineNum = 0;
 
-        while ((line = reader.readLine()) != null) {
-            lineNum++;
-            String normalizedLine = line == null ? "" : line.trim();
-            if (normalizedLine.isEmpty()) {
-                continue;
-            }
+        try {
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                String normalizedLine = line == null ? "" : line.trim();
+                if (normalizedLine.isEmpty()) {
+                    continue;
+                }
 
-            if (!sawHeader) {
-                sawHeader = true;
-                processFirstLine(normalizedLine, lineNum, counters, errors);
-                continue;
-            }
+                if (!sawHeader) {
+                    sawHeader = true;
+                    processFirstLine(normalizedLine, lineNum, counters, errors);
+                    continue;
+                }
 
-            processDataLine(parseCsvLine(normalizedLine), lineNum, counters, errors);
+                processDataLine(parseCsvLine(normalizedLine), lineNum, counters, errors);
+            }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Failed reading CSV rows", e);
+            throw new IllegalStateException("Failed reading CSV rows", e);
         }
 
         return counters;
@@ -230,6 +235,9 @@ public class TermsCsvServlet extends HttpServlet {
      * TermsStore (e.g. setSystemFlag(id, boolean)) and call it here.
      */
     private boolean processRow(String[] cols) {
+        if (cols == null) {
+            return false;
+        }
         // Ensure at least column count length
         String name = cols.length > 0 ? cols[0].trim() : "";
         String description = cols.length > 1 ? cols[1].trim() : "";

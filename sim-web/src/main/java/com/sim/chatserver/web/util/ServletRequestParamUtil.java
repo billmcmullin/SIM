@@ -90,13 +90,13 @@ public final class ServletRequestParamUtil {
     }
 
     public static String readNormalizedBodyText(Reader reader,
-            int maxLen) throws IOException {
+            int maxLen) {
         return readNormalizedBodyText(reader, maxLen, 2048);
     }
 
     public static String readNormalizedBodyText(Reader reader,
             int maxLen,
-            int bufferSize) throws IOException {
+            int bufferSize) {
         if (reader == null) {
             return "";
         }
@@ -105,25 +105,29 @@ public final class ServletRequestParamUtil {
 
         int total = 0;
         int read;
-        while ((read = reader.read(buffer)) != -1) {
-            total += read;
-            if (maxLen > 0 && total > maxLen) {
-                throw new IOException("Payload exceeds allowed size.");
+        try {
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxLen > 0 && total > maxLen) {
+                    throw new IllegalStateException("Payload exceeds allowed size.");
+                }
+                body.append(buffer, 0, read);
             }
-            body.append(buffer, 0, read);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read request body.", e);
         }
 
         return normalizeBodyText(body.toString(), 0, false);
     }
 
     public static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
-            int maxLen) throws IOException {
+            int maxLen) {
         return readNormalizedBodyTextOrEmptyOnLimit(reader, maxLen, 2048);
     }
 
     private static String readNormalizedBodyTextOrEmptyOnLimit(Reader reader,
             int maxLen,
-            int bufferSize) throws IOException {
+            int bufferSize) {
         if (reader == null) {
             return "";
         }
@@ -132,12 +136,16 @@ public final class ServletRequestParamUtil {
 
         int total = 0;
         int read;
-        while ((read = reader.read(buffer)) != -1) {
-            total += read;
-            if (maxLen > 0 && total > maxLen) {
-                return "";
+        try {
+            while ((read = reader.read(buffer)) != -1) {
+                total += read;
+                if (maxLen > 0 && total > maxLen) {
+                    return "";
+                }
+                body.append(buffer, 0, read);
             }
-            body.append(buffer, 0, read);
+        } catch (IOException e) {
+            return "";
         }
 
         return normalizeBodyText(body.toString(), 0, false);

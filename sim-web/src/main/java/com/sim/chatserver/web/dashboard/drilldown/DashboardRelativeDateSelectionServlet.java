@@ -166,7 +166,9 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         Timestamp startTs = Timestamp.valueOf(date.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;
@@ -182,35 +184,42 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                         + quoteIdentifier(tableName)
                         + " WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC";
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = null;
+                ResultSet rs = null;
+                try {
+                    ps = conn.prepareStatement(sql);
                     ps.setTimestamp(1, startTs);
                     ps.setTimestamp(2, endTs);
+                    rs = ps.executeQuery();
 
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        String prompt = rs.getString("prompt");
+                        String response = rs.getString("response_text");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        String sessionId = rs.getString("session_id");
 
-                            snapshots.add(new TermChatSnapshot(
-                                    date.toString(),
-                                    widgetId,
-                                    chatId == null ? "" : chatId,
-                                    prompt == null ? "" : prompt,
-                                    response == null ? "" : response,
-                                    createdAt,
-                                    sessionId == null ? "" : sessionId
-                            ));
-                        }
+                        snapshots.add(new TermChatSnapshot(
+                                date.toString(),
+                                widgetId,
+                                chatId == null ? "" : chatId,
+                                prompt == null ? "" : prompt,
+                                response == null ? "" : response,
+                                createdAt,
+                                sessionId == null ? "" : sessionId
+                        ));
                     }
                 } catch (SQLException e) {
                     log.log(Level.FINE, "Unable to read relative-date entries from table " + tableName, e);
+                } finally {
+                    closeQuietly(rs);
+                    closeQuietly(ps);
                 }
             }
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect relative date entries", e);
+        } finally {
+            closeQuietly(conn);
         }
 
         return snapshots;
@@ -389,6 +398,16 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             resp.sendError(status, message == null ? "Request failed." : message);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to send error response", e);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
         }
     }
 

@@ -113,8 +113,7 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
     }
 
-    private JsonObject buildRowsPayload(Connection conn, String tableName, HttpServletRequest req, LocalDate selectedDate)
-            throws SQLException {
+    private JsonObject buildRowsPayload(Connection conn, String tableName, HttpServletRequest req, LocalDate selectedDate) {
         int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 256, true, true));
         int page = parsePage(ServletRequestParamUtil.firstParam(req, "page", 256, true, true));
         int offset = (page - 1) * limit;
@@ -146,14 +145,21 @@ public class WidgetTableDataServlet extends HttpServlet {
                 .build();
     }
 
-    private int countRows(Connection conn, String tableName, String whereClause, List<Object> whereParams) throws SQLException {
+    private int countRows(Connection conn, String tableName, String whereClause, List<Object> whereParams) {
         String countSql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName) + whereClause;
-        try (PreparedStatement countPs = conn.prepareStatement(countSql)) {
+        PreparedStatement countPs = null;
+        ResultSet rs = null;
+        try {
+            countPs = conn.prepareStatement(countSql);
             bindParams(countPs, whereParams);
-            try (ResultSet rs = countPs.executeQuery()) {
-                rs.next();
-                return rs.getInt(1);
-            }
+            rs = countPs.executeQuery();
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to count widget rows", e);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(countPs);
         }
     }
 
@@ -166,7 +172,7 @@ public class WidgetTableDataServlet extends HttpServlet {
             String sortDir,
             int limit,
             int offset
-    ) throws SQLException {
+    ) {
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM ")
                 .append(quoteIdentifier(tableName))
@@ -179,48 +185,65 @@ public class WidgetTableDataServlet extends HttpServlet {
 
         List<ChatRow> rows = new ArrayList<>();
         Set<String> sessionIds = new HashSet<>();
-        try (PreparedStatement ps = conn.prepareStatement(sqlBuilder.toString())) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            ps = conn.prepareStatement(sqlBuilder.toString());
             int idx = bindParams(ps, whereParams);
             ps.setInt(idx++, limit);
             ps.setInt(idx, offset);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String sessionId = rs.getString("session_id");
-                    if (sessionId != null && !sessionId.isBlank()) {
-                        sessionIds.add(sessionId);
-                    }
-
-                    Timestamp createdAtTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                    rows.add(new ChatRow(
-                            rs.getString("widget_chat_id"),
-                            rs.getString("prompt"),
-                            rs.getString("response_text"),
-                            formatTimestampNullable(createdAtTs),
-                            sessionId
-                    ));
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String sessionId = rs.getString("session_id");
+                if (sessionId != null && !sessionId.isBlank()) {
+                    sessionIds.add(sessionId);
                 }
+
+                Timestamp createdAtTs = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                rows.add(new ChatRow(
+                        rs.getString("widget_chat_id"),
+                        rs.getString("prompt"),
+                        rs.getString("response_text"),
+                        formatTimestampNullable(createdAtTs),
+                        sessionId
+                ));
+            }
+
+            Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
+                    ? Collections.emptyMap()
+                    : SessionLabelStore.mapDisplayNames(sessionIds);
+
+            JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
+            for (ChatRow row : rows) {
+                JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
+                addNullableJson(rowBuilder, "chatId", row.chatId);
+                addNullableJson(rowBuilder, "prompt", row.prompt);
+                addNullableJson(rowBuilder, "response", row.response);
+                addNullableJson(rowBuilder, "createdAt", row.createdAt);
+                addNullableJson(rowBuilder, "sessionId", row.sessionId);
+
+                String friendly = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
+                rowBuilder.add("sessionIdDisplay", friendly);
+                arrayBuilder.add(rowBuilder.build());
+            }
+            return arrayBuilder;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Unable to fetch widget rows", e);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(ps);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
             }
         }
-
-        Map<String, SessionLabelStore.SessionLabel> labels = sessionIds.isEmpty()
-                ? Collections.emptyMap()
-                : SessionLabelStore.mapDisplayNames(sessionIds);
-
-        JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
-        for (ChatRow row : rows) {
-            JsonObjectBuilder rowBuilder = Json.createObjectBuilder();
-            addNullableJson(rowBuilder, "chatId", row.chatId);
-            addNullableJson(rowBuilder, "prompt", row.prompt);
-            addNullableJson(rowBuilder, "response", row.response);
-            addNullableJson(rowBuilder, "createdAt", row.createdAt);
-            addNullableJson(rowBuilder, "sessionId", row.sessionId);
-
-            String friendly = SessionLabelStore.resolveDisplayLabel(row.sessionId, labels.get(row.sessionId));
-            rowBuilder.add("sessionIdDisplay", friendly);
-            arrayBuilder.add(rowBuilder.build());
-        }
-        return arrayBuilder;
     }
 
     private void addNullableJson(JsonObjectBuilder rowBuilder, String key, String value) {

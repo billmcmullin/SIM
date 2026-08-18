@@ -337,14 +337,21 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         try (JsonReader reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             return reader.readObject();
-        } catch (IOException | JsonException e) {
+        } catch (JsonException e) {
             throw new IllegalArgumentException("Invalid JSON payload", e);
         }
     }
 
-    private String readRequestBody(HttpServletRequest req) throws IOException {
-        try (var reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+    private String readRequestBody(HttpServletRequest req) {
+        try {
+            var reader = req.getReader();
+            try {
+                return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+            } finally {
+                reader.close();
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to read request body", e);
         }
     }
 

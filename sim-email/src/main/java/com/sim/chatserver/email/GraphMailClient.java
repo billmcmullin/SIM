@@ -41,6 +41,11 @@ public class GraphMailClient {
 
     private static volatile boolean warnedDiagFailure;
 
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     final void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
         HttpsURLConnection conn = null;
         String requestId = UUID.randomUUID().toString();

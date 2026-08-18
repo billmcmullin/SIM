@@ -81,7 +81,7 @@ public class AllSessionsPageServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(HttpServletRequest req, String path) throws IOException {
+    private String loadTemplate(HttpServletRequest req, String path) {
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
                 return null;
@@ -94,6 +94,10 @@ public class AllSessionsPageServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            java.util.logging.Logger.getLogger(getClass().getName())
+                    .log(java.util.logging.Level.WARNING, "Unable to load template: " + path, e);
+            return null;
         }
     }
 

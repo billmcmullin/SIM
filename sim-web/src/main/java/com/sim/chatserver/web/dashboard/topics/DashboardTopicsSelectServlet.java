@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.sql.SQLException;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -157,7 +158,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
 
         try (Reader reader = sourceReader) {
             String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-            return validateTaintedText(ServletRequestParamUtil.normalizeBodyText(body, MAX_JSON_PAYLOAD_BYTES, true));
+            String normalized = ServletRequestParamUtil.normalizeBodyText(body, MAX_JSON_PAYLOAD_BYTES, true);
+            return validateCanonicalizedBodyText(normalized);
         } catch (IOException | IllegalArgumentException ex) {
             log.log(Level.FINE, "Unable to parse topics-select request body", ex);
             throw new JsonException("Unable to read request payload", ex);
@@ -189,13 +191,14 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         return "application/json".equals(mediaType) || mediaType.endsWith("+json");
     }
 
-    private String validateTaintedText(String value) {
+    private String validateCanonicalizedBodyText(String value) {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        StringBuilder safe = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
+        String canonical = TextIoSanitizerUtil.canonicalize(value);
+        StringBuilder safe = new StringBuilder(canonical.length());
+        for (int i = 0; i < canonical.length(); i++) {
+            char ch = canonical.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }

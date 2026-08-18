@@ -292,7 +292,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         DashboardTermService termService = new DashboardTermService(termsStore());
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             var summary = termService.buildTermSummary(
                     conn,
                     widgets,
@@ -307,6 +309,18 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         } catch (SQLException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to rebuild term snapshots on demand", ex);
             return Map.of();
+        } finally {
+            closeQuietly(conn);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
         }
     }
 

@@ -272,7 +272,11 @@ public class InactiveUsersPageServlet extends HttpServlet {
                 + quoteIdentifier(table)
                 + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
 
-        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            ps = conn.prepareStatement(sql);
+            rs = ps.executeQuery();
             while (rs.next()) {
                 String sid = sanitizeSessionId(readDbText(rs, "session_id", MAX_SESSION_ID_LENGTH));
                 Timestamp last = SqlTimeUtil.safeTimestamp(rs, "last_entry");
@@ -294,6 +298,9 @@ public class InactiveUsersPageServlet extends HttpServlet {
             }
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to aggregate inactive sessions for table " + table, e);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(ps);
         }
         return out;
     }
@@ -309,25 +316,40 @@ public class InactiveUsersPageServlet extends HttpServlet {
             String sql = "SELECT " + quoteIdentifier(col) + " AS p FROM " + quoteIdentifier(table)
                     + " WHERE session_id = ? AND " + quoteIdentifier(col) + " IS NOT NULL AND " + quoteIdentifier(col) + " <> ''"
                     + " ORDER BY created_at DESC";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
                 ps.setString(1, sessionId);
                 ps.setMaxRows(limit);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String p = safeDbText(rs.getString("p"), 2000);
-                        if (p != null && !p.isBlank()) {
-                            prompts.add(p);
-                        }
+                rs = ps.executeQuery();
+                while (rs.next()) {
+                    String p = safeDbText(rs.getString("p"), 2000);
+                    if (p != null && !p.isBlank()) {
+                        prompts.add(p);
                     }
-                    if (!prompts.isEmpty()) {
-                        return prompts;
-                    }
+                }
+                if (!prompts.isEmpty()) {
+                    return prompts;
                 }
             } catch (SQLException ex) {
                 log.log(Level.FINE, "Prompt column not available for table " + table + ": " + col, ex);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
         return prompts;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private FrustrationResult detectFrustration(List<String> prompts) {

@@ -7,7 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.text.Normalizer;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -323,8 +323,7 @@ public final class WidgetStore {
             if (reader != null) {
                 try (Reader closeable = reader) {
                     String raw = readAtMostChars(closeable, 4096);
-                    String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-                    return validateDbText(canonicalRaw, 4096);
+                    return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -337,8 +336,7 @@ public final class WidgetStore {
             byte[] bytes = rs.getBytes(column);
             if (bytes != null) {
                 String raw = new String(bytes, StandardCharsets.UTF_8);
-                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-                return validateDbText(canonicalRaw, 4096);
+                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Binary read failed for column " + column, ex);
@@ -347,7 +345,7 @@ public final class WidgetStore {
         try {
             String raw = rs.getString(column);
             if (raw != null) {
-                return validateDbText(raw, 4096);
+                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "String read failed for column " + column, ex);
@@ -356,7 +354,7 @@ public final class WidgetStore {
         try {
             Object raw = rs.getObject(column);
             if (raw != null) {
-                return validateDbText(String.valueOf(raw), 4096);
+                return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Object read failed for column " + column, ex);
@@ -396,30 +394,7 @@ public final class WidgetStore {
     }
 
     private static String sanitizeDbText(String value, int maxChars) {
-        if (value == null) {
-            return "";
-        }
-        String trimmed = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
-        if (maxChars <= 0 || trimmed.length() <= maxChars) {
-            return trimmed;
-        }
-        return trimmed.substring(0, maxChars);
-    }
-
-    private static String validateDbText(String value, int maxChars) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        String sanitized = sanitizeDbText(value, maxChars);
-        StringBuilder safe = new StringBuilder(sanitized.length());
-        for (int i = 0; i < sanitized.length(); i++) {
-            char ch = sanitized.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        return safe.toString();
+        return TextIoSanitizerUtil.validateCanonicalized(value, maxChars);
     }
 
     private static int validateDbInt(int value, String column) {

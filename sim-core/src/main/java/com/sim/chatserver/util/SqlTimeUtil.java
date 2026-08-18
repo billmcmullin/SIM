@@ -5,7 +5,6 @@ import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -98,7 +97,7 @@ public final class SqlTimeUtil {
             }
             try (Reader closeable = reader) {
                 String raw = TextIoSanitizerUtil.readAtMostChars(closeable, MAX_TIMESTAMP_TEXT_LENGTH);
-                return validateTaintedTimestampText(raw);
+                return validateCanonicalizedTimestamp(raw);
             }
         } catch (SQLException ex) {
             LOG.log(Level.FINER, "Timestamp character-stream read failed for column " + column, ex);
@@ -119,19 +118,19 @@ public final class SqlTimeUtil {
             if (raw.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
                 raw = raw.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
             }
-            return validateTaintedTimestampText(raw);
+            return validateCanonicalizedTimestamp(raw);
         } catch (SQLException ex) {
             LOG.log(Level.FINER, "Timestamp binary read failed for column " + column, ex);
             return "";
         }
     }
 
-    private static String validateTaintedTimestampText(String value) {
+    private static String validateCanonicalizedTimestamp(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
+        String canonical = TextIoSanitizerUtil.canonicalize(value);
 
-        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
         StringBuilder safe = new StringBuilder(canonical.length());
         for (int i = 0; i < canonical.length(); i++) {
             char ch = canonical.charAt(i);
@@ -143,7 +142,6 @@ public final class SqlTimeUtil {
 
         return sanitizeTimestampCandidate(safe.toString());
     }
-
 
     private static String sanitizeTimestampCandidate(String value) {
         if (value == null) {

@@ -204,10 +204,10 @@ public class CustomerProfileServlet extends HttpServlet {
         out.append('<').append('/').append(name).append('>');
     }
 
-    private String loadTemplate(ServletContext context, String path) throws IOException {
+    private String loadTemplate(ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                throw new IOException("Template not found: " + path);
+                throw new IllegalStateException("Template not found: " + path);
             }
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder builder = new StringBuilder();
@@ -217,6 +217,9 @@ public class CustomerProfileServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Unable to load template: " + path, e);
+            throw new IllegalStateException("Unable to load template: " + path, e);
         }
     }
 

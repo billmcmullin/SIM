@@ -195,8 +195,16 @@ public class TestAwsConnectionServlet extends HttpServlet {
             .httpClientBuilder(UrlConnectionHttpClient.builder())
                 .build()) {
 
-            DescribeInstancesResponse response = ec2.describeInstances(
-                    DescribeInstancesRequest.builder().instanceIds(instanceId).build());
+            DescribeInstancesResponse response;
+            try {
+                response = ec2.describeInstances(
+                        DescribeInstancesRequest.builder().instanceIds(instanceId).build());
+            } catch (software.amazon.awssdk.awscore.exception.AwsServiceException
+                    | SdkClientException e) {
+                log.log(Level.WARNING, "AWS EC2 describe instances failed", e);
+                throw new IllegalStateException("AWS EC2 describe instances failed: "
+                        + (e.getMessage() == null ? "unknown error" : e.getMessage()), e);
+            }
 
             for (var reservation : response.reservations()) {
                 for (Instance instance : reservation.instances()) {

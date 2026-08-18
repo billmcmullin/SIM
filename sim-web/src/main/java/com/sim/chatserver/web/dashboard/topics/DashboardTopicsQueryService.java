@@ -28,6 +28,11 @@ public class DashboardTopicsQueryService {
     private static final Logger log = Logger.getLogger(DashboardTopicsQueryService.class.getName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     public TopicCountResult collectTopicCounts(
             List<WidgetEntry> widgets,
             LocalDate startInclusive,

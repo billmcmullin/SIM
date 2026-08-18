@@ -68,14 +68,14 @@ public class DashboardMetricsService {
         private final int termsYesterday;
         private final ProgressStat termsProgression;
 
-        public DashboardProgressMetrics(int chatsToday, int chatsYesterday, int termsToday, int termsYesterday) {
+        public DashboardProgressMetrics(int chatsToday, int chatsYesterday, int termsTodayValue, int termsYesterdayValue) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
 
-            this.termsToday = termsToday;
-            this.termsYesterday = termsYesterday;
-            this.termsProgression = new ProgressStat(termsToday, termsYesterday);
+            this.termsProgression = new ProgressStat(
+                    this.termsToday = termsTodayValue,
+                    this.termsYesterday = termsYesterdayValue);
         }
 
         public int getChatsToday() {

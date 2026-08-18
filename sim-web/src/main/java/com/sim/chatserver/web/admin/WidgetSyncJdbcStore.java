@@ -162,7 +162,7 @@ final class WidgetSyncJdbcStore {
     }
 
     int insertWidgetChats(AppDataSourceHolder holder, String tableName, List<ChatUpsertRow> rows) {
-        if (rows == null || rows.isEmpty()) {
+        if (rows == null || rows.isEmpty() || tableName == null || tableName.isBlank()) {
             return 0;
         }
 
@@ -246,16 +246,11 @@ final class WidgetSyncJdbcStore {
         if (holder == null) {
             throw new IllegalStateException("Data source holder is unavailable.");
         }
-        DataSource dataSource;
         try {
-            dataSource = holder.getDataSource();
+            return holder.getDataSource();
         } catch (IllegalArgumentException | IllegalStateException ex) {
             throw new IllegalStateException("Data source holder is unavailable.", ex);
         }
-        if (dataSource == null) {
-            throw new IllegalStateException("Data source holder is unavailable.");
-        }
-        return dataSource;
     }
 
     private Connection openConnection(AppDataSourceHolder holder) throws SQLException {
@@ -634,7 +629,7 @@ final class WidgetSyncJdbcStore {
             if (reader != null) {
                 try (Reader closeable = reader) {
                     String raw = Normalizer.normalize(readAtMostChars(closeable, maxLen), Normalizer.Form.NFKC);
-                    return validateTaintedDbText(raw, maxLen);
+                    return stripAndBoundTaintedDbText(raw, maxLen);
                 }
             }
         } catch (SQLException | IOException ex) {
@@ -643,20 +638,40 @@ final class WidgetSyncJdbcStore {
 
         try {
             byte[] bytes = rs.getBytes(columnName);
-            String raw = Normalizer.normalize(readAtMostBytes(bytes, maxLen), Normalizer.Form.NFKC);
-            return validateTaintedDbText(raw, maxLen);
+            if (bytes != null) {
+                String raw = Normalizer.normalize(readAtMostBytes(bytes, maxLen), Normalizer.Form.NFKC);
+                return stripAndBoundTaintedDbText(raw, maxLen);
+            }
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes failed for column " + columnName, ex);
-            return "";
         }
+
+        try {
+            String raw = rs.getString(columnName);
+            if (raw != null) {
+                return stripAndBoundTaintedDbText(Normalizer.normalize(raw, Normalizer.Form.NFKC), maxLen);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getString failed for column " + columnName, ex);
+        }
+
+        try {
+            Object raw = rs.getObject(columnName);
+            if (raw != null) {
+                return stripAndBoundTaintedDbText(Normalizer.normalize(String.valueOf(raw), Normalizer.Form.NFKC), maxLen);
+            }
+        } catch (SQLException ex) {
+            log.log(Level.FINE, "ResultSet#getObject failed for column " + columnName, ex);
+        }
+
+        return "";
     }
 
-    private String validateTaintedDbText(String value, int maxLen) {
+    private String stripAndBoundTaintedDbText(String value, int maxLen) {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        String sanitized = TextIoSanitizerUtil.stripControlCharacters(canonical);
+        String sanitized = TextIoSanitizerUtil.stripControlCharacters(value);
         if (maxLen > 0 && sanitized.length() > maxLen) {
             return sanitized.substring(0, maxLen);
         }

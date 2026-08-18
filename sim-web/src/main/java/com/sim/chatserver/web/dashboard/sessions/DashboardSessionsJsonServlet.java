@@ -177,7 +177,11 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                     + quoteIdentifier(tableName)
                     + " WHERE session_id IS NOT NULL GROUP BY session_id";
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
+                rs = ps.executeQuery();
                 while (rs.next()) {
                     String sessionId = rs.getString("session_id");
                     if (sessionId == null || sessionId.isBlank()) {
@@ -199,9 +203,22 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                 }
             } catch (SQLException ex) {
                 log.log(Level.FINE, "Skipping widget session aggregation due to SQL error", ex);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
         return accumulators;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private AppDataSourceHolder resolveDataSourceHolder() {

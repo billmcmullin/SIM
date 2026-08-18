@@ -3,7 +3,7 @@ package com.sim.chatserver.web.dashboard.topics;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.text.Normalizer;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,7 +41,7 @@ public class DashboardTopicsServlet extends HttpServlet {
                     .replace("${user}", escapeHtml(user))
                     .replace("${globalTopicRows}", "")
                     .replace("${perWidgetTopicTables}", "");
-                String safeRendered = sanitizeRenderedTemplate(rendered);
+                String safeRendered = validateCanonicalizedRenderedTemplate(rendered);
 
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
             resp.setContentType("text/html; charset=UTF-8");
@@ -100,12 +100,12 @@ public class DashboardTopicsServlet extends HttpServlet {
         return escaped.toString();
     }
 
-    private String sanitizeRenderedTemplate(String value) {
+    private String validateCanonicalizedRenderedTemplate(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
-        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        return normalized.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
+        String canonical = TextIoSanitizerUtil.canonicalize(value);
+        return canonical.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
     }
 
 }
