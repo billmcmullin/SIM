@@ -537,7 +537,7 @@ public class DashboardDbUtilTest
             synchronized (cache) {
                 cache.clear();
                 for (int i = 0; i < 512; i++) {
-                    cache.put("k" + i, new CacheValue<>(Boolean.TRUE, Long.MAX_VALUE));
+                    cache.put("k" + i, CacheValue.of(Boolean.TRUE, Long.MAX_VALUE));
                 }
             }
     

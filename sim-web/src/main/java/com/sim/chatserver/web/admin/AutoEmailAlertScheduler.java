@@ -185,7 +185,7 @@ public class AutoEmailAlertScheduler {
         WidgetAvailabilityResult result = null;
         try {
             result = availabilityChecker.checkNow();
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.FINE, "Health test email proceeding without live checker details.", e);
         }
 
@@ -216,7 +216,7 @@ public class AutoEmailAlertScheduler {
 
         try {
             runTick();
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Automatic email alert tick failed.", e);
         } finally {
             tickRunning.set(false);
@@ -315,7 +315,7 @@ public class AutoEmailAlertScheduler {
             store.updateHealthState(now, status, offlineSince, lastAlert, restartAttemptAt);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to persist health alert state.", e);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Health alert evaluation failed.", e);
         }
     }
@@ -346,7 +346,7 @@ public class AutoEmailAlertScheduler {
                     "Unable to load AWS config for automatic healthcheck restart: {0}",
                     defaultIfBlank(ex.getMessage(), ex.getClass().getSimpleName()));
             return false;
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (Throwable ex) {
             log.log(Level.WARNING, "Unable to load AWS config for automatic healthcheck restart.", ex);
             return false;
         }
@@ -414,7 +414,7 @@ public class AutoEmailAlertScheduler {
             store.updateTermState(now, currentCount, lastAlert);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to evaluate or persist term alert state.", e);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Term alert evaluation failed.", e);
         }
     }
@@ -478,12 +478,12 @@ public class AutoEmailAlertScheduler {
                 builder.attachments(attachments);
             }
             for (String recipient : recipients) {
-                builder.to(recipient);
+                builder.addTo(recipient);
             }
 
             service.send(builder.build());
             return true;
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Failed sending automatic alert email.", e);
             return false;
         }

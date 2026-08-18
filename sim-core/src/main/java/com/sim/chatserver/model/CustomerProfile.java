@@ -89,7 +89,7 @@ public class CustomerProfile {
         this.department = department;
     }
 
-    public String getRawJson() {
+    final String getRawJson() {
         return rawJson;
     }
 
@@ -105,7 +105,7 @@ public class CustomerProfile {
         this.lastSyncedAt = lastSyncedAt;
     }
 
-    public boolean isEmpty() {
+    final boolean isEmpty() {
         return sessionId == null
                 && friendlyName == null
                 && salesforceContactId == null

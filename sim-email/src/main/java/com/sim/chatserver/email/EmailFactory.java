@@ -9,7 +9,7 @@ public final class EmailFactory {
     /**
      * Backward-compatible path: load SMTP from env/properties.
      */
-    public static EmailService fromEnvOrProperties() {
+    static EmailService fromEnvOrProperties() {
         EmailConfig config = EmailConfigLoader.load();
         return smtp(config);
     }

@@ -93,10 +93,33 @@ paths:
       summary: Test external connection
       operationId: postAdminTestConnection
       requestBody:
-        $ref: '#/components/requestBodies/GenericJsonOrForm'
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TestConnectionRequest'
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestConnectionResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
 
   /admin/test-salesforce-connection:
     post:
@@ -116,16 +139,52 @@ paths:
       operationId: getAdminWidgetHealthConfig
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Widget health configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetHealthConfig'
+        '500':
+          description: Configuration store not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
     post:
       tags: [admin]
       summary: Update widget health configuration
       operationId: postAdminWidgetHealthConfig
       requestBody:
-        $ref: '#/components/requestBodies/GenericJsonOrForm'
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetHealthConfig'
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Updated widget health configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetHealthConfig'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessageResponse'
 
   /admin/db/backup:
     get:
@@ -134,7 +193,17 @@ paths:
       operationId: getAdminDbBackup
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: ZIP archive of database backup
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              description: attachment filename for the backup archive
+              schema:
+                type: string
 
   /admin/db/import:
     post:
@@ -433,18 +502,69 @@ paths:
       tags: [dashboard]
       summary: Session data (query)
       operationId: getDashboardSessionsData
+      parameters:
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Return all sessions without pagination
+        - name: labeledOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Only include sessions with friendly name or email
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Search term for session ID, label, or chat content
+        - name: activity
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Activity filter
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Page size
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Paginated session summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDataResponse'
     post:
       tags: [dashboard]
       summary: Session data (payload)
       operationId: postDashboardSessionsData
       requestBody:
-        $ref: '#/components/requestBodies/GenericJsonOrForm'
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSelectRequest'
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Selected chat snapshots
+          content:
+            application/json:
+              schema:
+                type: object
 
   /dashboard/sessions/chats:
     get:
@@ -513,30 +633,90 @@ paths:
         '200':
           $ref: '#/components/responses/GenericSuccess'
 
+  /dashboard/summary-markdown:
+    get:
+      tags: [dashboard]
+      summary: Daily summary markdown page
+      operationId: getDashboardSummaryMarkdown
+      parameters:
+        - name: day
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: ISO local date
+        - name: slot
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Summary slot index
+      responses:
+        '200':
+          description: HTML summary page
+          content:
+            text/html:
+              schema:
+                type: string
+
   /dashboard/widgets:
     get:
       tags: [dashboard]
       summary: List dashboard widgets
       operationId: getDashboardWidgets
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional widget filter
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Widget list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetListResponse'
     post:
       tags: [dashboard]
       summary: Create dashboard widget
       operationId: postDashboardWidgets
       requestBody:
-        $ref: '#/components/requestBodies/GenericJsonOrForm'
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WidgetRequest'
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Created or updated widget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetSingleResponse'
     delete:
       tags: [dashboard]
       summary: Delete dashboard widget
       operationId: deleteDashboardWidgets
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated widget IDs
       responses:
         '200':
-          $ref: '#/components/responses/GenericSuccess'
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetDeleteResponse'
 
   /dashboard/widgets/review/start:
     post:
@@ -790,3 +970,189 @@ components:
               type: string
             updatedAt:
               type: string
+
+    TestConnectionRequest:
+      type: object
+      properties:
+        serverHost:
+          type: string
+          description: Target server host
+        serverPort:
+          type: string
+          description: Target server port
+        apiKey:
+          type: string
+          description: API key for the target server
+        workspaceName:
+          type: string
+          description: Workspace name to test
+
+    TestConnectionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        message:
+          type: string
+        authSource:
+          type: string
+        probe:
+          type: string
+          example: chat
+        upstreamStatus:
+          type: integer
+        authMode:
+          type: string
+        upstreamBody:
+          type: string
+
+    WidgetHealthConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        healthcheckUrl:
+          type: string
+          format: uri
+        healthcheckEnabled:
+          type: boolean
+        checkIntervalMinutes:
+          type: integer
+        method:
+          type: string
+        timeoutMs:
+          type: integer
+        expectJsonField:
+          type: string
+        expectJsonValue:
+          type: string
+        widgetId:
+          type: string
+        requestOrigin:
+          type: string
+        requestReferer:
+          type: string
+        requestUserAgent:
+          type: string
+        requestCookieStored:
+          type: boolean
+        apiKeyHeaderName:
+          type: string
+        apiKeyStored:
+          type: boolean
+        updatedBy:
+          type: string
+        updatedAt:
+          type: string
+
+    SessionDataResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        activeDays:
+          type: integer
+        activity:
+          type: string
+        labeledOnly:
+          type: boolean
+        totalUsers:
+          type: integer
+        activeUsers:
+          type: integer
+        inactiveUsers:
+          type: integer
+        totalSessions:
+          type: integer
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        widgetNames:
+          type: object
+          additionalProperties:
+            type: string
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionSummary'
+
+    SessionSummary:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        sessionIdDisplay:
+          type: string
+        totalCount:
+          type: integer
+          format: int64
+        firstSeen:
+          type: string
+        lastSeen:
+          type: string
+        widgets:
+          type: array
+          items:
+            type: string
+
+    SessionSelectRequest:
+      type: object
+      required: [selectedChatIds]
+      properties:
+        selectedChatIds:
+          type: array
+          items:
+            type: string
+
+    WidgetListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WidgetEntry'
+
+    WidgetSingleResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        widget:
+          $ref: '#/components/schemas/WidgetEntry'
+
+    WidgetDeleteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        deleted:
+          type: integer
+
+    WidgetRequest:
+      type: object
+      properties:
+        widgetId:
+          type: string
+        displayName:
+          type: string
+        id:
+          type: string
+          description: Optional existing widget ID for updates
+
+    WidgetEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        widgetId:
+          type: string
+        displayName:
+          type: string

@@ -109,13 +109,13 @@ public class WidgetReviewServlet extends HttpServlet {
         }
     
         } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -208,6 +208,7 @@ public class WidgetReviewServlet extends HttpServlet {
             UUID.fromString(value);
             return true;
         } catch (IllegalArgumentException ex) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             return false;
         }
     }

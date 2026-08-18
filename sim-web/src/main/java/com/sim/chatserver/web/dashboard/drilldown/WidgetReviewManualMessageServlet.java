@@ -93,7 +93,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final ReviewOutputValidator reviewOutputValidator;
         final TrustedUrlValidator trustedUrlValidator;
 
-        Runtime() {
+        private Runtime() {
             MapReduceConfig loadedConfig = MapReduceConfig.load();
             HttpClient client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -173,14 +173,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
             executeManualRequest(resp, requestId, startNanos, requestContext, targetContext);
     
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -350,7 +350,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     + " selected=" + requestContext.selectedEntries.size()
                     + " strategy=" + (useMapReduce ? "map-reduce-runtime().orchestrator" : "single-pass");
             log.info(completionLog);
-        } catch (IllegalArgumentException | IllegalStateException ex) {
+        } catch (Throwable ex) {
             if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
             }
@@ -517,7 +517,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 allIds,
                 requestId
             );
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             if (causedByInterrupted(e)) {
             Thread.currentThread().interrupt();
             }

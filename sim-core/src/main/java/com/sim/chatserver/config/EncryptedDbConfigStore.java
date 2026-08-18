@@ -422,7 +422,7 @@ public final class EncryptedDbConfigStore {
         try {
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             return factory.generateSecret(spec).getEncoded();
-        } catch (GeneralSecurityException e) {
+        } catch (java.security.NoSuchAlgorithmException | java.security.spec.InvalidKeySpecException e) {
             throw new IllegalStateException("Unable to derive encryption key", e);
         } finally {
             spec.clearPassword();

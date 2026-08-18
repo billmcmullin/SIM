@@ -4,7 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -31,88 +37,76 @@ class WidgetReviewOrchestrationRunnerTest {
     }
 
     @Test
-    void run_returnsResult_onSuccess() {
+    void run_returnsResult_onSuccess() throws Exception {
         WidgetReviewMapReduceOrchestrator.OrchestrationResult expected = orchestrationResult(
                 workspaceResponse(202, "{\"status\":\"queued\"}", "application/json")
         );
-        WidgetReviewMapReduceOrchestrator orchestrator = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)
-        ) {
-            @Override
-            public OrchestrationResult run(
-                    String targetUrl,
-                    String apiKey,
-                    String userMessage,
-                    String mode,
-                    String sessionId,
-                    boolean requestReset,
-                    jakarta.json.JsonArray attachments,
-                    List<com.sim.chatserver.model.SelectedEntry> selectedEntries,
-                    String requestId,
-                    ProgressListener progressListener
-            ) {
-                return expected;
-            }
-        };
+        ));
+        doReturn(expected).when(orchestrator).run(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyBoolean(),
+                any(),
+                any(),
+                anyString(),
+                any()
+        );
 
         WidgetReviewMapReduceOrchestrator.OrchestrationResult actual = assertDoesNotThrowRun(orchestrator);
         assertSame(expected, actual);
     }
 
     @Test
-    void run_rethrowsInterruptedException_andInterruptsThread() {
-        WidgetReviewMapReduceOrchestrator orchestrator = new WidgetReviewMapReduceOrchestrator(
+    void run_rethrowsInterruptedException_andInterruptsThread() throws Exception {
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)
-        ) {
-            @Override
-            public OrchestrationResult run(
-                    String targetUrl,
-                    String apiKey,
-                    String userMessage,
-                    String mode,
-                    String sessionId,
-                    boolean requestReset,
-                    jakarta.json.JsonArray attachments,
-                    List<com.sim.chatserver.model.SelectedEntry> selectedEntries,
-                    String requestId,
-                    ProgressListener progressListener
-            ) throws InterruptedException {
-                throw new InterruptedException("interrupted");
-            }
-        };
+        ));
+        doThrow(new InterruptedException("interrupted")).when(orchestrator).run(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyBoolean(),
+                any(),
+                any(),
+                anyString(),
+                any()
+        );
 
         assertThrows(InterruptedException.class, () -> runWithDefaults(orchestrator));
         assertTrue(Thread.currentThread().isInterrupted());
     }
 
     @Test
-    void run_wrapsUnexpectedExceptions_withIOException() {
+    void run_wrapsUnexpectedExceptions_withIOException() throws Exception {
         RuntimeException boom = new RuntimeException("boom");
-        WidgetReviewMapReduceOrchestrator orchestrator = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)
-        ) {
-            @Override
-            public OrchestrationResult run(
-                    String targetUrl,
-                    String apiKey,
-                    String userMessage,
-                    String mode,
-                    String sessionId,
-                    boolean requestReset,
-                    jakarta.json.JsonArray attachments,
-                    List<com.sim.chatserver.model.SelectedEntry> selectedEntries,
-                    String requestId,
-                    ProgressListener progressListener
-            ) {
-                throw boom;
-            }
-        };
+        ));
+        doThrow(boom).when(orchestrator).run(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyBoolean(),
+                any(),
+                any(),
+                anyString(),
+                any()
+        );
 
         IOException ex = assertThrows(IOException.class, () -> runWithDefaults(orchestrator));
         assertEquals("Map-reduce orchestration failed", ex.getMessage());

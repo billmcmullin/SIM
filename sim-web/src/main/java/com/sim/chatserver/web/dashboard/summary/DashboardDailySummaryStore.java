@@ -125,7 +125,7 @@ public class DashboardDailySummaryStore {
         upsert(day, slot, status, progressPct, message, overall, quality, response, usage, suggested, entryCount, markStarted, markGenerated);
     }
 
-    public void upsertSummary(
+    final void upsertSummary(
             LocalDate day,
             int slot,
             String status,
@@ -205,7 +205,7 @@ public class DashboardDailySummaryStore {
 
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", firstSqlError);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", firstSqlError);
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
         }
@@ -335,9 +335,9 @@ public class DashboardDailySummaryStore {
                     .add("status", "ok")
                     .add("summary", Json.createObjectBuilder()
                             .add("overall", "No summary has been generated yet.")
-                            .add("quality", "—")
-                            .add("response", "—")
-                            .add("usage", "—")
+                            .add("quality", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
+                            .add("response", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
+                            .add("usage", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
                             .add("suggestedNextAction", fallbackSuggested)
                             .add("entryCount", 0))
                     .add("meta", Json.createObjectBuilder()
@@ -384,13 +384,13 @@ public class DashboardDailySummaryStore {
             overall = message.isBlank() ? "Summary generation in progress." : message;
         }
         if (quality.isBlank()) {
-            quality = "—";
+            quality = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
         }
         if (response.isBlank()) {
-            response = "—";
+            response = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
         }
         if (usage.isBlank()) {
-            usage = "—";
+            usage = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
         }
         if (suggested.isBlank()) {
             suggested = suggestNextAction(status, quality, response, usage);

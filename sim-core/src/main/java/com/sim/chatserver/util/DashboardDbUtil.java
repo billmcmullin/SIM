@@ -59,7 +59,7 @@ public final class DashboardDbUtil {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    public static boolean tableExists(Connection conn, String tableName) throws SQLException {
+    static boolean tableExists(Connection conn, String tableName) throws SQLException {
         if (conn == null || tableName == null || tableName.isBlank()) {
             return false;
         }
@@ -118,7 +118,7 @@ public final class DashboardDbUtil {
         boolean exists = tableExists(conn, tableName);
 
         synchronized (TABLE_CACHE_LOCK) {
-                GLOBAL_TABLE_EXISTS_CACHE.put(key, new CacheValue<>(Boolean.valueOf(exists), now + TABLE_EXISTS_TTL_MILLIS));
+                GLOBAL_TABLE_EXISTS_CACHE.put(key, CacheValue.of(Boolean.valueOf(exists), now + TABLE_EXISTS_TTL_MILLIS));
             if (GLOBAL_TABLE_EXISTS_CACHE.size() > TABLE_EXISTS_CACHE_MAX) {
                 String oldest = GLOBAL_TABLE_EXISTS_CACHE.keySet().iterator().next();
                 GLOBAL_TABLE_EXISTS_CACHE.remove(oldest);

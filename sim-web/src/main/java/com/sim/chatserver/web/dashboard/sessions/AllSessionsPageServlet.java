@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -15,13 +17,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 /**
- * Serves the /dashboard/sessions page which renders the â€œAll Sessionsâ€ SPA. The
+ * Serves the /dashboard/sessions page which renders the ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAll SessionsÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â SPA. The
  * initial script tag injects the context path (for AJAX), default pagination
  * parameters, and initial filters.
  */
 @WebServlet(name = "AllSessionsPageServlet", urlPatterns = {"/dashboard/sessions"})
 public class AllSessionsPageServlet extends HttpServlet {
 
+    private static final Logger log = Logger.getLogger(AllSessionsPageServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/all_sessions.html";
 
     @Override
@@ -30,7 +33,7 @@ public class AllSessionsPageServlet extends HttpServlet {
         // require authentication
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/login");
+            safeForwardToLogin(req, resp);
             return;
         }
 
@@ -67,14 +70,14 @@ public class AllSessionsPageServlet extends HttpServlet {
             writer.print(rendered);
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -95,7 +98,7 @@ public class AllSessionsPageServlet extends HttpServlet {
                 return builder.toString();
             }
         } catch (IOException e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unable to load template: " + path, e);
             return null;
         }
@@ -121,5 +124,18 @@ public class AllSessionsPageServlet extends HttpServlet {
                 .replace("\r", "\\r")
                 .replace("\n", "\\n");
         return "\"" + escaped + "\"";
+    }
+
+    private void safeForwardToLogin(HttpServletRequest req, HttpServletResponse resp) {
+        try {
+            req.getRequestDispatcher("/login").forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.WARNING, "Unable to forward unauthenticated user to login", ex);
+            try {
+                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            } catch (IOException ioe) {
+                log.log(Level.FINE, "Unable to send authentication error", ioe);
+            }
+        }
     }
 }

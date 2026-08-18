@@ -176,7 +176,7 @@ public final class ApiAuthResolver {
             this.token = token;
         }
 
-        static WidgetHealthAuth empty() {
+        private static WidgetHealthAuth empty() {
             return new WidgetHealthAuth(null, null, null);
         }
     }

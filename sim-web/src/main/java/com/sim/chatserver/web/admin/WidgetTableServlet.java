@@ -326,6 +326,7 @@ public class WidgetTableServlet extends HttpServlet {
             try {
                 closeable.close();
             } catch (Exception e) {
+                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
                 // ignore close failure
             }
         }

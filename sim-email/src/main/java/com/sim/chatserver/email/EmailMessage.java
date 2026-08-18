@@ -95,32 +95,44 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder to(String recipient) {
+        public Builder addTo(String recipient) {
+            return to(recipient);
+        }
+
+        Builder to(String recipient) {
             this.to.add(recipient);
             return this;
         }
 
-        public Builder to(List<String> recipients) {
+        Builder to(List<String> recipients) {
             this.to.addAll(recipients);
             return this;
         }
 
-        public Builder cc(String recipient) {
+        public Builder addCc(String recipient) {
+            return cc(recipient);
+        }
+
+        Builder cc(String recipient) {
             this.cc.add(recipient);
             return this;
         }
 
-        public Builder cc(List<String> recipients) {
+        Builder cc(List<String> recipients) {
             this.cc.addAll(recipients);
             return this;
         }
 
-        public Builder bcc(String recipient) {
+        public Builder addBcc(String recipient) {
+            return bcc(recipient);
+        }
+
+        Builder bcc(String recipient) {
             this.bcc.add(recipient);
             return this;
         }
 
-        public Builder bcc(List<String> recipients) {
+        Builder bcc(List<String> recipients) {
             this.bcc.addAll(recipients);
             return this;
         }
@@ -145,9 +157,13 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder attachment(EmailAttachment attachment) {
+        Builder attachment(EmailAttachment attachment) {
             this.attachments.add(attachment);
             return this;
+        }
+
+        public Builder addAttachment(EmailAttachment attachment) {
+            return attachment(attachment);
         }
 
         public Builder attachments(List<EmailAttachment> attachments) {
@@ -180,7 +196,7 @@ public final class EmailMessage {
         }
     }
 
-    public List<String> allRecipientsReadOnly() {
+    List<String> allRecipientsReadOnly() {
         List<String> all = new ArrayList<>(to);
         all.addAll(cc);
         all.addAll(bcc);

@@ -191,18 +191,18 @@ public class SaveConfigServlet extends HttpServlet {
             EncryptedDbConfigStore.save(config);
             writeJson(resp, HttpServletResponse.SC_OK,
                     Json.createObjectBuilder().add("status", "ok").build());
-        } catch (Exception e) {
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             throw new ServletException("Unable to save server configuration", e);
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (ServletException | IllegalArgumentException | IllegalStateException e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.service.dashboard;
 
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Date;
@@ -91,7 +92,17 @@ public class DashboardSessionServiceTest
         String key = "key"; // UTA: default value
         Boolean value = false; // UTA: default value
         tableExistsCache.put(key, value);
-        SessionTimeline result = underTest.buildSessionTimeline(conn, widgets, sessionIds, rangeStart, rangeEnd, tableExistsCache);
+        SessionTimeline result = (SessionTimeline) invokePrivate(
+            underTest,
+            "buildSessionTimeline",
+            new Class<?>[]{Connection.class, List.class, List.class, LocalDate.class, LocalDate.class, Map.class},
+            conn,
+            widgets,
+            sessionIds,
+            rangeStart,
+            rangeEnd,
+            tableExistsCache
+        );
 
     }
 
@@ -109,7 +120,12 @@ public class DashboardSessionServiceTest
 
         // When
         Timestamp ts = null; // UTA: configured value
-        String result = underTest.formatTimestamp(ts);
+        String result = (String) invokePrivate(
+            underTest,
+            "formatTimestamp",
+            new Class<?>[]{Timestamp.class},
+            ts
+        );
 
     }
 
@@ -131,7 +147,18 @@ public class DashboardSessionServiceTest
         ZonedDateTime atZoneResult = mock(ZonedDateTime.class);
         when(toInstantResult.atZone(nullable(ZoneId.class))).thenReturn(atZoneResult);
         when(ts.toInstant()).thenReturn(toInstantResult);
-        String result = underTest.formatTimestamp(ts);
+        String result = (String) invokePrivate(
+                underTest,
+                "formatTimestamp",
+                new Class<?>[]{Timestamp.class},
+                ts
+        );
 
+    }
+
+    private static Object invokePrivate(Object target, String methodName, Class<?>[] paramTypes, Object... args) throws Exception {
+        Method method = target.getClass().getDeclaredMethod(methodName, paramTypes);
+        method.setAccessible(true);
+        return method.invoke(target, args);
     }
 }

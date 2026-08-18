@@ -46,15 +46,15 @@ import static org.mockito.Mockito.when;
     @Test
     void readNonNegativeLongObject_coversTypedAndFallbackPaths() throws Exception {
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getBytes("identity_id")).thenReturn("15".getBytes(StandardCharsets.UTF_8));
+        when(typed.getString("identity_id")).thenReturn("15");
         assertEquals(15L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, typed, "identity_id"));
 
         ResultSet negative = mock(ResultSet.class);
-        when(negative.getBytes("identity_id")).thenReturn("-1".getBytes(StandardCharsets.UTF_8));
+        when(negative.getString("identity_id")).thenReturn("-1");
         assertEquals(0L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, negative, "identity_id"));
 
         ResultSet fallback = mock(ResultSet.class);
-        when(fallback.getBytes("identity_id")).thenReturn("42".getBytes(StandardCharsets.UTF_8));
+        when(fallback.getString("identity_id")).thenReturn("42");
         assertEquals(42L, invoke("readNonNegativeLongObject", new Class<?>[] { ResultSet.class, String.class }, fallback, "identity_id"));
     }
 
@@ -62,27 +62,26 @@ import static org.mockito.Mockito.when;
     void readSafeTimestamp_usesTypedAndTextFallback() throws Exception {
         Timestamp ts = Timestamp.from(Instant.parse("2026-08-07T10:20:30Z"));
         ResultSet typed = mock(ResultSet.class);
-        when(typed.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
+        when(typed.getString("created_at")).thenReturn("2026-08-07T10:20:30Z");
         assertEquals(ts, invoke("readSafeTimestamp", new Class<?>[] { ResultSet.class, String.class }, typed, "created_at"));
 
         ResultSet textFallback = mock(ResultSet.class);
-        when(textFallback.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
+        when(textFallback.getString("created_at")).thenReturn("2026-08-07T10:20:30Z");
         assertEquals(ts, invoke("readSafeTimestamp", new Class<?>[] { ResultSet.class, String.class }, textFallback, "created_at"));
 
         ResultSet invalid = mock(ResultSet.class);
-        when(invalid.getBytes("created_at")).thenReturn("bad".getBytes(StandardCharsets.UTF_8));
+        when(invalid.getString("created_at")).thenReturn("bad");
         assertNull(invoke("readSafeTimestamp", new Class<?>[] { ResultSet.class, String.class }, invalid, "created_at"));
 
         ResultSet nullText = mock(ResultSet.class);
-        when(nullText.getBytes("created_at")).thenReturn(null);
+        when(nullText.getString("created_at")).thenReturn(null);
         assertNull(invoke("readSafeTimestamp", new Class<?>[] { ResultSet.class, String.class }, nullText, "created_at"));
     }
 
     @Test
     void readSanitizedDbText_returnsNullWhenReadFails() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getCharacterStream("canonical_name")).thenThrow(new SQLException("boom"));
-        when(rs.getBytes("canonical_name")).thenThrow(new SQLException("boom"));
+        when(rs.getString("canonical_name")).thenThrow(new SQLException("boom"));
 
         assertNull(invoke("readSanitizedDbText", new Class<?>[] { ResultSet.class, String.class, int.class }, rs, "canonical_name", 128));
     }
@@ -90,24 +89,24 @@ import static org.mockito.Mockito.when;
     @Test
     void mapIdentity_setsCoreFieldsFromResultSet() throws Exception {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getBytes("identity_id")).thenReturn("101".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("canonical_email")).thenReturn(" user@example.com ".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("canonical_name")).thenReturn(" Jane ".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("salesforce_contact_id")).thenReturn("c1".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("salesforce_account_id")).thenReturn("a1".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("email_enc")).thenReturn("e".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("phone_enc")).thenReturn("p".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("title_enc")).thenReturn("t".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("department_enc")).thenReturn("d".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("raw_json_enc")).thenReturn("{}".getBytes(StandardCharsets.UTF_8));
-        when(rs.getBytes("confidence")).thenReturn("high".getBytes(StandardCharsets.UTF_8));
+        when(rs.getString("identity_id")).thenReturn("101");
+        when(rs.getString("canonical_email")).thenReturn(" user@example.com ");
+        when(rs.getString("canonical_name")).thenReturn(" Jane ");
+        when(rs.getString("salesforce_contact_id")).thenReturn("c1");
+        when(rs.getString("salesforce_account_id")).thenReturn("a1");
+        when(rs.getString("email_enc")).thenReturn("e");
+        when(rs.getString("phone_enc")).thenReturn("p");
+        when(rs.getString("title_enc")).thenReturn("t");
+        when(rs.getString("department_enc")).thenReturn("d");
+        when(rs.getString("raw_json_enc")).thenReturn("{}");
+        when(rs.getString("confidence")).thenReturn("high");
 
         Timestamp created = Timestamp.from(Instant.parse("2026-08-07T10:20:30Z"));
         Timestamp updated = Timestamp.from(Instant.parse("2026-08-07T11:20:30Z"));
         Timestamp synced = Timestamp.from(Instant.parse("2026-08-07T12:20:30Z"));
-    when(rs.getBytes("created_at")).thenReturn("2026-08-07T10:20:30Z".getBytes(StandardCharsets.UTF_8));
-    when(rs.getBytes("updated_at")).thenReturn("2026-08-07T11:20:30Z".getBytes(StandardCharsets.UTF_8));
-    when(rs.getBytes("last_synced_at")).thenReturn("2026-08-07T12:20:30Z".getBytes(StandardCharsets.UTF_8));
+        when(rs.getString("created_at")).thenReturn("2026-08-07T10:20:30Z");
+        when(rs.getString("updated_at")).thenReturn("2026-08-07T11:20:30Z");
+        when(rs.getString("last_synced_at")).thenReturn("2026-08-07T12:20:30Z");
 
         CustomerIdentity identity = (CustomerIdentity) invoke("mapIdentity", new Class<?>[] { ResultSet.class }, rs);
 

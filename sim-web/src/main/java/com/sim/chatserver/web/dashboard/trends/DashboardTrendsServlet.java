@@ -135,7 +135,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             out.print(rendered);
         }
     
-        } catch (IOException | ServletException | RuntimeException e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -185,13 +185,25 @@ public class DashboardTrendsServlet extends HttpServlet {
         widgetNameToId.put(widgetName, widgetId);
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                // ignore close failure
-            }
+    private static void closeQuietly(ResultSet resultSet) {
+        if (resultSet == null) {
+            return;
+        }
+        try {
+            resultSet.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring ResultSet close failure", e);
+        }
+    }
+
+    private static void closeQuietly(PreparedStatement statement) {
+        if (statement == null) {
+            return;
+        }
+        try {
+            statement.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring PreparedStatement close failure", e);
         }
     }
 

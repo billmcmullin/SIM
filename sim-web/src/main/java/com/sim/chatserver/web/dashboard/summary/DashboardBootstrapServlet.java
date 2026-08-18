@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -55,7 +56,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
         super.init();
         try {
             ensureSummaryStoreInitialized();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize daily summary store", e);
         }
     }
@@ -198,7 +199,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
         try {
             DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
             return store.fetchExactOrLatest(day, slot);
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load summary for dashboard bootstrap", e);
             return null;
         }
@@ -269,13 +270,36 @@ public class DashboardBootstrapServlet extends HttpServlet {
         return accumulators;
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                // ignore close failure
-            }
+    private static void closeQuietly(ResultSet resultSet) {
+        if (resultSet == null) {
+            return;
+        }
+        try {
+            resultSet.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring ResultSet close failure", e);
+        }
+    }
+
+    private static void closeQuietly(Statement statement) {
+        if (statement == null) {
+            return;
+        }
+        try {
+            statement.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring Statement close failure", e);
+        }
+    }
+
+    private static void closeQuietly(Connection connection) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring Connection close failure", e);
         }
     }
 
@@ -310,7 +334,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
                 created.ensureTable();
                 context.setAttribute(SUMMARY_STORE_KEY, created);
                 return created;
-            } catch (RuntimeException e) {
+            } catch (IllegalStateException e) {
                 log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore for bootstrap", e);
                 throw new IllegalStateException("Failed to initialize daily summary store", e);
             }

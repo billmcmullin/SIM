@@ -15,7 +15,7 @@ public interface TranslationService {
         private final String translatedText;
         private final String message;
 
-        public TranslationResult(boolean success, String sourceLang, String targetLang, String translatedText, String message) {
+        private TranslationResult(boolean success, String sourceLang, String targetLang, String translatedText, String message) {
             this.success = success;
             this.sourceLang = sourceLang == null ? "" : sourceLang;
             this.targetLang = targetLang == null ? "" : targetLang;
@@ -43,11 +43,11 @@ public interface TranslationService {
             return message;
         }
 
-        public static TranslationResult ok(String sourceLang, String targetLang, String translatedText) {
+        static TranslationResult ok(String sourceLang, String targetLang, String translatedText) {
             return new TranslationResult(true, sourceLang, targetLang, translatedText, "");
         }
 
-        public static TranslationResult fail(String message) {
+        static TranslationResult fail(String message) {
             return new TranslationResult(false, "", "", "", message);
         }
     }

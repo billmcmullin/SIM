@@ -34,7 +34,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         super.init();
         try {
             ensureSummaryStoreInitialized();
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize daily summary store", e);
         }
     }
@@ -55,7 +55,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             JsonObject payload;
             try {
                 payload = store.fetchExactOrLatest(day, slot);
-            } catch (RuntimeException e) {
+            } catch (IllegalStateException e) {
                 log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
                 writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
                 return;
@@ -63,7 +63,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_OK,
                     payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (RuntimeException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -171,7 +171,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             created.ensureTable();
             summaryStore = created;
             return created;
-        } catch (RuntimeException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
             throw new IllegalStateException("Failed to initialize daily summary store", e);
         }

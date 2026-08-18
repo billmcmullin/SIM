@@ -73,7 +73,7 @@ public final class BatchFailure {
                 .build();
     }
 
-    public String getRequestId() {
+    String getRequestId() {
         return requestId;
     }
 
@@ -81,43 +81,43 @@ public final class BatchFailure {
         return batchIndex;
     }
 
-    public int getTotalBatches() {
+    int getTotalBatches() {
         return totalBatches;
     }
 
-    public String getBatchId() {
+    String getBatchId() {
         return batchId;
     }
 
-    public String getReasonCode() {
+    String getReasonCode() {
         return reasonCode;
     }
 
-    public String getMessage() {
+    String getMessage() {
         return message;
     }
 
-    public int getHttpStatus() {
+    int getHttpStatus() {
         return httpStatus;
     }
 
-    public boolean isRetryAttempted() {
+    boolean isRetryAttempted() {
         return retryAttempted;
     }
 
-    public boolean isRetrySucceeded() {
+    boolean isRetrySucceeded() {
         return retrySucceeded;
     }
 
-    public boolean isContextTooLargeDetected() {
+    boolean isContextTooLargeDetected() {
         return contextTooLargeDetected;
     }
 
-    public long getLatencyMs() {
+    long getLatencyMs() {
         return latencyMs;
     }
 
-    public List<String> getBatchChatIds() {
+    List<String> getBatchChatIds() {
         return batchChatIds;
     }
 
@@ -141,7 +141,7 @@ public final class BatchFailure {
         };
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         return Json.createObjectBuilder()
                 .add("requestId", requestId)
                 .add("batchIndex", batchIndex)

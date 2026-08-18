@@ -25,11 +25,11 @@ public class AuditLogService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public AuditLogService(Class<?> owner) {
+    AuditLogService(Class<?> owner) {
         this.ownerLogger = Logger.getLogger(owner == null ? AuditLogService.class.getName() : owner.getName());
     }
 
-    public void logManualMessageRequest(ManualMessageAuditEvent event) {
+    final void logManualMessageRequest(ManualMessageAuditEvent event) {
         if (event == null) {
             return;
         }
@@ -61,7 +61,7 @@ public class AuditLogService {
         );
     }
 
-    public void logValidationFailure(String requestId, String username, String clientIp, String reason) {
+    final void logValidationFailure(String requestId, String username, String clientIp, String reason) {
         ownerLogger.log(
             Level.WARNING,
             "manual-message validation-failure requestId={0} user={1} ip={2} reason=\"{3}\"",
@@ -74,7 +74,7 @@ public class AuditLogService {
         );
     }
 
-    public void logUpstreamFailure(String requestId, String username, String clientIp, int statusCode, String summary) {
+    final void logUpstreamFailure(String requestId, String username, String clientIp, int statusCode, String summary) {
         Level level = toLevel(statusCode);
         ownerLogger.log(
             level,
@@ -128,7 +128,7 @@ public class AuditLogService {
         }
         return value.length() <= maxChars
                 ? value
-                : value.substring(0, Math.max(0, maxChars - 1)) + "…";
+                : value.substring(0, Math.max(0, maxChars - 1)) + "Ã¢â‚¬Â¦";
     }
 
     public record ManualMessageAuditEvent(

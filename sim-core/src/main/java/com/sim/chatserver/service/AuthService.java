@@ -39,7 +39,7 @@ public class AuthService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public UserAccount authenticate(String username, String password) {
+    final UserAccount authenticate(String username, String password) {
         // Avoid work if FINE is disabled
         if (log.isLoggable(Level.FINE)) {
             log.fine(LOG_LOOKUP_INIT);
@@ -78,7 +78,7 @@ public class AuthService {
         try {
             // No sensitive data in logs
             ok = storedHash != null && BCrypt.checkpw(password, storedHash);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, LOG_BCRYPT_THROW, e.toString());
         }
 

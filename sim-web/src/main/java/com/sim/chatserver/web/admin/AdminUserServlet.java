@@ -87,7 +87,7 @@ public class AdminUserServlet extends HttpServlet {
         try {
             resolveUserService().createUser(username, password, role);
             writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.SEVERE, "Failed to create user", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create user.");
         }

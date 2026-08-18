@@ -134,7 +134,15 @@ public class WidgetReviewMapReduceOrchestrator {
     public static final ProgressListener NOOP_PROGRESS_LISTENER = new ProgressListener() {
     };
 
-    public WidgetReviewMapReduceOrchestrator(
+    public static WidgetReviewMapReduceOrchestrator createDefault(
+            WorkspaceClient workspaceClient,
+            ReviewContextBuilderService contextBuilderService,
+            PromptTemplateService promptTemplateService
+    ) {
+        return new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+    }
+
+    WidgetReviewMapReduceOrchestrator(
             WorkspaceClient workspaceClient,
             ReviewContextBuilderService contextBuilderService,
             PromptTemplateService promptTemplateService
@@ -1597,7 +1605,7 @@ public class WidgetReviewMapReduceOrchestrator {
             return finalResponse;
         }
 
-        public List<String> mapOutputs() {
+        List<String> mapOutputs() {
             return mapOutputs;
         }
 
@@ -1617,7 +1625,7 @@ public class WidgetReviewMapReduceOrchestrator {
             return reduceResult;
         }
 
-        public int totalSelected() {
+        int totalSelected() {
             return totalSelected;
         }
 
@@ -1629,7 +1637,7 @@ public class WidgetReviewMapReduceOrchestrator {
             return batchFailures;
         }
 
-        public List<String> allSelectedChatIds() {
+        List<String> allSelectedChatIds() {
             return allSelectedChatIds;
         }
 
@@ -1637,15 +1645,15 @@ public class WidgetReviewMapReduceOrchestrator {
             return missingChatIds;
         }
 
-        public boolean coverageComplete() {
+        boolean coverageComplete() {
             return coverageComplete;
         }
 
-        public int coveragePassesUsed() {
+        int coveragePassesUsed() {
             return coveragePassesUsed;
         }
 
-        public boolean hasFailures() {
+        boolean hasFailures() {
             return !failedBatchIndexes.isEmpty();
         }
     }

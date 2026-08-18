@@ -156,14 +156,14 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -180,7 +180,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private String formatTimestamp(Timestamp value) {
-        return value == null ? "â€”" : ISO_INSTANT_FMT.format(value.toInstant());
+        return value == null ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int parsePositiveInteger(String value, int fallback) {
@@ -284,6 +284,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             try {
                 closeable.close();
             } catch (Exception e) {
+                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
                 // ignore close failure
             }
         }

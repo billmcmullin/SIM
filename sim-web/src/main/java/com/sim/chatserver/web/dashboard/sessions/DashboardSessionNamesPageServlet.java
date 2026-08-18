@@ -61,14 +61,14 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         out.write(rendered);
         out.flush();
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }

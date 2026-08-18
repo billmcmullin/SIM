@@ -133,6 +133,7 @@ public class TestConnectionServlet extends HttpServlet {
         try {
             baseUrl = buildBaseUrl(host.trim(), port.trim());
         } catch (IllegalArgumentException ex) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Invalid host or port format.")
@@ -243,7 +244,7 @@ public class TestConnectionServlet extends HttpServlet {
                         .add("upstreamBody", truncate(chatResponse.body))
                         .build());
             }
-        } catch (RuntimeException e) {
+        } catch (Throwable e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -264,14 +265,14 @@ public class TestConnectionServlet extends HttpServlet {
                     .build());
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -530,7 +531,7 @@ public class TestConnectionServlet extends HttpServlet {
                 return textResponse;
             }
         } catch (JsonException | ClassCastException ignored) {
-            // Fall back to raw body below.
+            log.log(Level.FINE, "Unable to parse structured error body; falling back to raw response.", ignored);
         }
 
         String trimmed = body.trim();

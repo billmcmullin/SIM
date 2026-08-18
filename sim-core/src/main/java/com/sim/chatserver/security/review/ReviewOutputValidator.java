@@ -85,7 +85,7 @@ public class ReviewOutputValidator {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public ValidationResult validateMapOutput(String output) {
+    final ValidationResult validateMapOutput(String output) {
         return validateMapOutput(canonicalizeForValidation(output), DEFAULT_MAX_TEXT_CHARS);
     }
 
@@ -210,7 +210,7 @@ public class ReviewOutputValidator {
         );
     }
 
-    public ValidationResult validateFinalReport(String report) {
+    final ValidationResult validateFinalReport(String report) {
         return validateFinalReport(canonicalizeForValidation(report), DEFAULT_MAX_TEXT_CHARS);
     }
 
@@ -282,7 +282,7 @@ public class ReviewOutputValidator {
      * Strict legacy mode: - Requires explicit ### Chat headings for all
      * expected IDs - Requires deterministic metadata consistency
      */
-    public ValidationResult validateFinalReportStrict(String report, List<String> expectedChatIds, int maxChars) {
+    final ValidationResult validateFinalReportStrict(String report, List<String> expectedChatIds, int maxChars) {
         String canonicalReport = canonicalizeForValidation(report);
         ValidationResult base = validateFinalReport(canonicalReport, maxChars);
 
@@ -386,7 +386,7 @@ public class ReviewOutputValidator {
         );
     }
 
-    public List<String> extractChatIds(String output) {
+    final List<String> extractChatIds(String output) {
         return parseChatIds(normalize(output));
     }
 
@@ -442,7 +442,7 @@ public class ReviewOutputValidator {
         Set<String> union = new LinkedHashSet<>(metaUsedSet);
         union.addAll(metaMissingSet);
         if (!union.equals(metaAllSet)) {
-            errors.add("Coverage metadata mismatch: used_chat_ids ∪ missing_chat_ids does not equal all_selected_chat_ids.");
+            errors.add("Coverage metadata mismatch: used_chat_ids Ã¢Ë†Âª missing_chat_ids does not equal all_selected_chat_ids.");
         }
 
         if (metaCoverageComplete != TriState.ABSENT) {
@@ -769,7 +769,7 @@ public class ReviewOutputValidator {
             return length;
         }
 
-        public List<String> getExpectedChatIds() {
+        List<String> getExpectedChatIds() {
             return expectedChatIds;
         }
 
@@ -777,11 +777,11 @@ public class ReviewOutputValidator {
             return foundChatIds;
         }
 
-        public List<String> getMissingChatIds() {
+        List<String> getMissingChatIds() {
             return missingChatIds;
         }
 
-        public List<String> getUnexpectedChatIds() {
+        List<String> getUnexpectedChatIds() {
             return unexpectedChatIds;
         }
 

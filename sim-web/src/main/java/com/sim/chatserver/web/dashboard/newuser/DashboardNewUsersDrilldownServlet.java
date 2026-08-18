@@ -77,7 +77,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
             widgets = List.of();
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (Throwable e) {
             log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
             widgets = List.of();
         }

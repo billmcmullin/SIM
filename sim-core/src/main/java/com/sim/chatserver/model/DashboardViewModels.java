@@ -83,7 +83,7 @@ public final class DashboardViewModels {
             return direction;
         }
 
-        public ProgressStat getProgression() {
+        ProgressStat getProgression() {
             return new ProgressStat(todayCount, yesterdayCount);
         }
     }
@@ -203,7 +203,7 @@ public final class DashboardViewModels {
             this.createdAt = createdAt;
         }
 
-        public String getWidgetId() {
+        String getWidgetId() {
             return widgetId;
         }
 
@@ -247,7 +247,7 @@ public final class DashboardViewModels {
         /**
          * Backward-compatible constructor.
          */
-        public SessionOverview(List<SessionStat> topSessions, SessionTimeline timeline,
+        SessionOverview(List<SessionStat> topSessions, SessionTimeline timeline,
                 int totalUsers, int activeUsers, int inactiveUsers, int activeDays) {
             this(
                     topSessions,
@@ -331,7 +331,7 @@ public final class DashboardViewModels {
             return inactiveUsers;
         }
 
-        public int getActiveDays() {
+        int getActiveDays() {
             return activeDays;
         }
 
@@ -347,11 +347,11 @@ public final class DashboardViewModels {
             return newSessionsProgression;
         }
 
-        public int getActiveUsersYesterday() {
+        int getActiveUsersYesterday() {
             return activeUsersYesterday;
         }
 
-        public ProgressStat getActiveUsersProgression() {
+        ProgressStat getActiveUsersProgression() {
             return activeUsersProgression;
         }
     }
@@ -459,16 +459,20 @@ public final class DashboardViewModels {
         private final T value;
         private final long expiresAt;
 
-        public CacheValue(T value, long expiresAt) {
+        CacheValue(T value, long expiresAt) {
             this.value = value;
             this.expiresAt = expiresAt;
+        }
+
+        public static <T> CacheValue<T> of(T value, long expiresAt) {
+            return new CacheValue<>(value, expiresAt);
         }
 
         public T getValue() {
             return value;
         }
 
-        public long getExpiresAt() {
+        long getExpiresAt() {
             return expiresAt;
         }
 

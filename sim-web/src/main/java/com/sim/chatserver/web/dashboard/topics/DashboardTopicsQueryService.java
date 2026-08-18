@@ -33,7 +33,7 @@ public class DashboardTopicsQueryService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public TopicCountResult collectTopicCounts(
+    final TopicCountResult collectTopicCounts(
             List<WidgetEntry> widgets,
             LocalDate startInclusive,
             LocalDate endExclusive,
@@ -162,16 +162,16 @@ public class DashboardTopicsQueryService {
         private final Map<String, Integer> globalCounts;
         private final Map<String, Map<String, Integer>> byWidgetCounts;
 
-        public TopicCountResult(Map<String, Integer> globalCounts, Map<String, Map<String, Integer>> byWidgetCounts) {
+        TopicCountResult(Map<String, Integer> globalCounts, Map<String, Map<String, Integer>> byWidgetCounts) {
             this.globalCounts = globalCounts;
             this.byWidgetCounts = byWidgetCounts;
         }
 
-        public Map<String, Integer> globalCounts() {
+        Map<String, Integer> globalCounts() {
             return globalCounts;
         }
 
-        public Map<String, Map<String, Integer>> byWidgetCounts() {
+        Map<String, Map<String, Integer>> byWidgetCounts() {
             return byWidgetCounts;
         }
     }

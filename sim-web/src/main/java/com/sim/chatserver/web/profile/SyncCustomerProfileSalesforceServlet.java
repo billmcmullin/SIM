@@ -90,7 +90,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));
                 return;
-            } catch (RuntimeException ex) {
+            } catch (Throwable ex) {
                 logFailure("Unexpected Salesforce lookup failure while syncing customer profile", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));
@@ -136,18 +136,18 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, ok);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             throw new ServletException("Unable to sync customer profile from Salesforce", e);
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (Throwable e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }

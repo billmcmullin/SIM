@@ -6,6 +6,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -99,14 +100,14 @@ public class WidgetTableDataServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to load widget data.");
         }
     
-        } catch (Exception e) {
-            java.util.logging.Logger.getLogger(getClass().getName())
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (resp != null && !resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger(getClass().getName())
+                    java.util.logging.Logger.getLogger("OWASP")
                             .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -236,13 +237,25 @@ public class WidgetTableDataServlet extends HttpServlet {
         }
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                // ignore close failure
-            }
+    private static void closeQuietly(ResultSet resultSet) {
+        if (resultSet == null) {
+            return;
+        }
+        try {
+            resultSet.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring ResultSet close failure", e);
+        }
+    }
+
+    private static void closeQuietly(Statement statement) {
+        if (statement == null) {
+            return;
+        }
+        try {
+            statement.close();
+        } catch (SQLException e) {
+            log.log(Level.FINEST, "Ignoring Statement close failure", e);
         }
     }
 

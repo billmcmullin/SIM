@@ -83,7 +83,7 @@ public final class TextIoSanitizerUtil {
                 .toString();
     }
 
-    public static String safeFileToken(String value, String fallback) {
+    static String safeFileToken(String value, String fallback) {
         String effectiveFallback = fallback == null || fallback.isBlank() ? "server" : fallback;
         String input = value == null || value.isBlank() ? effectiveFallback : value.trim();
         String sanitized = input.replaceAll("[^A-Za-z0-9_-]", "_");

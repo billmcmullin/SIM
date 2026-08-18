@@ -40,8 +40,23 @@ You can launch Swagger UI locally and test endpoints from a browser.
 
 ## Next Refinement Pass (Recommended)
 
-- Replace generic schemas with strict per-endpoint schemas for high-priority routes:
-  - `/dashboard/sessions/data`
-  - `/dashboard/widgets`
-  - `/admin/test-connection`
-  - `/admin/widget-health-config`
+- Refine remaining generic endpoints as needed:
+  - `/admin/save-config`
+  - `/admin/test-salesforce-connection`
+  - `/admin/db/import`
+  - `/dashboard/widgets/drilldown/*`
+  - `/dashboard/latest-chats`
+  - `/dashboard/new-users/*`
+  - `/dashboard/topics/*`
+  - `/dashboard/trends/*`
+  - `/dashboard/sessions/chats`, `/dashboard/sessions/select`
+
+## Completed Refinements
+
+- `/admin/db/backup` now declares `application/zip` binary response.
+- `/dashboard/summary-markdown` endpoint added with `text/html` response.
+- Generic schemas replaced with concrete schemas for:
+  - `/admin/test-connection` (`TestConnectionRequest`/`TestConnectionResponse`)
+  - `/admin/widget-health-config` (`WidgetHealthConfig`)
+  - `/dashboard/sessions/data` (`SessionDataResponse`/`SessionSummary`/`SessionSelectRequest`)
+  - `/dashboard/widgets` (`WidgetListResponse`/`WidgetSingleResponse`/`WidgetDeleteResponse`/`WidgetRequest`/`WidgetEntry`)

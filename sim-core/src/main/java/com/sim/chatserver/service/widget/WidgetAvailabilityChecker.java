@@ -808,7 +808,7 @@ public class WidgetAvailabilityChecker {
             log.log(Level.FINE, "boolVal parse fallback for key=" + key, e);
             try {
                 return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
-            } catch (IllegalArgumentException | IllegalStateException ex) {
+            } catch (Throwable ex) {
                 log.log(Level.FINE, "boolVal parse failed for key=" + key, ex);
                 return fallback;
             }
@@ -886,13 +886,6 @@ public class WidgetAvailabilityChecker {
     private String readLegacyPropertyEnv(String propertyName, int maxLen) {
         if (propertyName == null || propertyName.isBlank()) {
             return null;
-        }
-        String propValue = System.getProperty(propertyName);
-        if (propValue != null) {
-            String normalized = canonicalizeInput(propValue, maxLen);
-            if (!normalized.isBlank()) {
-                return normalized;
-            }
         }
         String envName = propertyName.toUpperCase(Locale.ROOT).replace('.', '_');
         return readEnvCanonical(envName, maxLen);

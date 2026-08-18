@@ -29,7 +29,7 @@ public final class WidgetEntry {
         return displayName;
     }
 
-    public Instant getCreatedAt() {
+    Instant getCreatedAt() {
         return createdAt;
     }
 }

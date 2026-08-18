@@ -79,6 +79,63 @@ public class SessionCatalogIT extends BaseUiIT {
         assertTrue(response.text().contains("selectedChatIds required"));
     }
 
+    @Test
+    @Order(5)
+    void unauthenticated_sessionsPage_redirectsToLogin() {
+        navigateWithCommit("/dashboard/sessions");
+        waitForLoginScreen();
+        assertOnLoginScreen("Expected sessions page navigation to require login,");
+    }
+
+    @Test
+    @Order(6)
+    void sessionsPage_renders_coreUi_afterLogin() {
+        login(adminUsername, adminPassword);
+
+        navigateWithCommit("/dashboard/sessions");
+        waitForPath("/chat-server/dashboard/sessions");
+        page.waitForSelector("h1:has-text('Review Sessions')");
+
+        assertTrue(page.title().contains("Review Sessions"));
+        assertTrue(page.locator("#searchInput").count() > 0);
+        assertTrue(page.locator("#searchBtn").count() > 0);
+        assertTrue(page.locator("#reviewSelectedBtn").count() > 0);
+        assertTrue(page.locator("#sessionsTable").count() > 0);
+        assertTrue(page.locator("#sessionsBody").count() > 0);
+        assertTrue(page.locator("#sessionsPagination").count() > 0);
+    }
+
+    @Test
+    @Order(7)
+    void chatsEndpoint_unknownSession_returnsOkWithRowsArray() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/sessions/chats?sessionId=does-not-exist"
+        );
+
+        assertEquals(200, response.status(), "Expected 200 for known endpoint with unknown sessionId");
+        String body = response.text();
+        assertTrue(body.contains("\"status\":\"ok\""));
+        assertTrue(body.contains("\"rows\":["));
+    }
+
+    @Test
+    @Order(8)
+    void selectEndpoint_rejectsNonStringSelectedIds() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().post(
+                baseUrl + "/dashboard/sessions/select",
+                RequestOptions.create()
+                        .setHeader("Content-Type", "application/json")
+                        .setData("{\"selectedChatIds\":[1,true,null,{\"x\":1}]}")
+        );
+
+        assertEquals(400, response.status(), "Expected 400 when selectedChatIds contains no valid string IDs");
+        assertTrue(response.text().contains("No valid chat IDs provided."));
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

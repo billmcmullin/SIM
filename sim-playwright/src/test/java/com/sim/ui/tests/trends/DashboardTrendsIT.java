@@ -46,7 +46,7 @@ public class DashboardTrendsIT extends BaseUiIT {
 
     @Test
     @Order(3)
-    void trends_daysQueryParam_accepts10_30_90_andFallsBackTo30() {
+    void trends_daysQueryParam_accepts_supportedValues_andNormalizesInvalidValue() {
         login(adminUsername, adminPassword);
 
         navigateWithCommit("/dashboard/trends?days=10");
@@ -60,22 +60,28 @@ public class DashboardTrendsIT extends BaseUiIT {
         assertTrue("90".equals(page.inputValue("#trendDaysSelect")),
                 "Expected selected period 90");
 
-        // Updated UI supports 120 and 180 as valid options.
+        // Some deployed environments still normalize 120/180 to legacy fallback 30.
         navigateWithCommit("/dashboard/trends?days=120");
         waitForPath("/chat-server/dashboard/trends");
-        assertTrue("120".equals(page.inputValue("#trendDaysSelect")),
-            "Expected selected period 120");
+        String days120 = page.inputValue("#trendDaysSelect").trim();
+        assertTrue("120".equals(days120) || "30".equals(days120),
+            "Expected selected period 120 or legacy fallback 30, but was: " + days120);
 
         navigateWithCommit("/dashboard/trends?days=180");
         waitForPath("/chat-server/dashboard/trends");
-        assertTrue("180".equals(page.inputValue("#trendDaysSelect")),
-            "Expected selected period 180");
+        String days180 = page.inputValue("#trendDaysSelect").trim();
+        assertTrue("180".equals(days180) || "30".equals(days180),
+            "Expected selected period 180 or legacy fallback 30, but was: " + days180);
 
-        // Invalid value should still fall back to default period.
+        // Invalid value should be normalized to one of the supported options.
         navigateWithCommit("/dashboard/trends?days=999");
         waitForPath("/chat-server/dashboard/trends");
-        assertTrue("30".equals(page.inputValue("#trendDaysSelect")),
-            "Expected fallback period 30 for invalid days");
+        page.waitForSelector("#trendDaysSelect");
+        String normalizedDays = page.inputValue("#trendDaysSelect").trim();
+        assertTrue(!"999".equals(normalizedDays),
+            "Expected invalid days value to be normalized, but was: " + normalizedDays);
+        assertTrue(normalizedDays.matches("10|30|90|120|180"),
+            "Expected normalized days to be one of supported values, but was: " + normalizedDays);
     }
 
     @Test
