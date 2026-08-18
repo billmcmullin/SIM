@@ -8,7 +8,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.text.Normalizer;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -439,7 +439,7 @@ public class DashboardDailySummaryStore {
             if (reader != null) {
                 try (Reader closeable = reader) {
                     String raw = readAtMostChars(closeable, 8192);
-                    return validateDbText(canonicalizeDbText(raw), 8192);
+                    return validateCanonicalizedDbText(raw, 8192);
                 } catch (IOException ioEx) {
                     log.log(Level.FINE, "Character stream decode failed for column " + safeColumnName(column), ioEx);
                     return "";
@@ -455,7 +455,7 @@ public class DashboardDailySummaryStore {
                 return "";
             }
             String raw = new String(rawBytes, StandardCharsets.UTF_8);
-            return validateDbText(canonicalizeDbText(raw), 8192);
+            return validateCanonicalizedDbText(raw, 8192);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes(String) failed for column " + safeColumnName(column), ex);
         }
@@ -463,7 +463,7 @@ public class DashboardDailySummaryStore {
         try {
             String raw = rs.getString(column);
             if (raw != null) {
-                return validateDbText(canonicalizeDbText(raw), 8192);
+                return validateCanonicalizedDbText(raw, 8192);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getString(String) failed for column " + safeColumnName(column), ex);
@@ -472,7 +472,7 @@ public class DashboardDailySummaryStore {
         try {
             Object raw = rs.getObject(column);
             if (raw != null) {
-                return validateDbText(canonicalizeDbText(String.valueOf(raw)), 8192);
+                return validateCanonicalizedDbText(String.valueOf(raw), 8192);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + safeColumnName(column), ex);
@@ -491,7 +491,7 @@ public class DashboardDailySummaryStore {
             if (reader != null) {
                 try (Reader closeable = reader) {
                     String raw = readAtMostChars(closeable, 8192);
-                    return validateDbText(canonicalizeDbText(raw), 8192);
+                    return validateCanonicalizedDbText(raw, 8192);
                 } catch (IOException ioEx) {
                     log.log(Level.FINE, "Character stream decode failed for column index " + column, ioEx);
                     return "";
@@ -507,7 +507,7 @@ public class DashboardDailySummaryStore {
                 return "";
             }
             String raw = new String(rawBytes, StandardCharsets.UTF_8);
-            return validateDbText(canonicalizeDbText(raw), 8192);
+            return validateCanonicalizedDbText(raw, 8192);
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getBytes(int) failed for column index " + column, ex);
         }
@@ -515,7 +515,7 @@ public class DashboardDailySummaryStore {
         try {
             String raw = rs.getString(column);
             if (raw != null) {
-                return validateDbText(canonicalizeDbText(raw), 8192);
+                return validateCanonicalizedDbText(raw, 8192);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
@@ -524,7 +524,7 @@ public class DashboardDailySummaryStore {
         try {
             Object raw = rs.getObject(column);
             if (raw != null) {
-                return validateDbText(canonicalizeDbText(String.valueOf(raw)), 8192);
+                return validateCanonicalizedDbText(String.valueOf(raw), 8192);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
@@ -537,7 +537,7 @@ public class DashboardDailySummaryStore {
         if (value == null) {
             return "";
         }
-        String normalized = validateDbText(value, maxLen > 0 ? maxLen : 0);
+        String normalized = validateCanonicalizedDbText(value, maxLen > 0 ? maxLen : 0);
         if (maxLen > 0 && normalized.length() > maxLen) {
             return normalized.substring(0, maxLen);
         }
@@ -628,34 +628,28 @@ public class DashboardDailySummaryStore {
         return column;
     }
 
+    private String validateCanonicalizedDbText(String raw, int maxLen) {
+        String canonical = TextIoSanitizerUtil.canonicalize(raw);
+        return validateDbText(canonical, maxLen);
+    }
+
     private String validateDbText(String value, int maxLen) {
         if (value == null || value.isBlank()) {
             return "";
         }
-        String canonical = canonicalizeDbText(value);
-        String normalized = ServletRequestParamUtil.normalizeBodyText(canonical, maxLen, false);
-        String canonicalNormalized = canonicalizeDbText(normalized);
-        if (canonicalNormalized.isBlank()) {
+        String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
+        if (normalized.isBlank()) {
             return "";
         }
-        StringBuilder safe = new StringBuilder(canonicalNormalized.length());
-        for (int i = 0; i < canonicalNormalized.length(); i++) {
-            char ch = canonicalNormalized.charAt(i);
+        StringBuilder safe = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
             if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         return safe.toString();
-    }
-
-    private String canonicalizeDbText(String value) {
-        if (value == null) {
-            return "";
-        }
-        return Normalizer.normalize(value, Normalizer.Form.NFKC)
-                .replace('\u0000', ' ')
-                .replace("\r", "");
     }
 
     private Instant validateInstant(Instant instant, String column) {

@@ -24,6 +24,11 @@ public class SmtpEmailService implements EmailService {
     private final EmailConfig config;
     private final MarkdownRenderer markdownRenderer;
 
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     SmtpEmailService(EmailConfig config, MarkdownRenderer markdownRenderer) {
         this.config = config;
         this.markdownRenderer = markdownRenderer;

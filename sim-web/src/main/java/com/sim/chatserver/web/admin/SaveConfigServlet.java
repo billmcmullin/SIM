@@ -217,7 +217,12 @@ public class SaveConfigServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.SEVERE, "Unable to write save config response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 }

@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.sql.SQLException;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.logging.Level;
@@ -272,7 +273,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             if (requestReader != null) {
                 try (Reader reader = requestReader) {
                     String body = ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES, 4096);
-                    return validateTaintedText(body);
+                    return validateCanonicalizedBodyText(body);
                 }
             }
         } catch (IOException | IllegalStateException e) {
@@ -282,12 +283,13 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         return null;
     }
 
-    private String validateTaintedText(String value) {
+    private String validateCanonicalizedBodyText(String value) {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(value, MAX_JSON_PAYLOAD_BYTES, false);
-        if (normalizedInput.isEmpty()) {
+        String canonical = TextIoSanitizerUtil.canonicalize(value);
+        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(canonical, MAX_JSON_PAYLOAD_BYTES, false);
+        if (normalizedInput == null || normalizedInput.isEmpty()) {
             return "";
         }
         StringBuilder safe = new StringBuilder(normalizedInput.length());

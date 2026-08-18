@@ -154,14 +154,18 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         return normalized;
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                if (rs.next()) {
-                    return true;
+    private boolean tableExists(Connection conn, String tableName) {
+        try {
+            DatabaseMetaData meta = conn.getMetaData();
+            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
                 }
             }
+        } catch (SQLException e) {
+            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
     }

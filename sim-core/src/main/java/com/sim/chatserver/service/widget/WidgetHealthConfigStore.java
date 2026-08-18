@@ -7,7 +7,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
@@ -357,7 +356,7 @@ public class WidgetHealthConfigStore {
     }
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
-        String text = sanitizeDbText(readRawDbText(rs, column), 64);
+        String text = TextIoSanitizerUtil.validateCanonicalized(readRawDbText(rs, column), 64);
         if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
             return 0;
         }
@@ -371,7 +370,7 @@ public class WidgetHealthConfigStore {
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
-        String text = sanitizeDbText(readRawDbText(rs, column), 64);
+        String text = TextIoSanitizerUtil.validateCanonicalized(readRawDbText(rs, column), 64);
         if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
             return fallback;
         }
@@ -385,7 +384,7 @@ public class WidgetHealthConfigStore {
     }
 
     private boolean readSafeBoolean(ResultSet rs, String column, boolean fallback) throws java.sql.SQLException {
-        String text = sanitizeDbText(readRawDbText(rs, column), 16);
+        String text = TextIoSanitizerUtil.validateCanonicalized(readRawDbText(rs, column), 16);
         if (text == null || text.isBlank()) {
             return fallback;
         }
@@ -401,7 +400,7 @@ public class WidgetHealthConfigStore {
 
     private String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
         String value = readRawDbText(rs, column);
-        return sanitizeDbText(value, maxChars);
+        return TextIoSanitizerUtil.validateCanonicalized(value, maxChars);
     }
 
     private Timestamp readSafeTimestamp(ResultSet rs, String column) throws java.sql.SQLException {
@@ -442,7 +441,7 @@ public class WidgetHealthConfigStore {
     private String readDecryptedSecret(ResultSet rs, String column, int maxChars) throws java.sql.SQLException {
         String value = readRawDbText(rs, column);
         String decrypted = EncryptedDbConfigStore.decryptSecretIfNeeded(value);
-        return sanitizeDbText(decrypted, maxChars);
+        return TextIoSanitizerUtil.validateCanonicalized(decrypted, maxChars);
     }
 
     private String readRawDbText(ResultSet rs, String column) throws java.sql.SQLException {
@@ -451,7 +450,7 @@ public class WidgetHealthConfigStore {
             if (reader != null) {
                 try (Reader closeable = reader) {
                     String raw = TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
-                    return validateTaintedDbText(raw, 4096);
+                    return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
                 }
             }
         } catch (java.sql.SQLException ex) {
@@ -467,47 +466,34 @@ public class WidgetHealthConfigStore {
             }
             byte[] safeBytes = validateTaintedDbBytes(bytes, 4096);
             String raw = new String(safeBytes, StandardCharsets.UTF_8);
-            return validateTaintedDbText(raw, 4096);
+                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
         } catch (java.sql.SQLException ex) {
             log.log(Level.FINE, "ResultSet binary read failed for column " + column, ex);
+        }
+
+        try {
+            String raw = rs.getString(column);
+            if (raw != null) {
+                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
+            }
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet string read failed for column " + column, ex);
+        }
+
+        try {
+            Object raw = rs.getObject(column);
+            if (raw == null) {
+                return null;
+            }
+            return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
+        } catch (java.sql.SQLException ex) {
+            log.log(Level.FINE, "ResultSet object read failed for column " + column, ex);
             return null;
         }
     }
 
     private String sanitizeDbText(String s, int maxChars) {
-        if (s == null) {
-            return null;
-        }
-        String trimmed = Normalizer.normalize(s, Normalizer.Form.NFKC).trim();
-        if (maxChars <= 0 || trimmed.length() <= maxChars) {
-            return trimmed;
-        }
-        return trimmed.substring(0, maxChars);
-    }
-
-    private String validateTaintedDbText(String value, int maxChars) {
-        if (value == null) {
-            return null;
-        }
-
-        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        String bounded = canonical.trim();
-        if (maxChars > 0 && bounded.length() > maxChars) {
-            bounded = bounded.substring(0, maxChars);
-        }
-        if (bounded.isBlank()) {
-            return bounded;
-        }
-
-        StringBuilder safe = new StringBuilder(bounded.length());
-        for (int i = 0; i < bounded.length(); i++) {
-            char ch = bounded.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        return safe.toString();
+        return TextIoSanitizerUtil.validateCanonicalized(s, maxChars);
     }
 
     private byte[] validateTaintedDbBytes(byte[] value, int maxBytes) {
@@ -518,10 +504,6 @@ public class WidgetHealthConfigStore {
             return value;
         }
         return Arrays.copyOf(value, maxBytes);
-    }
-
-    private String validateDbText(String value, int maxChars) {
-        return validateTaintedDbText(value, maxChars);
     }
 
     private int validateDbInt(int value, String column, int fallback) {

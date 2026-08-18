@@ -14,7 +14,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.nio.charset.StandardCharsets;
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -360,7 +359,7 @@ public class DashboardSessionService {
     private LocalDate readLocalDateColumn(ResultSet rs, String column) throws SQLException {
         String columnName = column == null ? "" : column;
         String dayText = readDbText(rs, column, 64);
-        if (!dayText.isBlank()) {
+        if (dayText != null && !dayText.isBlank()) {
             try {
                 return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
             } catch (DateTimeParseException ex) {
@@ -396,22 +395,7 @@ public class DashboardSessionService {
         if (raw == null) {
             return "";
         }
-        String canonical = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-        return validateTaintedDbText(canonical, maxLen);
-    }
-
-    private String normalizeDbText(String value, int maxLen) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
-                .replace('\u0000', ' ')
-                .replace("\r", "")
-                .trim();
-        if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
-        }
-        return normalized;
+        return TextIoSanitizerUtil.validateCanonicalized(raw, maxLen);
     }
 
     private int readCountValue(List<Integer> values, int index) {
@@ -427,7 +411,8 @@ public class DashboardSessionService {
             Reader reader = rs.getCharacterStream(column);
             if (reader != null) {
                 try (Reader closeable = reader) {
-                    return TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
+                    return TextIoSanitizerUtil.validateCanonicalized(
+                            TextIoSanitizerUtil.readAtMostChars(closeable, 4096), 4096);
                 }
             }
         } catch (SQLException ex) {
@@ -439,7 +424,8 @@ public class DashboardSessionService {
         try {
             byte[] rawBytes = rs.getBytes(column);
             if (rawBytes != null) {
-                return new String(rawBytes, StandardCharsets.UTF_8);
+                return TextIoSanitizerUtil.validateCanonicalized(
+                        new String(rawBytes, StandardCharsets.UTF_8), 4096);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
@@ -448,7 +434,7 @@ public class DashboardSessionService {
         try {
             String raw = rs.getString(column);
             if (raw != null) {
-                return normalizeDbText(raw, 4096);
+                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
             log.log(Level.FINE, "Unable to read DB string for column " + column, ex);
@@ -459,37 +445,13 @@ public class DashboardSessionService {
             if (raw == null) {
                 return null;
             }
-            return String.valueOf(raw);
+            return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "Unable to read DB object text for column " + column, ex);
             return null;
         }
     }
 
-
-    private String validateTaintedDbText(String value, int maxLen) {
-        if (value == null) {
-            return null;
-        }
-        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        String normalizedInput = normalizeDbText(canonical, maxLen);
-        if (normalizedInput.isBlank()) {
-            return normalizedInput;
-        }
-        StringBuilder safe = new StringBuilder(normalizedInput.length());
-        for (int i = 0; i < normalizedInput.length(); i++) {
-            char ch = normalizedInput.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        String normalized = safe.toString();
-        if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
-        }
-        return normalized;
-    }
 
     final String formatTimestamp(Timestamp ts) {
         if (ts == null) {

@@ -149,7 +149,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             Map<LocalDate, Integer> totalDaily,
             Map<String, Map<LocalDate, Integer>> widgetDaily,
             Map<String, String> widgetNameToId
-    ) throws SQLException {
+    ) {
         if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
             return;
         }
@@ -166,16 +166,33 @@ public class DashboardTrendsServlet extends HttpServlet {
         String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
                 + " WHERE created_at >= ? AND created_at < ?";
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            ps = conn.prepareStatement(sql);
             ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
             ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
-            try (ResultSet rs = ps.executeQuery()) {
-                accumulateTrendRows(rs, totalDaily, series);
-            }
+            rs = ps.executeQuery();
+            accumulateTrendRows(rs, totalDaily, series);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to collect trend data for widget " + widgetId, e);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(ps);
         }
 
         widgetDaily.put(widgetName, series);
         widgetNameToId.put(widgetName, widgetId);
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private Map<LocalDate, Integer> zeroSeries(Map<LocalDate, Integer> totalDaily) {
@@ -186,18 +203,22 @@ public class DashboardTrendsServlet extends HttpServlet {
         return series;
     }
 
-    private void accumulateTrendRows(ResultSet rs, Map<LocalDate, Integer> totalDaily, Map<LocalDate, Integer> series) throws SQLException {
-        while (rs.next()) {
-            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
-            if (ts == null) {
-                continue;
-            }
+    private void accumulateTrendRows(ResultSet rs, Map<LocalDate, Integer> totalDaily, Map<LocalDate, Integer> series) {
+        try {
+            while (rs.next()) {
+                Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                if (ts == null) {
+                    continue;
+                }
 
-            LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-            if (totalDaily.containsKey(entryDate)) {
-                incrementDate(totalDaily, entryDate);
-                incrementDate(series, entryDate);
+                LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                if (totalDaily.containsKey(entryDate)) {
+                    incrementDate(totalDaily, entryDate);
+                    incrementDate(series, entryDate);
+                }
             }
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to accumulate trend rows", e);
         }
     }
 

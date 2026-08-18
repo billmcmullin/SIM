@@ -94,7 +94,9 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         if (widgets.isEmpty()) {
             return snapshots;
         }
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;
@@ -107,31 +109,48 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
                 String sql = "SELECT widget_chat_id, prompt, response_text, created_at FROM "
                         + quoteIdentifier(tableName)
                         + " WHERE session_id = ? ORDER BY created_at DESC";
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = null;
+                ResultSet rs = null;
+                try {
+                    ps = conn.prepareStatement(sql);
                     ps.setString(1, sessionId);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            snapshots.add(new TermChatSnapshot(
-                                    sessionId,
-                                    widgetId,
-                                    chatId == null ? "" : chatId,
-                                    rs.getString("prompt"),
-                                    rs.getString("response_text"),
-                                    createdAt,
-                                    sessionId
-                            ));
-                        }
+                    rs = ps.executeQuery();
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        snapshots.add(new TermChatSnapshot(
+                                sessionId,
+                                widgetId,
+                                chatId == null ? "" : chatId,
+                                rs.getString("prompt"),
+                                rs.getString("response_text"),
+                                createdAt,
+                                sessionId
+                        ));
                     }
                 } catch (SQLException e) {
                     log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + e.getMessage(), e);
+                } finally {
+                    closeQuietly(rs);
+                    closeQuietly(ps);
                 }
             }
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect session entries for review", e);
+        } finally {
+            closeQuietly(conn);
         }
         return snapshots;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private List<WidgetEntry> listWidgets() {

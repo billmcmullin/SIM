@@ -138,9 +138,14 @@ public class ReviewTranslateServlet extends HttpServlet {
         return session != null && session.getAttribute("user") != null;
     }
 
-    private void writeJson(HttpServletResponse resp, JsonObject obj) throws IOException {
+    private void writeJson(HttpServletResponse resp, JsonObject obj) {
         int status = resp.getStatus() <= 0 ? HttpServletResponse.SC_OK : resp.getStatus();
-        ServletJsonResponseUtil.writeJson(resp, status, obj == null ? Json.createObjectBuilder().build() : obj);
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, obj == null ? Json.createObjectBuilder().build() : obj);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to write translate response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 
     private String readRequestBody(HttpServletRequest req) {

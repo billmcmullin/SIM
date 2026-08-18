@@ -77,7 +77,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 if (isBlank(apiToken) && config != null) {
                     apiToken = config.getSalesforceApiToken();
                 }
-                } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
+                } catch (IllegalStateException | IllegalArgumentException e) {
                 log.log(Level.WARNING, "Unable to load stored Salesforce configuration", e);
                 writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                         Json.createObjectBuilder().add("status", "error")
@@ -218,8 +218,13 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         return CLIENT;
     }
 
-    private ServerConfig loadConfig() throws SQLException {
-        return EncryptedDbConfigStore.load();
+    private ServerConfig loadConfig() {
+        try {
+            return EncryptedDbConfigStore.load();
+        } catch (SQLException e) {
+            log.log(Level.SEVERE, "Unable to load server configuration", e);
+            throw new IllegalStateException("Unable to load server configuration", e);
+        }
     }
 
     private String buildSalesforceDataEndpoint(String instanceUrl) {
@@ -231,8 +236,13 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         return normalized + "/services/data/";
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, payload);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, payload);
+        } catch (IOException e) {
+            log.log(Level.SEVERE, "Unable to write test-salesforce response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 
     private boolean isBlank(String v) {

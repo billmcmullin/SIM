@@ -852,21 +852,17 @@ public class WorkspaceClient {
         if (conn == null) {
             return "";
         }
-        String headerValue = validateTaintedHeaderValue(conn.getHeaderField("Content-Type"));
-        String sanitizedHeader = sanitizeHeaderValue(headerValue);
-        return sanitizeContentTypeValue(sanitizedHeader);
+        String raw = conn.getHeaderField("Content-Type");
+        String canonical = raw == null ? "" : Normalizer.normalize(raw, Normalizer.Form.NFKC);
+        String headerValue = sanitizeHeaderValue(canonical);
+        return sanitizeContentTypeValue(headerValue);
     }
 
     private int validateTaintedStatusCode(int rawCode) {
-        String normalizedCode = validateTaintedHeaderValue(Integer.toString(rawCode));
-        if (normalizedCode.length() != 3 || !isAsciiDigitsOnly(normalizedCode)) {
+        if (rawCode < 100 || rawCode > 599) {
             return 500;
         }
-        try {
-            return sanitizeStatusCode(Integer.parseInt(normalizedCode));
-        } catch (NumberFormatException ex) {
-            return 500;
-        }
+        return sanitizeStatusCode(rawCode);
     }
 
     private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {
@@ -880,17 +876,9 @@ public class WorkspaceClient {
     }
 
     private String sanitizeHeaderValue(String headerValue) {
-        if (headerValue == null) {
-            return "";
-        }
-        return validateTaintedHeaderValue(headerValue);
-    }
-
-    private String validateTaintedHeaderValue(String headerValue) {
         if (headerValue == null || headerValue.isBlank()) {
             return "";
         }
-
         String canonical = Normalizer.normalize(headerValue, Normalizer.Form.NFKC);
         String normalized = canonical.replace('\r', ' ').replace('\n', ' ').trim();
         return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;

@@ -53,7 +53,11 @@ public class DashboardBootstrapServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        ensureSummaryStoreInitialized();
+        try {
+            ensureSummaryStoreInitialized();
+        } catch (RuntimeException e) {
+            throw new ServletException("Failed to initialize daily summary store", e);
+        }
     }
 
     @Override
@@ -107,7 +111,9 @@ public class DashboardBootstrapServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
@@ -179,6 +185,8 @@ public class DashboardBootstrapServlet extends HttpServlet {
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute sessions for dashboard bootstrap", e);
             return null;
+        } finally {
+            closeQuietly(conn);
         }
     }
 
@@ -190,7 +198,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
         try {
             DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
             return store.fetchExactOrLatest(day, slot);
-        } catch (ServletException | RuntimeException e) {
+        } catch (RuntimeException e) {
             log.log(Level.WARNING, "Unable to load summary for dashboard bootstrap", e);
             return null;
         }
@@ -227,7 +235,11 @@ public class DashboardBootstrapServlet extends HttpServlet {
             String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
                     + quoteIdentifier(tableName)
                     + " WHERE session_id IS NOT NULL GROUP BY session_id";
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
+                rs = ps.executeQuery();
                 while (rs.next()) {
                     String sessionId = rs.getString("session_id");
                     if (sessionId == null || sessionId.isBlank()) {
@@ -249,9 +261,22 @@ public class DashboardBootstrapServlet extends HttpServlet {
                 }
             } catch (SQLException ex) {
                 log.log(Level.FINE, "Skipping widget session aggregation due to SQL error", ex);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
         return accumulators;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private String quoteIdentifier(String identifier) {
@@ -267,7 +292,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
                 .format(ENTRY_FORMATTER);
     }
 
-    private DashboardDailySummaryStore ensureSummaryStoreInitialized() throws ServletException {
+    private DashboardDailySummaryStore ensureSummaryStoreInitialized() {
         jakarta.servlet.ServletContext context = getServletContext();
         DashboardDailySummaryStore local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
         if (local != null) {
@@ -287,7 +312,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
                 return created;
             } catch (RuntimeException e) {
                 log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore for bootstrap", e);
-                throw new ServletException("Failed to initialize daily summary store", e);
+                throw new IllegalStateException("Failed to initialize daily summary store", e);
             }
         }
     }

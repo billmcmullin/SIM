@@ -1,7 +1,5 @@
 package com.sim.chatserver.model;
 
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -20,7 +18,6 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.Database;
-import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 public final class CustomerIdentityStore {
 
@@ -541,80 +538,16 @@ public final class CustomerIdentityStore {
 
     private static String readRawDbText(ResultSet rs, String column) {
         try {
-            Reader reader = rs.getCharacterStream(column);
-            if (reader != null) {
-                try (Reader closeable = reader) {
-                    String raw = TextIoSanitizerUtil.readAtMostChars(closeable, 4096);
-                    String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-                    return validateTaintedDbText(canonicalRaw, 4096);
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Character-stream read failed for column " + column, ex);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
-        }
-
-        try {
-            byte[] bytes = rs.getBytes(column);
-            if (bytes != null) {
-                String raw = new String(bytes, StandardCharsets.UTF_8);
-                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-                return validateTaintedDbText(canonicalRaw, 4096);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Binary read failed for column " + column, ex);
-        }
-
-        try {
-            String raw = rs.getString(column);
-            if (raw != null) {
-                String canonicalRaw = Normalizer.normalize(raw, Normalizer.Form.NFKC);
-                return validateTaintedDbText(canonicalRaw, 4096);
-            }
+            String raw = java.util.Objects.requireNonNullElse(rs.getString(column), "");
+            return sanitizeDbText(raw, 4096);
         } catch (SQLException ex) {
             log.log(Level.FINE, "String read failed for column " + column, ex);
         }
-
-        try {
-            Object raw = rs.getObject(column);
-            if (raw != null) {
-                String canonicalRaw = Normalizer.normalize(String.valueOf(raw), Normalizer.Form.NFKC);
-                return validateTaintedDbText(canonicalRaw, 4096);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Object read failed for column " + column, ex);
-        }
-
         return null;
     }
 
     private static Long validateTaintedLong(long value) {
         return value < 0L ? 0L : value;
-    }
-
-    private static String validateTaintedDbText(String value, int maxChars) {
-        if (value == null || value.isEmpty()) {
-            return value;
-        }
-        String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        String sanitized = sanitizeDbText(canonical, maxChars);
-        if (sanitized == null || sanitized.isEmpty()) {
-            return sanitized;
-        }
-        StringBuilder safe = new StringBuilder(sanitized.length());
-        for (int i = 0; i < sanitized.length(); i++) {
-            char ch = sanitized.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        String normalized = safe.toString();
-        if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
-        }
-        return normalized;
     }
 
 

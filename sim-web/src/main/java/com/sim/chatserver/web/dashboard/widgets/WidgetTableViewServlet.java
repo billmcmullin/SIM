@@ -136,7 +136,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         }
     }
 
-    private String loadTemplate(jakarta.servlet.ServletContext context, String path) throws IOException {
+    private String loadTemplate(jakarta.servlet.ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
                 return null;
@@ -149,6 +149,9 @@ public class WidgetTableViewServlet extends HttpServlet {
                 }
                 return builder.toString();
             }
+        } catch (IOException e) {
+            log.log(Level.WARNING, "Unable to load template: " + path, e);
+            return null;
         }
     }
 

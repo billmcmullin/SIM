@@ -265,7 +265,9 @@ public class WidgetTableServlet extends HttpServlet {
 
     private boolean tableExistsByProbe(Connection conn, String tableName) {
         String sql = "SELECT 1 FROM " + quoteIdentifier(tableName) + " WHERE 1 = 0";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.execute();
             return true;
         } catch (SQLException ex) {
@@ -274,6 +276,8 @@ public class WidgetTableServlet extends HttpServlet {
             }
             log.log(Level.FINE, "Probe table check failed for " + tableName, ex);
             return false;
+        } finally {
+            closeQuietly(stmt);
         }
     }
 
@@ -285,7 +289,11 @@ public class WidgetTableServlet extends HttpServlet {
     private long countRows(Connection conn, String tableName) {
         // Quote identifier to avoid SQL injection; tableName is sanitized earlier.
         String sql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName);
-        try (PreparedStatement stmt = conn.prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
+            rs = stmt.executeQuery();
             if (rs.next()) {
                 return rs.getLong(1);
             }
@@ -293,16 +301,33 @@ public class WidgetTableServlet extends HttpServlet {
         } catch (SQLException ex) {
             log.log(Level.FINE, "Count rows failed for " + tableName, ex);
             return 0L;
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(stmt);
         }
     }
 
     private void createTable(Connection conn, String tableName) {
         String sql = "CREATE TABLE " + quoteIdentifier(tableName)
                 + " (id BIGSERIAL PRIMARY KEY, payload TEXT, created_at TIMESTAMPTZ DEFAULT now())";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.execute();
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to create table " + tableName, ex);
+        } finally {
+            closeQuietly(stmt);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
         }
     }
 

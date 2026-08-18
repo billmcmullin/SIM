@@ -891,7 +891,9 @@ public class DatabaseImportServlet extends HttpServlet {
 
         String sql = "SELECT widget_id FROM widget_entries";
         PreparedStatement ps = prepareStatementSafe(conn, sql);
-        try (ps; ResultSet rs = ps.executeQuery()) {
+        ResultSet rs = null;
+        try {
+            rs = ps.executeQuery();
             while (rs.next()) {
                 String widgetId = sanitizeWidgetId(readSafeDbText(rs, "widget_id", 80));
                 if (widgetId == null || widgetId.isBlank()) {
@@ -902,6 +904,19 @@ public class DatabaseImportServlet extends HttpServlet {
             return out;
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to load widget ID table map", ex);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(ps);
+        }
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
         }
     }
 

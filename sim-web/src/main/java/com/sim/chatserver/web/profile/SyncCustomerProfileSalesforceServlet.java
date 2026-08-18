@@ -154,12 +154,20 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
         }
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) throws IOException {
+    private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
         resp.setContentType("application/json");
         resp.setCharacterEncoding("UTF-8");
-        try (JsonWriter writer = Json.createWriter(resp.getWriter())) {
-            writer.writeObject(payload);
+        try {
+            JsonWriter writer = Json.createWriter(resp.getWriter());
+            try {
+                writer.writeObject(payload);
+            } finally {
+                writer.close();
+            }
+        } catch (IOException e) {
+            logFailure("Unable to write sync-customer-profile response", e);
+            throw new IllegalStateException("Unable to write response", e);
         }
     }
 

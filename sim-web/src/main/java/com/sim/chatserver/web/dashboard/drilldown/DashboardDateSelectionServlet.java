@@ -116,7 +116,9 @@ public class DashboardDateSelectionServlet extends HttpServlet {
         Timestamp startTs = Timestamp.valueOf(date.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             for (WidgetEntry widget : widgets) {
                 if (widget == null || widget.getWidgetId() == null) {
                     continue;
@@ -132,39 +134,56 @@ public class DashboardDateSelectionServlet extends HttpServlet {
                         + " WHERE created_at >= ? AND created_at < ?"
                         + " ORDER BY created_at DESC";
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = null;
+                ResultSet rs = null;
+                try {
+                    ps = conn.prepareStatement(sql);
                     ps.setTimestamp(1, startTs);
                     ps.setTimestamp(2, endTs);
+                    rs = ps.executeQuery();
 
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        String prompt = rs.getString("prompt");
+                        String response = rs.getString("response_text");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        String sessionId = rs.getString("session_id");
 
-                            // first constructor arg is "term" label in snapshot model; for date drilldown use date label
-                            snapshots.add(new TermChatSnapshot(
-                                    date.toString(),
-                                    widgetId,
-                                    chatId == null ? "" : chatId,
-                                    prompt == null ? "" : prompt,
-                                    response == null ? "" : response,
-                                    createdAt,
-                                    sessionId == null ? "" : sessionId
-                            ));
-                        }
+                        // first constructor arg is "term" label in snapshot model; for date drilldown use date label
+                        snapshots.add(new TermChatSnapshot(
+                                date.toString(),
+                                widgetId,
+                                chatId == null ? "" : chatId,
+                                prompt == null ? "" : prompt,
+                                response == null ? "" : response,
+                                createdAt,
+                                sessionId == null ? "" : sessionId
+                        ));
                     }
                 } catch (SQLException e) {
                     log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + e.getMessage(), e);
+                } finally {
+                    closeQuietly(rs);
+                    closeQuietly(ps);
                 }
             }
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect date entries for review", e);
+        } finally {
+            closeQuietly(conn);
         }
 
         return snapshots;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private List<WidgetEntry> listWidgets() {

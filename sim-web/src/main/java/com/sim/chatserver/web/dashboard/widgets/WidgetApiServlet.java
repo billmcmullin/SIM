@@ -226,7 +226,7 @@ public class WidgetApiServlet extends HttpServlet {
         }
     }
 
-    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
@@ -247,8 +247,13 @@ public class WidgetApiServlet extends HttpServlet {
                 .build();
     }
 
-    private void writeJson(HttpServletResponse resp, int status, JsonObject body) throws IOException {
-        ServletJsonResponseUtil.writeJson(resp, status, body);
+    private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
+        try {
+            ServletJsonResponseUtil.writeJson(resp, status, body);
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Unable to write widget API response", e);
+            throw new IllegalStateException("Unable to write response", e);
+        }
     }
 
     private String sanitizeWidgetId(String value) {

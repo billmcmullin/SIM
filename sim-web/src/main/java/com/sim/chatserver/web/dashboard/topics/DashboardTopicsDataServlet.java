@@ -113,7 +113,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
 
         TopicsAggregation aggregation;
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             aggregation = collectTopicData(conn, widgets, realTopics, window, includeOther);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
@@ -123,6 +125,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                     .build();
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, err);
             return;
+        } finally {
+            closeQuietly(conn);
         }
 
         writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
@@ -139,7 +143,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             List<TopicPattern> realTopics,
             DateWindow window,
             boolean includeOther
-    ) throws SQLException {
+    ) {
         TopicsAggregation aggregation = new TopicsAggregation();
 
         for (WidgetEntry w : widgets) {
@@ -162,43 +166,60 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
                     + " WHERE created_at >= ? AND created_at < ?";
 
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            PreparedStatement ps = null;
+            ResultSet rs = null;
+            try {
+                ps = conn.prepareStatement(sql);
                 ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
                 ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
 
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String chatId = rs.getString("widget_chat_id");
-                        if (chatId == null || chatId.isBlank()) {
-                            continue;
-                        }
+                rs = ps.executeQuery();
+                while (rs.next()) {
+                    String chatId = rs.getString("widget_chat_id");
+                    if (chatId == null || chatId.isBlank()) {
+                        continue;
+                    }
 
-                        String prompt = rs.getString("prompt");
-                        if (prompt == null) {
-                            prompt = "";
-                        }
+                    String prompt = rs.getString("prompt");
+                    if (prompt == null) {
+                        prompt = "";
+                    }
 
-                        try {
-                            SqlTimeUtil.safeTimestamp(rs, "created_at");
-                        } catch (SQLException ignored) {
-                            log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
-                        }
+                    try {
+                        SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    } catch (SQLException ignored) {
+                        log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
+                    }
 
-                        Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
-                        if (!matchedRealTopics.isEmpty()) {
-                            recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, matchedRealTopics);
-                            continue;
-                        }
+                    Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
+                    if (!matchedRealTopics.isEmpty()) {
+                        recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, matchedRealTopics);
+                        continue;
+                    }
 
-                        if (includeOther) {
-                            recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, Set.of(OTHER_LABEL));
-                        }
+                    if (includeOther) {
+                        recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, Set.of(OTHER_LABEL));
                     }
                 }
+            } catch (SQLException e) {
+                log.log(Level.WARNING, "Unable to collect topic data for widget " + widgetId, e);
+            } finally {
+                closeQuietly(rs);
+                closeQuietly(ps);
             }
         }
 
         return aggregation;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private void recordMatchedTopics(

@@ -95,7 +95,9 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
+        Connection conn = null;
+        try {
+            conn = dataSourceHolder().getDataSource().getConnection();
             for (WidgetEntry w : widgets) {
                 if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
                     continue;
@@ -111,31 +113,38 @@ public class DashboardLatestChatsServlet extends HttpServlet {
                         + quoteIdentifier(tableName)
                         + " ORDER BY created_at DESC LIMIT ?";
 
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = null;
+                ResultSet rs = null;
+                try {
+                    ps = conn.prepareStatement(sql);
                     ps.setInt(1, Math.max(limit, 1));
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                    rs = ps.executeQuery();
+                    while (rs.next()) {
+                        String chatId = rs.getString("widget_chat_id");
+                        String prompt = rs.getString("prompt");
+                        String response = rs.getString("response_text");
+                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                        String sessionId = rs.getString("session_id");
 
-                            all.add(new TermChatSnapshot(
-                                    "Latest Chats",
-                                    widgetId,
-                                    chatId == null ? "" : chatId,
-                                    prompt,
-                                    response,
-                                    createdAt,
-                                    sessionId
-                            ));
-                        }
+                        all.add(new TermChatSnapshot(
+                                "Latest Chats",
+                                widgetId,
+                                chatId == null ? "" : chatId,
+                                prompt,
+                                response,
+                                createdAt,
+                                sessionId
+                        ));
                     }
+                } finally {
+                    closeQuietly(rs);
+                    closeQuietly(ps);
                 }
             }
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to collect latest chats", e);
+        } finally {
+            closeQuietly(conn);
         }
 
         all.sort(Comparator.comparing(
@@ -178,6 +187,16 @@ public class DashboardLatestChatsServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
         }
         return false;
+    }
+
+    private static void closeQuietly(AutoCloseable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                // ignore close failure
+            }
+        }
     }
 
     private String sanitizeWidgetTableName(String widgetId) {

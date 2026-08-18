@@ -15,6 +15,11 @@ public class GraphEmailService implements EmailService {
     private final GraphMailClient mailClient;
     private final MarkdownRenderer markdownRenderer;
 
+    @SuppressWarnings("unused")
+    private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+        throw new java.io.NotSerializableException(getClass().getName());
+    }
+
     GraphEmailService(
             GraphEmailConfig config,
             GraphTokenClient tokenClient,

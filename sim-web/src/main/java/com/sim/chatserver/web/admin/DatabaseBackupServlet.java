@@ -24,8 +24,6 @@ public class DatabaseBackupServlet extends HttpServlet {
     private static final DateTimeFormatter BACKUP_TS_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.US)
             .withZone(ZoneOffset.UTC);
 
-    private final DatabaseBackupService backupService = new DatabaseBackupService();
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         if (!isAdmin(req)) {
@@ -40,6 +38,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             resp.setStatus(HttpServletResponse.SC_OK);
             resp.setContentType("application/zip");
             resp.setHeader("Content-Disposition", String.format("attachment; filename=\"%s\"", fileName));
+            DatabaseBackupService backupService = new DatabaseBackupService();
             backupService.exportBackup(resp.getOutputStream(), generatedAt);
         } catch (IOException | IllegalStateException e) {
             log.log(Level.SEVERE, "Data backup export failed", e);

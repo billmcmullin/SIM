@@ -5,6 +5,7 @@ import java.io.UnsupportedEncodingException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -242,21 +243,30 @@ public class AdminTermServlet extends HttpServlet {
         if (req == null) {
             return "";
         }
-        try (java.io.Reader reader = req.getReader()) {
-            String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
-            return validateTaintedText(body);
+        try {
+            java.io.Reader reader = req.getReader();
+            if (reader == null) {
+                return "";
+            }
+            try {
+                String body = ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(reader, MAX_JSON_PAYLOAD_BYTES);
+                return validateCanonicalizedBodyText(body);
+            } finally {
+                reader.close();
+            }
         } catch (IOException | IllegalStateException e) {
             log.log(Level.WARNING, "Failed reading request body", e);
             return "";
         }
     }
 
-    private String validateTaintedText(String value) {
+    private String validateCanonicalizedBodyText(String value) {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(value, MAX_JSON_PAYLOAD_BYTES, false);
-        if (normalizedInput.isEmpty()) {
+        String canonical = TextIoSanitizerUtil.canonicalize(value);
+        String normalizedInput = ServletRequestParamUtil.normalizeBodyText(canonical, MAX_JSON_PAYLOAD_BYTES, false);
+        if (normalizedInput == null || normalizedInput.isEmpty()) {
             return "";
         }
         StringBuilder safe = new StringBuilder(Math.min(normalizedInput.length(), MAX_JSON_PAYLOAD_BYTES));

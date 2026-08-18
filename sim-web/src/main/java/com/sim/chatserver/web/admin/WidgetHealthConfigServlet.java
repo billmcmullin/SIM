@@ -322,8 +322,13 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         if (req == null) {
             return null;
         }
-        try (BufferedReader reader = req.getReader()) {
-            return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+        try {
+            BufferedReader reader = req.getReader();
+            try {
+                return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+            } finally {
+                reader.close();
+            }
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to read widget health config request body", e);
             return null;
