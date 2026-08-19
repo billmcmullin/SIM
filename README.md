@@ -25,7 +25,6 @@ Project modules:
 - `sim-web`: servlet layer for admin and dashboard endpoints
 - `sim-app`: WAR assembly and web assets
 - `sim-email`: email-related integrations and utilities
-- `sim-testng-tests`: isolated TestNG-only unit test module (targets shared code such as sim-core)
 - `sim-playwright`: browser-based integration/end-to-end tests
 
 Database bootstrap and SQL utilities are available in [resources/postgres](resources/postgres).
@@ -33,15 +32,6 @@ Database bootstrap and SQL utilities are available in [resources/postgres](resou
 ## Build & Deploy
 
 See [resources/BUILD.MD](resources/BUILD.MD) for build, packaging, and deployment workflows.
-
-## TestNG Unit Test Module
-
-Run the dedicated TestNG unit-test module:
-
-```bash
-mvn -pl sim-core -Ddependency-check.skip=true -DskipTests install
-mvn -pl sim-testng-tests -Ddependency-check.skip=true test
-```
 
 ## Configuration
 
