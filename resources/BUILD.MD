@@ -42,8 +42,13 @@ mvn clean verify -pl sim-core,sim-web,sim-app,sim-email -Ddependency-check.skip=
 - Run Playwright after Docker Container is deployed
 
 ```bash
-mvn verify -pl sim-playwright -DbaseUrl=<SERVER INFO>/chat-server -Dheadless=true -DignoreHttpsErrors=true -DignoreHttpsErrors=true -DadminUsername=<ADMIN USER> -DadminPassword=<ADMIN PASSWORD> -DuserUsername=<USER> -DuserPassword=<PASSWORD>
+mvn verify -pl sim-playwright -Dplaywright.skipITs=false -DbaseUrl=<SERVER INFO>/chat-server -Dheadless=true -DignoreHttpsErrors=true -DignoreHttpsErrors=true -DadminUsername=<ADMIN USER> -DadminPassword=<ADMIN PASSWORD> -DuserUsername=<USER> -DuserPassword=<PASSWORD>
 ```
+
+Playwright note:
+
+- `sim-playwright` integration tests are skipped by default in normal reactor builds.
+- To run only Playwright on demand, use `-pl sim-playwright -Dplaywright.skipITs=false`.
 
 - Run Jtest Monitor for Application Coverage setup:
 

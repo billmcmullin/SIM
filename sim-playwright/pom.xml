@@ -31,6 +31,9 @@
         <baseUrl>http://localhost:8080/chat-server</baseUrl>
         <headless>true</headless>
         <ignoreHttpsErrors>true</ignoreHttpsErrors>
+
+        <!-- Skip Playwright ITs in full reactor builds unless explicitly enabled -->
+        <playwright.skipITs>true</playwright.skipITs>
     </properties>
 
     <dependencies>
@@ -89,6 +92,7 @@
                             <goal>verify</goal>
                         </goals>
                         <configuration>
+                            <skipITs>${playwright.skipITs}</skipITs>
                             <includes>
                                 <include>**/*IT.java</include>
                             </includes>
