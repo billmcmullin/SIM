@@ -116,15 +116,15 @@ Then pass that copied value with one of the override options above.
 
 Run Playwright integration tests:
 
-- mvn -pl sim-playwright failsafe:integration-test failsafe:verify
+- mvn -pl sim-playwright -Dplaywright.skipITs=false failsafe:integration-test failsafe:verify
 
 Run with manual Baggage override:
 
-- mvn -pl sim-playwright failsafe:integration-test failsafe:verify -Dparasoft.coverage.baggageHeader=key=value
+- mvn -pl sim-playwright -Dplaywright.skipITs=false failsafe:integration-test failsafe:verify -Dparasoft.coverage.baggageHeader=key=value
 
 Run with alternate runtime options:
 
-- mvn -pl sim-playwright failsafe:integration-test failsafe:verify -DbaseUrl=<http://localhost:8080/chat-server> -Dheadless=true -DignoreHttpsErrors=true
+- mvn -pl sim-playwright -Dplaywright.skipITs=false failsafe:integration-test failsafe:verify -DbaseUrl=<http://localhost:8080/chat-server> -Dheadless=true -DignoreHttpsErrors=true
 
 ## Troubleshooting
 
