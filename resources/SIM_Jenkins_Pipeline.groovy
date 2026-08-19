@@ -12,7 +12,7 @@ pipeline {
         SESSION_TAG            = 'Jenkins Jtest'
         // Parasoft Test Configuration to run this build
         TEST_CONFIG            = 'jtest.dtp://StaticAndUnit'
-        // Parasoft Security Compliance Test Configurations to run 2025 OWASP
+        // Parasoft Security Compliance Test Configruation to run 2025 OWASP
         OWASP_2025_TEST_CONFIG = 'jtest.dtp://OWASP Top 10-2025 [Parasoft 2026.1]'
         // Parasoft Security Compliance Test Configuration for CWE
         CWE_TEST_CONFIG        = 'jtest.dtp://CWE Top 25 + On the Cusp 2025 [Parasoft 2026.1]'
@@ -81,7 +81,7 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([string(credentialsId: 'NIST_API_KEY', variable: 'NVD_API_KEY')]) {
                         sh '''
-                            $MAVEN_HOME/mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim-app,sim-email \
+                            ./mvnw clean test-compile jtest:agent verify jtest:monitor \
                                 -Djtest.settings="${WORKSPACE}/jtest_${JOB_NAME}.properties" \
                                 -Djtest.publish="${PUBLISH}" \
                                 -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT;${JOB_NAME}-Play" \
@@ -99,27 +99,25 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh """
-                        \$JTEST_HOME/jtestcli -data ${WORKSPACE}/sim-core/target/jtest/monitor/jtest.data.json \
+                        \$JTEST_HOME/jtestcli -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
                             -config "${TEST_CONFIG}" \
                             -settings jtest_${JOB_NAME}.properties \
                             -publish \
                             -report "${WORKSPACE}/report/team"
 
                         \$JTEST_HOME/jtestcli \
-                            -data ${WORKSPACE}/sim-core/target/jtest/monitor/jtest.data.json \
+                            -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
                             -config "${OWASP_2025_TEST_CONFIG}" \
                             -settings jtest_${JOB_NAME}.properties \
                             -publish \
-                            -report "${WORKSPACE}/report/OWASP2025" \
-                            -exclude "**/test/**/*Test.java"
+                            -report "${WORKSPACE}/report/OWASP2025" 
 
                         \$JTEST_HOME/jtestcli \
-                            -data ${WORKSPACE}/sim-core/target/jtest/monitor/jtest.data.json \
+                            -data ${WORKSPACE}/target/jtest/monitor/jtest.data.json \
                             -config "${CWE_TEST_CONFIG}" \
                             -settings jtest_${JOB_NAME}.properties \
                             -publish \
                             -report "${WORKSPACE}/report/CWE" \
-                            -exclude "**/test/**/*Test.java"
                     """
                 }
             }
@@ -131,7 +129,7 @@ pipeline {
                     sh '''
                         set -e
                         DEST_DIR="${SHARED_DIR}"
-                        MONITOR_DIR="${WORKSPACE}/sim-core/target/jtest/monitor"
+                        MONITOR_DIR="${WORKSPACE}/target/jtest/monitor"
                         MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
                         AGENT_FILE="${SHARED_DIR}/monitor/agent.properties"
 
@@ -172,24 +170,46 @@ pipeline {
                         else
                             echo 'jtest.agent.restServerEnabled=true' >> "${AGENT_FILE}"
                         fi
+                        
+                        if grep -q 'ctp\\.websocket\\.url=' "${AGENT_FILE}"; then
+                            sed -i "s/^ctp\\.websocket\\.url=.*/ctp.websocket.url=${CTP_WEBSOCKET}/" "${AGENT_FILE}"
+                        else
+                            echo "ctp.websocket.url=${CTP_WEBSOCKET}" >> "${AGENT_FILE}"
+                        fi
 
-                        echo "ctp.websocket.url=${CTP_WEBSOCKET}" >> "${AGENT_FILE}"
-
-                        echo "ctp.subscription.queue=${CTP_QUEUE}" >> "${AGENT_FILE}"
-
-                        echo "dtp.buildID=${BUILD_TAG}" >> "${AGENT_FILE}"
-
-                        echo "dtp.project=SIM Java" >> "${AGENT_FILE}"
-
-                        echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
+                        if grep -q 'ctp\\.subscription\\.url=' "${AGENT_FILE}"; then
+                            sed -i 's/^ctp\\.subscription\\.url=.*/ctp.subscription.url=${CTP_QUEUE}/' "${AGENT_FILE}"
+                        else
+                            echo "ctp.subscription.queue=${CTP_QUEUE}" >> "${AGENT_FILE}"
+                        fi
+                        
+                        if grep -q 'dtp\\.buildID=' "${AGENT_FILE}"; then
+                            sed -i "s/^dtp\\.buildID=.*/dtp.buildID=${BUILD_TAG}/" "${AGENT_FILE}"
+                        else
+                            echo "dtp.buildID=${BUILD_TAG}" >> "${AGENT_FILE}"
+                        fi
+                        
+                        if grep -q 'dtp\\.project=' "${AGENT_FILE}"; then
+                            sed -i 's/^dtp\\.project=.*/dtp.project=SIM Java/' "${AGENT_FILE}"
+                        else
+                            echo "dtp.project=SIM Java" >> "${AGENT_FILE}"
+                        fi
+                        
+                        if grep -q 'dtp\\.coverageImages=' "${AGENT_FILE}"; then
+                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT/" "${AGENT_FILE}"
+                        else
+                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
+                        fi
 
                         echo "Updated ${AGENT_FILE}:"
                         grep -E '^jtest\\.agent\\.(enableMultiuserCoverage|autoStart|jbossCompatibilityMode|restServerEnabled)=' "${AGENT_FILE}" || true
+                        grep -E '^ctp\\.(subscription|websocket|)\\.(queue|url)=' "${AGENT_FILE}" || true
+                        grep -E '^dtp\\.(coverageImages|project)\\.(queue|url)=' "${AGENT_FILE}" || true
 
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
 
-                        $MAVEN_HOME/mvn verify -pl sim-playwright \
+                        ./mvnw verify -pl sim-playwright \
                             -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
                             -Dheadless=true \
                             -DignoreHttpsErrors=true \
@@ -201,7 +221,8 @@ pipeline {
                             -Dmaven.test.failure.ignore=true \
                             -Dmaven.test.error.ignore=true \
                             -Dexec.mainClass=com.microsoft.playwright.CLI \
-                            -Dparasoft.coverage.baggageHeader="test-operator-id=${TEST_USER}"
+                            -Dparasoft.coverage.baggageHeader="test-operator-id=${TEST_USER}" \
+                            -Dplaywright.skipITs=false
                     '''
                 }
             }
@@ -218,7 +239,7 @@ pipeline {
                             npm init -y >/dev/null 2>&1
                         fi
 
-                        npm install --no-audit --no-fund --save-dev eslint@10.4.0 eslint-formatter-checkstyle
+                        npm install --no-audit --package-lock --no-fund --save-dev eslint@10.4.0 eslint-formatter-checkstyle
                         npm ls @eslint/plugin-kit || true
 
                         # JSON report for Jenkins Warnings NG
@@ -254,10 +275,18 @@ pipeline {
                             set -e
                             mkdir -p "$DC_DATA_DIR"
 
-                            $MAVEN_HOME/mvn install org.owasp:dependency-check-maven:12.2.2:aggregate \
+                            ./mvnw org.owasp:dependency-check-maven:12.2.2:aggregate \
                                 -DnvdApiKey="$NVD_API_KEY" \
                                 -DdataDirectory="$DC_DATA_DIR" \
-                                -DskipTests=true
+                                -DskipTests=true \
+                                -DnodeAnalyzerEnabled=false \
+                                -DnodeAuditAnalyzerEnabled=false \
+                                -DretireJsAnalyzerEnabled=fals \
+                                -DassemblyAnalyzerEnabled=false \
+                                -DnugetconfAnalyzerEnabled=false \
+                                -DnuspecAnalyzerEnabled=false \
+                                -DmsbuildAnalyzerEnabled=fals \
+                                -fn
 
                             $DEPENDENCY_CHECK/dependencycheck.sh \
                                 -results.file "${WORKSPACE}/target/dependency-check-report.xml" \
