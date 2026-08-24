@@ -323,7 +323,7 @@ public final class MapReduceConfig {
         if (v != null && !v.isBlank()) {
             Integer parsed = parseInt(v);
             if (parsed != null) {
-                return parsed;
+                return parsed.intValue();
             }
         }
         return defaultValue;

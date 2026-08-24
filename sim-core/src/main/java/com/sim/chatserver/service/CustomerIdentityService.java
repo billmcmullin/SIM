@@ -63,7 +63,13 @@ public class CustomerIdentityService {
             identity.setConfidence(confidence);
         }
 
-        CustomerIdentityStore.upsertSessionLink(identity.getIdentityId(), sessionId, displayName, email);
+        Long identityIdValue = identity.getIdentityId();
+        long identityId = identityIdValue == null ? -1L : identityIdValue.longValue();
+        if (identityId <= 0L) {
+            throw new SQLException("Unable to resolve identity id for session link");
+        }
+
+        CustomerIdentityStore.upsertSessionLink(identityId, sessionId, displayName, email);
         return identity;
     }
 

@@ -105,7 +105,10 @@ public final class DashboardServletQueryService {
                             }
 
                             Integer existing = totalDaily.get(entryDate);
-                            int currentCount = existing == null ? 0 : existing.intValue();
+                            int currentCount = 0;
+                            if (existing != null) {
+                                currentCount = existing.intValue();
+                            }
                             totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
                         }
                     }
@@ -120,7 +123,10 @@ public final class DashboardServletQueryService {
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
             Integer dayCount = entry.getValue();
-            int safeCount = dayCount == null ? 0 : dayCount.intValue();
+            int safeCount = 0;
+            if (dayCount != null) {
+                safeCount = dayCount.intValue();
+            }
             values.add(safeCount);
         }
 

@@ -168,7 +168,10 @@ final class DashboardTopicsDataQueryService {
             return;
         }
         Integer current = counts.get(topic);
-        int next = current == null ? 1 : current.intValue() + 1;
+        int next = 1;
+        if (current != null) {
+            next = current.intValue() + 1;
+        }
         counts.put(topic, Integer.valueOf(next));
     }
 

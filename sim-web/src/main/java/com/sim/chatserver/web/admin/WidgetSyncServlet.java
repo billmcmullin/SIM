@@ -667,7 +667,7 @@ public class WidgetSyncServlet extends HttpServlet {
             finishSyncProgress(true, completionMessage);
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -962,7 +962,7 @@ public class WidgetSyncServlet extends HttpServlet {
             }
 
             log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -1147,7 +1147,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             success = true;
             return new WidgetSyncStatus(widgetId, tableName, true, true, message);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -1406,7 +1406,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         singlePassMessage,
                         summaryRequestId
                 );
-            } catch (Throwable ex) {
+            } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
                 finalResp = null;
                 String summary = isUpstreamSummaryRequired()
                     ? "Single-pass summary request failed while upstream summary is required"
@@ -1469,7 +1469,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             finalResp = directFallback;
                             statusCode = finalResp.statusCode();
                         }
-                    } catch (Throwable ex) {
+                    } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
                         logWarningWithDiagnostics(
                                 "summary-direct-fallback-failed",
                                 "Direct summary fallback failed after single-pass upstream failure",
@@ -1537,7 +1537,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     overall, quality, response, usage, entries.size(), false, true);
             resumeAutomaticSummaryGeneration("Summary generated successfully.");
             return true;
-        } catch (Exception e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
@@ -2111,7 +2111,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             incrementCount(counts, name);
                         }
                     }
-                } catch (Throwable ex) {
+                } catch (IllegalArgumentException ex) {
                     log.log(Level.FINE, "Term match evaluation failed during summary fallback", ex);
                 }
             }
@@ -2145,7 +2145,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         matched = true;
                         break;
                     }
-                } catch (Throwable ex) {
+                } catch (IllegalArgumentException ex) {
                     log.log(Level.FINE, "Term chat coverage evaluation failed", ex);
                 }
             }
@@ -4027,12 +4027,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (value == null) {
             return 0;
         }
-        try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid Integer value in count map", ex);
-            return 0;
-        }
+        return value.intValue();
     }
 
     private boolean shouldRetryCompactDirectSummary(WorkspaceResponse response) {

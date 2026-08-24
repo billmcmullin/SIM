@@ -172,7 +172,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
         JsonArrayBuilder values = Json.createArrayBuilder();
         metrics.byDay.forEach((d, v) -> {
             labels.add(d.format(DATE_FMT));
-            values.add(v);
+            int safeValue = safeIntegerValue(v);
+            values.add(safeValue);
         });
 
         JsonArrayBuilder latest = Json.createArrayBuilder();
@@ -345,7 +346,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             return 0;
         }
         Integer total = totalsBySession.get(sid);
-        return total == null ? 0 : total.intValue();
+        return safeIntegerValue(total);
     }
 
     private OptionalInt parseDays(String value) {
@@ -444,6 +445,18 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return s == null ? "" : s;
     }
 
+    private static int safeIntegerValue(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer value", ex);
+            return 0;
+        }
+    }
+
     private String urlEncode(String v) {
         return java.net.URLEncoder.encode(v, StandardCharsets.UTF_8);
     }
@@ -536,7 +549,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 return;
             }
             Integer current = byDay.get(day);
-            int next = (current == null ? 0 : current.intValue()) + 1;
+            int next = safeIntegerValue(current) + 1;
             byDay.put(day, Integer.valueOf(next));
         }
 
@@ -545,7 +558,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             JsonArrayBuilder values = Json.createArrayBuilder();
             byDay.forEach((d, c) -> {
                 labels.add(d.format(DATE_FMT));
-                int count = c == null ? 0 : c.intValue();
+                int count = safeIntegerValue(c);
                 values.add(count);
             });
             JsonObject o = Json.createObjectBuilder()

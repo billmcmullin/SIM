@@ -276,7 +276,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         if (values != null) {
             for (Integer v : values) {
                 if (v != null) {
-                    int intValue = v;
+                    int intValue = v.intValue();
                     b.add(intValue);
                 }
             }

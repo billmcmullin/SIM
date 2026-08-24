@@ -68,7 +68,7 @@ public class AuthService {
         // Fast fail for obviously invalid inputs to avoid BCrypt cost
         if (password == null) {
             if (log.isLoggable(Level.INFO)) {
-                log.log(Level.INFO, LOG_BCRYPT_RESULT, false);
+                log.log(Level.INFO, LOG_BCRYPT_RESULT, Boolean.FALSE);
             }
             return null;
         }
@@ -83,7 +83,7 @@ public class AuthService {
         }
 
         if (log.isLoggable(Level.INFO)) {
-            log.log(Level.INFO, LOG_BCRYPT_RESULT, ok);
+            log.log(Level.INFO, LOG_BCRYPT_RESULT, Boolean.valueOf(ok));
         }
 
         return ok ? user : null;

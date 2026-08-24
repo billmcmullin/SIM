@@ -55,7 +55,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
             Integer dayCount = entry.getValue();
-            int safeCount = dayCount == null ? 0 : dayCount.intValue();
+            int safeCount = safeIntegerValue(dayCount);
             values.add(safeCount);
         }
 
@@ -68,7 +68,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             int widgetTotal = 0;
             for (LocalDate d : totalDaily.keySet()) {
                 Integer rawCount = entry.getValue().get(d);
-                int count = rawCount == null ? 0 : rawCount.intValue();
+                int count = safeIntegerValue(rawCount);
                 widgetValues.add(count);
                 widgetTotal += count;
             }
@@ -85,7 +85,7 @@ public class DashboardTrendsServlet extends HttpServlet {
 
         int grandTotal = 0;
         for (Integer value : totalDaily.values()) {
-            grandTotal += value == null ? 0 : value.intValue();
+            grandTotal += safeIntegerValue(value);
         }
         double averagePostsPerDay = days > 0 ? (double) grandTotal / days : 0.0;
 
@@ -142,6 +142,18 @@ public class DashboardTrendsServlet extends HttpServlet {
         } catch (NumberFormatException e) {
             log.log(Level.FINE, "Invalid days parameter", e);
             return 30;
+        }
+    }
+
+    private int safeIntegerValue(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer value", ex);
+            return 0;
         }
     }
 

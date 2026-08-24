@@ -1415,8 +1415,11 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                if (i != null && i.intValue() > 0) {
-                    s.add(Integer.valueOf(i.intValue()));
+                if (i != null) {
+                    int candidate = i.intValue();
+                    if (candidate > 0) {
+                        s.add(Integer.valueOf(candidate));
+                    }
                 }
             }
         }

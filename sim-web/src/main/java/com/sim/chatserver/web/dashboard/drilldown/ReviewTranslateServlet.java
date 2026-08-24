@@ -86,7 +86,7 @@ public class ReviewTranslateServlet extends HttpServlet {
             }
 
             writeJson(resp, out.build());
-        } catch (Throwable ex) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
             log.log(Level.SEVERE, "Translate request failed", ex);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             writeJson(resp, Json.createObjectBuilder()
@@ -95,7 +95,7 @@ public class ReviewTranslateServlet extends HttpServlet {
                     .build());
         }
     
-        } catch (Throwable e) {
+        } catch (java.io.UnsupportedEncodingException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
@@ -119,7 +119,7 @@ public class ReviewTranslateServlet extends HttpServlet {
                 .add("message", "POST required.")
                 .build());
     
-        } catch (Throwable e) {
+        } catch (java.io.UnsupportedEncodingException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

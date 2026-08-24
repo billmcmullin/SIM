@@ -72,7 +72,10 @@ public final class DashboardSessionAggregationQueryService {
                             acc.count += total;
 
                             Integer existingCount = acc.widgetCounts.get(widgetId);
-                            int mergedCount = (existingCount == null ? 0 : existingCount.intValue()) + total;
+                            int mergedCount = total;
+                            if (existingCount != null) {
+                                mergedCount += existingCount.intValue();
+                            }
                             acc.widgetCounts.put(widgetId, Integer.valueOf(mergedCount));
 
                             Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");

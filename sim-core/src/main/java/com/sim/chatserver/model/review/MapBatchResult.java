@@ -425,7 +425,7 @@ public final class MapBatchResult {
         }
 
         public Builder coverageComplete(boolean coverageComplete) {
-            this.coverageCompleteOverride = coverageComplete;
+            this.coverageCompleteOverride = Boolean.valueOf(coverageComplete);
             return this;
         }
 

@@ -61,7 +61,7 @@ public class WidgetApiServlet extends HttpServlet {
                             .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {
@@ -140,7 +140,7 @@ public class WidgetApiServlet extends HttpServlet {
                             .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
@@ -212,7 +212,7 @@ public class WidgetApiServlet extends HttpServlet {
                             .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
             if (!resp.isCommitted()) {

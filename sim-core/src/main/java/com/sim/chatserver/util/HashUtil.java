@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 public final class HashUtil {
 
     private static final Logger LOG = Logger.getLogger(HashUtil.class.getName());
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
 
     private HashUtil() {
         // util
@@ -33,7 +34,9 @@ public final class HashUtil {
 
             StringBuilder sb = new StringBuilder(bytes.length * 2);
             for (byte b : bytes) {
-                sb.append(String.format("%02x", b));
+                int v = b & 0xFF;
+                sb.append(HEX[v >>> 4]);
+                sb.append(HEX[v & 0x0F]);
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException ex) {

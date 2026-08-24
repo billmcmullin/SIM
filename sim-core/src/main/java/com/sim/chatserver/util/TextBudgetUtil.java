@@ -96,7 +96,12 @@ public final class TextBudgetUtil {
         if (value == null || value.isBlank()) {
             return 0;
         }
-        return Math.max(1, (value.length() + 3) / 4);
+        long len = value.length();
+        long estimated = (len + 3L) / 4L;
+        if (estimated <= 1L) {
+            return 1;
+        }
+        return estimated >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) estimated;
     }
 
     /**

@@ -291,7 +291,10 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     }
 
     private int safeInt(Integer value) {
-        return value == null ? 0 : value.intValue();
+        if (value == null) {
+            return 0;
+        }
+        return value.intValue();
     }
 
     private static final class Row {

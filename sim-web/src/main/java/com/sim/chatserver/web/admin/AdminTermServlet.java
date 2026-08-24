@@ -45,7 +45,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
             terms.forEach(term -> {
                 Long rawId = term.getId();
-                long termId = rawId == null ? 0L : rawId.longValue();
+                long termId = safeLong(rawId, 0L);
                 arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", termId)
                     .add("name", term.getName())
@@ -113,7 +113,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", term.getId() == null ? 0L : term.getId().longValue())
+                        .add("id", safeLong(term.getId(), 0L))
                             .add("name", term.getName())
                             .add("description", term.getDescription())
                             .add("matchPattern", term.getMatchPattern())
@@ -183,7 +183,7 @@ public class AdminTermServlet extends HttpServlet {
             JsonObject body = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("term", Json.createObjectBuilder()
-                        .add("id", updated.getId() == null ? 0L : updated.getId().longValue())
+                        .add("id", safeLong(updated.getId(), 0L))
                             .add("name", updated.getName())
                             .add("description", updated.getDescription())
                             .add("matchPattern", updated.getMatchPattern())
@@ -309,6 +309,10 @@ public class AdminTermServlet extends HttpServlet {
         } catch (IOException ioe) {
             log.log(Level.FINE, "Failed sending fallback server error", ioe);
         }
+    }
+
+    private static long safeLong(Long value, long fallback) {
+        return value == null ? fallback : value.longValue();
     }
 
     private TermsStore termsStore() {

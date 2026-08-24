@@ -132,7 +132,7 @@ final class InactiveUsersPageService {
                         row.frustrationDetected = fr.detected;
                         row.frustrationScore = fr.score;
                         row.frustrationReason = fr.reason;
-                    } catch (Throwable ex) {
+                    } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
                         row.frustrationDetected = false;
                         row.frustrationScore = 0.0;
                         row.frustrationReason = "";
@@ -227,7 +227,7 @@ final class InactiveUsersPageService {
             output.write(renderedBytes);
         }
     
-        } catch (Throwable e) {
+        } catch (ServletException | IOException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {
@@ -336,14 +336,27 @@ final class InactiveUsersPageService {
         return prompts;
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
+    private static void closeQuietly(ResultSet resultSet) {
+        if (resultSet == null) {
+            return;
+        }
+        try {
+            resultSet.close();
+        } catch (SQLException | IllegalStateException | UnsupportedOperationException e) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
+            // ignore close failure
+        }
+    }
+
+    private static void closeQuietly(PreparedStatement statement) {
+        if (statement == null) {
+            return;
+        }
+        try {
+            statement.close();
+        } catch (SQLException | IllegalStateException | UnsupportedOperationException e) {
+            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
+            // ignore close failure
         }
     }
 

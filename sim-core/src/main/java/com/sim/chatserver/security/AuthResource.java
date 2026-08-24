@@ -62,7 +62,7 @@ public class AuthResource {
                 log.log(Level.WARNING, "Authentication failed for username: {0}", credentials.username());
             }
             return Response.status(Response.Status.UNAUTHORIZED)
-                    .entity(Map.of(KEY_AUTHENTICATED, false))
+                    .entity(Map.of(KEY_AUTHENTICATED, Boolean.FALSE))
                     .build();
         }
 
@@ -84,7 +84,7 @@ public class AuthResource {
                     new Object[]{resolvedUsername, role});
         }
 
-        return Response.ok(Map.of(KEY_AUTHENTICATED, true, KEY_USERNAME, resolvedUsername)).build();
+        return Response.ok(Map.of(KEY_AUTHENTICATED, Boolean.TRUE, KEY_USERNAME, resolvedUsername)).build();
     }
 
     private static Credentials extractCredentials(Map<String, String> payload) {

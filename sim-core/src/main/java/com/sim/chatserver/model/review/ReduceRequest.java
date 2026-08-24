@@ -405,7 +405,7 @@ public final class ReduceRequest {
             if (i != null) {
                 int value = i.intValue();
                 if (value > 0) {
-                    out.add(value);
+                    out.add(Integer.valueOf(value));
                 }
             }
         }
