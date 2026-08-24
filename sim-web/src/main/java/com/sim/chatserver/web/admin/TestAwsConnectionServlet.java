@@ -172,7 +172,7 @@ public class TestAwsConnectionServlet extends HttpServlet {
         } catch (IOException e) {
             Logger.getLogger(getClass().getName())
                     .log(Level.WARNING, "I/O exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (IOException ioe) {

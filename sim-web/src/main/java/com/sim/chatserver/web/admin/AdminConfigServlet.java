@@ -198,7 +198,7 @@ public class AdminConfigServlet extends HttpServlet {
             log.info(() -> "[RID " + rid + "] GET /admin completed successfully");
         } catch (ServletException | IOException e) {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (IOException ioe) {
@@ -210,7 +210,7 @@ public class AdminConfigServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -233,8 +233,8 @@ public class AdminConfigServlet extends HttpServlet {
             }
             first = false;
             sb.append("{\"id\":").append(term.getId())
-                    .append(",\"name\":\"").append(escapeJson(term.getName())).append("\"")
-                    .append(",\"description\":\"").append(escapeJson(term.getDescription())).append("\"")
+                    .append(",\"name\":\"").append(escapeJson(term.getName())).append('"')
+                    .append(",\"description\":\"").append(escapeJson(term.getDescription())).append('"')
                     .append('}');
         }
         sb.append(']');
@@ -272,8 +272,8 @@ public class AdminConfigServlet extends HttpServlet {
             }
             first = false;
             sb.append("{\"id\":").append(entry.getId())
-                    .append(",\"widgetId\":\"").append(escapeJson(entry.getWidgetId())).append("\"")
-                    .append(",\"displayName\":\"").append(escapeJson(entry.getDisplayName())).append("\"")
+                    .append(",\"widgetId\":\"").append(escapeJson(entry.getWidgetId())).append('"')
+                    .append(",\"displayName\":\"").append(escapeJson(entry.getDisplayName())).append('"')
                     .append('}');
         }
         sb.append(']');

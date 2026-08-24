@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -197,7 +198,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -238,7 +239,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return false;
         }
 
-        long age = System.currentTimeMillis() - ts;
+        long age = Instant.now().toEpochMilli() - ts;
         if (age < 0 || age > OAUTH_STATE_TTL_MS) {
             return false;
         }

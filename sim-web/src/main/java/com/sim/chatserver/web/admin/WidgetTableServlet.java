@@ -1,23 +1,20 @@
 package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.admin.WidgetTableAdminQueryService;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObjectBuilder;
@@ -34,6 +31,7 @@ public class WidgetTableServlet extends HttpServlet {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
+    private final transient WidgetTableAdminQueryService queryService = new WidgetTableAdminQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -97,21 +95,17 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = openConnectionSafe()) {
-            TableStatus status = determineTableStatus(conn, tableName);
-            Long count = null;
-            if (status.exists) {
-                count = Long.valueOf(countRows(conn, tableName));
-            }
+        try {
+            WidgetTableAdminQueryService.CheckResult status = queryService.checkTable(tableName);
             writeSingleResponse(resp,
                     HttpServletResponse.SC_OK,
                     widgetId,
                     tableName,
                     status.exists,
-                    count,
+                    status.count,
                     status.message,
                     false);
-        } catch (SQLException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to check widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to inspect the database.");
@@ -122,7 +116,10 @@ public class WidgetTableServlet extends HttpServlet {
     private void handleBulkCheck(HttpServletResponse resp, List<String> widgetIds) {
         JsonArrayBuilder statuses = Json.createArrayBuilder();
 
-        try (Connection conn = openConnectionSafe()) {
+        try {
+            Map<String, String> widgetToTable = new LinkedHashMap<>();
+            List<String> validTables = new ArrayList<>();
+
             for (String wid : widgetIds) {
                 String tableName = sanitizeWidgetId(wid);
                 if (!isSafeIdentifier(tableName)) {
@@ -136,24 +133,26 @@ public class WidgetTableServlet extends HttpServlet {
                     continue;
                 }
 
-                boolean exists = false;
-                Long count = null;
-                String message = "";
+                widgetToTable.put(wid, tableName);
+                validTables.add(tableName);
+            }
 
-                exists = tableExists(conn, tableName);
-                if (exists) {
-                    count = Long.valueOf(countRows(conn, tableName));
-                }
+            Map<String, WidgetTableAdminQueryService.CheckResult> checks = queryService.checkTables(validTables);
+
+            for (Map.Entry<String, String> entry : widgetToTable.entrySet()) {
+                String wid = entry.getKey();
+                String tableName = entry.getValue();
+                WidgetTableAdminQueryService.CheckResult result = checks.get(tableName);
 
                 JsonObjectBuilder statusBody = Json.createObjectBuilder()
                         .add("widgetId", wid == null ? "" : wid)
                         .add("tableName", tableName)
-                        .add("tableExists", exists)
-                        .add("message", message == null ? "" : message);
-                if (count == null) {
+                        .add("tableExists", result != null && result.exists)
+                        .add("message", "");
+                if (result == null || result.count == null) {
                     statusBody.addNull("count");
                 } else {
-                    statusBody.add("count", count.longValue());
+                    statusBody.add("count", result.count.longValue());
                 }
                 statuses.add(statusBody);
             }
@@ -162,7 +161,7 @@ public class WidgetTableServlet extends HttpServlet {
                     .add("status", "ok")
                     .add("statuses", statuses);
                 writeJson(resp, HttpServletResponse.SC_OK, payload.build());
-        } catch (SQLException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to check widget tables (bulk)", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to check widget table statuses.");
@@ -186,149 +185,32 @@ public class WidgetTableServlet extends HttpServlet {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid widgetId.");
             return;
         }
-        try (Connection conn = openConnectionSafe()) {
-            TableStatus status = determineTableStatus(conn, tableName);
-            if (status.exists) {
+        try {
+            WidgetTableAdminQueryService.CheckResult result = queryService.createTableIfMissing(tableName);
+            if (!result.created) {
                 writeSingleResponse(resp,
                         HttpServletResponse.SC_OK,
                         widgetId,
                         tableName,
                         true,
-                        Long.valueOf(countRowsSafe(conn, tableName)),
+                        result.count,
                         "Table already exists.",
                         false);
                 return;
             }
-
-            // create table
-            createTable(conn, tableName);
-
-            // get count after creation (should be 0)
-            Long count = countRowsSafe(conn, tableName);
 
                 writeSingleResponse(resp,
                     HttpServletResponse.SC_OK,
                     widgetId,
                     tableName,
                     true,
-                    count,
+                    result.count,
                     "Table created successfully.",
                     true);
-        } catch (SQLException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to create widget table", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Unable to create the table.");
-        }
-    }
-
-    private Connection openConnectionSafe() {
-        try {
-            return dataSourceHolder().getDataSource().getConnection();
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to open database connection", e);
-        }
-    }
-
-    private long countRowsSafe(Connection conn, String tableName) {
-        return countRows(conn, tableName);
-    }
-
-    private TableStatus determineTableStatus(Connection conn, String tableName) {
-        if (tableExists(conn, tableName)) {
-            return new TableStatus(true, "Table is accessible.");
-        }
-        return new TableStatus(false, "Table does not exist.");
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        if (tableExistsByMetadata(conn, tableName)) {
-            return true;
-        }
-        return tableExistsByProbe(conn, tableName);
-    }
-
-    private boolean tableExistsByMetadata(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Metadata table check failed for " + tableName, ex);
-        }
-        return false;
-    }
-
-    private boolean tableExistsByProbe(Connection conn, String tableName) {
-        String sql = "SELECT 1 FROM " + quoteIdentifier(tableName) + " WHERE 1 = 0";
-        PreparedStatement stmt = null;
-        try {
-            stmt = conn.prepareStatement(sql);
-            stmt.execute();
-            return true;
-        } catch (SQLException ex) {
-            if (isMissingRelationSqlState(ex)) {
-                return false;
-            }
-            log.log(Level.FINE, "Probe table check failed for " + tableName, ex);
-            return false;
-        } finally {
-            closeQuietly(stmt);
-        }
-    }
-
-    private boolean isMissingRelationSqlState(SQLException ex) {
-        String sqlState = ex.getSQLState();
-        return "42P01".equals(sqlState) || "42S02".equals(sqlState);
-    }
-
-    private long countRows(Connection conn, String tableName) {
-        // Quote identifier to avoid SQL injection; tableName is sanitized earlier.
-        String sql = "SELECT COUNT(*) FROM " + quoteIdentifier(tableName);
-        PreparedStatement stmt = null;
-        ResultSet rs = null;
-        try {
-            stmt = conn.prepareStatement(sql);
-            rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getLong(1);
-            }
-            return 0L;
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Count rows failed for " + tableName, ex);
-            return 0L;
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(stmt);
-        }
-    }
-
-    private void createTable(Connection conn, String tableName) {
-        String sql = "CREATE TABLE " + quoteIdentifier(tableName)
-                + " (id BIGSERIAL PRIMARY KEY, payload TEXT, created_at TIMESTAMPTZ DEFAULT now())";
-        PreparedStatement stmt = null;
-        try {
-            stmt = conn.prepareStatement(sql);
-            stmt.execute();
-        } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to create table " + tableName, ex);
-        } finally {
-            closeQuietly(stmt);
-        }
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
         }
     }
 
@@ -344,13 +226,6 @@ public class WidgetTableServlet extends HttpServlet {
             normalized = normalized.substring(0, 60);
         }
         return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (!isSafeIdentifier(identifier)) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private boolean isSafeIdentifier(String identifier) {
@@ -371,16 +246,12 @@ public class WidgetTableServlet extends HttpServlet {
         return value == null ? "" : value;
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
     private void jsonError(HttpServletResponse resp, int status, String message) {
         try {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON error response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, message == null ? "Request failed." : message);
                 } catch (IOException ioe) {
@@ -395,7 +266,7 @@ public class WidgetTableServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {
@@ -428,14 +299,4 @@ public class WidgetTableServlet extends HttpServlet {
         writeJson(resp, status, body.build());
     }
 
-    private static final class TableStatus {
-
-        final boolean exists;
-        final String message;
-
-        private TableStatus(boolean exists, String message) {
-            this.exists = exists;
-            this.message = message;
-        }
-    }
 }

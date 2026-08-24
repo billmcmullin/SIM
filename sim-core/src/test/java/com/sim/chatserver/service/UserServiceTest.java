@@ -195,7 +195,9 @@ public class UserServiceTest
         String username = "username"; // UTA: default value
         String password = "password"; // UTA: default value
         String role = "role"; // UTA: default value
-        UserAccount result = underTest.createUser(username, password, role);
+        assertThrows(RuntimeException.class, () -> {
+            underTest.createUser(username, password, role);
+        });
 
     }
 
@@ -332,7 +334,7 @@ public class UserServiceTest
         EntityManager createEntityManagerResult = mock(EntityManager.class);
         TypedQuery createQueryResult = mock(TypedQuery.class);
         TypedQuery setParameterResult = mock(TypedQuery.class);
-        Object getSingleResultResult = new Object(); // UTA: default value
+        UserAccount getSingleResultResult = new UserAccount(); // user exists, no createUser() fallback
         when(setParameterResult.getSingleResult()).thenReturn(getSingleResultResult);
         doReturn(setParameterResult).when(createQueryResult).setParameter(nullable(String.class), nullable(Object.class));
         doReturn(createQueryResult).when(createEntityManagerResult).createQuery(nullable(String.class), (Class) any());
@@ -489,7 +491,9 @@ public class UserServiceTest
         underTest.dsHolder = dsHolderValue;
 
         // When
-        underTest.ensureAdminExists();
+        assertThrows(RuntimeException.class, () -> {
+            underTest.ensureAdminExists();
+        });
 
     }
 

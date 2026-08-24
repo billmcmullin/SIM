@@ -6,12 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -29,9 +24,7 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -70,7 +63,6 @@ public class DashboardNewUsersServlet extends HttpServlet {
     private static final String PATH_DATA = "/dashboard/new-users/data";
     private static final String PATH_DAY = "/dashboard/new-users/day";
     private static final String PATH_DAY_DATA = "/dashboard/new-users/day-data";
-    private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -115,7 +107,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -245,18 +237,14 @@ public class DashboardNewUsersServlet extends HttpServlet {
 
     private Metrics loadMetrics(LocalDate rangeStart, LocalDate rangeEnd, String contextPath) {
         Metrics metrics = new Metrics(rangeStart, rangeEnd);
-        try (Connection conn = openConnectionSafe()) {
-            List<WidgetEntry> widgets;
-            try {
-                widgets = WidgetStore.list(null);
-            } catch (SQLException e) {
-                log.log(Level.WARNING, "Unable to list widgets", e);
-                widgets = List.of();
-            }
-            computeNewSessionMetrics(conn, widgets, metrics, contextPath);
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to compute new-user metrics", e);
+        List<WidgetEntry> widgets;
+        try {
+            widgets = WidgetStore.list(null);
+        } catch (SQLException e) {
+            log.log(Level.WARNING, "Unable to list widgets", e);
+            widgets = List.of();
         }
+        computeNewSessionMetrics(widgets, metrics, contextPath);
         return metrics;
     }
 
@@ -269,20 +257,21 @@ public class DashboardNewUsersServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        try (Connection conn = openConnectionSafe()) {
-            Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
-            Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
+        try {
+            DashboardNewUsersDrilldownQueryService queryService = drilldownQueryService();
+            Map<String, java.sql.Timestamp> earliestBySession = queryService.findEarliestBySession(widgets);
+            Map<String, Integer> totalsBySession = queryService.findTotalChatsBySession(widgets);
 
-            List<Map.Entry<String, Timestamp>> forDay = earliestBySession.entrySet().stream()
+            List<Map.Entry<String, java.sql.Timestamp>> forDay = earliestBySession.entrySet().stream()
                     .filter(e -> {
                         LocalDate d = e.getValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
                         return d.equals(day);
                     })
-                    .sorted(Map.Entry.<String, Timestamp>comparingByValue(Comparator.reverseOrder()))
+                    .sorted(Map.Entry.<String, java.sql.Timestamp>comparingByValue(Comparator.reverseOrder()))
                     .toList();
 
             Set<String> ids = new LinkedHashSet<>();
-            for (Map.Entry<String, Timestamp> e : forDay) {
+            for (Map.Entry<String, java.sql.Timestamp> e : forDay) {
                 ids.add(e.getKey());
             }
 
@@ -295,9 +284,9 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             List<LatestRow> rows = new ArrayList<>();
-            for (Map.Entry<String, Timestamp> e : forDay) {
+            for (Map.Entry<String, java.sql.Timestamp> e : forDay) {
                 String sid = e.getKey();
-                Timestamp ts = e.getValue();
+                java.sql.Timestamp ts = e.getValue();
                 String display = SessionLabelStore.resolveDisplayLabel(sid, labels.get(sid));
                 String firstSeen = TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()));
                 int totalChats = getTotalChats(totalsBySession, sid);
@@ -306,34 +295,27 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             return new DayResult(rows);
-        } catch (SQLException | IllegalStateException e) {
+        } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load day first-seen data", e);
             return new DayResult(List.of());
         }
     }
 
-    private Connection openConnectionSafe() {
-        try {
-            return dataSourceHolder().getDataSource().getConnection();
-        } catch (SQLException e) {
-            throw new IllegalStateException("Unable to open database connection", e);
-        }
-    }
+    private void computeNewSessionMetrics(List<WidgetEntry> widgets, Metrics metrics, String contextPath) {
+        DashboardNewUsersDrilldownQueryService queryService = drilldownQueryService();
+        Map<String, java.sql.Timestamp> earliestBySession = queryService.findEarliestBySession(widgets);
+        Map<String, Integer> totalsBySession = queryService.findTotalChatsBySession(widgets);
 
-    private void computeNewSessionMetrics(Connection conn, List<WidgetEntry> widgets, Metrics metrics, String contextPath) {
-        Map<String, Timestamp> earliestBySession = findEarliestBySession(conn, widgets);
-        Map<String, Integer> totalsBySession = findTotalChatsBySession(conn, widgets);
-
-        for (Map.Entry<String, Timestamp> e : earliestBySession.entrySet()) {
+        for (Map.Entry<String, java.sql.Timestamp> e : earliestBySession.entrySet()) {
             LocalDate d = e.getValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
             metrics.incrementDay(d);
         }
 
-        List<Map.Entry<String, Timestamp>> sorted = new ArrayList<>(earliestBySession.entrySet());
-        sorted.sort(Map.Entry.<String, Timestamp>comparingByValue(Comparator.reverseOrder()));
+        List<Map.Entry<String, java.sql.Timestamp>> sorted = new ArrayList<>(earliestBySession.entrySet());
+        sorted.sort(Map.Entry.<String, java.sql.Timestamp>comparingByValue(Comparator.reverseOrder()));
 
         Set<String> ids = new LinkedHashSet<>();
-        for (Map.Entry<String, Timestamp> e : sorted) {
+        for (Map.Entry<String, java.sql.Timestamp> e : sorted) {
             ids.add(e.getKey());
         }
 
@@ -348,104 +330,13 @@ public class DashboardNewUsersServlet extends HttpServlet {
         int take = Math.min(10, sorted.size());
         for (int i = 0; i < take; i++) {
             String sid = sorted.get(i).getKey();
-            Timestamp ts = sorted.get(i).getValue();
+            java.sql.Timestamp ts = sorted.get(i).getValue();
             String display = SessionLabelStore.resolveDisplayLabel(sid, labels.get(sid));
             String firstSeen = TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()));
             int totalChats = getTotalChats(totalsBySession, sid);
 
             String chatEntriesUrl = contextPath + "/dashboard/sessions/drilldown/session-review?sessionId=" + urlEncode(sid);
             metrics.latest.add(new LatestRow(display, sid, firstSeen, totalChats, chatEntriesUrl));
-        }
-    }
-
-    private Map<String, Timestamp> findEarliestBySession(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, Timestamp> earliestBySession = new LinkedHashMap<>();
-        for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                continue;
-            }
-            String table = sanitizeWidgetTableName(widget.getWidgetId());
-            if (!tableExists(conn, table)) {
-                continue;
-            }
-
-            String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM " + quoteIdentifier(table)
-                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql);
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
-                    if (sid == null || sid.isBlank() || ts == null) {
-                        continue;
-                    }
-                    sid = sid.trim();
-
-                    Timestamp prev = earliestBySession.get(sid);
-                    if (prev == null || ts.before(prev)) {
-                        earliestBySession.put(sid, ts);
-                    }
-                }
-            } catch (SQLException e) {
-                log.log(Level.FINE, "Unable to query earliest session rows for table " + table, e);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-        return earliestBySession;
-    }
-
-    private Map<String, Integer> findTotalChatsBySession(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, Integer> totals = new LinkedHashMap<>();
-        for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                continue;
-            }
-            String table = sanitizeWidgetTableName(widget.getWidgetId());
-            if (!tableExists(conn, table)) {
-                continue;
-            }
-
-            String sql = "SELECT session_id, COUNT(*) AS c FROM " + quoteIdentifier(table)
-                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql);
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String sid = rs.getString("session_id");
-                    if (sid == null || sid.isBlank()) {
-                        continue;
-                    }
-                    sid = sid.trim();
-                    int c = rs.getInt("c");
-                    totals.merge(sid, Integer.valueOf(c), Integer::sum);
-                }
-            } catch (SQLException e) {
-                log.log(Level.FINE, "Unable to query total chats for table " + table, e);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-        return totals;
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
         }
     }
 
@@ -485,22 +376,6 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
     private String loadTemplate(HttpServletRequest req, String path) {
         if (req == null || req.getServletContext() == null || path == null || path.isBlank()) {
             return "";
@@ -522,30 +397,6 @@ public class DashboardNewUsersServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to load template " + path, e);
             return "";
         }
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String n = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (n.isEmpty()) {
-            n = "widget";
-        }
-        if (!Character.isLetter(n.charAt(0))) {
-            n = "w_" + n;
-        }
-        if (n.length() > 60) {
-            n = n.substring(0, 60);
-        }
-        return n;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private String escapeHtml(String s) {
@@ -597,8 +448,12 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return java.net.URLEncoder.encode(v, StandardCharsets.UTF_8);
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
+    private DashboardNewUsersDrilldownQueryService drilldownQueryService() {
+        return new DashboardNewUsersDrilldownQueryService(dataSourceHolder(), log);
+    }
+
+    private com.sim.chatserver.startup.AppDataSourceHolder dataSourceHolder() {
+        return CDI.current().select(com.sim.chatserver.startup.AppDataSourceHolder.class).get();
     }
 
     private String normalizeServletPath(String servletPath) {
@@ -620,7 +475,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message == null ? "Request failed." : message);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON error response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, message == null ? "Request failed." : message);
                 } catch (IOException ioe) {
@@ -635,7 +490,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {

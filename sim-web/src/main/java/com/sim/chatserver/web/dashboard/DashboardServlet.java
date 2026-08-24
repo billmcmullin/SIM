@@ -2,12 +2,7 @@ package com.sim.chatserver.web.dashboard;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -41,6 +36,7 @@ import com.sim.chatserver.service.dashboard.DashboardCacheRegistry;
 import com.sim.chatserver.service.dashboard.DashboardMetricsService;
 import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
 import com.sim.chatserver.service.dashboard.DashboardSessionService;
+import com.sim.chatserver.service.dashboard.DashboardServletQueryService;
 import com.sim.chatserver.service.dashboard.DashboardTermService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -48,7 +44,6 @@ import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -87,6 +82,7 @@ public class DashboardServlet extends HttpServlet {
     );
 
         private static final DashboardCacheRegistry cacheRegistry = new DashboardCacheRegistry();
+    private final transient DashboardServletQueryService queryService = new DashboardServletQueryService(log);
 
     @Override
     public void destroy() {
@@ -175,22 +171,22 @@ public class DashboardServlet extends HttpServlet {
         ).completeOnTimeout(List.of(), 800, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
-                () -> cacheRegistry.getTermSummary(() -> loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
+            () -> cacheRegistry.getTermSummary(() -> queryService.loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 1100, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
-                () -> loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
+            () -> queryService.loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> yesterdayTermSummaryFuture = CompletableFuture.supplyAsync(
-                () -> loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
+            () -> queryService.loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
-                () -> loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
+            () -> queryService.loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 550, TimeUnit.MILLISECONDS);
 
@@ -204,13 +200,13 @@ public class DashboardServlet extends HttpServlet {
                     .append(activeDays)
                     .toString();
                     return cacheRegistry.getSessionOverview(key,
-                            () -> loadSessionOverview(sessionService, widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays));
+                            () -> queryService.loadSessionOverview(sessionService, widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays));
                 },
                 DASHBOARD_EXECUTOR
                     ).completeOnTimeout(null, 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<String> lastFiveDaysTrendFuture = CompletableFuture.supplyAsync(
-            () -> buildLastFiveDaysTrendJson(widgetsFinal),
+            () -> queryService.buildLastFiveDaysTrendJson(widgetsFinal),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout("{\"labels\":[],\"values\":[],\"days\":5}", 700, TimeUnit.MILLISECONDS);
 
@@ -395,144 +391,6 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    private TermSummary loadTermSummary(
-            DashboardTermService termService,
-            List<WidgetEntry> widgets,
-            LocalDate rangeStart,
-            LocalDate rangeEnd
-    ) {
-        Connection conn = openConnectionSafe();
-        try (conn) {
-            List<TermDefinition> terms = termService.loadAllTerms();
-            return termService.buildTermSummary(conn, widgets, terms, rangeStart, rangeEnd);
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to compute term summary", e);
-            return null;
-        }
-    }
-
-    private SessionOverview loadSessionOverview(
-            DashboardSessionService sessionService,
-            List<WidgetEntry> widgets,
-            LocalDate rangeStart,
-            LocalDate rangeEnd,
-            int activeDays
-    ) {
-        Connection conn = openConnectionSafe();
-        try (conn) {
-            return sessionService.buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to compute session overview", e);
-            return null;
-        }
-    }
-
-    private String buildLastFiveDaysTrendJson(List<WidgetEntry> widgets) {
-        LocalDate end = LocalDate.now(ZoneId.systemDefault());
-        LocalDate start = end.minusDays(4);
-
-        Map<LocalDate, Integer> totalDaily = new LinkedHashMap<>();
-        for (int i = 0; i < 5; i++) {
-            totalDaily.put(start.plusDays(i), Integer.valueOf(0));
-        }
-
-        Connection conn = openConnectionSafe();
-        try (conn) {
-            List<WidgetEntry> sourceWidgets = widgets == null ? List.of() : widgets;
-
-            for (WidgetEntry widget : sourceWidgets) {
-                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String tableName = sanitizeWidgetTableName(widget.getWidgetId());
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
-                    ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            if (ts == null) {
-                                continue;
-                            }
-
-                            LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                            if (!totalDaily.containsKey(entryDate)) {
-                                continue;
-                            }
-
-                            Integer existing = totalDaily.get(entryDate);
-                            int currentCount = existing == null ? 0 : existing.intValue();
-                            totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
-                        }
-                    }
-                }
-            }
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to load 5-day trend data", e);
-        }
-
-        JsonArrayBuilder labels = Json.createArrayBuilder();
-        JsonArrayBuilder values = Json.createArrayBuilder();
-        for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
-            labels.add(entry.getKey().toString());
-            Integer dayCount = entry.getValue();
-            int safeCount = dayCount == null ? 0 : dayCount.intValue();
-            values.add(safeCount);
-        }
-
-        return Json.createObjectBuilder()
-                .add("labels", labels)
-                .add("values", values)
-                .add("days", 5)
-                .build()
-                .toString();
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
 
     private Optional<LocalDate> parseLocalDate(String value) {
         if (value == null || value.isBlank()) {
@@ -548,14 +406,6 @@ public class DashboardServlet extends HttpServlet {
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private Connection openConnectionSafe() {
-        try {
-            return dataSourceHolder().getDataSource().getConnection();
-        } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open dashboard data connection", ex);
-        }
     }
 
     private TermsStore termsStore() {
@@ -721,11 +571,13 @@ public class DashboardServlet extends HttpServlet {
 
     static final class DashboardThreadFactory implements ThreadFactory {
 
+        private final ThreadFactory delegate = Executors.defaultThreadFactory();
         private int idx = 1;
 
         @Override
         public synchronized Thread newThread(Runnable r) {
-            Thread t = new Thread(r, "dashboard-worker-" + (idx++));
+            Thread t = delegate.newThread(r);
+            t.setName("dashboard-worker-" + (idx++));
             t.setDaemon(true);
             return t;
         }

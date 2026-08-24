@@ -2,30 +2,20 @@ package com.sim.chatserver.web.dashboard.trends;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.dashboard.DashboardTrendsQueryService;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.JsonRequestParserUtil;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
-import com.sim.chatserver.widget.WidgetEntry;
-import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletException;
@@ -41,6 +31,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private final transient DashboardTrendsQueryService queryService = new DashboardTrendsQueryService(log);
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -77,53 +68,10 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
             return;
         }
 
-        List<TermChatSnapshot> snapshots = new ArrayList<>();
-        try (Connection conn = resolveDataSourceHolder().getDataSource().getConnection()) {
-            List<WidgetEntry> widgets = WidgetStore.list(null);
-
-            for (WidgetEntry w : widgets) {
-                if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = w.getWidgetId();
-                if (!widgetIdFilter.isBlank() && !widgetIdFilter.equals(widgetId)) {
-                    continue;
-                }
-
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + quoteIdentifier(tableName)
-                        + " WHERE DATE(created_at) = ? ORDER BY created_at DESC";
-
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setDate(1, java.sql.Date.valueOf(targetDate));
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String responseText = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
-
-                            snapshots.add(new TermChatSnapshot(
-                                    "Entry Trends",
-                                    widgetId,
-                                    chatId == null ? "" : chatId,
-                                    prompt,
-                                    responseText,
-                                    createdAt,
-                                    sessionId
-                            ));
-                        }
-                    }
-                }
-            }
-        } catch (SQLException | IllegalStateException ex) {
+        List<TermChatSnapshot> snapshots;
+        try {
+            snapshots = queryService.collectSnapshotsForDay(targetDate, widgetIdFilter);
+        } catch (IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to collect chats for day", ex);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to collect chats for day.");
             return;
@@ -135,8 +83,8 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         }
 
         String label = widgetIdFilter.isBlank()
-                ? ("Entry Trends " + day)
-                : ("Entry Trends " + widgetIdFilter + " " + day);
+            ? ("Entry Trends " + day)
+            : ("Entry Trends " + widgetIdFilter + ' ' + day);
 
         String selectionId = WidgetReviewStartServlet.createSnapshotSelection(
                 session,
@@ -161,7 +109,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -170,47 +118,6 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
                 }
             }
         }
-    }
-
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to resolve widget table metadata", ex);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    protected AppDataSourceHolder resolveDataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

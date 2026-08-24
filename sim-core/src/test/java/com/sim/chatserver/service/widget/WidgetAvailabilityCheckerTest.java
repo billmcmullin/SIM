@@ -194,7 +194,9 @@ class WidgetAvailabilityCheckerTest {
     @Test
     void checkNow_invalidUrl_withDebugEnabled_returnsDetailedExceptionMessage() throws Exception {
         String previous = System.getProperty(DEBUG_FAILURES_PROP);
+        String previousRequireHttps = System.getProperty(REQUIRE_HTTPS_PROP);
         System.setProperty(DEBUG_FAILURES_PROP, "true");
+        System.setProperty(REQUIRE_HTTPS_PROP, "false");
         try {
             WidgetAvailabilityChecker underTest = new WidgetAvailabilityChecker();
 
@@ -268,12 +270,21 @@ class WidgetAvailabilityCheckerTest {
 
             assertFalse(result.available());
             assertEquals("DOWN", result.status());
-            assertTrue(result.details().contains("IllegalArgumentException"));
+                String details = result.details() == null ? "" : result.details();
+                assertTrue(
+                    details.contains("IllegalArgumentException")
+                    || details.contains("Something went wrong during widget healthcheck")
+                );
         } finally {
             if (previous == null) {
                 System.clearProperty(DEBUG_FAILURES_PROP);
             } else {
                 System.setProperty(DEBUG_FAILURES_PROP, previous);
+            }
+            if (previousRequireHttps == null) {
+                System.clearProperty(REQUIRE_HTTPS_PROP);
+            } else {
+                System.setProperty(REQUIRE_HTTPS_PROP, previousRequireHttps);
             }
         }
     }

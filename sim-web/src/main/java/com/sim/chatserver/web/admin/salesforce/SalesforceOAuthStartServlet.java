@@ -6,6 +6,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.Enumeration;
 import java.util.logging.Level;
@@ -82,7 +83,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         String state = generateState();
         HttpSession session = req.getSession(true);
         session.setAttribute(OAUTH_STATE_KEY, state);
-        session.setAttribute(OAUTH_STATE_TS_KEY, String.valueOf(System.currentTimeMillis()));
+        session.setAttribute(OAUTH_STATE_TS_KEY, String.valueOf(Instant.now().toEpochMilli()));
 
         String authorizeUrl = baseUri.toString()
                 + "/services/oauth2/authorize"
@@ -109,7 +110,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -296,9 +297,9 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
     }
 
-    private void safeRedirect(HttpServletResponse resp, String target) throws IOException {
+    private void safeRedirect(HttpServletResponse resp, String target) {
         if (target == null || target.isBlank() || target.contains("\r") || target.contains("\n")) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
             return;
         }
         java.net.URI parsed;
@@ -306,19 +307,30 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             parsed = java.net.URI.create(target).normalize();
         } catch (IllegalArgumentException ex) {
             log.log(Level.FINE, "Invalid authorize redirect URL", ex);
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
             return;
         }
         String scheme = sanitizeScheme(parsed.getScheme());
         String host = sanitizeHost(parsed.getHost());
         String path = parsed.getPath();
         if (isBlank(scheme) || isBlank(host) || path == null || !path.endsWith("/services/oauth2/authorize")) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
             return;
         }
         String safeLocation = parsed.toString();
         resp.setStatus(HttpServletResponse.SC_FOUND);
         resp.setHeader("Location", safeLocation);
+    }
+
+    private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
+        if (resp == null || resp.isCommitted()) {
+            return;
+        }
+        try {
+            resp.sendError(status, message);
+        } catch (IOException e) {
+            log.log(Level.FINE, "Unable to send OAuth start error response", e);
+        }
     }
 
     private String sanitizeHost(String host) {

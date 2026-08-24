@@ -3,7 +3,6 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -16,6 +15,7 @@ import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.service.dashboard.DashboardTermSelectionQueryService;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.service.dashboard.DashboardTermService;
@@ -54,6 +54,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login", REVIEW_FORWARD_PATH);
     private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
+        private final transient DashboardTermSelectionQueryService queryService =
+            new DashboardTermSelectionQueryService(dataSourceHolder(), termsStore(), log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -88,7 +90,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
 
         if (allSnapshotsByTerm == null || allSnapshotsByTerm.isEmpty()) {
-            allSnapshotsByTerm = loadSnapshotsForRange(null, LocalDate.now(ZoneId.systemDefault()));
+            allSnapshotsByTerm = queryService.loadSnapshotsForRange(null, LocalDate.now(ZoneId.systemDefault()));
             storeSnapshotsOnSession(session, TERM_SNAPSHOT_SESSION_KEY, allSnapshotsByTerm);
         }
 
@@ -102,7 +104,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
             if (increasedSnapshotsByTerm == null || increasedSnapshotsByTerm.isEmpty()) {
                 LocalDate today = LocalDate.now(ZoneId.systemDefault());
-                increasedSnapshotsByTerm = loadSnapshotsForRange(today, today);
+                increasedSnapshotsByTerm = queryService.loadSnapshotsForRange(today, today);
                 storeSnapshotsOnSession(session, TERM_INCREASE_SNAPSHOT_SESSION_KEY, increasedSnapshotsByTerm);
             }
 
@@ -150,7 +152,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
             if (yesterdaySnapshotsByTerm == null || yesterdaySnapshotsByTerm.isEmpty()) {
                 LocalDate yesterday = LocalDate.now(ZoneId.systemDefault()).minusDays(1);
-                yesterdaySnapshotsByTerm = loadSnapshotsForRange(yesterday, yesterday);
+                yesterdaySnapshotsByTerm = queryService.loadSnapshotsForRange(yesterday, yesterday);
                 storeSnapshotsOnSession(session, TERM_YESTERDAY_SNAPSHOT_SESSION_KEY, yesterdaySnapshotsByTerm);
             }
 
@@ -286,45 +288,6 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         return normalize(s).toLowerCase(Locale.ROOT);
     }
 
-    private Map<String, List<TermChatSnapshot>> loadSnapshotsForRange(LocalDate rangeStart, LocalDate rangeEnd) {
-        List<WidgetEntry> widgets = listWidgets();
-        if (widgets.isEmpty()) {
-            return Map.of();
-        }
-
-        DashboardTermService termService = new DashboardTermService(termsStore());
-        Connection conn = null;
-        try {
-            conn = dataSourceHolder().getDataSource().getConnection();
-            var summary = termService.buildTermSummary(
-                    conn,
-                    widgets,
-                    termService.loadAllTerms(),
-                    rangeStart,
-                    rangeEnd
-            );
-            if (summary == null) {
-                return Map.of();
-            }
-            return summary.copyTermSnapshots();
-        } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to rebuild term snapshots on demand", ex);
-            return Map.of();
-        } finally {
-            closeQuietly(conn);
-        }
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
-        }
-    }
 
     private void storeSnapshotsOnSession(HttpSession session, String key, Map<String, List<TermChatSnapshot>> snapshots) {
         if (session == null || key == null || key.isBlank()) {
@@ -334,16 +297,6 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return;
         }
         session.setAttribute(key, snapshots);
-    }
-
-    private List<WidgetEntry> listWidgets() {
-        try {
-            List<WidgetEntry> widgets = WidgetStore.list(null);
-            return widgets == null ? List.of() : widgets;
-        } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to list widgets for term selection", ex);
-            return List.of();
-        }
     }
 
     private AppDataSourceHolder dataSourceHolder() {

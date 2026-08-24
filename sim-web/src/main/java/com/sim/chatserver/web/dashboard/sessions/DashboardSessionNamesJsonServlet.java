@@ -3,10 +3,6 @@ package com.sim.chatserver.web.dashboard.sessions;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
@@ -17,18 +13,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -44,8 +37,9 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
     private static final int DEFAULT_LIMIT = 10;
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
+    private final transient DashboardSessionAggregationQueryService queryService =
+            new DashboardSessionAggregationQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -80,14 +74,15 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to list widgets for session catalog", e);
         }
 
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets, query);
+        try {
+            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+                queryService.collectAccumulators(widgets, query);
 
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
 
-            List<Map.Entry<String, SessionAccumulator>> sorted = new ArrayList<>(accumulators.entrySet());
+            List<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>> sorted = new ArrayList<>(accumulators.entrySet());
             sorted.sort(
-                    Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> e.getValue().count).reversed()
+                Comparator.<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>>comparingInt(e -> e.getValue().count).reversed()
                             .thenComparing(Map.Entry::getKey));
 
             if (labeledOnly) {
@@ -115,11 +110,11 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             int start = Math.max(0, (page - 1) * limit);
             int end = Math.min(start + limit, totalSessions);
 
-            List<Map.Entry<String, SessionAccumulator>> pageSlice = sorted.subList(start, end);
+            List<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>> pageSlice = sorted.subList(start, end);
 
             JsonArrayBuilder sessions = Json.createArrayBuilder();
-            for (Map.Entry<String, SessionAccumulator> entry : pageSlice) {
-                SessionAccumulator acc = entry.getValue();
+            for (Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> entry : pageSlice) {
+                DashboardSessionAggregationQueryService.SessionAccumulatorData acc = entry.getValue();
                 SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
                 String displayLabel = SessionLabelStore.resolveDisplayLabel(entry.getKey(), label);
 
@@ -147,7 +142,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
 
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to collect session catalog", e);
             JsonObject error = Json.createObjectBuilder()
                     .add("status", "error")
@@ -159,7 +154,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -180,7 +175,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private String formatTimestamp(Timestamp value) {
-        return value == null ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : ISO_INSTANT_FMT.format(value.toInstant());
+        return value == null ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int parsePositiveInteger(String value, int fallback) {
@@ -209,137 +204,12 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         }
     }
 
-    private AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets, String filter) {
-        Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
-        if (widgets == null || widgets.isEmpty()) {
-            return accumulators;
-        }
-
-        for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null) {
-                continue;
-            }
-
-            String tableName = sanitizeWidgetTableName(widget.getWidgetId());
-            if (!tableExists(conn, tableName)) {
-                continue;
-            }
-
-            StringBuilder sql = new StringBuilder("SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM ")
-                    .append(quoteIdentifier(tableName))
-                    .append(" WHERE session_id IS NOT NULL");
-
-            if (filter != null && !filter.isBlank()) {
-                sql.append(" AND session_id ILIKE ?");
-            }
-
-            sql.append(" GROUP BY session_id");
-
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql.toString());
-                if (filter != null && !filter.isBlank()) {
-                    String trimmedFilter = filter.trim();
-                    ps.setString(1, new StringBuilder(trimmedFilter.length() + 2)
-                            .append('%')
-                            .append(trimmedFilter)
-                            .append('%')
-                            .toString());
-                }
-
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String sessionId = rs.getString("session_id");
-                    if (sessionId == null || sessionId.isBlank()) {
-                        continue;
-                    }
-
-                    sessionId = sessionId.trim();
-                    SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                    acc.count += rs.getInt("total");
-
-                    Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                    if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
-                        acc.lastEntry = lastEntry;
-                    }
-                }
-            } catch (SQLException e) {
-                log.log(Level.FINE, "Unable to collect session accumulators for table " + tableName, e);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-
-        return accumulators;
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
-        }
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
-        }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
     private void writeJson(HttpServletResponse resp, int status, JsonObject body) {
         try {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write session-names JSON response", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
                 } catch (IOException ioe) {
@@ -347,12 +217,6 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                 }
             }
         }
-    }
-
-    static final class SessionAccumulator {
-
-        int count = 0;
-        Timestamp lastEntry = null;
     }
 
 }

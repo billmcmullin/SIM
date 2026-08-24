@@ -114,7 +114,7 @@ public class InactiveUsersPageServletTest
     
         @Test
         void doGet_whenUnauthenticated_forwardsToLogin() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
             HttpServletRequest req = mock(HttpServletRequest.class);
             HttpServletResponse resp = mock(HttpServletResponse.class);
             RequestDispatcher dispatcher = mock(RequestDispatcher.class);
@@ -122,12 +122,12 @@ public class InactiveUsersPageServletTest
             when(req.getSession(false)).thenReturn(null);
             when(req.getRequestDispatcher("/login")).thenReturn(dispatcher);
     
-            servlet.doGet(req, resp);
+            servlet.handleGet(req, resp);
         }
     
         @Test
         void detectFrustration_helpers_coverCoreSignals() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
             Object empty = invoke(servlet, "detectFrustration", new Class[]{List.class}, List.of());
             assertFalse((Boolean) field(empty, "detected"));
@@ -157,7 +157,7 @@ public class InactiveUsersPageServletTest
     
         @Test
         void isConsistentCapsStyle_detectsPattern() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
             assertFalse((Boolean) invokeUtil("isConsistentCapsStyle", new Class[]{List.class}, List.of("ONE", "TWO")));
     
@@ -172,9 +172,9 @@ public class InactiveUsersPageServletTest
     
         @Test
         void jsonBuild_and_rowConversion_coverOutputPaths() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
-            InactiveUsersPageServlet.InactiveRow row = new InactiveUsersPageServlet.InactiveRow();
+            InactiveUsersPageService.InactiveRow row = new InactiveUsersPageService.InactiveRow();
             row.sessionId = "s1";
             row.displayLabel = "Alice";
             row.widgetId = "w1";
@@ -185,7 +185,7 @@ public class InactiveUsersPageServletTest
             row.frustrationScore = 0.8;
             row.frustrationReason = "keyword:ridiculous";
     
-            Map<String, List<InactiveUsersPageServlet.InactiveRow>> byWidget = new LinkedHashMap<>();
+            Map<String, List<InactiveUsersPageService.InactiveRow>> byWidget = new LinkedHashMap<>();
             byWidget.put("ALL", List.of(row));
             byWidget.put("w1", List.of(row));
     
@@ -200,7 +200,7 @@ public class InactiveUsersPageServletTest
     
         @Test
         void tableAndIdentifierHelpers_coverBranches() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
             Connection conn = mock(Connection.class);
             DatabaseMetaData meta = mock(DatabaseMetaData.class);
@@ -231,7 +231,7 @@ public class InactiveUsersPageServletTest
     
         @Test
         void dbTextAndParsingHelpers_coverBranches() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
             assertEquals(7, (Integer) invoke(servlet, "parseInt", new Class[]{String.class, int.class}, "7", 3));
             assertEquals(3, (Integer) invoke(servlet, "parseInt", new Class[]{String.class, int.class}, "x", 3));
@@ -252,7 +252,7 @@ public class InactiveUsersPageServletTest
     
         @Test
         void templateAndEscapingHelpers_coverBranches() throws Exception {
-            InactiveUsersPageServlet servlet = new InactiveUsersPageServlet();
+            InactiveUsersPageService servlet = new InactiveUsersPageService();
     
             assertEquals("", invoke(servlet, "loadTemplate", new Class[]{ServletContext.class, String.class}, null, "/x"));
             assertEquals("", invoke(servlet, "loadTemplate", new Class[]{ServletContext.class, String.class}, mock(ServletContext.class), " "));

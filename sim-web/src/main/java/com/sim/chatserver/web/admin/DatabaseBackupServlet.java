@@ -42,7 +42,7 @@ public class DatabaseBackupServlet extends HttpServlet {
             backupService.exportBackup(resp.getOutputStream(), generatedAt);
         } catch (IOException | IllegalStateException e) {
             log.log(Level.SEVERE, "Data backup export failed", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 resp.reset();
                 sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Data export failed.");
             }

@@ -42,7 +42,7 @@ public class AdminUserServlet extends HttpServlet {
             }
             long userId = safeUserId(user);
             String username = user.getUsername() == null ? "" : user.getUsername();
-            String role = user.getRole() == null ? "" : user.getRole();
+                String role = user.getRole();
             arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", userId)
                     .add("username", username)

@@ -90,7 +90,7 @@ public class TermsCsvServlet extends HttpServlet {
 
         } catch (IOException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -115,14 +115,10 @@ public class TermsCsvServlet extends HttpServlet {
             return;
         }
 
-        int created = 0;
-        int updated = 0;
         List<String> errors = new ArrayList<>();
 
         try (InputStream in = filePart.getInputStream(); BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            ImportCounters counters = processCsvRows(reader, errors);
-            created = counters.created;
-            updated = counters.updated;
+            processCsvRows(reader, errors);
 
         } catch (IOException | IllegalStateException e) {
             log.log(Level.WARNING, "CSV import failed", e);
@@ -135,7 +131,7 @@ public class TermsCsvServlet extends HttpServlet {
 
         } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -284,7 +280,7 @@ public class TermsCsvServlet extends HttpServlet {
             // If you need to set system-flag on existing rows, add a TermsStore API to do so and call it here.
             return false; // existing updated
         } else {
-            // No existing term found Ã¢â‚¬â€ create new term using CSV columns.
+            // No existing term found ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â create new term using CSV columns.
             TermDefinition created;
             try {
                 created = termsStore().createTerm(name, description, matchPattern, matchType);

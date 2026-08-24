@@ -498,7 +498,7 @@ public class WidgetHealthConfigStore {
 
     private byte[] validateTaintedDbBytes(byte[] value, int maxBytes) {
         if (value == null) {
-            return null;
+            return new byte[0];
         }
         if (maxBytes <= 0 || value.length <= maxBytes) {
             return value;

@@ -3,9 +3,6 @@ package com.sim.chatserver.web.dashboard.sessions;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -19,14 +16,12 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -44,6 +39,8 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionsJsonServlet.class.getName());
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int ACTIVE_DAYS = 7;
+        private final transient DashboardSessionAggregationQueryService queryService =
+            new DashboardSessionAggregationQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -62,8 +59,9 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to load widget registry for dashboard sessions", e);
         }
 
-        try (Connection conn = resolveDataSourceHolder().getDataSource().getConnection()) {
-            Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
+        try {
+            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+                    queryService.collectAccumulators(widgets, null);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
 
@@ -71,7 +69,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             Instant cutoff = Instant.now().minus(ACTIVE_DAYS, ChronoUnit.DAYS);
 
             int inactiveUsers = 0;
-            for (SessionAccumulator acc : accumulators.values()) {
+            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
                 if (acc != null && acc.lastEntry != null && acc.lastEntry.toInstant().isBefore(cutoff)) {
                     inactiveUsers++;
                 }
@@ -84,7 +82,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     .minus(ACTIVE_DAYS, ChronoUnit.DAYS);
 
             int inactiveUsersYesterday = 0;
-            for (SessionAccumulator acc : accumulators.values()) {
+            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
                 if (acc == null || acc.lastEntry == null || acc.lastEntry.toInstant().isBefore(cutoffYesterday)) {
                     inactiveUsersYesterday++;
                 }
@@ -102,11 +100,11 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
             accumulators.entrySet()
                     .stream()
-                    .sorted(Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> -e.getValue().count))
+                    .sorted(Comparator.<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>>comparingInt(e -> -e.getValue().count))
                     .limit(10)
                     .forEach(entry -> {
                         String sessionId = entry.getKey();
-                        SessionAccumulator acc = entry.getValue();
+                        DashboardSessionAggregationQueryService.SessionAccumulatorData acc = entry.getValue();
                         String last = formatTimestamp(acc.lastEntry);
                         String topWidget = DashboardSessionDataUtil.pickTopWidgetName(acc.widgetCounts, widgetNames);
                         String displayLabel = SessionLabelStore.resolveDisplayLabel(sessionId, labels.get(sessionId));
@@ -137,7 +135,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute top sessions for dashboard", e);
             JsonObject error = Json.createObjectBuilder()
                     .add("status", "error")
@@ -149,7 +147,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -158,72 +156,6 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
                 }
             }
         }
-    }
-
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
-        if (widgets == null || widgets.isEmpty()) {
-            return accumulators;
-        }
-        for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null) {
-                continue;
-            }
-            String widgetId = widget.getWidgetId();
-            String tableName = DashboardSessionDataUtil.sanitizeWidgetTableName(widgetId);
-            if (!DashboardSessionDataUtil.tableExists(conn, tableName, log)) {
-                continue;
-            }
-            String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
-                    + quoteIdentifier(tableName)
-                    + " WHERE session_id IS NOT NULL GROUP BY session_id";
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql);
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String sessionId = rs.getString("session_id");
-                    if (sessionId == null || sessionId.isBlank()) {
-                        continue;
-                    }
-                    sessionId = sessionId.trim();
-                    SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                    int total = rs.getInt("total");
-                    acc.count += total;
-
-                    Integer existingCount = acc.widgetCounts.get(widgetId);
-                    int mergedCount = (existingCount == null ? 0 : existingCount.intValue()) + total;
-                    acc.widgetCounts.put(widgetId, Integer.valueOf(mergedCount));
-
-                    Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                    if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
-                        acc.lastEntry = lastEntry;
-                    }
-                }
-            } catch (SQLException ex) {
-                log.log(Level.FINE, "Skipping widget session aggregation due to SQL error", ex);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-        return accumulators;
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
-        }
-    }
-
-    private AppDataSourceHolder resolveDataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
@@ -241,23 +173,12 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
         }
     }
 
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â";
+            return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â";
         }
         return ts.toInstant()
                 .atZone(ZoneId.systemDefault())
                 .format(ENTRY_FORMATTER);
-    }
-
-    static final class SessionAccumulator {
-
-        int count = 0;
-        Timestamp lastEntry = null;
-        final Map<String, Integer> widgetCounts = new LinkedHashMap<>();
     }
 }

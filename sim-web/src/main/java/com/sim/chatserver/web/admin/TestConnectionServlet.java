@@ -268,7 +268,7 @@ public class TestConnectionServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -410,7 +410,7 @@ public class TestConnectionServlet extends HttpServlet {
             if (token == null || token.isBlank()) {
                 continue;
             }
-            String key = token + "|" + safe(candidate.preferredHeaderName());
+            String key = token + '|' + safe(candidate.preferredHeaderName());
             unique.putIfAbsent(key, candidate);
         }
         return new ArrayList<>(unique.values());
@@ -578,7 +578,7 @@ public class TestConnectionServlet extends HttpServlet {
             scheme = (portNumber == 443 || portNumber == 8443) ? "https" : "http";
         }
 
-        return scheme + "://" + hostPart + ":" + portNumber;
+        return scheme + "://" + hostPart + ':' + portNumber;
     }
 
     private String extractScheme(String rawHost) {
@@ -656,13 +656,16 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            current = current.getCause();
+        if (throwable == null) {
+            return false;
         }
-        return false;
+        if (throwable instanceof InterruptedException) {
+            return true;
+        }
+        Throwable cause = throwable.getCause();
+        if (cause != null && cause.equals(throwable)) {
+            return false;
+        }
+        return causedByInterrupted(cause);
     }
 }

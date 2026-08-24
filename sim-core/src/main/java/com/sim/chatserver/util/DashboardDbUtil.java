@@ -1,5 +1,6 @@
 package com.sim.chatserver.util;
 
+import java.time.Instant;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -94,7 +95,7 @@ public final class DashboardDbUtil {
             return req;
         }
 
-        long now = System.currentTimeMillis();
+        long now = Instant.now().toEpochMilli();
         String catalog = conn.getCatalog();
             String safeCatalog = catalog == null ? "" : catalog;
             String key = new StringBuilder(safeCatalog.length() + tableName.length() + 1)
