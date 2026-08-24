@@ -170,6 +170,9 @@ final class DashboardNewUsersDrilldownQueryService {
     }
 
     private int safeInt(Integer value) {
-        return value == null ? 0 : value.intValue();
+        if (value == null) {
+            return 0;
+        }
+        return value.intValue();
     }
 }

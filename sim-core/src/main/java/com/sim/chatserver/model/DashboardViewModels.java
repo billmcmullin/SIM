@@ -428,12 +428,12 @@ public final class DashboardViewModels {
         private final Map<String, List<TermChatSnapshot>> termSnapshots = new LinkedHashMap<>();
 
         public void ensureTerm(String termName) {
-            termCounts.putIfAbsent(termName, 0);
+            termCounts.putIfAbsent(termName, Integer.valueOf(0));
             termSnapshots.putIfAbsent(termName, new ArrayList<>());
         }
 
         public void recordMatch(String termName, TermChatSnapshot snapshot) {
-            termCounts.merge(termName, 1, Integer::sum);
+            termCounts.merge(termName, Integer.valueOf(1), Integer::sum);
             termSnapshots.computeIfAbsent(termName, k -> new ArrayList<>()).add(snapshot);
         }
 

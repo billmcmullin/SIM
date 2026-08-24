@@ -175,7 +175,10 @@ public final class DashboardTrendsQueryService {
 
     private void incrementDate(Map<LocalDate, Integer> counts, LocalDate date) {
         Integer current = counts.get(date);
-        int value = current == null ? 0 : current.intValue();
+        int value = 0;
+        if (current != null) {
+            value = current.intValue();
+        }
         counts.put(date, Integer.valueOf(value + 1));
     }
 

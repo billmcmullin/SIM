@@ -229,7 +229,8 @@ public class DashboardTermService {
         JsonArrayBuilder builder = Json.createArrayBuilder();
         for (Map.Entry<String, Integer> entry : summary.getTermCounts().entrySet()) {
             String label = entry.getKey() == null ? "" : entry.getKey();
-            int count = entry.getValue() == null ? 0 : entry.getValue();
+            Integer boxedCount = entry.getValue();
+            int count = boxedCount == null ? 0 : boxedCount.intValue();
 
             builder.add(Json.createObjectBuilder()
                     .add("label", label)

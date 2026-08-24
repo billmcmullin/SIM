@@ -486,7 +486,7 @@ final class WidgetReviewDataService {
         if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
             return true;
         }
-        return parsed != null && parsed <= 0;
+        return parsed != null && parsed.intValue() <= 0;
     }
 
     private Integer parseIntegerOrNull(String value) {
@@ -502,7 +502,7 @@ final class WidgetReviewDataService {
     }
 
     private int valueOrDefault(Integer value, int fallback) {
-        return value == null ? fallback : value;
+        return value == null ? fallback : value.intValue();
     }
 
     private AppDataSourceHolder dataSourceHolder() {

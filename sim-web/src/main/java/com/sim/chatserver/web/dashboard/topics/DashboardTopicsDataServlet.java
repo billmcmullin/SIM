@@ -80,7 +80,11 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         for (Map.Entry<String, Integer> e : sortTopicMap(aggregation.globalCounts)) {
             String topic = e.getKey();
             Set<String> ids = aggregation.globalChatIdsByTopic.getOrDefault(topic, Set.of());
-            int mentions = e.getValue() == null ? 0 : e.getValue().intValue();
+            Integer globalMentions = e.getValue();
+            int mentions = 0;
+            if (globalMentions != null) {
+                mentions = globalMentions.intValue();
+            }
 
             JsonArrayBuilder idsArray = Json.createArrayBuilder();
             for (String id : ids) {
@@ -113,7 +117,11 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             for (Map.Entry<String, Integer> t : sorted) {
                 String topic = t.getKey();
                 Set<String> ids = topicChats.getOrDefault(topic, Set.of());
-                int mentions = t.getValue() == null ? 0 : t.getValue().intValue();
+                Integer widgetMentions = t.getValue();
+                int mentions = 0;
+                if (widgetMentions != null) {
+                    mentions = widgetMentions.intValue();
+                }
 
                 JsonArrayBuilder idsArray = Json.createArrayBuilder();
                 for (String id : ids) {

@@ -201,7 +201,7 @@ public final class EncryptedDbConfigStore {
 
         try (Connection conn = ds.getConnection(); PreparedStatement deleteStmt = conn.prepareStatement(DELETE_SQL)) {
             int deleted = deleteStmt.executeUpdate();
-            log.log(Level.FINE, "save: deleted existing rows count={0}", deleted);
+            log.fine(() -> "save: deleted existing rows count=" + deleted);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "save: failed deleting old config rows", e);
             throw e;
@@ -229,7 +229,7 @@ public final class EncryptedDbConfigStore {
             insertStmt.setString(18, encryptedAwsSecretAccessKey);
 
             int inserted = insertStmt.executeUpdate();
-            log.log(Level.FINE, "save: insert complete, rows={0}", inserted);
+            log.fine(() -> "save: insert complete, rows=" + inserted);
         } catch (SQLException e) {
             log.log(Level.SEVERE, "save: failed inserting config row", e);
             throw e;
@@ -418,11 +418,11 @@ public final class EncryptedDbConfigStore {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
 
             if (decoded.length == 16 || decoded.length == 24 || decoded.length == 32) {
-                log.log(Level.FINE, "getAesKeyBytes: using Base64-decoded AES key length={0}", decoded.length);
+                log.fine(() -> "getAesKeyBytes: using Base64-decoded AES key length=" + decoded.length);
                 return decoded;
             }
 
-            log.log(Level.FINE, "getAesKeyBytes: Base64 decoded length={0}, deriving AES-256 key via PBKDF2", decoded.length);
+            log.fine(() -> "getAesKeyBytes: Base64 decoded length=" + decoded.length + ", deriving AES-256 key via PBKDF2");
             return deriveAesKey(decoded, salt);
 
         } catch (IllegalArgumentException notBase64) {

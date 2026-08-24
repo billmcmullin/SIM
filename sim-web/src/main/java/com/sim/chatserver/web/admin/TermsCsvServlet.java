@@ -261,7 +261,10 @@ public class TermsCsvServlet extends HttpServlet {
 
             // Overwrite non-system entries using CSV columns (name, description, pattern, type)
             Long existingId = existing.getId();
-            long existingIdValue = existingId == null ? -1L : existingId.longValue();
+            long existingIdValue = -1L;
+            if (existingId != null) {
+                existingIdValue = existingId.longValue();
+            }
             if (existingIdValue <= 0L) {
                 throw new IllegalStateException("Failed to update term with invalid id");
             }

@@ -113,7 +113,10 @@ public class DashboardTopicsQueryService {
 
     private void incrementCount(Map<String, Integer> counter, String key) {
         Integer current = counter.get(key);
-        int next = current == null ? 1 : current.intValue() + 1;
+        int next = 1;
+        if (current != null) {
+            next = current.intValue() + 1;
+        }
         counter.put(key, Integer.valueOf(next));
     }
 

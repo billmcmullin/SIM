@@ -575,7 +575,10 @@ final class DatabaseImportService {
                     int type = sanitizeSqlType(typeValue.intValue());
 
                     Integer nullableValue = readMetadataInt(rs, "NULLABLE");
-                    boolean nullable = nullableValue == null || nullableValue.intValue() != ResultSetMetaData.columnNoNulls;
+                    boolean nullable = true;
+                    if (nullableValue != null) {
+                        nullable = nullableValue.intValue() != ResultSetMetaData.columnNoNulls;
+                    }
                     info.put(name, new ColumnInfo(type, nullable));
                 }
             }
@@ -1151,7 +1154,10 @@ final class DatabaseImportService {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
             Integer value = e.getValue();
-            int safeValue = value == null ? 0 : value.intValue();
+            int safeValue = 0;
+            if (value != null) {
+                safeValue = value.intValue();
+            }
             b.add(e.getKey(), safeValue);
         }
         return b.build();

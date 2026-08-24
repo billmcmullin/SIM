@@ -92,7 +92,7 @@ public final class DashboardDbUtil {
 
         Boolean req = requestCache.get(tableName);
         if (req != null) {
-            return req;
+            return req.booleanValue();
         }
 
         long now = Instant.now().toEpochMilli();

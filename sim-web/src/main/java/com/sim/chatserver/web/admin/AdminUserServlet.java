@@ -138,12 +138,7 @@ public class AdminUserServlet extends HttpServlet {
         if (id == null) {
             return -1L;
         }
-        try {
-            return id;
-        } catch (NumberFormatException e) {
-            log.log(Level.FINE, "Invalid user id value", e);
-            return -1L;
-        }
+        return id.longValue();
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

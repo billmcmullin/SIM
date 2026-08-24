@@ -405,7 +405,7 @@ public final class ReduceResult {
         Set<Integer> out = new LinkedHashSet<>();
         for (Integer i : src) {
             if (i != null) {
-                out.add(i.intValue());
+                out.add(Integer.valueOf(i.intValue()));
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));

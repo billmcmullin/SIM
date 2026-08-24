@@ -1,16 +1,31 @@
 package com.sim.chatserver.web.admin.salesforce;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.util.List;
+
+import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.config.ServerConfig;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 /**
  * Parasoft Jtest UTA: Test class for SalesforceOAuthStartServlet
@@ -615,6 +630,125 @@ public class SalesforceOAuthStartServletTest
         HttpServletResponse resp = mock(HttpServletResponse.class);
         underTest.doGet(req, resp);
 
+    }
+
+    @Test
+    public void doGet_nonAdmin_returnsUnauthorized() throws Exception {
+        SalesforceOAuthStartServlet servlet = new SalesforceOAuthStartServlet();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(req.getSession(false)).thenReturn(null);
+
+        servlet.doGet(req, resp);
+
+        verify(resp).sendError(HttpServletResponse.SC_UNAUTHORIZED, "Admin authentication required.");
+    }
+
+    @Test
+    public void doGet_adminWithMissingOauthConfig_returnsBadRequest() throws Exception {
+        SalesforceOAuthStartServlet servlet = new SalesforceOAuthStartServlet();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("admin-user");
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+
+        ServerConfig cfg = new ServerConfig();
+        cfg.setSalesforceLoginUrl("https://login.salesforce.com");
+        cfg.setSalesforceClientId(null);
+
+        try (MockedStatic<EncryptedDbConfigStore> storeMock = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+            storeMock.when(EncryptedDbConfigStore::load).thenReturn(cfg);
+
+            servlet.doGet(req, resp);
+
+            verify(resp).sendError(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "Missing Salesforce OAuth configuration: login URL and client ID are required.");
+        }
+    }
+
+    @Test
+    public void buildExternalRedirectUri_prefersForwardedHeaders() throws Throwable {
+        SalesforceOAuthStartServlet servlet = new SalesforceOAuthStartServlet();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+
+        when(req.getHeaders("X-Forwarded-Proto")).thenReturn(java.util.Collections.enumeration(List.of("https")));
+        when(req.getHeaders("X-Forwarded-Host")).thenReturn(java.util.Collections.enumeration(List.of("ida.parasoft.com:8443")));
+        when(req.getHeaders("X-Forwarded-Port")).thenReturn(java.util.Collections.enumeration(List.of("8443")));
+        when(req.getContextPath()).thenReturn("/chat-server");
+
+        String redirect = (String) invokePrivate(servlet,
+                "buildExternalRedirectUri",
+                new Class<?>[]{HttpServletRequest.class},
+                req);
+
+        assertEquals("https://ida.parasoft.com:8443/chat-server/admin/salesforce/oauth/callback", redirect);
+    }
+
+    @Test
+    public void normalizeBaseUri_and_toSafeAuthorizeUrl_validateInputs() throws Throwable {
+        SalesforceOAuthStartServlet servlet = new SalesforceOAuthStartServlet();
+
+        URI normalized = (URI) invokePrivate(servlet,
+                "normalizeBaseUri",
+                new Class<?>[]{String.class},
+                "login.salesforce.com///");
+        URI invalid = (URI) invokePrivate(servlet,
+                "normalizeBaseUri",
+                new Class<?>[]{String.class},
+                "://bad-url");
+
+        String validAuth = (String) invokePrivate(servlet,
+                "toSafeAuthorizeUrl",
+                new Class<?>[]{String.class},
+                "https://login.salesforce.com/services/oauth2/authorize?x=1");
+        String invalidAuth = (String) invokePrivate(servlet,
+                "toSafeAuthorizeUrl",
+                new Class<?>[]{String.class},
+                "https://login.salesforce.com/services/oauth2/other");
+
+        assertNotNull(normalized);
+        assertEquals("https://login.salesforce.com", normalized.toString());
+        assertNull(invalid);
+        assertNotNull(validAuth);
+        assertNull(invalidAuth);
+    }
+
+    @Test
+    public void safeRedirect_acceptsValidAndRejectsUnsafeTarget() throws Throwable {
+        SalesforceOAuthStartServlet servlet = new SalesforceOAuthStartServlet();
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+
+        invokePrivate(servlet,
+                "safeRedirect",
+                new Class<?>[]{HttpServletResponse.class, String.class},
+                resp,
+                "https://login.salesforce.com/services/oauth2/authorize?response_type=code");
+
+        verify(resp).setStatus(HttpServletResponse.SC_FOUND);
+        verify(resp).setHeader("Location", "https://login.salesforce.com/services/oauth2/authorize?response_type=code");
+
+        invokePrivate(servlet,
+                "safeRedirect",
+                new Class<?>[]{HttpServletResponse.class, String.class},
+                resp,
+                "https://login.salesforce.com/bad\nlocation");
+
+        verify(resp).sendError(HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
+    }
+
+    private static Object invokePrivate(Object target, String methodName, Class<?>[] signature, Object... args)
+            throws Throwable {
+        try {
+            Method m = target.getClass().getDeclaredMethod(methodName, signature);
+            m.setAccessible(true);
+            return m.invoke(target, args);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
     }
 
 }

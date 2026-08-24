@@ -90,7 +90,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));
                 return;
-            } catch (Throwable ex) {
+            } catch (IllegalArgumentException | UnsupportedOperationException ex) {
                 logFailure("Unexpected Salesforce lookup failure while syncing customer profile", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
                     errorPayload("Unable to query Salesforce right now."));
@@ -136,11 +136,11 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, ok);
-        } catch (Throwable e) {
+        } catch (java.sql.SQLException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             throw new ServletException("Unable to sync customer profile from Salesforce", e);
         }
     
-        } catch (Throwable e) {
+        } catch (ServletException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {

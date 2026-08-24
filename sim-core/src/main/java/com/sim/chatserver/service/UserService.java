@@ -73,7 +73,7 @@ public class UserService {
     /**
      * Find a user by username or return null.
      */
-    UserAccount findByUsername(String username) {
+    final UserAccount findByUsername(String username) {
         EntityManager entityManager = requireEntityManager();
         try {
             return entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
@@ -88,7 +88,7 @@ public class UserService {
         }
     }
 
-    boolean userExists(String username) {
+    final boolean userExists(String username) {
         return findByUsername(username) != null;
     }
 

@@ -69,7 +69,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         try {
             EmailConfig db = provider.load();
             dbConfigured = db != null && hasText(db.host()) && db.port() > 0;
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Failed checking DB SMTP config", e);
         }
 
@@ -81,7 +81,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, response);
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {
@@ -119,7 +119,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
         handleSave(req, payload, resp);
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
@@ -167,7 +167,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             EmailConfig existing = null;
             try {
                 existing = provider.load();
-            } catch (Throwable e) {
+            } catch (IllegalStateException | IllegalArgumentException e) {
                 log.log(Level.WARNING, "Unable to load existing SMTP config.", e);
             }
             finalPassword = existing == null ? "" : safe(existing.password());
@@ -191,7 +191,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .add("message", "SMTP configuration saved.")
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "Failed to save SMTP configuration", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to save SMTP configuration.");
         }
@@ -237,7 +237,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                                 defaultFrom = safe(existing.defaultFrom());
                             }
                         }
-                    } catch (Throwable e) {
+                    } catch (IllegalStateException | IllegalArgumentException e) {
                         log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
                     }
                 }
@@ -285,7 +285,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, response);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             log.log(Level.SEVERE, "SMTP test failed", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "SMTP test failed.");
         }

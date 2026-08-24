@@ -41,7 +41,10 @@ public final class DashboardSessionDataUtil {
         int best = -1;
         for (Map.Entry<String, Integer> entry : widgetCounts.entrySet()) {
             Integer count = entry.getValue();
-            int value = count == null ? 0 : count.intValue();
+            int value = 0;
+            if (count != null) {
+                value = count.intValue();
+            }
             if (value > best) {
                 best = value;
                 winner = entry.getKey();

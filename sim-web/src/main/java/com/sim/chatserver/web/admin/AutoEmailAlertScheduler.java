@@ -6,6 +6,7 @@ import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.email.EmailConfigResolver;
 import com.sim.chatserver.email.EmailConfigSource;
 import com.sim.chatserver.email.EmailAttachment;
+import com.sim.chatserver.email.EmailException;
 import com.sim.chatserver.email.EmailFactory;
 import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
@@ -185,7 +186,7 @@ public class AutoEmailAlertScheduler {
         WidgetAvailabilityResult result = null;
         try {
             result = availabilityChecker.checkNow();
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             log.log(Level.FINE, "Health test email proceeding without live checker details.", e);
         }
 
@@ -216,7 +217,7 @@ public class AutoEmailAlertScheduler {
 
         try {
             runTick();
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             log.log(Level.WARNING, "Automatic email alert tick failed.", e);
         } finally {
             tickRunning.set(false);
@@ -315,7 +316,7 @@ public class AutoEmailAlertScheduler {
             store.updateHealthState(now, status, offlineSince, lastAlert, restartAttemptAt);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to persist health alert state.", e);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             log.log(Level.WARNING, "Health alert evaluation failed.", e);
         }
     }
@@ -346,7 +347,7 @@ public class AutoEmailAlertScheduler {
                     "Unable to load AWS config for automatic healthcheck restart: {0}",
                     defaultIfBlank(ex.getMessage(), ex.getClass().getSimpleName()));
             return false;
-        } catch (Throwable ex) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
             log.log(Level.WARNING, "Unable to load AWS config for automatic healthcheck restart.", ex);
             return false;
         }
@@ -414,7 +415,7 @@ public class AutoEmailAlertScheduler {
             store.updateTermState(now, currentCount, lastAlert);
         } catch (SQLException e) {
             log.log(Level.WARNING, "Failed to evaluate or persist term alert state.", e);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             log.log(Level.WARNING, "Term alert evaluation failed.", e);
         }
     }
@@ -443,7 +444,10 @@ public class AutoEmailAlertScheduler {
             for (Map.Entry<String, Integer> entry : counts.entrySet()) {
                 if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(target)) {
                     Integer value = entry.getValue();
-                    int count = value == null ? 0 : value.intValue();
+                    int count = 0;
+                    if (value != null) {
+                        count = value.intValue();
+                    }
                     return Math.max(0L, count);
                 }
             }
@@ -483,7 +487,7 @@ public class AutoEmailAlertScheduler {
 
             service.send(builder.build());
             return true;
-        } catch (Throwable e) {
+        } catch (EmailException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Failed sending automatic alert email.", e);
             return false;
         }

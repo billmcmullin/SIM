@@ -506,7 +506,28 @@ public class DashboardServlet extends HttpServlet {
             return "0 (0.0%) vs yesterday";
         }
 
-        String text = String.format("%+d (%.1f%%) vs yesterday", p.getDelta(), p.getPctDelta());
+        int delta = p.getDelta();
+        long roundedTenthPct = Math.round(p.getPctDelta() * 10.0d);
+        boolean negative = roundedTenthPct < 0;
+        long abs = Math.abs(roundedTenthPct);
+        long whole = abs / 10L;
+        long tenths = abs % 10L;
+
+        StringBuilder textBuilder = new StringBuilder();
+        if (delta >= 0) {
+            textBuilder.append('+');
+        }
+        textBuilder.append(delta)
+                .append(" (");
+        if (negative) {
+            textBuilder.append('-');
+        }
+        textBuilder.append(whole)
+                .append('.')
+                .append(tenths)
+                .append("%) vs yesterday");
+
+        String text = textBuilder.toString();
         return DashboardTemplateRenderer.escapeHtml(text);
     }
 
@@ -519,9 +540,7 @@ public class DashboardServlet extends HttpServlet {
             if (e.getKey() == null || e.getKey().isBlank()) {
                 continue;
             }
-            Integer value = e.getValue();
-            int safeValue = value == null ? 0 : value.intValue();
-            out.put(e.getKey(), Math.max(0, safeValue));
+            out.put(e.getKey(), normalizeNonNegativeInteger(e.getValue()));
         }
         return out;
     }
@@ -531,10 +550,9 @@ public class DashboardServlet extends HttpServlet {
         if (increaseMap != null) {
             for (Map.Entry<String, Integer> e : increaseMap.entrySet()) {
                 String k = e.getKey();
-                Integer rawValue = e.getValue();
-                int v = rawValue == null ? 0 : Math.max(0, rawValue.intValue());
+                Integer safeValue = normalizeNonNegativeInteger(e.getValue());
                 if (k != null) {
-                    obj.add(k, v);
+                    obj.add(k, safeValue.intValue());
                 }
             }
         }
@@ -546,14 +564,20 @@ public class DashboardServlet extends HttpServlet {
         if (totalMap != null) {
             for (Map.Entry<String, Integer> e : totalMap.entrySet()) {
                 String k = e.getKey();
-                Integer rawValue = e.getValue();
-                int v = rawValue == null ? 0 : Math.max(0, rawValue.intValue());
+                Integer safeValue = normalizeNonNegativeInteger(e.getValue());
                 if (k != null) {
-                    obj.add(k, v);
+                    obj.add(k, safeValue.intValue());
                 }
             }
         }
         return obj.build().toString();
+    }
+
+    private static Integer normalizeNonNegativeInteger(Integer value) {
+        if (value == null) {
+            return Integer.valueOf(0);
+        }
+        return value.compareTo(Integer.valueOf(0)) < 0 ? Integer.valueOf(0) : value;
     }
 
     private <T> T safeJoin(CompletableFuture<T> future, T fallback, String label) {

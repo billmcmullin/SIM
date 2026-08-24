@@ -111,7 +111,7 @@ public class TestConnectionServlet extends HttpServlet {
 
         try {
             storedConfig = EncryptedDbConfigStore.load();
-        } catch (SQLException | RuntimeException e) {
+        } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.FINE, "Unable to load stored server config for test-connection", e);
         }
 
@@ -244,7 +244,7 @@ public class TestConnectionServlet extends HttpServlet {
                         .add("upstreamBody", truncate(chatResponse.body))
                         .build());
             }
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
             }
@@ -265,7 +265,7 @@ public class TestConnectionServlet extends HttpServlet {
                     .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {

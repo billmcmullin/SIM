@@ -173,7 +173,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
             executeManualRequest(resp, requestId, startNanos, requestContext, targetContext);
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
@@ -350,7 +350,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                     + " selected=" + requestContext.selectedEntries.size()
                     + " strategy=" + (useMapReduce ? "map-reduce-runtime().orchestrator" : "single-pass");
             log.info(completionLog);
-        } catch (Throwable ex) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
             if (causedByInterrupted(ex)) {
                 Thread.currentThread().interrupt();
             }
@@ -517,7 +517,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 allIds,
                 requestId
             );
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
             Thread.currentThread().interrupt();
             }

@@ -388,7 +388,7 @@ public final class CoverageSummary {
             if (v != null) {
                 int value = v.intValue();
                 if (value > 0) {
-                    set.add(value);
+                    set.add(Integer.valueOf(value));
                 }
             }
         }

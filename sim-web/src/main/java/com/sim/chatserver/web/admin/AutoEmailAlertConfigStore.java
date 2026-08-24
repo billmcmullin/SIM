@@ -367,7 +367,10 @@ public final class AutoEmailAlertConfigStore {
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
             Integer value = readSafeInteger(rs, column);
-            int normalized = value == null ? 0 : value.intValue();
+            int normalized = 0;
+            if (value != null) {
+                normalized = value.intValue();
+            }
             return Math.max(0, normalized);
         } catch (SQLException e) {
             log.log(Level.FINE, "Unable to read integer column " + column, e);
