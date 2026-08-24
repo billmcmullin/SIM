@@ -265,7 +265,7 @@ public class SalesforceAuthClient {
             boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
                     || ("https".equalsIgnoreCase(scheme) && port == 443);
             if (port > 0 && !defaultPort) {
-                return scheme + "://" + host + ":" + port;
+                return scheme + "://" + host + ':' + port;
             }
             return scheme + "://" + host;
         } catch (IllegalArgumentException ex) {

@@ -1,180 +1,90 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+
+import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.term.TermsStore;
+
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
+import jakarta.servlet.http.HttpServletMapping;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-/**
- * Parasoft Jtest UTA: Test class for DashboardTermSelectionServlet
- *
- * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet
- * @author bmcmullin
- */
-public class DashboardTermSelectionServletTest
-{
+class DashboardTermSelectionServletTest {
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet#doGet(HttpServletRequest,
-     *      HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet() throws Throwable
-    {
-        // Given
-        DashboardTermSelectionServlet underTest = new DashboardTermSelectionServlet();
+    void doGet_withoutSession_forwardsToLogin() throws Exception {
+        DashboardTermSelectionServlet servlet = newServletWithMockedCdi();
 
-        // When
         HttpServletRequest req = mock(HttpServletRequest.class);
-        String getContextPathResult = "getContextPathResult"; // UTA: default value
-        when(req.getContextPath()).thenReturn(getContextPathResult);
-        ServletContext servletContext = mock(ServletContext.class);
-        when(servletContext.getContextPath()).thenReturn(getContextPathResult);
-        when(req.getServletContext()).thenReturn(servletContext);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        ServletContext context = mock(ServletContext.class);
         RequestDispatcher dispatcher = mock(RequestDispatcher.class);
-        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
 
-        HttpSession getSessionResult = null; // UTA: configured value
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        when(req.getServletContext()).thenReturn(context);
+        when(context.getContextPath()).thenReturn("/sim");
+        when(req.getSession(false)).thenReturn(null);
+        when(req.getRequestDispatcher("/login")).thenReturn(dispatcher);
 
+        servlet.doGet(req, resp);
+
+        verify(dispatcher).forward(req, resp);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet#doGet(HttpServletRequest,
-     *      HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet2() throws Throwable
-    {
-        // Given
-        DashboardTermSelectionServlet underTest = new DashboardTermSelectionServlet();
+    void doGet_jsonMode_withoutTerm_returnsBadRequestJson() throws Exception {
+        DashboardTermSelectionServlet servlet = newServletWithMockedCdi();
 
-        // When
         HttpServletRequest req = mock(HttpServletRequest.class);
-        String getContextPathResult = "getContextPathResult"; // UTA: default value
-        when(req.getContextPath()).thenReturn(getContextPathResult);
-        ServletContext servletContext = mock(ServletContext.class);
-        when(servletContext.getContextPath()).thenReturn(getContextPathResult);
-        when(req.getServletContext()).thenReturn(servletContext);
-        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
-        when(req.getRequestDispatcher(nullable(String.class))).thenReturn(dispatcher);
-
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = null; // UTA: configured value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
+        ServletContext context = mock(ServletContext.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        StringWriter out = new StringWriter();
 
+        when(req.getServletContext()).thenReturn(context);
+        when(context.getContextPath()).thenReturn("/sim");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("tester");
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/term-review/select");
+        when(req.getParameter("term")).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(out));
+
+        servlet.doGet(req, resp);
+
+        verify(resp).setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        assertTrue(out.toString().contains("term parameter is required"));
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet#doGet(HttpServletRequest,
-     *      HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet3() throws Throwable
-    {
-        // Given
-        DashboardTermSelectionServlet underTest = new DashboardTermSelectionServlet();
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private DashboardTermSelectionServlet newServletWithMockedCdi() {
+        try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            CDI cdi = mock(CDI.class);
+            Instance<AppDataSourceHolder> dsInstance = (Instance<AppDataSourceHolder>) mock(Instance.class);
+            Instance<TermsStore> termsInstance = (Instance<TermsStore>) mock(Instance.class);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        String getParameterResult = null; // UTA: configured value
-        when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult);
-        ServletContext servletContext = mock(ServletContext.class);
-        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
-        when(req.getServletContext()).thenReturn(servletContext);
+            when(cdi.select(AppDataSourceHolder.class)).thenReturn((Instance) dsInstance);
+            when(cdi.select(TermsStore.class)).thenReturn((Instance) termsInstance);
+            when(dsInstance.get()).thenReturn(mock(AppDataSourceHolder.class));
+            when(termsInstance.get()).thenReturn(mock(TermsStore.class));
 
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            return new DashboardTermSelectionServlet();
+        }
     }
-
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet#doGet(HttpServletRequest,
-     *      HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet4() throws Throwable
-    {
-        // Given
-        DashboardTermSelectionServlet underTest = new DashboardTermSelectionServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        String getParameterResult = "getParameterResult"; // UTA: configured value
-        String getParameterResult2 = "getParameterResult2"; // UTA: default value
-        when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
-        ServletContext servletContext = mock(ServletContext.class);
-        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
-        when(req.getServletContext()).thenReturn(servletContext);
-
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        Object getAttributeResult2 = null; // UTA: configured value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult, getAttributeResult2);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
-    }
-
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.dashboard.drilldown.DashboardTermSelectionServlet#doGet(HttpServletRequest,
-     *      HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet5() throws Throwable
-    {
-        // Given
-        DashboardTermSelectionServlet underTest = new DashboardTermSelectionServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        String getParameterResult = "getParameterResult"; // UTA: configured value
-        String getParameterResult2 = null; // UTA: configured value
-        when(req.getParameter(nullable(String.class))).thenReturn(getParameterResult, getParameterResult2);
-        ServletContext servletContext = mock(ServletContext.class);
-        when(servletContext.getContextPath()).thenReturn("getContextPathResult");
-        when(req.getServletContext()).thenReturn(servletContext);
-
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        Object getAttributeResult2 = null; // UTA: configured value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult, getAttributeResult2);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
-    }
-
 }

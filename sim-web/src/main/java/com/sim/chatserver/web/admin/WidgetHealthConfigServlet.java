@@ -34,9 +34,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetHealthConfigServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
-    private static final Object STORE_LOCK = new Object();
-
-    private static volatile WidgetHealthConfigStore store;
+    private static final String STORE_ATTRIBUTE_KEY = WidgetHealthConfigStore.class.getName();
 
     @Override
     public void init() throws ServletException {
@@ -158,27 +156,32 @@ public class WidgetHealthConfigServlet extends HttpServlet {
     }
 
     private WidgetHealthConfigStore ensureStoreInitialized() {
-        WidgetHealthConfigStore local = store;
+        jakarta.servlet.ServletContext context = getServletContext();
+        WidgetHealthConfigStore local = (WidgetHealthConfigStore) context.getAttribute(STORE_ATTRIBUTE_KEY);
         if (local != null) {
             return local;
         }
 
-        synchronized (STORE_LOCK) {
-            local = store;
+        synchronized (context) {
+            local = (WidgetHealthConfigStore) context.getAttribute(STORE_ATTRIBUTE_KEY);
             if (local != null) {
                 return local;
             }
 
-            try {
-                WidgetHealthConfigStore created = new WidgetHealthConfigStore(dataSourceHolder().getDataSource());
-                created.ensureTable();
-                created.ensureDefaultRow();
-                store = created;
-                return created;
-            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-                log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
-                throw new IllegalStateException("Failed to initialize widget health config store", e);
-            }
+            return createStore(context);
+        }
+    }
+
+    private WidgetHealthConfigStore createStore(jakarta.servlet.ServletContext context) {
+        try {
+            WidgetHealthConfigStore created = new WidgetHealthConfigStore(dataSourceHolder().getDataSource());
+            created.ensureTable();
+            created.ensureDefaultRow();
+            context.setAttribute(STORE_ATTRIBUTE_KEY, created);
+            return created;
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.SEVERE, "Unable to initialize WidgetHealthConfigStore", e);
+            throw new IllegalStateException("Failed to initialize widget health config store", e);
         }
     }
 

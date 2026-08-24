@@ -1,12 +1,7 @@
 package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -18,17 +13,14 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.dashboard.DashboardDrilldownSelectionQueryService;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
-import com.sim.chatserver.widget.WidgetEntry;
-import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.ServletException;
@@ -50,6 +42,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+        private final transient DashboardDrilldownSelectionQueryService queryService =
+            new DashboardDrilldownSelectionQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -70,7 +64,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         String scope = ServletRequestParamUtil.firstParam(req, "scope", 256, true, true);
         boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
 
-        List<TermChatSnapshot> snapshots = collectDateEntries(date);
+        List<TermChatSnapshot> snapshots = queryService.collectDateEntries(date);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day.");
@@ -115,7 +109,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -154,75 +148,6 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
                 yield null;
             }
         };
-    }
-
-    private List<TermChatSnapshot> collectDateEntries(LocalDate date) {
-        List<TermChatSnapshot> snapshots = new ArrayList<>();
-        List<WidgetEntry> widgets = listWidgets();
-        if (widgets.isEmpty()) {
-            return snapshots;
-        }
-
-        Timestamp startTs = Timestamp.valueOf(date.atStartOfDay());
-        Timestamp endTs = Timestamp.valueOf(date.plusDays(1).atStartOfDay());
-
-        Connection conn = null;
-        try {
-            conn = dataSourceHolder().getDataSource().getConnection();
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-
-                String widgetId = widget.getWidgetId();
-                String tableName = sanitizeWidgetTableName(widgetId);
-                if (!tableExists(conn, tableName)) {
-                    continue;
-                }
-
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
-                        + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC";
-
-                PreparedStatement ps = null;
-                ResultSet rs = null;
-                try {
-                    ps = conn.prepareStatement(sql);
-                    ps.setTimestamp(1, startTs);
-                    ps.setTimestamp(2, endTs);
-                    rs = ps.executeQuery();
-
-                    while (rs.next()) {
-                        String chatId = rs.getString("widget_chat_id");
-                        String prompt = rs.getString("prompt");
-                        String response = rs.getString("response_text");
-                        Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                        String sessionId = rs.getString("session_id");
-
-                        snapshots.add(new TermChatSnapshot(
-                                date.toString(),
-                                widgetId,
-                                chatId == null ? "" : chatId,
-                                prompt == null ? "" : prompt,
-                                response == null ? "" : response,
-                                createdAt,
-                                sessionId == null ? "" : sessionId
-                        ));
-                    }
-                } catch (SQLException e) {
-                    log.log(Level.FINE, "Unable to read relative-date entries from table " + tableName, e);
-                } finally {
-                    closeQuietly(rs);
-                    closeQuietly(ps);
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to collect relative date entries", e);
-        } finally {
-            closeQuietly(conn);
-        }
-
-        return snapshots;
     }
 
     private List<TermChatSnapshot> filterSnapshotsByTerm(List<TermChatSnapshot> source, String requestedTerm) {
@@ -357,37 +282,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return out;
     }
 
-    private List<WidgetEntry> listWidgets() {
-        try {
-            return WidgetStore.list(null);
-        } catch (SQLException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to list widgets for date review", e);
-            return List.of();
-        }
-    }
-
-    protected AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
     protected TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
     }
 
     private void sendError(HttpServletResponse resp, int status, String message) {
@@ -401,35 +297,4 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         }
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
-        }
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
 }

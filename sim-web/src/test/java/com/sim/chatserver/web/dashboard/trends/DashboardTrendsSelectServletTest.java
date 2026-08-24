@@ -313,7 +313,6 @@ public class DashboardTrendsSelectServletTest
 
     private DashboardTrendsSelectServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
         return new DashboardTrendsSelectServlet() {
-            @Override
             protected AppDataSourceHolder resolveDataSourceHolder() {
                 return dsHolder;
             }

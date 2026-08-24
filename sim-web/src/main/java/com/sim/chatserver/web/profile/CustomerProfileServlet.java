@@ -133,7 +133,7 @@ public class CustomerProfileServlet extends HttpServlet {
     
         } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
             LOGGER.log(Level.WARNING, "Unhandled exception in doGet", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -158,7 +158,7 @@ public class CustomerProfileServlet extends HttpServlet {
             String sid = nullToEmpty(link.getSessionId());
             String display = nullToEmpty(link.getDisplayNameSnapshot());
             String email = nullToEmpty(link.getContactEmailSnapshot());
-            String updated = link.getUpdatedAt() == null ? "â€”" : formatOffsetDateTime(link.getUpdatedAt());
+            String updated = link.getUpdatedAt() == null ? "Ã¢â‚¬â€" : formatOffsetDateTime(link.getUpdatedAt());
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
@@ -172,11 +172,11 @@ public class CustomerProfileServlet extends HttpServlet {
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(display.isBlank() ? "â€”" : display));
+            row.append(escapeHtml(display.isBlank() ? "Ã¢â‚¬â€" : display));
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(email.isBlank() ? "â€”" : email));
+            row.append(escapeHtml(email.isBlank() ? "Ã¢â‚¬â€" : email));
             closeTag(row, "td");
 
             openTag(row, "td");
@@ -237,7 +237,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String nullToDash(String value) {
         String v = trimToNull(value);
-        return v == null ? "â€”" : v;
+        return v == null ? "Ã¢â‚¬â€" : v;
     }
 
     private String firstNonBlank(String... values) {
@@ -277,7 +277,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String formatOffsetDateTime(OffsetDateTime value) {
         if (value == null) {
-            return "â€”";
+            return "Ã¢â‚¬â€";
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }

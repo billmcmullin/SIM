@@ -451,7 +451,6 @@ public class DashboardRelativeDateSelectionServletTest
     }
     private DashboardRelativeDateSelectionServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
         return new DashboardRelativeDateSelectionServlet() {
-            @Override
             protected AppDataSourceHolder dataSourceHolder() {
                 return dsHolder;
             }

@@ -1,12 +1,7 @@
 package com.sim.chatserver.web.dashboard.topics;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -25,18 +20,9 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
-import com.sim.chatserver.term.TermDefinition;
-import com.sim.chatserver.term.TermMatcher;
-import com.sim.chatserver.term.TermsStore;
-import com.sim.chatserver.term.TextSanitizer;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
-import com.sim.chatserver.widget.WidgetEntry;
-import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -52,6 +38,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getName());
     private static final String OTHER_LABEL = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private final transient DashboardTopicsDataQueryService queryService = new DashboardTopicsDataQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -66,58 +53,10 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         boolean includeOther = parseBooleanFlag(ServletRequestParamUtil.firstParam(req, "includeOther", 256, true, true));
         DateWindow window = resolveDateWindow(req);
 
-        List<WidgetEntry> widgets;
-        try {
-            widgets = WidgetStore.list(null);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to list widgets for dashboard topics", e);
-            widgets = List.of();
-        } catch (IllegalStateException e) {
-            log.log(Level.WARNING, "Unexpected runtime error while listing widgets", e);
-            widgets = List.of();
-        }
-
-        List<TermDefinition> allTerms;
-        try {
-            allTerms = termsStore().listAll();
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to list terms for dashboard topics", e);
-            allTerms = List.of();
-        } catch (IllegalStateException e) {
-            log.log(Level.WARNING, "Unexpected runtime error while listing terms", e);
-            allTerms = List.of();
-        }
-
-        // Only "real" terms are regex-matched.
-        // OTHER_LABEL is reserved as catch-all bucket.
-        List<TopicPattern> realTopics = new ArrayList<>();
-        for (TermDefinition t : allTerms) {
-            if (t == null || t.isSystemFlag()) {
-                continue;
-            }
-
-            String name = t.getName();
-            if (name == null || name.isBlank()) {
-                continue;
-            }
-            if (OTHER_LABEL.equalsIgnoreCase(name.trim())) {
-                continue;
-            }
-
-            Pattern p = TermMatcher.buildStrictPattern(t);
-            if (p == null) {
-                continue;
-            }
-
-            realTopics.add(new TopicPattern(name.trim(), p));
-        }
-
         TopicsAggregation aggregation;
-        Connection conn = null;
         try {
-            conn = dataSourceHolder().getDataSource().getConnection();
-            aggregation = collectTopicData(conn, widgets, realTopics, window, includeOther);
-        } catch (SQLException e) {
+            aggregation = queryService.collect(window, includeOther, OTHER_LABEL);
+        } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
             JsonObject err = Json.createObjectBuilder()
                     .add("status", "error")
@@ -125,8 +64,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                     .build();
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, err);
             return;
-        } finally {
-            closeQuietly(conn);
         }
 
         writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
@@ -135,111 +72,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
-    }
-
-    private TopicsAggregation collectTopicData(
-            Connection conn,
-            List<WidgetEntry> widgets,
-            List<TopicPattern> realTopics,
-            DateWindow window,
-            boolean includeOther
-    ) {
-        TopicsAggregation aggregation = new TopicsAggregation();
-
-        for (WidgetEntry w : widgets) {
-            if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                continue;
-            }
-
-            String widgetId = w.getWidgetId();
-            String widgetName = (w.getDisplayName() == null || w.getDisplayName().isBlank())
-                    ? widgetId : w.getDisplayName();
-
-            String tableName = sanitizeWidgetTableName(widgetId);
-            if (!tableExists(conn, tableName)) {
-                continue;
-            }
-
-            Map<String, Integer> widgetMap = aggregation.byWidgetCounts.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
-            Map<String, Set<String>> widgetTopicChatIds = aggregation.byWidgetChatIds.computeIfAbsent(widgetName, k -> new LinkedHashMap<>());
-
-            String sql = "SELECT widget_chat_id, prompt, created_at FROM " + quoteIdentifier(tableName)
-                    + " WHERE created_at >= ? AND created_at < ?";
-
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql);
-                ps.setTimestamp(1, Timestamp.valueOf(window.startInclusive.atStartOfDay()));
-                ps.setTimestamp(2, Timestamp.valueOf(window.endExclusive.atStartOfDay()));
-
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String chatId = rs.getString("widget_chat_id");
-                    if (chatId == null || chatId.isBlank()) {
-                        continue;
-                    }
-
-                    String prompt = rs.getString("prompt");
-                    if (prompt == null) {
-                        prompt = "";
-                    }
-
-                    try {
-                        SqlTimeUtil.safeTimestamp(rs, "created_at");
-                    } catch (SQLException ignored) {
-                        log.log(Level.FINE, "Unable to parse created_at timestamp for topic row", ignored);
-                    }
-
-                    Set<String> matchedRealTopics = matchTopics(prompt, realTopics);
-                    if (!matchedRealTopics.isEmpty()) {
-                        recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, matchedRealTopics);
-                        continue;
-                    }
-
-                    if (includeOther) {
-                        recordMatchedTopics(aggregation, widgetMap, widgetTopicChatIds, chatId, Set.of(OTHER_LABEL));
-                    }
-                }
-            } catch (SQLException e) {
-                log.log(Level.WARNING, "Unable to collect topic data for widget " + widgetId, e);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-
-        return aggregation;
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        if (closeable != null) {
-            try {
-                closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-                // ignore close failure
-            }
-        }
-    }
-
-    private void recordMatchedTopics(
-            TopicsAggregation aggregation,
-            Map<String, Integer> widgetMap,
-            Map<String, Set<String>> widgetTopicChatIds,
-            String chatId,
-            Set<String> topics
-    ) {
-        for (String topic : topics) {
-            incrementTopicCount(aggregation.globalCounts, topic);
-            aggregation.globalChatIdsByTopic.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
-
-            incrementTopicCount(widgetMap, topic);
-            widgetTopicChatIds.computeIfAbsent(topic, k -> new LinkedHashSet<>()).add(chatId);
-
-            aggregation.totalMentions++;
-        }
-        aggregation.allMatchedChatIds.add(chatId);
     }
 
     private JsonObject buildTopicsPayload(DateWindow window, boolean includeOther, TopicsAggregation aggregation) {
@@ -346,15 +178,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         return new DateWindow(today, today.plusDays(1), today.format(DATE_FMT));
     }
 
-    private void incrementTopicCount(Map<String, Integer> counts, String topic) {
-        if (counts == null || topic == null || topic.isBlank()) {
-            return;
-        }
-        Integer current = counts.get(topic);
-        int next = current == null ? 1 : current.intValue() + 1;
-        counts.put(topic, Integer.valueOf(next));
-    }
-
     private Optional<LocalDate> parseLocalDate(String value) {
         if (value == null || value.isBlank()) {
             return Optional.empty();
@@ -373,25 +196,6 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
         String v = raw.trim().toLowerCase(Locale.ROOT);
         return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
-    }
-
-    private Set<String> matchTopics(String prompt, List<TopicPattern> topics) {
-        String sanitized = TextSanitizer.sanitizeForMatching(prompt == null ? "" : prompt);
-        Set<String> matched = new LinkedHashSet<>();
-        for (TopicPattern tp : topics) {
-            if (tp.pattern.matcher(sanitized).find()) {
-                matched.add(tp.name);
-            }
-        }
-        return matched;
-    }
-
-    private AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
-    private TermsStore termsStore() {
-        return CDI.current().select(TermsStore.class).get();
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
@@ -421,49 +225,12 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 .collect(Collectors.toList());
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
     static final class TopicPattern {
 
         final String name;
         final Pattern pattern;
 
-        private TopicPattern(String name, Pattern pattern) {
+        TopicPattern(String name, Pattern pattern) {
             this.name = name;
             this.pattern = pattern;
         }

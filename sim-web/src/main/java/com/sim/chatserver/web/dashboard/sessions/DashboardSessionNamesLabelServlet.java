@@ -70,7 +70,7 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
         } catch (Throwable e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (java.io.IOException ioe) {
@@ -96,7 +96,7 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
                 return new String(bytes, StandardCharsets.UTF_8).trim();
             }
         } catch (IOException | ServletException e) {
-            log.log(Level.FINER, "Unable to read multipart part '" + name + "'", e);
+            log.log(Level.FINER, "Unable to read multipart part '" + name + '\'', e);
         }
         return null;
     }

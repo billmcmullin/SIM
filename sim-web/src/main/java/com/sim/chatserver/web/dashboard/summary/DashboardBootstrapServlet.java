@@ -3,11 +3,7 @@ package com.sim.chatserver.web.dashboard.summary;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,9 +18,9 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -50,6 +46,8 @@ public class DashboardBootstrapServlet extends HttpServlet {
     private static final int ACTIVE_DAYS = 7;
     private static final int SESSION_LIMIT = 10;
     private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getName() + ".summaryStore";
+        private final transient DashboardSessionAggregationQueryService sessionQueryService =
+            new DashboardSessionAggregationQueryService(log);
 
     @Override
     public void init() throws ServletException {
@@ -112,10 +110,9 @@ public class DashboardBootstrapServlet extends HttpServlet {
             widgets = List.of();
         }
 
-        Connection conn = null;
         try {
-            conn = dataSourceHolder().getDataSource().getConnection();
-            Map<String, SessionAccumulator> accumulators = collectSessionAccumulators(conn, widgets);
+            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+                    sessionQueryService.collectAccumulators(widgets, null);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
 
@@ -123,7 +120,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
             Instant cutoff = Instant.now().minusSeconds(ACTIVE_DAYS * 24L * 60L * 60L);
 
             int inactiveUsers = 0;
-            for (SessionAccumulator acc : accumulators.values()) {
+            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
                 if (acc != null && acc.lastEntry != null && acc.lastEntry.toInstant().isBefore(cutoff)) {
                     inactiveUsers++;
                 }
@@ -132,7 +129,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
 
             Instant cutoffYesterday = Instant.now().minusSeconds((ACTIVE_DAYS + 1L) * 24L * 60L * 60L);
             int inactiveUsersYesterday = 0;
-            for (SessionAccumulator acc : accumulators.values()) {
+            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
                 if (acc == null || acc.lastEntry == null || acc.lastEntry.toInstant().isBefore(cutoffYesterday)) {
                     inactiveUsersYesterday++;
                 }
@@ -150,11 +147,11 @@ public class DashboardBootstrapServlet extends HttpServlet {
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
             accumulators.entrySet()
                     .stream()
-                    .sorted(Comparator.<Map.Entry<String, SessionAccumulator>>comparingInt(e -> -e.getValue().count))
+                    .sorted(Comparator.<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>>comparingInt(e -> -e.getValue().count))
                     .limit(SESSION_LIMIT)
                     .forEach(entry -> {
                         String sessionId = entry.getKey();
-                        SessionAccumulator acc = entry.getValue();
+                        DashboardSessionAggregationQueryService.SessionAccumulatorData acc = entry.getValue();
                         String last = formatTimestamp(acc.lastEntry);
                         String topWidget = DashboardSessionDataUtil.pickTopWidgetName(acc.widgetCounts, widgetNames);
                         String displayLabel = SessionLabelStore.resolveDisplayLabel(sessionId, labels.get(sessionId));
@@ -185,9 +182,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
                     .build();
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute sessions for dashboard bootstrap", e);
-            return null;
-        } finally {
-            closeQuietly(conn);
+            return Json.createObjectBuilder().build();
         }
     }
 
@@ -201,7 +196,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
             return store.fetchExactOrLatest(day, slot);
         } catch (IllegalStateException e) {
             log.log(Level.WARNING, "Unable to load summary for dashboard bootstrap", e);
-            return null;
+            return Json.createObjectBuilder().build();
         }
     }
 
@@ -217,94 +212,6 @@ public class DashboardBootstrapServlet extends HttpServlet {
             return 2;
         }
         return 3;
-    }
-
-    private Map<String, SessionAccumulator> collectSessionAccumulators(Connection conn, List<WidgetEntry> widgets) {
-        Map<String, SessionAccumulator> accumulators = new LinkedHashMap<>();
-        if (widgets == null || widgets.isEmpty()) {
-            return accumulators;
-        }
-        for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null) {
-                continue;
-            }
-            String widgetId = widget.getWidgetId();
-            String tableName = DashboardSessionDataUtil.sanitizeWidgetTableName(widgetId);
-            if (!DashboardSessionDataUtil.tableExists(conn, tableName, log)) {
-                continue;
-            }
-            String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
-                    + quoteIdentifier(tableName)
-                    + " WHERE session_id IS NOT NULL GROUP BY session_id";
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try {
-                ps = conn.prepareStatement(sql);
-                rs = ps.executeQuery();
-                while (rs.next()) {
-                    String sessionId = rs.getString("session_id");
-                    if (sessionId == null || sessionId.isBlank()) {
-                        continue;
-                    }
-                    sessionId = sessionId.trim();
-                    SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                    int total = rs.getInt("total");
-                    acc.count += total;
-
-                    Integer existingCount = acc.widgetCounts.get(widgetId);
-                    int mergedCount = (existingCount == null ? 0 : existingCount.intValue()) + total;
-                    acc.widgetCounts.put(widgetId, Integer.valueOf(mergedCount));
-
-                    Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
-                    if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
-                        acc.lastEntry = lastEntry;
-                    }
-                }
-            } catch (SQLException ex) {
-                log.log(Level.FINE, "Skipping widget session aggregation due to SQL error", ex);
-            } finally {
-                closeQuietly(rs);
-                closeQuietly(ps);
-            }
-        }
-        return accumulators;
-    }
-
-    private static void closeQuietly(ResultSet resultSet) {
-        if (resultSet == null) {
-            return;
-        }
-        try {
-            resultSet.close();
-        } catch (SQLException e) {
-            log.log(Level.FINEST, "Ignoring ResultSet close failure", e);
-        }
-    }
-
-    private static void closeQuietly(Statement statement) {
-        if (statement == null) {
-            return;
-        }
-        try {
-            statement.close();
-        } catch (SQLException e) {
-            log.log(Level.FINEST, "Ignoring Statement close failure", e);
-        }
-    }
-
-    private static void closeQuietly(Connection connection) {
-        if (connection == null) {
-            return;
-        }
-        try {
-            connection.close();
-        } catch (SQLException e) {
-            log.log(Level.FINEST, "Ignoring Connection close failure", e);
-        }
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private String formatTimestamp(Timestamp ts) {
@@ -324,20 +231,24 @@ public class DashboardBootstrapServlet extends HttpServlet {
         }
 
         synchronized (context) {
-            local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
-            if (local != null) {
-                return local;
-            }
+            return getOrCreateSummaryStore(context);
+        }
+    }
 
-            try {
-                DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
-                created.ensureTable();
-                context.setAttribute(SUMMARY_STORE_KEY, created);
-                return created;
-            } catch (IllegalStateException e) {
-                log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore for bootstrap", e);
-                throw new IllegalStateException("Failed to initialize daily summary store", e);
-            }
+    private DashboardDailySummaryStore getOrCreateSummaryStore(jakarta.servlet.ServletContext context) {
+        DashboardDailySummaryStore local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
+        if (local != null) {
+            return local;
+        }
+
+        try {
+            DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+            created.ensureTable();
+            context.setAttribute(SUMMARY_STORE_KEY, created);
+            return created;
+        } catch (IllegalStateException e) {
+            log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore for bootstrap", e);
+            throw new IllegalStateException("Failed to initialize daily summary store", e);
         }
     }
 
@@ -360,10 +271,4 @@ public class DashboardBootstrapServlet extends HttpServlet {
         }
     }
 
-    static final class SessionAccumulator {
-
-        int count = 0;
-        Timestamp lastEntry = null;
-        final Map<String, Integer> widgetCounts = new LinkedHashMap<>();
-    }
 }

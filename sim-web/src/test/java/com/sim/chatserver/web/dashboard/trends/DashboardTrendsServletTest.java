@@ -118,7 +118,6 @@ public class DashboardTrendsServletTest
 
     private DashboardTrendsServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
         return new DashboardTrendsServlet() {
-            @Override
             protected AppDataSourceHolder dataSourceHolder() {
                 return dsHolder;
             }

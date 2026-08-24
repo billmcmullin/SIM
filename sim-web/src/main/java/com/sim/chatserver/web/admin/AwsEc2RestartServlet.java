@@ -148,7 +148,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
         } catch (Throwable e) {
             Logger.getLogger(getClass().getName())
                     .log(Level.WARNING, "Unhandled exception in doPost", e);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (IOException ioe) {
@@ -216,7 +216,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write JSON error response", ex);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, safe(message));
                 } catch (IOException ioe) {
@@ -231,7 +231,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to write JSON success response", ex);
-            if (resp != null && !resp.isCommitted()) {
+            if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response payload.");
                 } catch (IOException ioe) {

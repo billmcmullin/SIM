@@ -26,8 +26,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardDailySummaryServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final Object SUMMARY_STORE_LOCK = new Object();
-    static volatile DashboardDailySummaryStore summaryStore;
+    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryStore.class.getName();
 
     @Override
     public void init() throws ServletException {
@@ -150,26 +149,26 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     }
 
     private DashboardDailySummaryStore ensureSummaryStoreInitialized() {
-        DashboardDailySummaryStore local = summaryStore;
+        jakarta.servlet.ServletContext context = getServletContext();
+        DashboardDailySummaryStore local = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
         if (local != null) {
             return local;
         }
 
-        synchronized (SUMMARY_STORE_LOCK) {
-            return getOrCreateSummaryStore();
+        synchronized (context) {
+            DashboardDailySummaryStore existing = (DashboardDailySummaryStore) context.getAttribute(SUMMARY_STORE_KEY);
+            if (existing != null) {
+                return existing;
+            }
+            return createAndStoreSummaryStore(context);
         }
     }
 
-    private DashboardDailySummaryStore getOrCreateSummaryStore() {
-        DashboardDailySummaryStore existing = summaryStore;
-        if (existing != null) {
-            return existing;
-        }
-
+    private DashboardDailySummaryStore createAndStoreSummaryStore(jakarta.servlet.ServletContext context) {
         try {
             DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
             created.ensureTable();
-            summaryStore = created;
+            context.setAttribute(SUMMARY_STORE_KEY, created);
             return created;
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);

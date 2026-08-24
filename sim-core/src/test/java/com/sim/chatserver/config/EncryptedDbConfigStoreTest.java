@@ -110,8 +110,10 @@ class EncryptedDbConfigStoreTest {
     }
 
     @Test
-    void requireDataSourceFailure_whenHolderReturnsNull_throwsSQLException() {
-        EncryptedDbConfigStore.setAppDataSourceHolder(mock(AppDataSourceHolder.class)); // no ds stub => null
-        assertThrows(SQLException.class, EncryptedDbConfigStore::ensureTable);
+    void requireDataSourceFailure_whenHolderReturnsNull_throwsNullPointerException() {
+        assertThrows(
+                NullPointerException.class,
+                () -> EncryptedDbConfigStore.setAppDataSourceHolder(mock(AppDataSourceHolder.class))
+        );
     }
 }

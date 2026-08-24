@@ -1383,7 +1383,6 @@ public class WidgetTableServletTest
     }
     private WidgetTableServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
         return new WidgetTableServlet() {
-            @Override
             protected AppDataSourceHolder dataSourceHolder() {
                 return dsHolder;
             }

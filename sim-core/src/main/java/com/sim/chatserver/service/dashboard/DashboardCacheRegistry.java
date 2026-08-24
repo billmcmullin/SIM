@@ -1,6 +1,7 @@
 package com.sim.chatserver.service.dashboard;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -196,7 +197,7 @@ public class DashboardCacheRegistry {
     }
 
     public SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
-        long now = System.currentTimeMillis();
+        long now = nowMillis();
         boolean triggerRefresh = false;
 
         Entry<SessionOverview> current;
@@ -220,7 +221,7 @@ public class DashboardCacheRegistry {
 
         synchronized (sessionLock) {
             Entry<SessionOverview> second = sessionOverviewCache.get(key);
-            long now2 = System.currentTimeMillis();
+            long now2 = nowMillis();
             if (isFresh(second, now2)) {
                 return second.value;
             }
@@ -280,7 +281,7 @@ public class DashboardCacheRegistry {
             long ttlMillis,
             Supplier<T> loader
     ) {
-        long now = System.currentTimeMillis();
+        long now = nowMillis();
         Entry<T> current = getter.get();
         boolean triggerRefresh = false;
 
@@ -293,7 +294,7 @@ public class DashboardCacheRegistry {
                 T staleValue;
                 synchronized (lock) {
                     Entry<T> c2 = getter.get();
-                    long now2 = System.currentTimeMillis();
+                    long now2 = nowMillis();
                     if (isFresh(c2, now2)) {
                         return c2.value;
                     }
@@ -313,7 +314,7 @@ public class DashboardCacheRegistry {
 
         synchronized (lock) {
             Entry<T> c3 = getter.get();
-            long now3 = System.currentTimeMillis();
+            long now3 = nowMillis();
             if (isFresh(c3, now3)) {
                 return c3.value;
             }
@@ -346,7 +347,7 @@ public class DashboardCacheRegistry {
 
             try {
                 T fresh = safeLoad(loader, fallback);
-                long now = System.currentTimeMillis();
+                long now = nowMillis();
 
                 synchronized (lock) {
                     Entry<T> current = getter.get();
@@ -384,7 +385,7 @@ public class DashboardCacheRegistry {
 
             try {
                 SessionOverview fresh = safeLoad(loader, fallback);
-                long now = System.currentTimeMillis();
+                long now = nowMillis();
 
                 synchronized (sessionLock) {
                     Entry<SessionOverview> current = sessionOverviewCache.get(key);
@@ -428,6 +429,10 @@ public class DashboardCacheRegistry {
 
     private static boolean isWithinGrace(Entry<?> e, long now) {
         return e != null && now >= e.expiresAt && now < e.staleUntil;
+    }
+
+    private static long nowMillis() {
+        return Instant.now().toEpochMilli();
     }
 
     private static <T> T safeLoad(Supplier<T> loader, T fallback) {

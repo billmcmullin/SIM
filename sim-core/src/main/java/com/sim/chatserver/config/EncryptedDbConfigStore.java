@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.Normalizer;
 import java.util.Base64;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -79,15 +80,25 @@ public final class EncryptedDbConfigStore {
     private static final int PBKDF2_ITERATIONS = 120_000;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
-    private static volatile AppDataSourceHolder dsHolder;
+    private static volatile DataSource configuredDataSource;
 
     private EncryptedDbConfigStore() {
     }
 
     public static void setAppDataSourceHolder(AppDataSourceHolder holder) {
-        dsHolder = holder;
-        log.log(Level.INFO, "setAppDataSourceHolder called. holder={0}",
-            holder == null ? "null" : holder.getClass().getName());
+        DataSource resolvedDataSource = null;
+        if (holder != null) {
+            try {
+                resolvedDataSource = Objects.requireNonNull(
+                        holder.getDataSource(),
+                        "AppDataSourceHolder returned null DataSource");
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                throw new IllegalStateException("Failed to get DataSource from AppDataSourceHolder", e);
+            }
+        }
+        configuredDataSource = resolvedDataSource;
+        log.log(Level.INFO, "setAppDataSourceHolder called. dataSource={0}",
+            resolvedDataSource == null ? "null" : resolvedDataSource.getClass().getName());
     }
 
     public static void ensureTable() throws SQLException {
@@ -309,7 +320,14 @@ public final class EncryptedDbConfigStore {
             if (!columns.next()) {
                 log.log(Level.INFO, "ensureColumn: adding missing column {0} {1}", new Object[]{columnName, sqlType});
                 try (PreparedStatement alter = conn.prepareStatement(
-                        "ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + columnName + " " + sqlType)) {
+                        new StringBuilder(64)
+                                .append("ALTER TABLE ")
+                                .append(TABLE_NAME)
+                                .append(" ADD COLUMN ")
+                                .append(columnName)
+                                .append(' ')
+                                .append(sqlType)
+                                .toString())) {
                     alter.execute();
                 }
             } else {
@@ -337,7 +355,7 @@ public final class EncryptedDbConfigStore {
 
             String ivB64 = Base64.getEncoder().encodeToString(iv);
             String encB64 = Base64.getEncoder().encodeToString(encrypted);
-            return ENC_PREFIX + ivB64 + ":" + encB64;
+            return ENC_PREFIX + ivB64 + ':' + encB64;
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "encryptIfPresent: encryption key resolution failed", e);
             throw new SQLException("Unable to encrypt configuration value", e);
@@ -486,22 +504,24 @@ public final class EncryptedDbConfigStore {
     }
 
     private static DataSource getDataSourceOrThrow() {
-        AppDataSourceHolder holder = dsHolder;
-        if (holder == null) {
-            log.fine("getDataSourceOrThrow: dsHolder null, resolving via CDI");
-            try {
-                holder = CDI.current().select(AppDataSourceHolder.class).get();
-                dsHolder = holder;
-            } catch (IllegalStateException | IllegalArgumentException e) {
-                throw new IllegalStateException("CDI lookup failed for AppDataSourceHolder", e);
-            }
+        DataSource local = configuredDataSource;
+        if (local != null) {
+            return local;
+        }
+
+        AppDataSourceHolder holder;
+        log.fine("getDataSourceOrThrow: configuredDataSource null, resolving via CDI");
+        try {
+            holder = CDI.current().select(AppDataSourceHolder.class).get();
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            throw new IllegalStateException("CDI lookup failed for AppDataSourceHolder", e);
         }
 
         try {
-            DataSource ds = holder.getDataSource();
-            if (ds == null) {
-                throw new IllegalStateException("AppDataSourceHolder returned null DataSource");
-            }
+            DataSource ds = Objects.requireNonNull(
+                    holder.getDataSource(),
+                    "AppDataSourceHolder returned null DataSource");
+            configuredDataSource = ds;
             log.fine("getDataSourceOrThrow: datasource acquired");
             return ds;
         } catch (IllegalStateException | IllegalArgumentException e) {

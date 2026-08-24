@@ -1,8 +1,13 @@
 package com.sim.chatserver.web.dashboard.summary;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -11,41 +16,42 @@ import java.time.format.DateTimeFormatter;
 
 import org.junit.jupiter.api.Test;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 class DashboardBootstrapServletTest {
 
     @Test
     void formatTimestamp_handlesNullAndFormatsUsingSystemZone() throws Exception {
         DashboardBootstrapServlet servlet = new DashboardBootstrapServlet();
 
-        assertEquals("\u2014", invoke(servlet, "formatTimestamp", new Class[]{Timestamp.class}, (Object) null));
+        Method format = DashboardBootstrapServlet.class.getDeclaredMethod("formatTimestamp", Timestamp.class);
+        format.setAccessible(true);
+
+        assertEquals("—", format.invoke(servlet, (Object) null));
 
         Timestamp ts = Timestamp.from(Instant.parse("2026-08-01T10:15:30Z"));
         String expected = ts.toInstant()
                 .atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        assertEquals(expected, invoke(servlet, "formatTimestamp", new Class[]{Timestamp.class}, ts));
+        assertEquals(expected, format.invoke(servlet, ts));
     }
 
     @Test
-    void quoteIdentifier_escapesEmbeddedQuotes() throws Exception {
+    void doGet_withoutSession_returnsUnauthorizedJson() throws Exception {
         DashboardBootstrapServlet servlet = new DashboardBootstrapServlet();
 
-        assertEquals("\"table\"", invoke(servlet, "quoteIdentifier", new Class[]{String.class}, "table"));
-        assertEquals("\"a\"\"b\"", invoke(servlet, "quoteIdentifier", new Class[]{String.class}, "a\"b"));
-    }
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        StringWriter out = new StringWriter();
 
-    @Test
-    void sessionAccumulator_defaultsAreInitialized() {
-        DashboardBootstrapServlet.SessionAccumulator acc = new DashboardBootstrapServlet.SessionAccumulator();
-        assertEquals(0, acc.count);
-        assertEquals(null, acc.lastEntry);
-        assertNotNull(acc.widgetCounts);
-    }
+        when(req.getSession(false)).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(out));
 
-    private static Object invoke(Object target, String methodName, Class<?>[] types, Object... args) throws Exception {
-        Method method = target.getClass().getDeclaredMethod(methodName, types);
-        method.setAccessible(true);
-        return method.invoke(target, args);
+        servlet.doGet(req, resp);
+
+        verify(resp).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertTrue(out.toString().contains("unauthorized"));
     }
 }

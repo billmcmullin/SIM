@@ -6,28 +6,16 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.service.dashboard.DashboardTrendsQueryService;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
-import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
-import com.sim.chatserver.widget.WidgetEntry;
-import com.sim.chatserver.widget.WidgetStore;
 
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -42,6 +30,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTrendsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_trends.html";
+    private final transient DashboardTrendsQueryService queryService = new DashboardTrendsQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -53,26 +42,13 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
 
         int days = parseDays(ServletRequestParamUtil.firstParam(req, "days", 32, true, true));
-        LocalDate end = LocalDate.now(ZoneId.systemDefault());
+        LocalDate end = LocalDate.now(java.time.ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-        Map<LocalDate, Integer> totalDaily = new LinkedHashMap<>();
-        for (int i = 0; i < days; i++) {
-            totalDaily.put(start.plusDays(i), Integer.valueOf(0));
-        }
-
-        Map<String, Map<LocalDate, Integer>> widgetDaily = new LinkedHashMap<>();
-        Map<String, String> widgetNameToId = new LinkedHashMap<>();
-
-        try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
-            List<WidgetEntry> widgets = WidgetStore.list(null);
-
-            for (WidgetEntry widget : widgets) {
-                collectWidgetTrend(conn, widget, start, end, totalDaily, widgetDaily, widgetNameToId);
-            }
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            throw new ServletException("Unable to load trend data", e);
-        }
+        DashboardTrendsQueryService.TrendResult trend = queryService.loadTrendData(start, end);
+        Map<LocalDate, Integer> totalDaily = trend.totalDaily;
+        Map<String, Map<LocalDate, Integer>> widgetDaily = trend.widgetDaily;
+        Map<String, String> widgetNameToId = trend.widgetNameToId;
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
         JsonArrayBuilder values = Json.createArrayBuilder();
@@ -141,105 +117,6 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
     }
 
-    private void collectWidgetTrend(
-            Connection conn,
-            WidgetEntry widget,
-            LocalDate start,
-            LocalDate end,
-            Map<LocalDate, Integer> totalDaily,
-            Map<String, Map<LocalDate, Integer>> widgetDaily,
-            Map<String, String> widgetNameToId
-    ) {
-        if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-            return;
-        }
-
-        String widgetId = widget.getWidgetId();
-        String widgetName = widget.getDisplayName() == null || widget.getDisplayName().isBlank()
-                ? widgetId : widget.getDisplayName();
-        String tableName = sanitizeWidgetTableName(widgetId);
-        if (!tableExists(conn, tableName)) {
-            return;
-        }
-
-        Map<LocalDate, Integer> series = zeroSeries(totalDaily);
-        String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
-
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            ps = conn.prepareStatement(sql);
-            ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
-            ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
-            rs = ps.executeQuery();
-            accumulateTrendRows(rs, totalDaily, series);
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to collect trend data for widget " + widgetId, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-        }
-
-        widgetDaily.put(widgetName, series);
-        widgetNameToId.put(widgetName, widgetId);
-    }
-
-    private static void closeQuietly(ResultSet resultSet) {
-        if (resultSet == null) {
-            return;
-        }
-        try {
-            resultSet.close();
-        } catch (SQLException e) {
-            log.log(Level.FINEST, "Ignoring ResultSet close failure", e);
-        }
-    }
-
-    private static void closeQuietly(PreparedStatement statement) {
-        if (statement == null) {
-            return;
-        }
-        try {
-            statement.close();
-        } catch (SQLException e) {
-            log.log(Level.FINEST, "Ignoring PreparedStatement close failure", e);
-        }
-    }
-
-    private Map<LocalDate, Integer> zeroSeries(Map<LocalDate, Integer> totalDaily) {
-        Map<LocalDate, Integer> series = new LinkedHashMap<>();
-        for (LocalDate day : totalDaily.keySet()) {
-            series.put(day, Integer.valueOf(0));
-        }
-        return series;
-    }
-
-    private void accumulateTrendRows(ResultSet rs, Map<LocalDate, Integer> totalDaily, Map<LocalDate, Integer> series) {
-        try {
-            while (rs.next()) {
-                Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                if (ts == null) {
-                    continue;
-                }
-
-                LocalDate entryDate = ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                if (totalDaily.containsKey(entryDate)) {
-                    incrementDate(totalDaily, entryDate);
-                    incrementDate(series, entryDate);
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to accumulate trend rows", e);
-        }
-    }
-
-    private void incrementDate(Map<LocalDate, Integer> counts, LocalDate date) {
-        Integer current = counts.get(date);
-        int value = current == null ? 0 : current.intValue();
-        counts.put(date, Integer.valueOf(value + 1));
-    }
-
     private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
         if (resp == null || resp.isCommitted()) {
             return;
@@ -268,10 +145,6 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
-        return CDI.current().select(AppDataSourceHolder.class).get();
-    }
-
     private String loadTemplate(HttpServletRequest req, String path) {
         try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
             if (stream == null) {
@@ -290,43 +163,6 @@ public class DashboardTrendsServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to load trends template: " + path, e);
             return "";
         }
-    }
-
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String c : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, c, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
-        }
-        return false;
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
-        }
-        return normalized;
-    }
-
-    private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
     private String escapeForJs(String value) {
