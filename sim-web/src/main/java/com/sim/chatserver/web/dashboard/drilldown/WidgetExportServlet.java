@@ -63,7 +63,7 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
     private static final ThreadLocal<Supplier<AppDataSourceHolder>> DATA_SOURCE_HOLDER_OVERRIDE = new ThreadLocal<>();
 
-    public WidgetExportServlet() {
+    public WidgetExportServlet() { // parasoft-suppress OWASP2025.A1.DPPM "Public no-arg constructor is required by servlet container lifecycle."
         DATA_SOURCE_HOLDER_OVERRIDE.remove();
     }
 

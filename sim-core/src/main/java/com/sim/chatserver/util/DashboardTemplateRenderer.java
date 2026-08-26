@@ -76,7 +76,7 @@ public final class DashboardTemplateRenderer {
         return out.toString();
     }
 
-    public static String escapeForJs(String value) {
+    static String escapeForJs(String value) {
         if (value == null) {
             return "";
         }

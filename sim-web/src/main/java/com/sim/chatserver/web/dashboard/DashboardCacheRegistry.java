@@ -1,4 +1,4 @@
-package com.sim.chatserver.service.dashboard;
+package com.sim.chatserver.web.dashboard;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -15,20 +15,20 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.ProgressStat;
+import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.SessionOverview;
 import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
 import com.sim.chatserver.model.DashboardViewModels.TermSummary;
 import com.sim.chatserver.model.DashboardViewModels.TopTopic;
 import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
+import com.sim.chatserver.web.dashboard.DashboardMetricsService.DashboardProgressMetrics;
 
 /**
  * Thread-safe dashboard cache registry with: - TTL caching -
  * Stale-while-revalidate grace window - Bounded keyed session-overview cache -
  * Day-keyed refresh behavior for "today/yesterday" sensitive metrics
  */
-public class DashboardCacheRegistry {
+final class DashboardCacheRegistry {
 
     private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getName());
     private static final AtomicInteger REFRESH_THREAD_INDEX = new AtomicInteger(1);
@@ -97,7 +97,7 @@ public class DashboardCacheRegistry {
     private volatile String dashboardProgressDayKey;
     private volatile String widgetStatsDayKey;
 
-    final List<WidgetStat> getWidgetStats(Supplier<List<WidgetStat>> loader) {
+    List<WidgetStat> getWidgetStats(Supplier<List<WidgetStat>> loader) {
         String dayKey = currentDayKey();
         boolean invalidate = false;
         synchronized (dayKeyLock) {
@@ -114,11 +114,11 @@ public class DashboardCacheRegistry {
         return getSingle(widgetLock, () -> widgetStatsCache, v -> widgetStatsCache = v, WIDGET_STATS_TTL_MILLIS, loader);
     }
 
-    final TermSummary getTermSummary(Supplier<TermSummary> loader) {
+    TermSummary getTermSummary(Supplier<TermSummary> loader) {
         return getSingle(termLock, () -> termSummaryCache, v -> termSummaryCache = v, TERM_SUMMARY_TTL_MILLIS, loader);
     }
 
-    final ProgressStat getChatProgression(Supplier<ProgressStat> loader) {
+    ProgressStat getChatProgression(Supplier<ProgressStat> loader) {
         String dayKey = currentDayKey();
         boolean invalidate = false;
         synchronized (dayKeyLock) {
@@ -135,7 +135,7 @@ public class DashboardCacheRegistry {
         return getSingle(chatProgLock, () -> chatProgressionCache, v -> chatProgressionCache = v, CHAT_PROGRESSION_TTL_MILLIS, loader);
     }
 
-    final ProgressStat getNewUserProgression(Supplier<ProgressStat> loader) {
+    ProgressStat getNewUserProgression(Supplier<ProgressStat> loader) {
         String dayKey = currentDayKey();
         boolean invalidate = false;
         synchronized (dayKeyLock) {
@@ -152,7 +152,7 @@ public class DashboardCacheRegistry {
         return getSingle(newUserProgLock, () -> newUserProgressionCache, v -> newUserProgressionCache = v, NEW_USER_PROGRESSION_TTL_MILLIS, loader);
     }
 
-    final List<TopTopic> getTopTopics(Supplier<List<TopTopic>> loader) {
+    List<TopTopic> getTopTopics(Supplier<List<TopTopic>> loader) {
         String dayKey = currentDayKey();
         boolean invalidate = false;
         synchronized (dayKeyLock) {
@@ -169,7 +169,7 @@ public class DashboardCacheRegistry {
         return getSingle(topTopicsLock, () -> topTopicsCache, v -> topTopicsCache = v, TOP_TOPICS_TTL_MILLIS, loader);
     }
 
-    final List<OtherParasoftEntry> getOtherParasoftLatest(Supplier<List<OtherParasoftEntry>> loader) {
+    List<OtherParasoftEntry> getOtherParasoftLatest(Supplier<List<OtherParasoftEntry>> loader) {
         return getSingle(otherParasoftLock, () -> otherParasoftLatestCache, v -> otherParasoftLatestCache = v, OTHER_PARASOFT_LATEST_TTL_MILLIS, loader);
     }
 
@@ -197,7 +197,7 @@ public class DashboardCacheRegistry {
         );
     }
 
-    final SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
+    SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
         long now = nowMillis();
         boolean triggerRefresh = false;
 

@@ -8,24 +8,31 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
 import com.sim.chatserver.model.DashboardViewModels.TermSummary;
 import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -34,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 class DashboardServletTest {
 
@@ -98,18 +107,21 @@ class DashboardServletTest {
     @Test
     void helper_formatProgression_and_widgetPieJson() throws Throwable {
         DashboardServlet servlet = new DashboardServlet();
+        Object positiveProgress = newLocalProgressStat(10, 5);
+        Object negativeProgress = newLocalProgressStat(0, 5);
+        Class<?> progressClass = positiveProgress.getClass();
 
         String positive = (String) invokePrivate(
                 servlet,
                 "formatProgressionHtml",
-                new Class<?>[]{ProgressStat.class},
-                new ProgressStat(10, 5));
+            new Class<?>[]{progressClass},
+            positiveProgress);
         String negative = (String) invokePrivate(
                 servlet,
                 "formatProgressionHtml",
-                new Class<?>[]{ProgressStat.class},
-                new ProgressStat(0, 5));
-        String nullProgress = (String) invokePrivate(servlet, "formatProgressionHtml", new Class<?>[]{ProgressStat.class}, new Object[]{null});
+            new Class<?>[]{progressClass},
+            negativeProgress);
+        String nullProgress = (String) invokePrivate(servlet, "formatProgressionHtml", new Class<?>[]{progressClass}, new Object[]{null});
 
         List<WidgetStat> stats = List.of(
                 new WidgetStat("w1", "Label", 3),
@@ -205,6 +217,60 @@ class DashboardServletTest {
         assertTrue(none.isEmpty());
         assertTrue(t.isDaemon());
         assertTrue(t.getName().startsWith("dashboard-worker-"));
+    }
+
+    @Test
+    void helper_quoteIdentifier_throwsForInvalidIdentifiers() {
+        DashboardServlet servlet = new DashboardServlet();
+
+        IllegalArgumentException blank = assertThrows(
+                IllegalArgumentException.class,
+                () -> invokePrivate(servlet, "quoteIdentifier", new Class<?>[]{String.class}, " "));
+        IllegalArgumentException invalidChars = assertThrows(
+                IllegalArgumentException.class,
+                () -> invokePrivate(servlet, "quoteIdentifier", new Class<?>[]{String.class}, "1bad-name"));
+
+        assertEquals("Invalid SQL identifier", blank.getMessage());
+        assertEquals("Invalid SQL identifier", invalidChars.getMessage());
+    }
+
+    @Test
+    void helper_openConnectionSafe_wrapsSQLExceptionInIllegalStateException() {
+        DashboardServlet servlet = new DashboardServlet();
+
+        @SuppressWarnings("unchecked")
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<AppDataSourceHolder> holderInstance = mock(Instance.class);
+        AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+        DataSource dataSource = mock(DataSource.class);
+
+        when(cdi.select(AppDataSourceHolder.class)).thenReturn(holderInstance);
+        when(holderInstance.get()).thenReturn(holder);
+        when(holder.getDataSource()).thenReturn(dataSource);
+        try {
+            when(dataSource.getConnection()).thenThrow(new SQLException("db down"));
+        } catch (SQLException e) {
+            throw new AssertionError("Unexpected setup failure", e);
+        }
+
+        try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+
+            IllegalStateException ex = assertThrows(
+                    IllegalStateException.class,
+                    () -> invokePrivate(servlet, "openConnectionSafe", new Class<?>[]{}));
+
+            assertEquals("Unable to open dashboard data connection", ex.getMessage());
+            assertInstanceOf(SQLException.class, ex.getCause());
+        }
+    }
+
+    private static Object newLocalProgressStat(int today, int yesterday) throws ReflectiveOperationException {
+        Class<?> progressClass = Class.forName("com.sim.chatserver.web.dashboard.DashboardLocalViewModels$ProgressStat");
+        Constructor<?> ctor = progressClass.getDeclaredConstructor(int.class, int.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(today, yesterday);
     }
 
     private static Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args)

@@ -25,6 +25,81 @@ import jakarta.mail.internet.MimeMultipart;
 class SmtpEmailServiceTest {
 
     @Test
+    void send_throwsIllegalArgumentException_whenHostMissing() {
+        EmailConfig config = new EmailConfig("   ", 587, false, true, false, "", "", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(validMessage()));
+        assertEquals("SMTP host missing", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenPortInvalid() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 0, false, true, false, "", "", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(validMessage()));
+        assertEquals("SMTP port invalid: 0", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenAuthEnabledAndUsernameMissing() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 587, true, true, false, " ", "secret", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(validMessage()));
+        assertEquals("SMTP username missing", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenAuthEnabledAndPasswordMissing() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 587, true, true, false, "user", " ", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(validMessage()));
+        assertEquals("SMTP password missing", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenMessageNull() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(null));
+        assertEquals("EmailMessage is null", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenSubjectBlank() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        EmailMessage message = EmailMessage.builder()
+                .to("to@example.com")
+                .subject(" ")
+                .textBody("Hello")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(message));
+        assertEquals("Email subject is required", ex.getMessage());
+    }
+
+    @Test
+    void send_throwsIllegalArgumentException_whenToRecipientsMissingOrBlank() {
+        EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
+        SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
+
+        EmailMessage message = EmailMessage.builder()
+                .to("   ")
+                .subject("Subject")
+                .textBody("Hello")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.send(message));
+        assertEquals("At least one TO recipient is required", ex.getMessage());
+    }
+
+    @Test
     void send_usesMessageFrom_whenPresent() throws Exception {
         EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
@@ -276,5 +351,13 @@ class SmtpEmailServiceTest {
                 }
             })));
         }
+    }
+
+    private EmailMessage validMessage() {
+        return EmailMessage.builder()
+                .to("to@example.com")
+                .subject("Subject")
+                .textBody("Hello")
+                .build();
     }
 }

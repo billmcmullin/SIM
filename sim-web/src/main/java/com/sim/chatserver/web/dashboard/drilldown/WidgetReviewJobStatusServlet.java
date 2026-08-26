@@ -171,7 +171,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                     .add("coverage", coverage)
                     .build());
     
-        } catch (Throwable e) {
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {
@@ -215,7 +215,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 .add("job", updated == null ? Json.createObjectBuilder().build() : updated.toJson())
                 .build());
     
-        } catch (Throwable e) {
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
             if (!resp.isCommitted()) {

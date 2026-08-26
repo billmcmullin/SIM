@@ -195,7 +195,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             redirectWithMessage(resp, req, false, "Salesforce OAuth callback failed.");
         }
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

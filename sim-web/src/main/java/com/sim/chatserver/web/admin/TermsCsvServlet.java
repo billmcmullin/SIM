@@ -187,7 +187,7 @@ public class TermsCsvServlet extends HttpServlet {
             } else {
                 counters.updated++;
             }
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.FINE, "Skipping invalid CSV data line", e);
             errors.add("line " + lineNum + ": " + e.getMessage());
         }

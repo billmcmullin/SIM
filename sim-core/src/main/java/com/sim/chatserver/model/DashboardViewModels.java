@@ -113,11 +113,11 @@ public final class DashboardViewModels {
             }
         }
 
-        public int getToday() {
+        int getToday() {
             return today;
         }
 
-        public int getYesterday() {
+        int getYesterday() {
             return yesterday;
         }
 
@@ -319,15 +319,15 @@ public final class DashboardViewModels {
             return timeline;
         }
 
-        public int getTotalUsers() {
+        int getTotalUsers() {
             return totalUsers;
         }
 
-        public int getActiveUsers() {
+        int getActiveUsers() {
             return activeUsers;
         }
 
-        public int getInactiveUsers() {
+        int getInactiveUsers() {
             return inactiveUsers;
         }
 
@@ -335,15 +335,15 @@ public final class DashboardViewModels {
             return activeDays;
         }
 
-        public int getNewSessionsToday() {
+        int getNewSessionsToday() {
             return newSessionsToday;
         }
 
-        public int getNewSessionsYesterday() {
+        int getNewSessionsYesterday() {
             return newSessionsYesterday;
         }
 
-        public ProgressStat getNewSessionsProgression() {
+        ProgressStat getNewSessionsProgression() {
             return newSessionsProgression;
         }
 

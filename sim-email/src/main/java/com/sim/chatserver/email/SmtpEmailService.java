@@ -1,7 +1,6 @@
 package com.sim.chatserver.email;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -185,11 +184,11 @@ public class SmtpEmailService implements EmailService {
             MimeMultipart mixed = new MimeMultipart("mixed");
             mixed.addBodyPart(bodyPart);
 
-            if (message.attachments() != null) {
-                message.attachments().stream()
-                        .filter(Objects::nonNull)
-                        .forEach(attachment -> addAttachmentPart(mixed, attachment));
-            }
+            message.forEachAttachment(attachment -> {
+                if (attachment != null) {
+                    addAttachmentPart(mixed, attachment);
+                }
+            });
 
             return mixed;
         } catch (MessagingException | IllegalArgumentException e) {

@@ -262,7 +262,7 @@ final class WidgetReviewDataService {
             writeJson(resp, "{\"status\":\"error\",\"message\":\"Unable to load selection.\"}");
         }
     
-        } catch (Throwable e) {
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

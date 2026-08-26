@@ -114,7 +114,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             resp.getWriter().write("Unable to load summary markdown page.");
         }
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

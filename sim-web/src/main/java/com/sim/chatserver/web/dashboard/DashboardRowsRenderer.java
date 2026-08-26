@@ -1,4 +1,4 @@
-package com.sim.chatserver.render;
+package com.sim.chatserver.web.dashboard;
 
 import java.io.StringWriter;
 import java.net.URLEncoder;
@@ -23,7 +23,7 @@ import com.sim.chatserver.model.DashboardViewModels.TopTopic;
 import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
 import com.sim.chatserver.util.SessionLabelStore;
 
-public final class DashboardRowsRenderer {
+final class DashboardRowsRenderer {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Logger LOG = Logger.getLogger(DashboardRowsRenderer.class.getName());

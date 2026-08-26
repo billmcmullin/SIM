@@ -27,11 +27,15 @@ public final class DashboardServletQueryService {
 
     private final Logger log;
 
-    public DashboardServletQueryService(Logger log) {
+    DashboardServletQueryService(Logger log) {
         this.log = log;
     }
 
-    public com.sim.chatserver.model.DashboardViewModels.TermSummary loadTermSummary(
+    public static DashboardServletQueryService create(Logger log) {
+        return new DashboardServletQueryService(log);
+    }
+
+    com.sim.chatserver.model.DashboardViewModels.TermSummary loadTermSummary(
             DashboardTermService termService,
             List<WidgetEntry> widgets,
             LocalDate rangeStart,
@@ -46,7 +50,7 @@ public final class DashboardServletQueryService {
         }
     }
 
-    public SessionOverview loadSessionOverview(
+    SessionOverview loadSessionOverview(
             DashboardSessionService sessionService,
             List<WidgetEntry> widgets,
             LocalDate rangeStart,
@@ -61,7 +65,7 @@ public final class DashboardServletQueryService {
         }
     }
 
-    public String buildLastFiveDaysTrendJson(List<WidgetEntry> widgets) {
+    String buildLastFiveDaysTrendJson(List<WidgetEntry> widgets) {
         LocalDate end = LocalDate.now(ZoneId.systemDefault());
         LocalDate start = end.minusDays(4);
 

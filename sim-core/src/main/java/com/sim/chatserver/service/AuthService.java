@@ -39,7 +39,7 @@ public class AuthService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    final UserAccount authenticate(String username, String password) {
+    public UserAccount authenticate(String username, String password) {
         // Avoid work if FINE is disabled
         if (log.isLoggable(Level.FINE)) {
             log.fine(LOG_LOOKUP_INIT);

@@ -67,13 +67,14 @@ public class WidgetTableSelectionServlet extends HttpServlet {
 
             writeJson(resp, HttpServletResponse.SC_OK, body);
         } catch (java.util.NoSuchElementException e) {
+            log.log(Level.FINE, "Widget table not found for selection", e);
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Table for widget does not exist.");
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to collect chat ids", e);
             jsonError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to fetch chat ids.");
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public final class EmailMessage {
 
@@ -70,15 +71,53 @@ public final class EmailMessage {
         return markdownBody;
     }
 
-    List<EmailAttachment> attachments() {
-        return attachments;
+    void forEachAttachment(Consumer<EmailAttachment> consumer) {
+        if (consumer == null) {
+            return;
+        }
+        attachments.forEach(consumer);
     }
 
-    public static Builder builder() {
+    static Builder builder() {
         return new Builder();
     }
 
-    public static final class Builder {
+    public static EmailMessage create(
+            String from,
+            List<String> to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String textBody,
+            String htmlBody,
+            String markdownBody,
+            List<EmailAttachment> attachments) {
+        Builder builder = builder()
+                .subject(subject)
+                .textBody(textBody)
+                .htmlBody(htmlBody)
+                .markdownBody(markdownBody);
+
+        if (from != null) {
+            builder.from(from);
+        }
+        if (to != null) {
+            builder.to(to);
+        }
+        if (cc != null) {
+            builder.cc(cc);
+        }
+        if (bcc != null) {
+            builder.bcc(bcc);
+        }
+        if (attachments != null) {
+            builder.attachments(attachments);
+        }
+
+        return builder.build();
+    }
+
+    static final class Builder {
 
         private String from;
         private final List<String> to = new ArrayList<>();
@@ -90,12 +129,12 @@ public final class EmailMessage {
         private String markdownBody;
         private final List<EmailAttachment> attachments = new ArrayList<>();
 
-        public Builder from(String from) {
+        Builder from(String from) {
             this.from = from;
             return this;
         }
 
-        public Builder addTo(String recipient) {
+        Builder addTo(String recipient) {
             return to(recipient);
         }
 
@@ -109,7 +148,7 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder addCc(String recipient) {
+        Builder addCc(String recipient) {
             return cc(recipient);
         }
 
@@ -123,7 +162,7 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder addBcc(String recipient) {
+        Builder addBcc(String recipient) {
             return bcc(recipient);
         }
 
@@ -137,22 +176,22 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder subject(String subject) {
+        Builder subject(String subject) {
             this.subject = subject;
             return this;
         }
 
-        public Builder textBody(String textBody) {
+        Builder textBody(String textBody) {
             this.textBody = textBody;
             return this;
         }
 
-        public Builder htmlBody(String htmlBody) {
+        Builder htmlBody(String htmlBody) {
             this.htmlBody = htmlBody;
             return this;
         }
 
-        public Builder markdownBody(String markdownBody) {
+        Builder markdownBody(String markdownBody) {
             this.markdownBody = markdownBody;
             return this;
         }
@@ -162,16 +201,16 @@ public final class EmailMessage {
             return this;
         }
 
-        public Builder addAttachment(EmailAttachment attachment) {
+        Builder addAttachment(EmailAttachment attachment) {
             return attachment(attachment);
         }
 
-        public Builder attachments(List<EmailAttachment> attachments) {
+        private Builder attachments(List<EmailAttachment> attachments) {
             this.attachments.addAll(attachments);
             return this;
         }
 
-        public EmailMessage build() {
+        EmailMessage build() {
             Objects.requireNonNull(subject, "subject is required");
             if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
                 throw new IllegalArgumentException("At least one recipient is required");

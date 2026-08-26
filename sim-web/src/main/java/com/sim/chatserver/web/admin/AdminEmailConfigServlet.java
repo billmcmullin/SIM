@@ -24,6 +24,7 @@ import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -43,7 +44,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         }
 
         DbEmailConfigProvider provider = emailConfigProvider();
-        EmailConfigResolver resolver = new EmailConfigResolver(provider);
+        EmailConfigResolver resolver = EmailConfigResolver.create(provider);
         ResolvedEmailConfig resolved = resolver.resolve();
 
         EmailConfig effective = resolved.config();
@@ -244,7 +245,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
                 cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);
             } else {
-                EmailConfigResolver resolver = new EmailConfigResolver(provider);
+                EmailConfigResolver resolver = EmailConfigResolver.create(provider);
                 ResolvedEmailConfig resolved = resolver.resolve();
                 if (!resolved.valid() || resolved.config() == null) {
                     writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid effective SMTP config to test.");
@@ -270,12 +271,16 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
             EmailService service = EmailFactory.smtp(cfg);
 
-            EmailMessage message = EmailMessage.builder()
-                    .from(from)
-                    .addTo(testTo)
-                    .subject("SIM SMTP Test Email")
-                    .textBody("This is a test email from SIM Admin SMTP configuration.")
-                    .build();
+                EmailMessage message = EmailMessage.create(
+                    from,
+                    List.of(testTo),
+                    List.of(),
+                    List.of(),
+                    "SIM SMTP Test Email",
+                    "This is a test email from SIM Admin SMTP configuration.",
+                    null,
+                    null,
+                    List.of());
 
             service.send(message);
 

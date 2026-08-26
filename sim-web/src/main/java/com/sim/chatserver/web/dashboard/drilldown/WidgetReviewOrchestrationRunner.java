@@ -42,7 +42,7 @@ final class WidgetReviewOrchestrationRunner {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw e;
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             throw new IOException("Map-reduce orchestration failed", e);
         }
     }

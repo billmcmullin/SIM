@@ -911,8 +911,8 @@ final class DatabaseImportService {
         if (closeable != null) {
             try {
                 closeable.close();
-            } catch (Exception e) {
-                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
+            } catch (Exception ignore) {
+                java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ignore);
                 // ignore close failure
             }
         }
