@@ -55,7 +55,7 @@ public class DashboardSessionService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public SessionOverview buildSessionOverview(
+    SessionOverview buildSessionOverview(
             Connection conn,
             List<WidgetEntry> widgets,
             LocalDate rangeStart,

@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -436,13 +437,17 @@ public class DashboardCacheRegistry {
     }
 
     private static <T> T safeLoad(Supplier<T> loader, T fallback) {
-        try {
-            T value = loader.get();
-            return value != null ? value : fallback;
-        } catch (Throwable ex) {
-            log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", ex);
-            return fallback;
-        }
+        return CompletableFuture.completedFuture(loader)
+                .thenApply(Supplier::get)
+                .handle((value, ex) -> {
+                    if (ex == null) {
+                        return value != null ? value : fallback;
+                    }
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", cause);
+                    return fallback;
+                })
+                .join();
     }
 
     private static <K, V> void evictIfNeeded(LinkedHashMap<K, V> map, int maxSize) {

@@ -176,7 +176,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         }
     }
 
-    protected AppDataSourceHolder dataSourceHolder() {
+    private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

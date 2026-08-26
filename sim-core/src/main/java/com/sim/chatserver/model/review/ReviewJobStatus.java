@@ -265,7 +265,7 @@ public final class ReviewJobStatus {
         return message;
     }
 
-    public String getErrorMessage() {
+    String getErrorMessage() {
         return errorMessage;
     }
 

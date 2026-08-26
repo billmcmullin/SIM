@@ -806,12 +806,7 @@ public class WidgetAvailabilityChecker {
             return obj.getBoolean(key);
         } catch (ClassCastException | IllegalStateException e) {
             log.log(Level.FINE, "boolVal parse fallback for key=" + key, e);
-            try {
-                return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
-            } catch (Throwable ex) {
-                log.log(Level.FINE, "boolVal parse failed for key=" + key, ex);
-                return fallback;
-            }
+            return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
         }
     }
 

@@ -15,7 +15,7 @@ public final class TextBudgetUtil {
      *
      * @return true if full text was appended, false if truncated/no room.
      */
-    public static boolean appendWithinLimit(StringBuilder sb, String text, int maxChars) {
+    static boolean appendWithinLimit(StringBuilder sb, String text, int maxChars) {
         if (sb == null || text == null || text.isEmpty() || maxChars <= 0) {
             return false;
         }
@@ -36,7 +36,7 @@ public final class TextBudgetUtil {
     /**
      * Returns text trimmed to max chars.
      */
-    public static String trimTo(String value, int maxChars) {
+    static String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
             return "";
         }
@@ -46,7 +46,7 @@ public final class TextBudgetUtil {
     /**
      * Compresses whitespace and truncates with ellipsis if needed.
      */
-    public static String compressText(String value, int maxChars) {
+    static String compressText(String value, int maxChars) {
         if (value == null || value.isBlank()) {
             return "(empty)";
         }
@@ -92,7 +92,7 @@ public final class TextBudgetUtil {
      * Estimates tokens very roughly from chars. Rule-of-thumb: ~4 chars/token
      * for English-ish text.
      */
-    public static int estimateTokens(String value) {
+    static int estimateTokens(String value) {
         if (value == null || value.isBlank()) {
             return 0;
         }

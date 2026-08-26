@@ -33,7 +33,7 @@ public final class DashboardTemplateRenderer {
         }
     }
 
-    public static void clearTemplateCache() {
+    static void clearTemplateCache() {
         synchronized (TEMPLATE_LOCK) {
             cachedDashboardTemplate = null;
         }

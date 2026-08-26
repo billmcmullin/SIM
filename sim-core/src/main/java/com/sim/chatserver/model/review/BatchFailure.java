@@ -57,7 +57,7 @@ public final class BatchFailure {
         return new Builder();
     }
 
-    public static BatchFailure of(
+    static BatchFailure of(
             String requestId,
             int batchIndex,
             int totalBatches,

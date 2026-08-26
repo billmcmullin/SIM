@@ -67,7 +67,7 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
                     .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {

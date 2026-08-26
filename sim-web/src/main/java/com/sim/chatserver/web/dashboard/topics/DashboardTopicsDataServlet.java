@@ -68,7 +68,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
     
-        } catch (Throwable e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }

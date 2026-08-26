@@ -103,7 +103,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         try {
             resolved = new DashboardTopicsSelectionService(dataSourceHolder(), log)
                     .resolveSelectedChats(requestedIds, widgetById);
-        } catch (Throwable ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to resolve selected chats", ex);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to resolve selected chats.");
             return;

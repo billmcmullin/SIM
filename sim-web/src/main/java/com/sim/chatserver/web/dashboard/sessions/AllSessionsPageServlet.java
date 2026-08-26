@@ -70,7 +70,7 @@ public class AllSessionsPageServlet extends HttpServlet {
             writer.print(rendered);
         }
     
-        } catch (Throwable e) {
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

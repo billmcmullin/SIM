@@ -61,7 +61,7 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         out.write(rendered);
         out.flush();
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {
