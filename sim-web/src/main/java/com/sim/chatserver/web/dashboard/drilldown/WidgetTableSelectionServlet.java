@@ -28,7 +28,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getName());
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
-    private final transient WidgetTableSelectionQueryService queryService = new WidgetTableSelectionQueryService(log);
+    private static final WidgetTableSelectionQueryService QUERY_SERVICE = new WidgetTableSelectionQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -49,7 +49,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         }
 
         try {
-            List<String> chatIds = queryService.selectChatIds(
+            List<String> chatIds = QUERY_SERVICE.selectChatIds(
                     widgetId,
                     ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
                     ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),

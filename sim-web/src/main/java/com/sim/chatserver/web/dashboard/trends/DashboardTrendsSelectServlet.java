@@ -31,7 +31,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
-    private final transient DashboardTrendsQueryService queryService = new DashboardTrendsQueryService(log);
+    private static final DashboardTrendsQueryService QUERY_SERVICE = new DashboardTrendsQueryService(log);
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -70,7 +70,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
 
         List<TermChatSnapshot> snapshots;
         try {
-            snapshots = queryService.collectSnapshotsForDay(targetDate, widgetIdFilter);
+            snapshots = QUERY_SERVICE.collectSnapshotsForDay(targetDate, widgetIdFilter);
         } catch (IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to collect chats for day", ex);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to collect chats for day.");

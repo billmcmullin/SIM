@@ -82,7 +82,7 @@ public class DashboardServlet extends HttpServlet {
     );
 
         private static final DashboardCacheRegistry cacheRegistry = new DashboardCacheRegistry();
-    private final transient DashboardServletQueryService queryService = new DashboardServletQueryService(log);
+    private static final DashboardServletQueryService QUERY_SERVICE = new DashboardServletQueryService(log);
 
     @Override
     public void destroy() {
@@ -171,22 +171,22 @@ public class DashboardServlet extends HttpServlet {
         ).completeOnTimeout(List.of(), 800, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
-            () -> cacheRegistry.getTermSummary(() -> queryService.loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
+                () -> cacheRegistry.getTermSummary(() -> QUERY_SERVICE.loadTermSummary(termService, widgetsFinal, rangeStartFinal, rangeEndFinal)),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 1100, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
-            () -> queryService.loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
+                () -> QUERY_SERVICE.loadTermSummary(termService, widgetsFinal, dayToday, dayToday),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> yesterdayTermSummaryFuture = CompletableFuture.supplyAsync(
-            () -> queryService.loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
+                () -> QUERY_SERVICE.loadTermSummary(termService, widgetsFinal, dayYesterday, dayYesterday),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
-            () -> queryService.loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
+                () -> QUERY_SERVICE.loadTermSummary(termService, widgetsFinal, LocalDate.of(1970, 1, 1), rangeEndFinal),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout(null, 550, TimeUnit.MILLISECONDS);
 
@@ -200,13 +200,13 @@ public class DashboardServlet extends HttpServlet {
                     .append(activeDays)
                     .toString();
                     return cacheRegistry.getSessionOverview(key,
-                            () -> queryService.loadSessionOverview(sessionService, widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays));
+                            () -> QUERY_SERVICE.loadSessionOverview(sessionService, widgetsFinal, rangeStartFinal, rangeEndFinal, activeDays));
                 },
                 DASHBOARD_EXECUTOR
                     ).completeOnTimeout(null, 900, TimeUnit.MILLISECONDS);
 
         CompletableFuture<String> lastFiveDaysTrendFuture = CompletableFuture.supplyAsync(
-            () -> queryService.buildLastFiveDaysTrendJson(widgetsFinal),
+                () -> QUERY_SERVICE.buildLastFiveDaysTrendJson(widgetsFinal),
                 DASHBOARD_EXECUTOR
         ).completeOnTimeout("{\"labels\":[],\"values\":[],\"days\":5}", 700, TimeUnit.MILLISECONDS);
 

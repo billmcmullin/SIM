@@ -12,15 +12,15 @@ import jakarta.servlet.http.HttpServletResponse;
 })
 public class AllSessionsServlet extends HttpServlet {
 
-    private final transient AllSessionsService service = new AllSessionsService();
+    private static final AllSessionsService SERVICE = new AllSessionsService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        service.handleGet(req, resp);
+        SERVICE.handleGet(req, resp);
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        service.handlePost(req, resp);
+        SERVICE.handlePost(req, resp);
     }
 }

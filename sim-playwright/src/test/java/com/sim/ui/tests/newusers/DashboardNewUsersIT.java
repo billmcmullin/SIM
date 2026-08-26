@@ -106,6 +106,53 @@ public class DashboardNewUsersIT extends BaseUiIT {
         assertTrue(valid.text().contains("\"rows\""));
     }
 
+    @Test
+    @Order(6)
+    void dayDataAlias_requiresAuth() {
+        APIRequestContext req = playwright.request().newContext(
+                new APIRequest.NewContextOptions().setIgnoreHTTPSErrors(true)
+        );
+        try {
+            APIResponse response = req.get(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
+            assertEquals(401, response.status(), "Expected 401 for unauthenticated /day-data");
+            assertTrue(response.text().contains("\"status\":\"error\""));
+        } finally {
+            req.dispose();
+        }
+    }
+
+    @Test
+    @Order(7)
+    void dayDataAlias_validAndInvalidInputs() {
+        login(adminUsername, adminPassword);
+
+        APIResponse bad = page.request().get(baseUrl + "/dashboard/new-users/day-data?day=bad-date");
+        assertEquals(400, bad.status(), "Expected 400 when /day-data day format is invalid");
+        assertTrue(bad.text().contains("Missing or invalid day"));
+
+        APIResponse valid = page.request().get(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
+        assertEquals(200, valid.status(), "Expected 200 for valid /day-data request");
+        String body = valid.text();
+        assertTrue(body.contains("\"status\":\"ok\""));
+        assertTrue(body.contains("\"rows\""));
+    }
+
+    @Test
+    @Order(8)
+    void pageQuery_days_normalizesUnsupportedToDefault() {
+        login(adminUsername, adminPassword);
+
+        navigateWithCommit("/dashboard/new-users?days=30");
+        waitForPath("/chat-server/dashboard/new-users");
+        assertTrue("30".equals(page.inputValue("#daysRangeSelect")),
+                "Expected selected period 30 for supported value.");
+
+        navigateWithCommit("/dashboard/new-users?days=999");
+        waitForPath("/chat-server/dashboard/new-users");
+        assertTrue("7".equals(page.inputValue("#daysRangeSelect")),
+                "Expected unsupported days to normalize to default 7.");
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

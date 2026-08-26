@@ -42,7 +42,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-        private final transient DashboardDrilldownSelectionQueryService queryService =
+        private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 
     @Override
@@ -64,7 +64,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         String scope = ServletRequestParamUtil.firstParam(req, "scope", 256, true, true);
         boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
 
-        List<TermChatSnapshot> snapshots = queryService.collectDateEntries(date);
+            List<TermChatSnapshot> snapshots = QUERY_SERVICE.collectDateEntries(date);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested day.");

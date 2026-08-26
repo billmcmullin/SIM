@@ -8,10 +8,10 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet(name = "InactiveUsersPageServlet", urlPatterns = {"/dashboard/inactive-users"})
 public class InactiveUsersPageServlet extends HttpServlet {
 
-    private final transient InactiveUsersPageService service = new InactiveUsersPageService();
+    private static final InactiveUsersPageService SERVICE = new InactiveUsersPageService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        service.handleGet(req, resp);
+        SERVICE.handleGet(req, resp);
     }
 }

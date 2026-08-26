@@ -54,4 +54,44 @@ class AllSessionsServletTest {
         verify(resp).setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
         assertTrue(out.toString().contains("Method not allowed"));
     }
+
+    @Test
+    void doGet_onChatsPath_withoutSession_returnsUnauthorizedJson() throws Exception {
+        AllSessionsServlet servlet = new AllSessionsServlet();
+
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        StringWriter out = new StringWriter();
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/chats");
+        when(req.getSession(false)).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(out));
+
+        servlet.doGet(req, resp);
+
+        verify(resp).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertTrue(out.toString().contains("Authentication required"));
+    }
+
+    @Test
+    void doPost_onSelectPath_withoutSession_returnsUnauthorizedJson() throws Exception {
+        AllSessionsServlet servlet = new AllSessionsServlet();
+
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        StringWriter out = new StringWriter();
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
+        when(req.getSession(false)).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(out));
+
+        servlet.doPost(req, resp);
+
+        verify(resp).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertTrue(out.toString().contains("Authentication required"));
+    }
 }

@@ -54,8 +54,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login", REVIEW_FORWARD_PATH);
     private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
-        private final transient DashboardTermSelectionQueryService queryService =
-            new DashboardTermSelectionQueryService(dataSourceHolder(), termsStore(), log);
+        private DashboardTermSelectionQueryService queryService() {
+            return new DashboardTermSelectionQueryService(dataSourceHolder(), termsStore(), log);
+        }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -90,7 +91,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
                 = (Map<String, List<TermChatSnapshot>>) session.getAttribute(TERM_SNAPSHOT_SESSION_KEY);
 
         if (allSnapshotsByTerm == null || allSnapshotsByTerm.isEmpty()) {
-            allSnapshotsByTerm = queryService.loadSnapshotsForRange(null, LocalDate.now(ZoneId.systemDefault()));
+                allSnapshotsByTerm = queryService().loadSnapshotsForRange(null, LocalDate.now(ZoneId.systemDefault()));
             storeSnapshotsOnSession(session, TERM_SNAPSHOT_SESSION_KEY, allSnapshotsByTerm);
         }
 
@@ -104,7 +105,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
             if (increasedSnapshotsByTerm == null || increasedSnapshotsByTerm.isEmpty()) {
                 LocalDate today = LocalDate.now(ZoneId.systemDefault());
-                increasedSnapshotsByTerm = queryService.loadSnapshotsForRange(today, today);
+                increasedSnapshotsByTerm = queryService().loadSnapshotsForRange(today, today);
                 storeSnapshotsOnSession(session, TERM_INCREASE_SNAPSHOT_SESSION_KEY, increasedSnapshotsByTerm);
             }
 
@@ -152,7 +153,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
             if (yesterdaySnapshotsByTerm == null || yesterdaySnapshotsByTerm.isEmpty()) {
                 LocalDate yesterday = LocalDate.now(ZoneId.systemDefault()).minusDays(1);
-                yesterdaySnapshotsByTerm = queryService.loadSnapshotsForRange(yesterday, yesterday);
+                yesterdaySnapshotsByTerm = queryService().loadSnapshotsForRange(yesterday, yesterday);
                 storeSnapshotsOnSession(session, TERM_YESTERDAY_SNAPSHOT_SESSION_KEY, yesterdaySnapshotsByTerm);
             }
 
