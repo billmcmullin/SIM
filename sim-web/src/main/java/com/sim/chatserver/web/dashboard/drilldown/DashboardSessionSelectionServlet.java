@@ -21,7 +21,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardSessionSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/session-review"})
 public class DashboardSessionSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionSelectionServlet.class.getName());
-    private final transient DashboardDrilldownSelectionQueryService queryService =
+    private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 
     @Override
@@ -40,7 +40,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         }
         String sessionId = rawSessionId.trim();
 
-        List<TermChatSnapshot> snapshots = queryService.collectSessionEntries(sessionId);
+            List<TermChatSnapshot> snapshots = QUERY_SERVICE.collectSessionEntries(sessionId);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested session.");

@@ -8,10 +8,10 @@ import jakarta.servlet.http.HttpServletResponse;
 @MultipartConfig
 public class DatabaseImportServlet extends HttpServlet {
 
-    private final transient DatabaseImportService service = new DatabaseImportService();
+    private static final DatabaseImportService SERVICE = new DatabaseImportService();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
-        service.handlePost(req, resp);
+        SERVICE.handlePost(req, resp);
     }
 }

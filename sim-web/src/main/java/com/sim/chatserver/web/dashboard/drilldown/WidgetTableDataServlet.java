@@ -8,10 +8,10 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet(name = "WidgetTableDataServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/data"})
 public class WidgetTableDataServlet extends HttpServlet {
 
-    private final transient WidgetTableDataService service = new WidgetTableDataService();
+    private static final WidgetTableDataService SERVICE = new WidgetTableDataService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
-        service.handleGet(req, resp);
+        SERVICE.handleGet(req, resp);
     }
 }

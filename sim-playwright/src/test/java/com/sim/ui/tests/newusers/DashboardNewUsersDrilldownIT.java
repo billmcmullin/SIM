@@ -95,6 +95,36 @@ public class DashboardNewUsersDrilldownIT extends BaseUiIT {
         assertTrue(page.url().contains("/chat-server/login"));
     }
 
+    @Test
+    @Order(5)
+    void invalidQueryParams_fallBackToSafeDefaults() {
+        login(adminUsername, adminPassword);
+
+        navigateWithCommit("/dashboard/new-users/drilldown?page=-9&pageSize=0&day=not-a-date");
+        waitForPath("/chat-server/dashboard/new-users/drilldown");
+        page.waitForSelector("#pageSizeSelect");
+
+        assertTrue("10".equals(page.inputValue("#pageSizeSelect")),
+                "Expected invalid pageSize to normalize to default 10.");
+        assertTrue(page.locator("h1:has-text('All Session IDs / Users (Newest First)')").count() > 0,
+                "Expected page to remain on default drilldown view for invalid day filter.");
+    }
+
+    @Test
+    @Order(6)
+    void validDayAndPageSizeParams_renderWithExpectedSelection() {
+        login(adminUsername, adminPassword);
+
+        navigateWithCommit("/dashboard/new-users/drilldown?day=2026-05-21&page=1&pageSize=25");
+        waitForPath("/chat-server/dashboard/new-users/drilldown");
+        page.waitForSelector("#pageSizeSelect");
+
+        assertTrue("25".equals(page.inputValue("#pageSizeSelect")),
+                "Expected pageSizeSelect=25 for valid pageSize query parameter.");
+        assertTrue(page.locator("table.session-table").count() > 0,
+                "Expected drilldown session table to be present.");
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

@@ -25,7 +25,7 @@ import jakarta.servlet.http.HttpSession;
 public class WidgetTableSelectIdsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private final transient WidgetTableSelectIdsQueryService queryService = new WidgetTableSelectIdsQueryService(log);
+    private static final WidgetTableSelectIdsQueryService QUERY_SERVICE = new WidgetTableSelectIdsQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -63,7 +63,7 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
         }
 
         try {
-            List<String> chatIds = queryService.selectIds(widgetId, search, filterPrompt, filterResponse, selectedDate);
+            List<String> chatIds = QUERY_SERVICE.selectIds(widgetId, search, filterPrompt, filterResponse, selectedDate);
 
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                     .add("status", "ok")

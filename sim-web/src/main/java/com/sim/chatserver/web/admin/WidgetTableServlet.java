@@ -31,7 +31,7 @@ public class WidgetTableServlet extends HttpServlet {
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
-    private final transient WidgetTableAdminQueryService queryService = new WidgetTableAdminQueryService(log);
+    private static final WidgetTableAdminQueryService QUERY_SERVICE = new WidgetTableAdminQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -96,7 +96,7 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         try {
-            WidgetTableAdminQueryService.CheckResult status = queryService.checkTable(tableName);
+            WidgetTableAdminQueryService.CheckResult status = QUERY_SERVICE.checkTable(tableName);
             writeSingleResponse(resp,
                     HttpServletResponse.SC_OK,
                     widgetId,
@@ -137,7 +137,7 @@ public class WidgetTableServlet extends HttpServlet {
                 validTables.add(tableName);
             }
 
-            Map<String, WidgetTableAdminQueryService.CheckResult> checks = queryService.checkTables(validTables);
+            Map<String, WidgetTableAdminQueryService.CheckResult> checks = QUERY_SERVICE.checkTables(validTables);
 
             for (Map.Entry<String, String> entry : widgetToTable.entrySet()) {
                 String wid = entry.getKey();
@@ -186,7 +186,7 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         try {
-            WidgetTableAdminQueryService.CheckResult result = queryService.createTableIfMissing(tableName);
+            WidgetTableAdminQueryService.CheckResult result = QUERY_SERVICE.createTableIfMissing(tableName);
             if (!result.created) {
                 writeSingleResponse(resp,
                         HttpServletResponse.SC_OK,

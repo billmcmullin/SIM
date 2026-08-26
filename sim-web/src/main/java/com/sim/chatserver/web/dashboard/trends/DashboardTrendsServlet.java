@@ -30,7 +30,7 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTrendsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_trends.html";
-    private final transient DashboardTrendsQueryService queryService = new DashboardTrendsQueryService(log);
+    private static final DashboardTrendsQueryService QUERY_SERVICE = new DashboardTrendsQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -45,7 +45,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         LocalDate end = LocalDate.now(java.time.ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-        DashboardTrendsQueryService.TrendResult trend = queryService.loadTrendData(start, end);
+            DashboardTrendsQueryService.TrendResult trend = QUERY_SERVICE.loadTrendData(start, end);
         Map<LocalDate, Integer> totalDaily = trend.totalDaily;
         Map<String, Map<LocalDate, Integer>> widgetDaily = trend.widgetDaily;
         Map<String, String> widgetNameToId = trend.widgetNameToId;

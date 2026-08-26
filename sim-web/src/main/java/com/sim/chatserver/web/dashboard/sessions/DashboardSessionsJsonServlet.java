@@ -39,7 +39,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionsJsonServlet.class.getName());
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int ACTIVE_DAYS = 7;
-        private final transient DashboardSessionAggregationQueryService queryService =
+        private static final DashboardSessionAggregationQueryService QUERY_SERVICE =
             new DashboardSessionAggregationQueryService(log);
 
     @Override
@@ -60,8 +60,8 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
         }
 
         try {
-            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
-                    queryService.collectAccumulators(widgets, null);
+                Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+                    QUERY_SERVICE.collectAccumulators(widgets, null);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
 

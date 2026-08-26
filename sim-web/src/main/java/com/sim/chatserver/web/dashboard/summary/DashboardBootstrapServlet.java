@@ -46,7 +46,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
     private static final int ACTIVE_DAYS = 7;
     private static final int SESSION_LIMIT = 10;
     private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getName() + ".summaryStore";
-        private final transient DashboardSessionAggregationQueryService sessionQueryService =
+        private static final DashboardSessionAggregationQueryService SESSION_QUERY_SERVICE =
             new DashboardSessionAggregationQueryService(log);
 
     @Override
@@ -112,7 +112,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
 
         try {
             Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
-                    sessionQueryService.collectAccumulators(widgets, null);
+                SESSION_QUERY_SERVICE.collectAccumulators(widgets, null);
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
 

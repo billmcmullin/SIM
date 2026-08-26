@@ -1,11 +1,15 @@
 package com.sim.ui.tests.topics;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
+import com.microsoft.playwright.APIRequest;
+import com.microsoft.playwright.APIRequestContext;
+import com.microsoft.playwright.APIResponse;
 import com.sim.ui.base.BaseUiIT;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -103,6 +107,66 @@ public class DashboardTopicsIT extends BaseUiIT {
         navigateWithCommit("/dashboard/topics");
         waitForLoginScreen();
         assertOnLoginScreen("Expected topics page to be blocked after logout,");
+    }
+
+    @Test
+    @Order(5)
+    void topicsDataEndpoint_requiresAuthentication() {
+        APIRequestContext req = playwright.request().newContext(
+                new APIRequest.NewContextOptions().setIgnoreHTTPSErrors(true)
+        );
+        try {
+            APIResponse response = req.get(baseUrl + "/dashboard/topics/data");
+            assertEquals(401, response.status(), "Expected 401 when unauthenticated");
+            assertTrue(response.text().contains("\"status\":\"unauthorized\""));
+        } finally {
+            req.dispose();
+        }
+    }
+
+    @Test
+    @Order(6)
+    void topicsDataEndpoint_supportsDateRangeAndIncludeOtherFlags() {
+        login(adminUsername, adminPassword);
+
+        APIResponse dayResponse = page.request().get(
+                baseUrl + "/dashboard/topics/data?day=2026-05-21&includeOther=yes"
+        );
+        assertEquals(200, dayResponse.status());
+        String dayBody = dayResponse.text();
+        assertTrue(dayBody.contains("\"status\":\"ok\""));
+        assertTrue(dayBody.contains("\"includeOther\":true"));
+        assertTrue(dayBody.contains("\"day\":\"2026-05-21\""));
+        assertTrue(dayBody.contains("\"globalTopics\""));
+        assertTrue(dayBody.contains("\"widgets\""));
+
+        APIResponse swappedRangeResponse = page.request().get(
+                baseUrl + "/dashboard/topics/data?start=2026-05-21&end=2026-05-01&includeOther=off"
+        );
+        assertEquals(200, swappedRangeResponse.status());
+        String swappedBody = swappedRangeResponse.text();
+        assertTrue(swappedBody.contains("\"status\":\"ok\""));
+        assertTrue(swappedBody.contains("\"includeOther\":false"));
+        assertTrue(swappedBody.contains("\"rangeStart\":\"2026-05-01\""));
+        assertTrue(swappedBody.contains("\"rangeEnd\":\"2026-05-21\""));
+    }
+
+    @Test
+    @Order(7)
+    void topicsDataEndpoint_invalidDayFallsBackToDefaultWindow() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/topics/data?day=bad-date&includeOther=1"
+        );
+
+        assertEquals(200, response.status());
+        String body = response.text();
+        assertTrue(body.contains("\"status\":\"ok\""));
+        assertTrue(body.contains("\"includeOther\":true"));
+        assertTrue(body.contains("\"day\":\""));
+        assertTrue(body.contains("\"rangeStart\":\""));
+        assertTrue(body.contains("\"rangeEnd\":\""));
     }
 
     private void login(String username, String password) {

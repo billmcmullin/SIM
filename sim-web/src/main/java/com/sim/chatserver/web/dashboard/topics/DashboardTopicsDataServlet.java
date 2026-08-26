@@ -38,7 +38,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getName());
     private static final String OTHER_LABEL = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private final transient DashboardTopicsDataQueryService queryService = new DashboardTopicsDataQueryService(log);
+    private static final DashboardTopicsDataQueryService QUERY_SERVICE = new DashboardTopicsDataQueryService(log);
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -55,7 +55,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
 
         TopicsAggregation aggregation;
         try {
-            aggregation = queryService.collect(window, includeOther, OTHER_LABEL);
+            aggregation = QUERY_SERVICE.collect(window, includeOther, OTHER_LABEL);
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
             JsonObject err = Json.createObjectBuilder()

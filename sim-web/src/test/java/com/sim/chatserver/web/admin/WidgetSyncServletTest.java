@@ -42,6 +42,7 @@ import java.lang.reflect.Field;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +50,10 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import com.sim.chatserver.config.ServerConfig;
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonValue;
+import jakarta.servlet.http.HttpSession;
 
 /**
  * Test goals: 1) Never start background scheduler during tests. 2) Stub out
@@ -495,6 +500,83 @@ class WidgetSyncServletTest {
             HttpServletRequest req = mock(HttpServletRequest.class);
             when(req.getParameterValues("name")).thenReturn(new String[]{"  value\r\nline  "});
             assertEquals("value  line", invoke("firstParam", new Class<?>[]{HttpServletRequest.class, String.class}, req, "name"));
+        }
+
+        @Test
+        void chatAndFormattingHelpers_coverFilteringAndTextExtractionBranches() throws Exception {
+            JsonObject chatA1 = Json.createObjectBuilder()
+                    .add("id", "a")
+                    .add("response", Json.createObjectBuilder().add("text", "line\\nnext"))
+                    .add("createdAt", "2026-08-26T10:00:00Z")
+                    .build();
+            JsonObject chatA2 = Json.createObjectBuilder()
+                    .add("id", "a")
+                    .add("response", JsonValue.NULL)
+                    .add("created_at", "bad-timestamp")
+                    .build();
+            JsonObject chatB = Json.createObjectBuilder()
+                    .add("id", "b")
+                    .add("raw_chat", Json.createObjectBuilder().add("response", Json.createObjectBuilder().add("text", "raw text")).build())
+                    .build();
+            JsonObject chatMissingId = Json.createObjectBuilder().add("response", "plain response").build();
+
+            @SuppressWarnings("unchecked")
+            List<String> uniqueIds = (List<String>) invoke("collectUniqueChatIds", new Class<?>[]{List.class}, List.of(chatA1, chatA2, chatB, chatMissingId));
+            assertEquals(List.of("a", "b"), uniqueIds);
+
+            @SuppressWarnings("unchecked")
+            List<JsonObject> filtered = (List<JsonObject>) invoke("filterChatsByIds", new Class<?>[]{List.class, Set.class}, List.of(chatA1, chatB, chatA2), new LinkedHashSet<>(List.of("b", "a")));
+            assertEquals(2, filtered.size());
+            assertEquals("a", filtered.get(0).getString("id"));
+            assertEquals("b", filtered.get(1).getString("id"));
+
+            assertEquals("widget", invoke("sanitizeWidgetTableName", new Class<?>[]{String.class}, (Object) null));
+            String sanitized = (String) invoke("sanitizeWidgetTableName", new Class<?>[]{String.class}, "1 bad-id!");
+            assertTrue(sanitized.startsWith("w_"));
+            assertFalse(sanitized.contains("-"));
+
+            assertEquals("line\nnext", invoke("formatResponseText", new Class<?>[]{JsonObject.class}, chatA1));
+            assertEquals("raw text", invoke("formatResponseText", new Class<?>[]{JsonObject.class}, chatB));
+
+            assertEquals("json text", invoke("normalizeToJsonText", new Class<?>[]{String.class}, "{\"text\":\"json text\"}"));
+            assertEquals("plain", invoke("normalizeToJsonText", new Class<?>[]{String.class}, "plain"));
+            assertNull(invoke("extractText", new Class<?>[]{JsonValue.class}, JsonValue.NULL));
+
+            assertNotNull(invoke("parseCreatedAt", new Class<?>[]{JsonObject.class}, chatA1));
+            assertNull(invoke("parseCreatedAt", new Class<?>[]{JsonObject.class}, chatA2));
+        }
+
+        @Test
+        void urlMatchingAndAuthorizationHelpers_coverAdditionalBranches() throws Exception {
+            ServerConfig httpCfg = new ServerConfig("api.example.com", 80, null, "k", "ws");
+            ServerConfig httpsCfg = new ServerConfig("api.example.com", 443, null, "k", "ws");
+            ServerConfig explicitHttpsCfg = new ServerConfig("api.example.com", 8080, "https://configured.example", "k", "ws");
+
+            assertEquals("http", invoke("resolvePreferredScheme", new Class<?>[]{ServerConfig.class}, httpCfg));
+            assertEquals("https", invoke("resolvePreferredScheme", new Class<?>[]{ServerConfig.class}, httpsCfg));
+            assertEquals("https", invoke("resolvePreferredScheme", new Class<?>[]{ServerConfig.class}, explicitHttpsCfg));
+
+            assertEquals("https://api.example.com/a/c?x=1", invoke("canonicalizeHttpUrl", new Class<?>[]{String.class}, "HTTPS://API.EXAMPLE.COM/a/b/../c?x=1"));
+            assertEquals(443, invoke("effectivePort", new Class<?>[]{java.net.URI.class}, java.net.URI.create("https://api.example.com/path")));
+            assertEquals(-1, invoke("effectivePort", new Class<?>[]{java.net.URI.class}, (Object) null));
+
+            assertTrue((boolean) invoke("isSummaryTargetFromConfiguredServer", new Class<?>[]{String.class, ServerConfig.class}, "https://api.example.com/api/v1/workspace/ws/chat", httpsCfg));
+            assertFalse((boolean) invoke("isSummaryTargetFromConfiguredServer", new Class<?>[]{String.class, ServerConfig.class}, "https://other.example.com/api/v1/workspace/ws/chat", httpsCfg));
+
+            HttpServletResponse resp = mock(HttpServletResponse.class);
+            when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter(), true));
+
+            assertFalse((boolean) invoke("authorizeAdmin", new Class<?>[]{HttpServletRequest.class, HttpServletResponse.class}, null, resp));
+
+            HttpServletRequest req = mock(HttpServletRequest.class);
+            HttpSession session = mock(HttpSession.class);
+            when(req.getSession(false)).thenReturn(session);
+            when(session.getAttribute("user")).thenReturn("tester");
+            when(session.getAttribute("role")).thenReturn("USER");
+            assertFalse((boolean) invoke("authorizeAdmin", new Class<?>[]{HttpServletRequest.class, HttpServletResponse.class}, req, resp));
+
+            when(session.getAttribute("role")).thenReturn("ADMIN");
+            assertTrue((boolean) invoke("authorizeAdmin", new Class<?>[]{HttpServletRequest.class, HttpServletResponse.class}, req, resp));
         }
     
         private Object invoke(String methodName) throws Exception {

@@ -9,10 +9,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Constructor;
 import java.io.StringReader;
-import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.LocalDate;
+import java.sql.Types;
 
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +82,7 @@ class DatabaseImportServiceTest {
             InvocationTargetException.class,
             () -> parseDateStrict.invoke(service, "2026-08-24T11:00:00Z"));
         assertTrue(parseEx.getCause() instanceof java.time.format.DateTimeParseException);
+
         InvocationTargetException invalidDateEx = assertThrows(
             InvocationTargetException.class,
             () -> parseDateStrict.invoke(service, "not-a-date"));
@@ -91,6 +94,41 @@ class DatabaseImportServiceTest {
         assertEquals("widget-1", sanitizeWidgetId.invoke(service, "widget-1"));
         assertNull(sanitizeWidgetId.invoke(service, "  "));
         assertNull(sanitizeWidgetId.invoke(service, "bad id"));
+    }
+
+    @Test
+    void helperNormalizers_coverSyncUrlSqlTypeAndColumnRules() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+
+        Method sanitizeSyncUrlValue = DatabaseImportService.class.getDeclaredMethod("sanitizeSyncUrlValue", String.class);
+        sanitizeSyncUrlValue.setAccessible(true);
+        assertEquals(
+                "https://example.test/api/v1/widgets/sync",
+                sanitizeSyncUrlValue.invoke(null, "https://example.test/api/v1/widgets/sync"));
+        assertEquals("", sanitizeSyncUrlValue.invoke(null, "ftp://example.test"));
+        assertEquals("", sanitizeSyncUrlValue.invoke(null, "http://bad host"));
+
+        Method sanitizeSqlType = DatabaseImportService.class.getDeclaredMethod("sanitizeSqlType", int.class);
+        sanitizeSqlType.setAccessible(true);
+        assertEquals(Types.INTEGER, sanitizeSqlType.invoke(service, Types.INTEGER));
+        assertEquals(Types.VARCHAR, sanitizeSqlType.invoke(service, Integer.MIN_VALUE));
+
+        Class<?> columnInfoClass = Class.forName("com.sim.chatserver.web.admin.DatabaseImportService$ColumnInfo");
+        Constructor<?> columnInfoCtor = columnInfoClass.getDeclaredConstructor(int.class, boolean.class);
+        columnInfoCtor.setAccessible(true);
+        Object nonNullableText = columnInfoCtor.newInstance(Types.VARCHAR, false);
+
+        Method normalizeValueForColumn = DatabaseImportService.class.getDeclaredMethod(
+                "normalizeValueForColumn",
+                String.class,
+                String.class,
+                String.class,
+                columnInfoClass);
+        normalizeValueForColumn.setAccessible(true);
+
+        assertEquals("", normalizeValueForColumn.invoke(service, "term_definition", "match_pattern", null, nonNullableText));
+        assertEquals("WILDCARD", normalizeValueForColumn.invoke(service, "term_definition", "match_type", "   ", nonNullableText));
+        assertEquals("", normalizeValueForColumn.invoke(service, "other", "notes", "   ", nonNullableText));
     }
 
     private static final class CapturingOutputStream extends ServletOutputStream {

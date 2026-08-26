@@ -27,7 +27,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review"})
 public class DashboardDateSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDateSelectionServlet.class.getName());
-    private final transient DashboardDrilldownSelectionQueryService queryService =
+    private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 
     @Override
@@ -54,7 +54,7 @@ public class DashboardDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        List<TermChatSnapshot> snapshots = queryService.collectDateEntries(date);
+            List<TermChatSnapshot> snapshots = QUERY_SERVICE.collectDateEntries(date);
 
         if (snapshots.isEmpty()) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "No chats found for the requested date.");

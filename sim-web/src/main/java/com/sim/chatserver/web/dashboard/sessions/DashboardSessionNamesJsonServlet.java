@@ -38,7 +38,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
     private static final int DEFAULT_LIMIT = 10;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
-    private final transient DashboardSessionAggregationQueryService queryService =
+    private static final DashboardSessionAggregationQueryService QUERY_SERVICE =
             new DashboardSessionAggregationQueryService(log);
 
     @Override
@@ -76,7 +76,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
 
         try {
             Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
-                queryService.collectAccumulators(widgets, query);
+                QUERY_SERVICE.collectAccumulators(widgets, query);
 
             Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
 

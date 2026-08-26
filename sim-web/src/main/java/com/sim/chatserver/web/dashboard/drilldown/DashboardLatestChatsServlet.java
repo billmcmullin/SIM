@@ -22,7 +22,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardLatestChatsServlet", urlPatterns = {"/dashboard/latest-chats"})
 public class DashboardLatestChatsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardLatestChatsServlet.class.getName());
-    private final transient DashboardDrilldownSelectionQueryService queryService =
+    private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 
     @Override
@@ -36,7 +36,7 @@ public class DashboardLatestChatsServlet extends HttpServlet {
 
         int limit = parseLimit(ServletRequestParamUtil.firstParam(req, "limit", 32, true, true), 200);
 
-        List<TermChatSnapshot> snapshots = queryService.collectLatestChats(limit);
+            List<TermChatSnapshot> snapshots = QUERY_SERVICE.collectLatestChats(limit);
         if (snapshots.isEmpty()) {
             req.setAttribute("latestChats", "empty");
             req.getRequestDispatcher("/dashboard").forward(req, resp);
