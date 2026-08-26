@@ -78,7 +78,7 @@ public class AuthService {
         try {
             // No sensitive data in logs
             ok = storedHash != null && BCrypt.checkpw(password, storedHash);
-        } catch (Throwable e) {
+        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
             log.log(Level.WARNING, LOG_BCRYPT_THROW, e.toString());
         }
 

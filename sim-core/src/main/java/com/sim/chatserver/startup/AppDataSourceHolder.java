@@ -109,7 +109,7 @@ public class AppDataSourceHolder {
             if (conn.getMetaData() != null && conn.getMetaData().getURL() != null) {
                 return conn.getMetaData().getURL();
             }
-        } catch (SQLException | RuntimeException ex) {
+        } catch (SQLException | IllegalStateException | UnsupportedOperationException ex) {
             log.log(Level.FINE, "Unable to read active JDBC URL from datasource", ex);
         }
         return "unknown";

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -96,39 +97,39 @@ public class ReviewJobService {
 
         statuses.put(jobId, queued);
 
-        Future<?> f = executor.submit(() -> {
-            try {
-                JobResult result = task.run(jobId);
-                if (result == null) {
-                    failJob(jobId, 500, "Job completed with null result.");
-                    return;
-                }
-                completeJob(
-                        jobId,
-                        result.httpStatus(),
-                        result.success(),
-                        result.message(),
-                        result.errorMessage(),
-                        result.totalBatches(),
-                        result.completedBatches(),
-                        result.failedBatches(),
-                        result.retries(),
-                        result.allSelectedChatIds(),
-                        result.usedChatIds(),
-                        result.missingChatIds(),
-                        result.failedBatchIndexes(),
-                        result.warnings(),
-                        result.finalReport(),
-                        result.rawResponseBody(),
-                        result.contentType()
-                );
-            } catch (Throwable ex) {
-                log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", ex);
-                failJob(jobId, 500, ex.getMessage() == null ? "Async job failed." : ex.getMessage());
-            } finally {
-                futures.remove(jobId);
-            }
-        });
+        Future<?> f = CompletableFuture.supplyAsync(() -> task.run(jobId), executor)
+                .thenAccept(result -> {
+                    if (result == null) {
+                        failJob(jobId, 500, "Job completed with null result.");
+                        return;
+                    }
+                    completeJob(
+                            jobId,
+                            result.httpStatus(),
+                            result.success(),
+                            result.message(),
+                            result.errorMessage(),
+                            result.totalBatches(),
+                            result.completedBatches(),
+                            result.failedBatches(),
+                            result.retries(),
+                            result.allSelectedChatIds(),
+                            result.usedChatIds(),
+                            result.missingChatIds(),
+                            result.failedBatchIndexes(),
+                            result.warnings(),
+                            result.finalReport(),
+                            result.rawResponseBody(),
+                            result.contentType()
+                    );
+                })
+                .exceptionally(ex -> {
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", cause);
+                    failJob(jobId, 500, cause.getMessage() == null ? "Async job failed." : cause.getMessage());
+                    return null;
+                })
+                .whenComplete((unused, ex) -> futures.remove(jobId));
 
         futures.put(jobId, f);
         return jobId;

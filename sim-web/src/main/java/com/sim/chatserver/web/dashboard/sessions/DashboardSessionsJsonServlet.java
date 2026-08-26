@@ -144,7 +144,7 @@ public class DashboardSessionsJsonServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

@@ -52,7 +52,7 @@ public class DashboardTermService {
         this.termsStore = termsStore;
     }
 
-    public List<TermDefinition> loadAllTerms() {
+    List<TermDefinition> loadAllTerms() {
         try {
             List<TermDefinition> terms = termsStore.listAll();
             return terms == null ? List.of() : terms;
@@ -73,7 +73,7 @@ public class DashboardTermService {
      * New behavior: optional date range filter (inclusive start/end by day). If
      * either start or end is null, falls back to all-time behavior.
      */
-    public TermSummary buildTermSummary(
+    TermSummary buildTermSummary(
             Connection conn,
             List<WidgetEntry> widgets,
             List<TermDefinition> terms,

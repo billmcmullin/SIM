@@ -106,7 +106,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         req.setAttribute("selectionId", selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

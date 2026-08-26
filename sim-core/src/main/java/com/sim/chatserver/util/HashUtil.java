@@ -13,18 +13,29 @@ import java.util.logging.Logger;
 public final class HashUtil {
 
     private static final Logger LOG = Logger.getLogger(HashUtil.class.getName());
-    private static final char[] HEX = "0123456789abcdef".toCharArray();
+    private static final char[] HEX = createHexAlphabet();
 
     private HashUtil() {
         // util
     }
 
-    public static String sha1Hex(String value) {
+    static String sha1Hex(String value) {
         return digestHex("SHA-1", value);
     }
 
-    public static String sha256Hex(String value) {
+    static String sha256Hex(String value) {
         return digestHex("SHA-256", value);
+    }
+
+    private static char[] createHexAlphabet() {
+        char[] alphabet = new char[16];
+        for (int i = 0; i < 10; i++) {
+            alphabet[i] = (char) ('0' + i);
+        }
+        for (int i = 10; i < 16; i++) {
+            alphabet[i] = (char) ('a' + (i - 10));
+        }
+        return alphabet;
     }
 
     private static String digestHex(String algorithm, String value) {

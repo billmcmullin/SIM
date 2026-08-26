@@ -62,7 +62,7 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         req.setAttribute("selectionId", selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     
-        } catch (IOException | ServletException | RuntimeException e) {
+        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
