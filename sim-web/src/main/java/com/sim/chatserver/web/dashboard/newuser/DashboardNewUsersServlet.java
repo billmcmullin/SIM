@@ -93,7 +93,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
 
             handlePage(req, resp, session);
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.SEVERE, "Failed in /dashboard/new-users flow", e);
             if (!resp.isCommitted()) {
                 if (reqExpectsJson(path)) {
@@ -104,7 +104,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
             }
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

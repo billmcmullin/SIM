@@ -68,7 +68,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorJson("Unable to load widget health config."));
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
@@ -149,7 +149,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Unable to save widget health config."));
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.WARNING, "Unhandled exception in doPost", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }

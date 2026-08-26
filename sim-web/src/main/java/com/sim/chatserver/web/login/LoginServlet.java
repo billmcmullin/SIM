@@ -132,7 +132,7 @@ public class LoginServlet extends HttpServlet {
     protected UserService resolveUserService() {
         try {
             return CDI.current().select(UserService.class).get();
-        } catch (Throwable ex) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException ex) {
             log.log(Level.SEVERE, "CDI UserService lookup failed", ex);
             throw new IllegalStateException(
                     "UserService is unavailable. WildFly-managed datasource/JPA model requires CDI wiring.",

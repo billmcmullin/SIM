@@ -48,14 +48,10 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+        try {
         HttpSession session = req.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
-            try {
-                req.getRequestDispatcher("/login").forward(req, resp);
-            } catch (ServletException | IOException e) {
-                log.log(Level.WARNING, "Unable to forward unauthenticated user to login.", e);
-                sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-            }
+            req.getRequestDispatcher("/login").forward(req, resp);
             return;
         }
 
@@ -77,7 +73,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to list widgets for new users drilldown", e);
             widgets = List.of();
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.WARNING, "Unexpected runtime error listing widgets", e);
             widgets = List.of();
         }
@@ -164,15 +160,12 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html; charset=UTF-8");
-        try {
-            PrintWriter out = resp.getWriter();
-            try {
-                out.print(rendered);
-            } finally {
-                out.close();
-            }
-        } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to render newest users drilldown page", e);
+        try (PrintWriter out = resp.getWriter()) {
+            out.print(rendered);
+        }
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
+            java.util.logging.Logger.getLogger("OWASP")
+                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
     }

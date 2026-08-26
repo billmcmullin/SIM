@@ -50,7 +50,7 @@ public class AppDataSourceHolder {
     }
 
     @PostConstruct
-    synchronized void init() {
+    public synchronized void init() {
         DataSource dataSource = requireDataSource();
         try (Connection conn = dataSource.getConnection()) {
             String jdbcUrl = "unknown";
@@ -76,7 +76,7 @@ public class AppDataSourceHolder {
     /**
      * Legacy compatibility method for existing tests.
      */
-    synchronized void setEmf(EntityManagerFactory emf) {
+    public synchronized void setEmf(EntityManagerFactory emf) {
         this.legacyEmf = emf;
     }
 
@@ -93,7 +93,7 @@ public class AppDataSourceHolder {
                 "Custom EntityManagerFactory bootstrap has been removed; use container-managed JPA.");
     }
 
-    String getActiveJdbcUrl() {
+    public String getActiveJdbcUrl() {
         DataSource dataSource;
         try {
             dataSource = requireDataSource();
@@ -120,7 +120,7 @@ public class AppDataSourceHolder {
      * Runtime datasource switching is intentionally unsupported in the
      * single WildFly-managed datasource model.
      */
-    void switchToExternalAndPersist(DbConfig cfg, Consumer<String> callback) {
+    public void switchToExternalAndPersist(DbConfig cfg, Consumer<String> callback) {
         if (callback != null) {
             callback.accept("Datasource switching is disabled. Use WildFly datasource configuration.");
         }
@@ -129,7 +129,7 @@ public class AppDataSourceHolder {
     }
 
     @PreDestroy
-    synchronized void close() {
+    public synchronized void close() {
         this.overrideDataSource = null;
         this.legacyEmf = null;
         log.info("AppDataSourceHolder released runtime references");

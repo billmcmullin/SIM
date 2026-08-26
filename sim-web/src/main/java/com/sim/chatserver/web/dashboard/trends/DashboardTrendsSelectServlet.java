@@ -106,7 +106,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
 
         writeJson(resp, HttpServletResponse.SC_OK, ok);
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {

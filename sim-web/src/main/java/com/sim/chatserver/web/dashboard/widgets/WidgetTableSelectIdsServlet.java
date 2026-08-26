@@ -71,6 +71,7 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
                     .add("chatIds", Json.createArrayBuilder(chatIds))
                     .build());
         } catch (java.util.NoSuchElementException e) {
+            log.log(Level.FINE, "Widget data not found while selecting chat ids", e);
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, Json.createObjectBuilder()
                     .add("status", "error")
                     .add("message", "Widget data not found")
@@ -83,7 +84,7 @@ public class WidgetTableSelectIdsServlet extends HttpServlet {
                     .build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

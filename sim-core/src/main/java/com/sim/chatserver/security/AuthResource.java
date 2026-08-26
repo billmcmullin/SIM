@@ -48,7 +48,11 @@ public class AuthResource {
     @Path("/login")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response login(Map<String, String> payload) {
+    public Response loginApi(Map<String, String> payload) {
+        return login(payload);
+    }
+
+    final Response login(Map<String, String> payload) {
         Credentials credentials = extractCredentials(payload);
         if (credentials == null) {
             return badRequest();

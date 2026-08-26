@@ -108,7 +108,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                         Json.createObjectBuilder().add("status", "error")
                                 .add("message", "Unable to acquire Salesforce access token from configured credentials.").build());
                 return;
-            } catch (IOException | SQLException | RuntimeException e) {
+                } catch (IOException | SQLException | IllegalStateException | IllegalArgumentException | SecurityException e) {
                 log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder().add("status", "error")
@@ -200,7 +200,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                             .add("message", "Salesforce connection test failed.").build());
         }
     
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {

@@ -33,7 +33,7 @@ public class DashboardTopicsQueryService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    final TopicCountResult collectTopicCounts(
+    public TopicCountResult collectTopicCounts(
             List<WidgetEntry> widgets,
             LocalDate startInclusive,
             LocalDate endExclusive,

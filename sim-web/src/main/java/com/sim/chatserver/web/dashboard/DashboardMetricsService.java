@@ -1,4 +1,4 @@
-package com.sim.chatserver.service.dashboard;
+package com.sim.chatserver.web.dashboard;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,8 +18,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.ProgressStat;
 import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
 import com.sim.chatserver.model.DashboardViewModels.TermDayCount;
 import com.sim.chatserver.model.DashboardViewModels.TopTopic;
 import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
@@ -32,11 +32,11 @@ import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
-public class DashboardMetricsService {
+final class DashboardMetricsService {
 
     private static final Logger LOG = Logger.getLogger(DashboardMetricsService.class.getName());
 
-    public static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
 
     private final AppDataSourceHolder dsHolder;
     private final TermsStore termsStore;
@@ -52,13 +52,13 @@ public class DashboardMetricsService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    DashboardMetricsService(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+    private DashboardMetricsService(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
         this.dsHolder = dsHolder;
         this.termsStore = termsStore;
         this.topTopicLimit = topTopicLimit;
     }
 
-    public static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+    static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
         return new DashboardMetricsService(dsHolder, termsStore, topTopicLimit);
     }
 
@@ -72,7 +72,7 @@ public class DashboardMetricsService {
         private final int termsYesterday;
         private final ProgressStat termsProgression;
 
-        DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
@@ -113,7 +113,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
+    List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         List<WidgetStat> stats = new ArrayList<>();
         if (widgets == null || widgets.isEmpty()) {
             return stats;
@@ -162,7 +162,7 @@ public class DashboardMetricsService {
         return stats;
     }
 
-    final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+    ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -177,7 +177,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+    ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -223,7 +223,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+    List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
         if (widgets == null || widgets.isEmpty()) {
             return List.of();
         }
@@ -312,7 +312,7 @@ public class DashboardMetricsService {
                 .collect(Collectors.toList());
     }
 
-    final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+    List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
         if (widgets == null || widgets.isEmpty() || limit <= 0) {
             return List.of();
         }

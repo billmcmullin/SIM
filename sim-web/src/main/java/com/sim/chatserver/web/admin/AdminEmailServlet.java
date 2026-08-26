@@ -57,7 +57,7 @@ public class AdminEmailServlet extends HttpServlet {
 
         try {
             // Resolve SMTP source every request (ENV -> PROPERTIES -> DB)
-            EmailConfigResolver resolver = new EmailConfigResolver(resolveDbProvider());
+            EmailConfigResolver resolver = EmailConfigResolver.create(resolveDbProvider());
             ResolvedEmailConfig resolved = resolver.resolve();
             if (!resolved.valid() || resolved.config() == null || resolved.source() == EmailConfigSource.NONE) {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error",
@@ -96,20 +96,19 @@ public class AdminEmailServlet extends HttpServlet {
             validateEmails("cc", cc);
             validateEmails("bcc", bcc);
 
-            EmailMessage.Builder b = EmailMessage.builder()
-                    .subject(subject)
-                    .textBody(textBody)
-                    .htmlBody(htmlBody)
-                    .markdownBody(markdownBody);
+                String fromValue = from.isBlank() ? null : from;
+                EmailMessage message = EmailMessage.create(
+                    fromValue,
+                    to,
+                    cc,
+                    bcc,
+                    subject,
+                    textBody,
+                    htmlBody,
+                    markdownBody,
+                    List.of());
 
-            if (!from.isBlank()) {
-                b.from(from);
-            }
-            to.forEach(b::addTo);
-            cc.forEach(b::addCc);
-            bcc.forEach(b::addBcc);
-
-            emailService.send(b.build());
+                emailService.send(message);
 
             JsonObject ok = Json.createObjectBuilder()
                     .add("status", "ok")

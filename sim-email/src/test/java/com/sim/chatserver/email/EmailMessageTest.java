@@ -2,6 +2,7 @@ package com.sim.chatserver.email;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,9 @@ class EmailMessageTest {
         assertEquals("Hello", msg.textBody());
         assertNull(msg.htmlBody());
         assertNull(msg.markdownBody());
-        assertTrue(msg.attachments().isEmpty());
+        List<EmailAttachment> attachments = new ArrayList<>();
+        msg.forEachAttachment(attachments::add);
+        assertTrue(attachments.isEmpty());
     }
 
     @Test
@@ -144,6 +147,5 @@ class EmailMessageTest {
         assertThrows(UnsupportedOperationException.class, () -> msg.to().add("x@example.com"));
         assertThrows(UnsupportedOperationException.class, () -> msg.cc().add("x@example.com"));
         assertThrows(UnsupportedOperationException.class, () -> msg.bcc().add("x@example.com"));
-        assertThrows(UnsupportedOperationException.class, () -> msg.attachments().add(null));
     }
 }

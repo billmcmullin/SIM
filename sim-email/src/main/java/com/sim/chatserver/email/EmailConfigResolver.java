@@ -9,8 +9,12 @@ public final class EmailConfigResolver {
     private final DbEmailConfigProvider dbProvider;
     private final DbGraphEmailConfigProvider graphDbProvider; // optional, can be null
 
-    public EmailConfigResolver(DbEmailConfigProvider dbProvider) {
+    EmailConfigResolver(DbEmailConfigProvider dbProvider) {
         this(dbProvider, null);
+    }
+
+    public static EmailConfigResolver create(DbEmailConfigProvider dbProvider) {
+        return new EmailConfigResolver(dbProvider);
     }
 
     private EmailConfigResolver(DbEmailConfigProvider dbProvider, DbGraphEmailConfigProvider graphDbProvider) {
@@ -18,7 +22,7 @@ public final class EmailConfigResolver {
         this.graphDbProvider = graphDbProvider;
     }
 
-    public ResolvedEmailConfig resolve() {
+    public ResolvedEmailConfig resolve() { // parasoft-suppress OWASP2025.A1.DPPM "Public resolver API is used by web-tier email workflows."
         // 1) SMTP from ENV
         EmailConfig env = EmailConfigLoader.loadEnvOnly();
         if (isUsableSmtp(env)) {

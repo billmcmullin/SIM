@@ -24,12 +24,15 @@ import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 
 /**
  * Term-focused dashboard logic (term summary + chart payload).
  */
+@Dependent
 public class DashboardTermService {
 
     private static final Logger LOG = Logger.getLogger(DashboardTermService.class.getName());
@@ -48,11 +51,12 @@ public class DashboardTermService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public DashboardTermService(TermsStore termsStore) {
+    @Inject
+    DashboardTermService(TermsStore termsStore) {
         this.termsStore = termsStore;
     }
 
-    List<TermDefinition> loadAllTerms() {
+    final List<TermDefinition> loadAllTerms() {
         try {
             List<TermDefinition> terms = termsStore.listAll();
             return terms == null ? List.of() : terms;
@@ -65,15 +69,19 @@ public class DashboardTermService {
     /**
      * Existing behavior: all-time (no date filter).
      */
-    public TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+    final TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
         return buildTermSummary(conn, widgets, terms, null, null);
+    }
+
+    public final TermSummary buildTermSummaryForDashboard(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+        return buildTermSummary(conn, widgets, terms);
     }
 
     /**
      * New behavior: optional date range filter (inclusive start/end by day). If
      * either start or end is null, falls back to all-time behavior.
      */
-    TermSummary buildTermSummary(
+    final TermSummary buildTermSummary(
             Connection conn,
             List<WidgetEntry> widgets,
             List<TermDefinition> terms,
@@ -221,7 +229,7 @@ public class DashboardTermService {
         return bestTerm != null ? bestTerm.getName() : OTHER_PARASOFT_LABEL;
     }
 
-    public String toChartJson(TermSummary summary) {
+    final String toChartJson(TermSummary summary) {
         if (summary == null || summary.getTermCounts().isEmpty()) {
             return "[]";
         }

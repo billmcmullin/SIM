@@ -36,7 +36,7 @@ public final class EmailFactory {
     /**
      * Provider-based factory entrypoint.
      */
-    public static EmailService forProvider(ResolvedEmailConfig resolved) {
+    public static EmailService forProvider(ResolvedEmailConfig resolved) { // parasoft-suppress OWASP2025.A1.DPPM "Public factory entrypoint is required by web module email dispatch."
         if (resolved == null || !resolved.valid()) {
             throw new IllegalArgumentException("No valid email configuration resolved");
         }

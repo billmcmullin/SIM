@@ -122,7 +122,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         resp.setContentType("text/html; charset=UTF-8");
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

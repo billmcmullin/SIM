@@ -107,7 +107,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         log.info(() -> "Redirecting admin to Salesforce authorize endpoint.");
         safeRedirect(resp, safeAuthorizeUrl);
     
-        } catch (Throwable e) {
+        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger("OWASP")
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
             if (!resp.isCommitted()) {

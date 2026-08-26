@@ -205,7 +205,7 @@ public class DashboardDailySummaryStore {
 
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", firstSqlError);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", firstSqlError);
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
             throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
         }

@@ -21,6 +21,8 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
+import jakarta.enterprise.inject.spi.CDI;
+
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.io.StringWriter;
@@ -432,10 +434,10 @@ public class AutoEmailAlertScheduler {
         }
 
         List<TermDefinition> terms = termsStore.listAll();
-        DashboardTermService termService = new DashboardTermService(termsStore);
+        DashboardTermService termService = CDI.current().select(DashboardTermService.class).get();
 
         try (Connection conn = dataSource.getConnection()) {
-            TermSummary summary = termService.buildTermSummary(conn, widgets, terms);
+            TermSummary summary = termService.buildTermSummaryForDashboard(conn, widgets, terms);
             Map<String, Integer> counts = summary.getTermCounts();
             if (counts == null || counts.isEmpty()) {
                 return 0L;
@@ -464,7 +466,7 @@ public class AutoEmailAlertScheduler {
             List<EmailAttachment> attachments
     ) {
         try {
-            EmailConfigResolver resolver = new EmailConfigResolver(dbEmailConfigProvider);
+            EmailConfigResolver resolver = EmailConfigResolver.create(dbEmailConfigProvider);
             ResolvedEmailConfig resolved = resolver.resolve();
             if (!resolved.valid() || resolved.source() == EmailConfigSource.NONE) {
                 log.warning("Automatic alert email skipped: no valid email configuration available.");
@@ -472,20 +474,20 @@ public class AutoEmailAlertScheduler {
             }
 
             EmailService service = EmailFactory.forProvider(resolved);
-            EmailMessage.Builder builder = EmailMessage.builder()
-                    .subject(subject)
-                    .textBody(textBody);
-            if (hasText(htmlBody)) {
-                builder.htmlBody(htmlBody);
-            }
-            if (attachments != null && !attachments.isEmpty()) {
-                builder.attachments(attachments);
-            }
-            for (String recipient : recipients) {
-                builder.addTo(recipient);
-            }
+            String htmlBodyValue = hasText(htmlBody) ? htmlBody : null;
+            List<EmailAttachment> safeAttachments = attachments == null ? List.of() : attachments;
+            EmailMessage message = EmailMessage.create(
+                    null,
+                    recipients,
+                    List.of(),
+                    List.of(),
+                    subject,
+                    textBody,
+                    htmlBodyValue,
+                    null,
+                    safeAttachments);
 
-            service.send(builder.build());
+            service.send(message);
             return true;
         } catch (EmailException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Failed sending automatic alert email.", e);

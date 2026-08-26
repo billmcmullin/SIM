@@ -62,7 +62,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_OK,
                     payload == null ? errorJson("Unable to load summary.") : payload);
 
-        } catch (Throwable e) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.WARNING, "Unhandled exception in doGet", e);
             sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
         }
