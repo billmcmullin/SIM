@@ -12,8 +12,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.service.dashboard.DashboardSessionService;
-import com.sim.chatserver.service.dashboard.DashboardTermService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;

@@ -30,7 +30,6 @@ public class AppDataSourceHolder {
     private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getName());
     private static final String DEFAULT_DATASOURCE_JNDI = "java:jboss/datasources/ExampleDS";
 
-    @Resource(lookup = DEFAULT_DATASOURCE_JNDI)
     private DataSource managedDataSource;
 
     // Test-time/manual override only.
@@ -50,7 +49,7 @@ public class AppDataSourceHolder {
     }
 
     @PostConstruct
-    public synchronized void init() {
+    public void init() {
         DataSource dataSource = requireDataSource();
         try (Connection conn = dataSource.getConnection()) {
             String jdbcUrl = "unknown";
@@ -64,11 +63,16 @@ public class AppDataSourceHolder {
         }
     }
 
+    @Resource(lookup = DEFAULT_DATASOURCE_JNDI)
+    void setManagedDataSource(DataSource managedDataSource) {
+        this.managedDataSource = managedDataSource;
+    }
+
     public DataSource getDataSource() {
         return requireDataSource();
     }
 
-    public synchronized void setDataSource(DataSource dataSource) {
+    public void setDataSource(DataSource dataSource) {
         this.overrideDataSource = dataSource;
         log.info("DataSource override set on AppDataSourceHolder");
     }
@@ -76,7 +80,7 @@ public class AppDataSourceHolder {
     /**
      * Legacy compatibility method for existing tests.
      */
-    public synchronized void setEmf(EntityManagerFactory emf) {
+    public void setEmf(EntityManagerFactory emf) {
         this.legacyEmf = emf;
     }
 
@@ -129,7 +133,7 @@ public class AppDataSourceHolder {
     }
 
     @PreDestroy
-    public synchronized void close() {
+    public void close() {
         this.overrideDataSource = null;
         this.legacyEmf = null;
         log.info("AppDataSourceHolder released runtime references");
@@ -148,7 +152,6 @@ public class AppDataSourceHolder {
 
         DataSource lookedUp = lookupDataSource(DEFAULT_DATASOURCE_JNDI);
         if (lookedUp != null) {
-            managedDataSource = lookedUp;
             return lookedUp;
         }
 

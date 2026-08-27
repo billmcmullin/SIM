@@ -92,7 +92,7 @@ public class DashboardNewUsersDrilldownIT extends BaseUiIT {
         waitForPath("/chat-server/dashboard/new-users/drilldown");
 
         clickNavButtonNoWait("Logout", "/chat-server/login");
-        assertTrue(page.url().contains("/chat-server/login"));
+        assertOnLoginScreen("After logout expected login screen,");
     }
 
     @Test

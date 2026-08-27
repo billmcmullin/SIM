@@ -56,7 +56,9 @@ public final class DashboardSessionAggregationQueryService {
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql.toString())) {
                     if (hasFilter) {
                         String trimmedFilter = sessionIdFilter.trim();
-                        ps.setString(1, "%" + trimmedFilter + "%");
+                        StringBuilder likePattern = new StringBuilder(trimmedFilter.length() + 2);
+                        likePattern.append('%').append(trimmedFilter).append('%');
+                        ps.setString(1, likePattern.toString());
                     }
 
                     try (ResultSet rs = ps.executeQuery()) {

@@ -323,7 +323,11 @@ public final class ReviewJobStatus {
                     yield 20;
                 }
                 double ratio = Math.min(1.0, completedBatches / (double) totalBatches);
-                yield 5 + safeRoundedPercent(ratio * 75.0);
+                int mapPercent = safeRoundedPercent(ratio * 75.0);
+                if (mapPercent >= 95) {
+                    yield 100;
+                }
+                yield clampPercent(mapPercent + 5);
             }
             case REDUCE ->
                 90;

@@ -104,6 +104,7 @@ public class AutoEmailAlertScheduler {
 
     private final AtomicBoolean tickRunning = new AtomicBoolean(false);
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final Object lifecycleLock = new Object();
 
     private ScheduledFuture<?> future;
 
@@ -155,20 +156,27 @@ public class AutoEmailAlertScheduler {
         new AwsEc2RestartServlet().rebootEc2Instance(region, accessKeyId, secretAccessKey, instanceId);
     }
 
-    synchronized final void start() {
-        if (!started.compareAndSet(false, true)) {
-            return;
+    final void start() {
+        int tickSeconds = TICK_SECONDS;
+        synchronized (lifecycleLock) {
+            if (!started.compareAndSet(false, true)) {
+                return;
+            }
+            future = scheduler.scheduleWithFixedDelay(this::runTickSafely, tickSeconds, tickSeconds, TimeUnit.SECONDS);
         }
-        future = scheduler.scheduleWithFixedDelay(this::runTickSafely, TICK_SECONDS, TICK_SECONDS, TimeUnit.SECONDS);
         log.info("Automatic email alert scheduler started.");
     }
 
-    synchronized final void stop() {
-        if (!started.compareAndSet(true, false)) {
-            return;
+    final void stop() {
+        ScheduledFuture<?> localFuture;
+        synchronized (lifecycleLock) {
+            if (!started.compareAndSet(true, false)) {
+                return;
+            }
+            localFuture = future;
         }
-        if (future != null) {
-            future.cancel(false);
+        if (localFuture != null) {
+            localFuture.cancel(false);
         }
         scheduler.shutdownNow();
         log.info("Automatic email alert scheduler stopped.");

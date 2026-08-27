@@ -1,841 +1,363 @@
 package com.sim.chatserver.web.admin;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-/**
- * Parasoft Jtest UTA: Test class for TermsCsvServlet
- *
- * @see com.sim.chatserver.web.admin.TermsCsvServlet
- * @author bmcmullin
- */
-public class TermsCsvServletTest
-{
+class TermsCsvServletTest {
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = null; // UTA: configured value
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
-    }
-
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet2() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
+    void doGet_nonAdmin_returnsForbidden() {
+        TermsCsvServlet servlet = new TermsCsvServlet();
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = null; // UTA: configured value
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
 
-    }
+        when(req.getSession(false)).thenReturn(null);
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet3() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
+        servlet.doGet(req, resp);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = null; // UTA: configured value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
-    }
-
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet4() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
-
-    }
-
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoGet5() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
-
-    }
-
-    /**
-     * Parasoft Jtest UTA: Helper method to set private field termsStore
-     */
-    private static <T> void setPrivateField(Object object, Class<?> fieldClass, String fieldName, T value)
-    {
         try {
-            Field field = fieldClass.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(object, value);
-        } catch (NoSuchFieldException e) {
-            // Field removed in newer servlet versions; keep legacy generated tests compatible.
-            return;
-        } catch (IllegalAccessException e) {
-            throw (AssertionError) new AssertionError("Unable to access the specified private field").initCause(e);
-        } catch (SecurityException e) {
-            throw (AssertionError) new AssertionError("There was a security exception when attempting to access a private field").initCause(e);
+            verify(resp).sendError(HttpServletResponse.SC_FORBIDDEN, "Administrator access required.");
+        } catch (IOException ex) {
+            throw new AssertionError(ex);
         }
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet6() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = null; // UTA: configured value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = null; // UTA: configured value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = "getNameResult"; // UTA: default value
-        String getNameResult2 = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult, getNameResult2);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doGet_admin_exportsCsv() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
 
+        TermDefinition term = mock(TermDefinition.class);
+        when(term.getName()).thenReturn("alpha");
+        when(term.getDescription()).thenReturn("desc,one");
+        when(term.getMatchPattern()).thenReturn("pat\"tern");
+        when(term.getMatchType()).thenReturn("WILDCARD");
+        when(term.isSystemFlag()).thenReturn(false);
+
+        when(store.listAll()).thenReturn(List.of(term));
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(resp.getOutputStream()).thenReturn(new CapturingServletOutputStream(out));
+
+        withTermsStore(store, () -> servlet.doGet(req, resp));
+
+        verify(resp).setContentType("text/csv; charset=UTF-8");
+        verify(resp).setCharacterEncoding(StandardCharsets.UTF_8.name());
+        verify(resp).setHeader(Mockito.eq("Content-Disposition"), Mockito.contains("terms-export.csv"));
+
+        String csv = out.toString(StandardCharsets.UTF_8);
+        assertTrue(csv.contains("name,description,match_pattern,match_type,system_flag"));
+        assertTrue(csv.contains("alpha,\"desc,one\",\"pat\"\"tern\",WILDCARD,false"));
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet7() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = "getDescriptionResult"; // UTA: default value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = null; // UTA: configured value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = null; // UTA: configured value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doGet_admin_listFailure_returnsInternalServerError() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
 
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(store.listAll()).thenThrow(new SQLException("db down"));
+
+        withTermsStore(store, () -> servlet.doGet(req, resp));
+
+        verify(resp).sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Failed to export terms.");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet8() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = "getMatchPatternResult"; // UTA: default value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = null; // UTA: configured value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doPost_nonAdmin_returnsForbidden() {
+        TermsCsvServlet servlet = new TermsCsvServlet();
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
 
+        when(req.getSession(false)).thenReturn(null);
+
+        servlet.doPost(req, resp);
+
+        try {
+            verify(resp).sendError(HttpServletResponse.SC_FORBIDDEN, "Administrator access required.");
+        } catch (IOException ex) {
+            throw new AssertionError(ex);
+        }
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet9() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = null; // UTA: configured value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = "getMatchTypeResult"; // UTA: default value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doPost_admin_missingFile_returnsBadRequest() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
 
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(req.getPart("file")).thenReturn(null);
+
+        servlet.doPost(req, resp);
+
+        verify(resp).sendError(HttpServletResponse.SC_BAD_REQUEST, "No file uploaded.");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet10() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = null; // UTA: configured value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = null; // UTA: configured value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doPost_admin_importSuccess_forwardsToAdminTerms() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
+        Part part = mock(Part.class);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
 
+        String csv = "name,description,match_pattern,match_type,system_flag\n"
+                + "new-term,desc,pat,WILDCARD,false\n";
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(req.getPart("file")).thenReturn(part);
+        when(req.getRequestDispatcher("/admin/terms")).thenReturn(dispatcher);
+        when(part.getInputStream()).thenReturn(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+
+        when(store.listAll()).thenReturn(List.of());
+        when(store.createTerm("new-term", "desc", "pat", "WILDCARD")).thenReturn(mock(TermDefinition.class));
+
+        withTermsStore(store, () -> servlet.doPost(req, resp));
+
+        verify(store).createTerm("new-term", "desc", "pat", "WILDCARD");
+        verify(dispatcher).forward(req, resp);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet11() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
-
-        String getMatchPatternResult = null; // UTA: configured value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
-
-        String getMatchTypeResult = null; // UTA: configured value
-        when(item.getMatchType()).thenReturn(getMatchTypeResult);
-
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        TermDefinition item2 = mock(TermDefinition.class);
-        String getDescriptionResult2 = "getDescriptionResult2"; // UTA: default value
-        when(item2.getDescription()).thenReturn(getDescriptionResult2);
-
-        String getMatchPatternResult2 = "getMatchPatternResult2"; // UTA: default value
-        when(item2.getMatchPattern()).thenReturn(getMatchPatternResult2);
-
-        String getMatchTypeResult2 = "getMatchTypeResult2"; // UTA: default value
-        when(item2.getMatchType()).thenReturn(getMatchTypeResult2);
-
-        String getNameResult2 = "getNameResult2"; // UTA: default value
-        when(item2.getName()).thenReturn(getNameResult2);
-        listAllResult.add(item2);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void doPost_admin_importIOException_returnsInternalServerError() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        HttpSession session = mock(HttpSession.class);
+        Part part = mock(Part.class);
 
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(req.getPart("file")).thenReturn(part);
+        when(part.getInputStream()).thenThrow(new IOException("io"));
+
+        servlet.doPost(req, resp);
+
+        verify(resp).sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "CSV import failed.");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet12() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
+    void processRow_existingSystemTerm_isSkipped() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
+        TermDefinition existing = mock(TermDefinition.class);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        when(existing.getName()).thenReturn("term-a");
+        when(existing.isSystemFlag()).thenReturn(true);
+        when(store.listAll()).thenReturn(List.of(existing));
 
+        withTermsStore(store, () -> {
+            boolean created = invokeProcessRow(servlet, new String[] { "term-a", "d", "p", "WILDCARD", "false" });
+            assertFalse(created);
+        });
+
+        verify(store, never()).updateTerm(any(), any(), any(), any(), any());
+        verify(store, never()).createTerm(any(), any(), any(), any());
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet13() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getNameResult = "getNameResult"; // UTA: default value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
+    void processRow_existingNonSystem_updates() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
+        TermDefinition existing = mock(TermDefinition.class);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        when(existing.getName()).thenReturn("term-a");
+        when(existing.getId()).thenReturn(5L);
+        when(existing.isSystemFlag()).thenReturn(false);
+        when(store.listAll()).thenReturn(List.of(existing));
+        when(store.updateTerm(5L, "term-a", "new-desc", "new-pattern", "WILDCARD"))
+                .thenReturn(mock(TermDefinition.class));
 
+        withTermsStore(store, () -> {
+            boolean created = invokeProcessRow(servlet,
+                    new String[] { "term-a", "new-desc", "new-pattern", "WILDCARD", "false" });
+            assertFalse(created);
+        });
+
+        verify(store).updateTerm(5L, "term-a", "new-desc", "new-pattern", "WILDCARD");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet14() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = "getDescriptionResult"; // UTA: default value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
+    void processRow_newTerm_createsTerm() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
 
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
+        when(store.listAll()).thenReturn(List.of());
+        when(store.createTerm("new-term", "desc", "pattern", "REGEX")).thenReturn(mock(TermDefinition.class));
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        withTermsStore(store, () -> {
+            boolean created = invokeProcessRow(servlet,
+                    new String[] { "new-term", "desc", "pattern", "REGEX", "true" });
+            assertTrue(created);
+        });
 
+        verify(store).createTerm("new-term", "desc", "pattern", "REGEX");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet15() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
-        TermDefinition item = mock(TermDefinition.class);
-        String getDescriptionResult = null; // UTA: configured value
-        when(item.getDescription()).thenReturn(getDescriptionResult);
+    void processRow_blankName_throwsIllegalArgumentException() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
+        TermsStore store = mock(TermsStore.class);
 
-        String getMatchPatternResult = "getMatchPatternResult"; // UTA: default value
-        when(item.getMatchPattern()).thenReturn(getMatchPatternResult);
+        when(store.listAll()).thenReturn(List.of());
 
-        String getNameResult = null; // UTA: configured value
-        when(item.getName()).thenReturn(getNameResult);
-        listAllResult.add(item);
-        doReturn(listAllResult).when(termsStoreValue).listAll();
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
-
+        withTermsStore(store, () -> {
+            assertThrows(IllegalArgumentException.class,
+                    () -> invokeProcessRow(servlet, new String[] { " ", "desc", "pattern", "WILDCARD", "false" }));
+        });
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet16() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        when(termsStoreValue.listAll()).thenThrow(SQLException.class);
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
+    void parseCsvLine_andHeaderMatches_coverQuotedFields() throws Exception {
+        String[] cols = invokeStaticStringArray("parseCsvLine", "\"a,b\",\"c\"\"d\",x");
+        assertArrayEquals(new String[] { "a,b", "c\"d", "x" }, cols);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        boolean headerOk = invokeStaticBoolean("headerMatches",
+                new String[] { "name", "description", "match_pattern", "match_type", "system_flag" });
+        boolean headerBad = invokeStaticBoolean("headerMatches",
+                new String[] { "name", "desc" });
 
+        assertTrue(headerOk);
+        assertFalse(headerBad);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doGet(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doGet(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
     @Test
-    public void testDoGet17() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-        TermsStore termsStoreValue = mock(TermsStore.class);
-        setPrivateField(underTest, TermsCsvServlet.class, "termsStore", termsStoreValue);
-
-        // When
+    void forwardToAdminTerms_whenForwardFails_sendsFallbackError() throws Exception {
+        TermsCsvServlet servlet = new TermsCsvServlet();
         HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        ServletOutputStream getOutputStreamResult = mock(ServletOutputStream.class);
-        doThrow(IOException.class).when(getOutputStreamResult).write(nullable(byte[].class));
-        when(resp.getOutputStream()).thenReturn(getOutputStreamResult);
-        underTest.doGet(req, resp);
+        RequestDispatcher dispatcher = mock(RequestDispatcher.class);
 
+        when(req.getRequestDispatcher("/admin/terms")).thenReturn(dispatcher);
+        Mockito.doThrow(new ServletException("boom")).when(dispatcher).forward(req, resp);
+
+        invoke(servlet, "forwardToAdminTerms", new Class<?>[] { HttpServletRequest.class, HttpServletResponse.class }, req,
+                resp);
+
+        verify(resp).sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                "CSV import completed but redirect failed.");
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = null; // UTA: configured value
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+    private static boolean invokeProcessRow(TermsCsvServlet servlet, String[] cols) throws Exception {
+        try {
+            return (boolean) invoke(servlet, "processRow", new Class<?>[] { String[].class }, (Object) cols);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw ex;
+        }
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost2() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = null; // UTA: configured value
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+    private static String[] invokeStaticStringArray(String methodName, String line) throws Exception {
+        Method method = TermsCsvServlet.class.getDeclaredMethod(methodName, String.class);
+        method.setAccessible(true);
+        return (String[]) method.invoke(null, line);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost3() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        Object getAttributeResult = null; // UTA: configured value
-        when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+    private static boolean invokeStaticBoolean(String methodName, String[] value) throws Exception {
+        Method method = TermsCsvServlet.class.getDeclaredMethod(methodName, String[].class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, (Object) value);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost4() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+    private static Object invoke(Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+            throws Exception {
+        Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+        method.setAccessible(true);
+        return method.invoke(target, args);
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost5() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
+    private static void withTermsStore(TermsStore store, ThrowingRunnable action) throws Exception {
+        @SuppressWarnings("unchecked")
+        Instance<TermsStore> instance = (Instance<TermsStore>) mock(Instance.class);
+        when(instance.get()).thenReturn(store);
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        Part getPartResult = null; // UTA: configured value
-        when(req.getPart(nullable(String.class))).thenReturn(getPartResult);
+        @SuppressWarnings("unchecked")
+        CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
+        when(cdi.select(TermsStore.class)).thenReturn(instance);
 
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+        try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            action.run();
+        }
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost6() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        String getContextPathResult = "getContextPathResult"; // UTA: default value
-        when(req.getContextPath()).thenReturn(getContextPathResult);
-
-        Part getPartResult = mock(Part.class);
-        InputStream getInputStreamResult = mock(InputStream.class);
-        when(getPartResult.getInputStream()).thenReturn(getInputStreamResult);
-        when(req.getPart(nullable(String.class))).thenReturn(getPartResult);
-
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost7() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
+    private static final class CapturingServletOutputStream extends ServletOutputStream {
+        private final ByteArrayOutputStream delegate;
 
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        Part getPartResult = mock(Part.class);
-        InputStream getInputStreamResult = mock(InputStream.class);
-        when(getPartResult.getInputStream()).thenReturn(getInputStreamResult);
-        when(req.getPart(nullable(String.class))).thenReturn(getPartResult);
+        private CapturingServletOutputStream(ByteArrayOutputStream delegate) {
+            this.delegate = delegate;
+        }
 
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
+        @Override
+        public void write(int b) {
+            delegate.write(b);
+        }
 
-    }
+        @Override
+        public boolean isReady() {
+            return true;
+        }
 
-    /**
-     * Parasoft Jtest UTA: Test for doPost(HttpServletRequest, HttpServletResponse)
-     *
-     * @see com.sim.chatserver.web.admin.TermsCsvServlet#doPost(HttpServletRequest, HttpServletResponse)
-     * @author bmcmullin
-     */
-    @Test
-    public void testDoPost8() throws Throwable
-    {
-        // Given
-        TermsCsvServlet underTest = new TermsCsvServlet();
-
-        // When
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        Part getPartResult = mock(Part.class);
-        InputStream getInputStreamResult = mock(InputStream.class);
-        doThrow(IOException.class).when(getInputStreamResult).close();
-        when(getPartResult.getInputStream()).thenReturn(getInputStreamResult);
-        when(req.getPart(nullable(String.class))).thenReturn(getPartResult);
-
-        HttpSession getSessionResult = mock(HttpSession.class);
-        HttpSession getSessionResult2 = mock(HttpSession.class);
-        Object getAttributeResult = new Object(); // UTA: default value
-        when(getSessionResult2.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
-        when(req.getSession(anyBoolean())).thenReturn(getSessionResult, getSessionResult2);
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doPost(req, resp);
-
+        @Override
+        public void setWriteListener(WriteListener writeListener) {
+            // No async test behavior needed.
+        }
     }
 }

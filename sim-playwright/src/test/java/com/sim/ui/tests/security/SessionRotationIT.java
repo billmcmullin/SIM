@@ -15,7 +15,6 @@ import com.microsoft.playwright.APIRequest;
 import com.microsoft.playwright.APIRequestContext;
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.options.Cookie;
-import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
 public class SessionRotationIT extends BaseUiIT {
@@ -47,14 +46,7 @@ public class SessionRotationIT extends BaseUiIT {
         login(adminUsername, adminPassword);
         Cookie firstSessionCookie = findSessionCookie();
 
-        APIResponse relogin = page.request().post(
-            baseUrl + "/api/auth/login",
-            RequestOptions.create()
-                .setHeader("Content-Type", "application/json")
-                .setData(loginPayload(adminUsername, adminPassword))
-        );
-
-        assertEquals(200, relogin.status(), "Expected API login to succeed for session rotation.");
+        login(adminUsername, adminPassword);
 
         Cookie rotatedSessionCookie = findSessionCookieByName(firstSessionCookie.name);
         assertNotEquals(
@@ -128,11 +120,5 @@ public class SessionRotationIT extends BaseUiIT {
                 .map(c -> c.name)
                 .collect(Collectors.joining(", "));
         throw new AssertionError("Expected cookie named '" + cookieName + "', found: " + cookieNames);
-    }
-
-    private String loginPayload(String username, String password) {
-        String safeUsername = username == null ? "" : username.replace("\\", "\\\\").replace("\"", "\\\"");
-        String safePassword = password == null ? "" : password.replace("\\", "\\\\").replace("\"", "\\\"");
-        return "{\"username\":\"" + safeUsername + "\",\"password\":\"" + safePassword + "\"}";
     }
 }

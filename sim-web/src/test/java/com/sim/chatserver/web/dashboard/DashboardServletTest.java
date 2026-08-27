@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.ArgumentMatchers.any;
 
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.spi.CDI;
@@ -41,10 +42,82 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.io.StringWriter;
+import java.io.PrintWriter;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import com.sim.chatserver.service.dashboard.DashboardTermService;
+import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.util.DashboardTemplateRenderer;
+import com.sim.chatserver.widget.WidgetStore;
+
 class DashboardServletTest {
+
+    @Test
+    void doGet_authenticatedWithNoWidgets_rendersDashboardHtml() throws Exception {
+        DashboardServlet servlet = new DashboardServlet();
+
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpSession session = mock(HttpSession.class);
+        jakarta.servlet.ServletContext ctx = mock(jakarta.servlet.ServletContext.class);
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(req.getServletContext()).thenReturn(ctx);
+        when(ctx.getContextPath()).thenReturn("");
+        when(ctx.getResourceAsStream("/WEB-INF/views/dashboard.html")).thenReturn(null);
+        when(req.getContextPath()).thenReturn("");
+
+        StringWriter out = new StringWriter();
+        when(resp.getWriter()).thenReturn(new PrintWriter(out));
+
+        @SuppressWarnings("unchecked")
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<AppDataSourceHolder> dsInstance = mock(Instance.class);
+        @SuppressWarnings("unchecked")
+        Instance<TermsStore> termsInstance = mock(Instance.class);
+        @SuppressWarnings("unchecked")
+        Instance<DashboardTermService> termServiceInstance = mock(Instance.class);
+
+        AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+        DataSource dataSource = mock(DataSource.class);
+        TermsStore termsStore = mock(TermsStore.class);
+        DashboardTermService termService = mock(DashboardTermService.class);
+
+        when(cdi.select(AppDataSourceHolder.class)).thenReturn(dsInstance);
+        when(dsInstance.get()).thenReturn(holder);
+        when(holder.getDataSource()).thenReturn(dataSource);
+        when(dataSource.getConnection()).thenThrow(new SQLException("db unavailable"));
+
+        when(cdi.select(TermsStore.class)).thenReturn(termsInstance);
+        when(termsInstance.get()).thenReturn(termsStore);
+        when(termsStore.listAll()).thenReturn(List.of());
+
+        when(cdi.select(DashboardTermService.class)).thenReturn(termServiceInstance);
+        when(termServiceInstance.get()).thenReturn(termService);
+
+        try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class);
+             MockedStatic<WidgetStore> widgetStoreStatic = Mockito.mockStatic(WidgetStore.class);
+             MockedStatic<DashboardTemplateRenderer> templateStatic = Mockito.mockStatic(DashboardTemplateRenderer.class)) {
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            widgetStoreStatic.when(() -> WidgetStore.list(null)).thenReturn(List.of());
+            templateStatic.when(() -> DashboardTemplateRenderer.loadTemplateCached(any(), any())).thenReturn("<html><body>Dashboard</body></html>");
+            templateStatic.when(() -> DashboardTemplateRenderer.renderTemplate(any(), any())).thenReturn("<html><body>Dashboard</body></html>");
+            templateStatic.when(() -> DashboardTemplateRenderer.escapeHtml(any())).thenAnswer(inv -> {
+                Object value = inv.getArgument(0);
+                return value == null ? "" : value.toString();
+            });
+
+            servlet.doGet(req, resp);
+        }
+
+        verify(resp).setContentType("text/html;charset=UTF-8");
+        assertTrue(out.toString().contains("Dashboard"));
+    }
 
     @Test
     void doGet_withoutSession_forwardsToLogin() throws Exception {
@@ -205,9 +278,9 @@ class DashboardServletTest {
     @Test
     void helper_loadSessionLabels_and_threadFactory() throws Throwable {
         DashboardServlet servlet = new DashboardServlet();
+        DashboardJdbcDataService jdbcDataService = new DashboardJdbcDataService();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> none = (Map<String, Object>) invokePrivate(servlet, "loadSessionLabels", new Class<?>[]{List.class}, List.of());
+        Map<?, ?> none = jdbcDataService.loadSessionLabels(List.of());
 
         DashboardServlet.DashboardThreadFactory tf = new DashboardServlet.DashboardThreadFactory();
         Thread t = tf.newThread(() -> {
@@ -221,14 +294,14 @@ class DashboardServletTest {
 
     @Test
     void helper_quoteIdentifier_throwsForInvalidIdentifiers() {
-        DashboardServlet servlet = new DashboardServlet();
+        DashboardJdbcDataService jdbcDataService = new DashboardJdbcDataService();
 
         IllegalArgumentException blank = assertThrows(
                 IllegalArgumentException.class,
-                () -> invokePrivate(servlet, "quoteIdentifier", new Class<?>[]{String.class}, " "));
+            () -> invokePrivate(jdbcDataService, "quoteIdentifier", new Class<?>[]{String.class}, " "));
         IllegalArgumentException invalidChars = assertThrows(
                 IllegalArgumentException.class,
-                () -> invokePrivate(servlet, "quoteIdentifier", new Class<?>[]{String.class}, "1bad-name"));
+            () -> invokePrivate(jdbcDataService, "quoteIdentifier", new Class<?>[]{String.class}, "1bad-name"));
 
         assertEquals("Invalid SQL identifier", blank.getMessage());
         assertEquals("Invalid SQL identifier", invalidChars.getMessage());
@@ -236,17 +309,10 @@ class DashboardServletTest {
 
     @Test
     void helper_openConnectionSafe_wrapsSQLExceptionInIllegalStateException() {
-        DashboardServlet servlet = new DashboardServlet();
-
-        @SuppressWarnings("unchecked")
-        CDI<Object> cdi = mock(CDI.class);
-        @SuppressWarnings("unchecked")
-        Instance<AppDataSourceHolder> holderInstance = mock(Instance.class);
+        DashboardJdbcDataService jdbcDataService = new DashboardJdbcDataService();
         AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
         DataSource dataSource = mock(DataSource.class);
 
-        when(cdi.select(AppDataSourceHolder.class)).thenReturn(holderInstance);
-        when(holderInstance.get()).thenReturn(holder);
         when(holder.getDataSource()).thenReturn(dataSource);
         try {
             when(dataSource.getConnection()).thenThrow(new SQLException("db down"));
@@ -254,16 +320,12 @@ class DashboardServletTest {
             throw new AssertionError("Unexpected setup failure", e);
         }
 
-        try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
-            cdiStatic.when(CDI::current).thenReturn(cdi);
+        IllegalStateException ex = assertThrows(
+            IllegalStateException.class,
+            () -> invokePrivate(jdbcDataService, "openConnectionSafe", new Class<?>[]{AppDataSourceHolder.class}, holder));
 
-            IllegalStateException ex = assertThrows(
-                    IllegalStateException.class,
-                    () -> invokePrivate(servlet, "openConnectionSafe", new Class<?>[]{}));
-
-            assertEquals("Unable to open dashboard data connection", ex.getMessage());
-            assertInstanceOf(SQLException.class, ex.getCause());
-        }
+        assertEquals("Unable to open dashboard data connection", ex.getMessage());
+        assertInstanceOf(SQLException.class, ex.getCause());
     }
 
     private static Object newLocalProgressStat(int today, int yesterday) throws ReflectiveOperationException {
@@ -276,7 +338,7 @@ class DashboardServletTest {
     private static Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args)
             throws Throwable {
         try {
-            Method m = DashboardServlet.class.getDeclaredMethod(methodName, parameterTypes);
+            Method m = target.getClass().getDeclaredMethod(methodName, parameterTypes);
             m.setAccessible(true);
             return m.invoke(target, args);
         } catch (InvocationTargetException ex) {

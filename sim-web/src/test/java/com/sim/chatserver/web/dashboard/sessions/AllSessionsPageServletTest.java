@@ -6,6 +6,7 @@ import java.io.PrintWriter;
 
 import org.junit.jupiter.api.Test;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -45,6 +46,8 @@ public class AllSessionsPageServletTest
 
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        RequestDispatcher loginDispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher("/login")).thenReturn(loginDispatcher);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         underTest.doGet(req, resp);
 
@@ -72,6 +75,8 @@ public class AllSessionsPageServletTest
         Object getAttributeResult = null; // UTA: configured value
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
+        RequestDispatcher loginDispatcher = mock(RequestDispatcher.class);
+        when(req.getRequestDispatcher("/login")).thenReturn(loginDispatcher);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         underTest.doGet(req, resp);
 

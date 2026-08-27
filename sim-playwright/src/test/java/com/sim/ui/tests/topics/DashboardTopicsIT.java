@@ -101,7 +101,7 @@ public class DashboardTopicsIT extends BaseUiIT {
 
         // Logout button
         clickNavButtonNoWait("Logout", "/chat-server/login");
-        assertTrue(page.url().contains("/chat-server/login"));
+        assertOnLoginScreen("After logout expected login screen,");
 
         // Access blocked again after logout
         navigateWithCommit("/dashboard/topics");

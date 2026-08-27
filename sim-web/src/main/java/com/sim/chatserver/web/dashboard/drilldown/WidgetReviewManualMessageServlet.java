@@ -74,7 +74,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
-        private static Runtime runtime() {
+        private static ReviewRuntime runtime() {
         return RuntimeHolder.INSTANCE;
     }
 
@@ -84,7 +84,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         log.log(Level.INFO, "[manual-message][init] loaded config: {0}", RuntimeHolder.INSTANCE.mrConfig);
     }
 
-    private static final class Runtime {
+    private static final class ReviewRuntime {
         final MapReduceConfig mrConfig;
         final WorkspaceClient workspaceClient;
         final WidgetReviewMapReduceOrchestrator orchestrator;
@@ -93,7 +93,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         final ReviewOutputValidator reviewOutputValidator;
         final TrustedUrlValidator trustedUrlValidator;
 
-        private Runtime() {
+        private ReviewRuntime() {
             MapReduceConfig loadedConfig = MapReduceConfig.load();
             HttpClient client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -152,7 +152,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private static final class RuntimeHolder {
-        static final Runtime INSTANCE = new Runtime();
+        static final ReviewRuntime INSTANCE = new ReviewRuntime();
     }
 
     @Override
@@ -1048,17 +1048,18 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        return causedByInterruptedRecursive(throwable, 0);
-    }
-
-    private boolean causedByInterruptedRecursive(Throwable throwable, int depth) {
-        if (throwable == null || depth > 24) {
-            return false;
+        Throwable current = throwable;
+        for (int depth = 0; depth < 32 && current != null; depth++) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == null || cause.equals(current)) {
+                return false;
+            }
+            current = cause;
         }
-        if (throwable instanceof InterruptedException) {
-            return true;
-        }
-        return causedByInterruptedRecursive(throwable.getCause(), depth + 1);
+        return false;
     }
 
     private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) {

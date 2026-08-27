@@ -95,7 +95,7 @@ class SummaryOrchestrationRunnerTest {
 
     @Test
     void run_wrapsUnexpectedExceptions_withIOException() throws Exception {
-        RuntimeException boom = new RuntimeException("boom");
+        IllegalStateException boom = new IllegalStateException("boom");
         WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),

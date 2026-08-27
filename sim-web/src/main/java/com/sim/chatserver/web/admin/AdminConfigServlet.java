@@ -16,6 +16,7 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -302,22 +303,7 @@ public class AdminConfigServlet extends HttpServlet {
     }
 
     private String escapeHtml(String input) {
-        if (input == null) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder(input.length() + 16);
-        for (int i = 0; i < input.length(); i++) {
-            char ch = input.charAt(i);
-            switch (ch) {
-                case '&' -> out.append("&amp;");
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
-                default -> out.append(ch);
-            }
-        }
-        return out.toString();
+        return DashboardTemplateRenderer.escapeHtml(input);
     }
 
     private String escapeAttribute(String input) {

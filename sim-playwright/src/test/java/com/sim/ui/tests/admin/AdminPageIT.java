@@ -83,9 +83,7 @@ public class AdminPageIT extends BaseUiIT {
         waitForPath("/chat-server/admin");
 
         clickNavButtonNoWait("Logout", "/chat-server/login");
-
-        assertTrue(page.url().contains("/chat-server/login"),
-                "After logout expected /chat-server/login, got: " + page.url());
+        assertOnLoginScreen("After logout expected login screen,");
 
         navigateWithCommit("/admin");
         waitForLoginScreen();

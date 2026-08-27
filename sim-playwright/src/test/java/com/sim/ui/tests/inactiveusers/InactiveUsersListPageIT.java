@@ -63,7 +63,7 @@ public class InactiveUsersListPageIT extends BaseUiIT {
         waitForPath("/chat-server/dashboard/inactive-users/list");
 
         clickNavButtonNoWait("Logout", "/chat-server/login");
-        assertTrue(page.url().contains("/chat-server/login"));
+        assertOnLoginScreen("After logout expected login screen,");
 
         APIResponse response = page.request().get(baseUrl + "/dashboard/inactive-users/list?scope=all");
         assertEquals(200, response.status(), "Expected login-forward status after logout.");

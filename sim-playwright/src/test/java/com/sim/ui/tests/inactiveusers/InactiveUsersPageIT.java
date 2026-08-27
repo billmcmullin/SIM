@@ -89,7 +89,7 @@ public class InactiveUsersPageIT extends BaseUiIT {
         waitForPath("/chat-server/dashboard/inactive-users");
 
         clickNavButtonNoWait("Logout", "/chat-server/login");
-        assertTrue(page.url().contains("/chat-server/login"));
+        assertOnLoginScreen("After logout expected login screen,");
 
         // verify blocked after logout
         navigateWithCommit("/dashboard/inactive-users");

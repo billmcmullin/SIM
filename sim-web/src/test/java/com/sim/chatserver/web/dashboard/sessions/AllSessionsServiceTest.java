@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
+import java.io.StringReader;
 import java.sql.Timestamp;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -21,11 +23,132 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
+import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.widget.WidgetStore;
+
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletMapping;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import javax.sql.DataSource;
+import java.sql.Connection;
 
 class AllSessionsServiceTest {
+
+    @Test
+    void handleGet_summaryPath_authenticatedWithNoWidgets_returnsOkPayload() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/data");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        try (MockedStatic<WidgetStore> widgetStoreMock = Mockito.mockStatic(WidgetStore.class)) {
+            widgetStoreMock.when(() -> WidgetStore.list(null)).thenReturn(List.of());
+            service.handleGet(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("ok", payload.getString("status"));
+        assertEquals(0, payload.getInt("totalSessions"));
+    }
+
+    @Test
+    void handleGet_chatsPath_authenticatedWithNoWidgets_returnsEmptyRows() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+        @SuppressWarnings("unchecked")
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<AppDataSourceHolder> holderInstance = mock(Instance.class);
+        AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/chats");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getParameterValues("sessionId")).thenReturn(new String[]{"session-1"});
+        when(cdi.select(AppDataSourceHolder.class)).thenReturn(holderInstance);
+        when(holderInstance.get()).thenReturn(holder);
+        when(holder.getDataSource()).thenReturn(dataSource);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        try (MockedStatic<WidgetStore> widgetStoreMock = Mockito.mockStatic(WidgetStore.class);
+             MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            widgetStoreMock.when(() -> WidgetStore.list(null)).thenReturn(List.of());
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            service.handleGet(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("ok", payload.getString("status"));
+        assertEquals(0, payload.getJsonArray("rows").size());
+    }
+
+    @Test
+    void handlePost_selectPath_payloadWithoutValidChatIds_returnsBadRequest() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getContentLengthLong()).thenReturn(32L);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        JsonObject requestPayload = Json.createObjectBuilder()
+            .add("selectedChatIds", Json.createArrayBuilder().add(1))
+                .build();
+
+        try (MockedStatic<JsonRequestParserUtil> parserMock = Mockito.mockStatic(JsonRequestParserUtil.class);
+             MockedStatic<WidgetStore> widgetStoreMock = Mockito.mockStatic(WidgetStore.class)) {
+            parserMock.when(() -> JsonRequestParserUtil.parseObject(req, 64 * 1024)).thenReturn(requestPayload);
+            widgetStoreMock.when(() -> WidgetStore.list(null)).thenReturn(List.of());
+            service.handlePost(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("No valid chat IDs"));
+    }
 
     @Test
     void parseAndSanitizeHelpers_handleValidAndInvalidInputs() throws Exception {
@@ -201,5 +324,28 @@ class AllSessionsServiceTest {
 
     private boolean invokeBoolean(Object target, String methodName, Class<?>[] paramTypes, Object... args) throws Exception {
         return ((Boolean) invokeObject(target, methodName, paramTypes, args)).booleanValue();
+    }
+
+    private static final class CapturingOutputStream extends ServletOutputStream {
+        private final ByteArrayOutputStream delegate;
+
+        private CapturingOutputStream(ByteArrayOutputStream delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void write(int b) {
+            delegate.write(b);
+        }
+
+        @Override
+        public boolean isReady() {
+            return true;
+        }
+
+        @Override
+        public void setWriteListener(WriteListener writeListener) {
+            // no-op for unit tests
+        }
     }
 }
