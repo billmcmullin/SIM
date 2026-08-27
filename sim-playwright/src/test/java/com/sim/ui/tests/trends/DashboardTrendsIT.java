@@ -109,7 +109,7 @@ public class DashboardTrendsIT extends BaseUiIT {
 
         // Logout button
         clickNavButtonNoWait("Logout", "/chat-server/login");
-        assertTrue(page.url().contains("/chat-server/login"));
+        assertOnLoginScreen("After logout expected login screen,");
 
         // After logout trends should be blocked
         navigateWithCommit("/dashboard/trends");

@@ -1,7 +1,9 @@
 package com.sim.chatserver.service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -10,9 +12,14 @@ import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.Orchestratio
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.ProgressListener;
 
 import jakarta.json.JsonArray;
+import jakarta.json.Json;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -25,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for WidgetReviewMapReduceOrchestrator
@@ -1646,6 +1654,347 @@ public class WidgetReviewMapReduceOrchestratorTest
         });
 
     }
+
+        @Test
+        public void testPrivateHelperCoverage_normalizationAndReasoning() throws Throwable
+        {
+        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+            mock(WorkspaceClient.class),
+            new ReviewContextBuilderService(new ReviewSamplingService()),
+            new PromptTemplateService()
+        );
+
+        assertEquals("", invokePrivate(underTest, "normalizeId", new Class<?>[]{String.class}, (Object) null));
+        assertEquals("abc", invokePrivate(underTest, "normalizeId", new Class<?>[]{String.class}, "  AbC  "));
+
+        @SuppressWarnings("unchecked")
+        List<String> normalizedIds = (List<String>) invokePrivate(
+            underTest,
+            "normalizeIds",
+            new Class<?>[]{List.class},
+            java.util.Arrays.asList("A", "a", " ", null, "B")
+        );
+        assertEquals(List.of("a", "b"), normalizedIds);
+
+        @SuppressWarnings("unchecked")
+        List<String> intersection = (List<String>) invokePrivate(
+            underTest,
+            "intersect",
+            new Class<?>[]{List.class, List.class},
+            List.of("A", "b", "c"),
+            List.of("b", "C", "")
+        );
+        assertEquals(List.of("b", "c"), intersection);
+
+        @SuppressWarnings("unchecked")
+        List<String> subtraction = (List<String>) invokePrivate(
+            underTest,
+            "subtract",
+            new Class<?>[]{List.class, List.class},
+            List.of("A", "b", "c"),
+            List.of(" B ")
+        );
+        assertEquals(List.of("a", "c"), subtraction);
+
+        @SuppressWarnings("unchecked")
+        List<Integer> distinctInts = (List<Integer>) invokePrivate(
+            underTest,
+            "distinctInts",
+            new Class<?>[]{List.class},
+            java.util.Arrays.asList((Integer) null, Integer.valueOf(0), Integer.valueOf(-1), Integer.valueOf(2), Integer.valueOf(2), Integer.valueOf(3))
+        );
+        assertEquals(List.of(Integer.valueOf(2), Integer.valueOf(3)), distinctInts);
+
+        String mapOutput = "### chat c1\ncovered_chat_ids: [c1, C2, ...]\n";
+        @SuppressWarnings("unchecked")
+        List<String> coveredIds = (List<String>) invokePrivate(
+            underTest,
+            "parseCoveredIdsContract",
+            new Class<?>[]{String.class},
+            mapOutput
+        );
+        assertEquals(List.of("c1", "c2"), coveredIds);
+
+        @SuppressWarnings("unchecked")
+        List<String> headingIds = (List<String>) invokePrivate(
+            underTest,
+            "parseChatIdsFromMapOutput",
+            new Class<?>[]{String.class},
+            "### chat Alpha-1\nBody\n### CHAT beta.2\nMore"
+        );
+        assertEquals(List.of("alpha-1", "beta.2"), headingIds);
+
+        assertEquals("context_too_large", invokePrivate(
+            underTest,
+            "determineReasonCode",
+            new Class<?>[]{int.class, boolean.class, boolean.class},
+            400,
+            true,
+            true
+        ));
+        assertEquals("upstream_4xx", invokePrivate(
+            underTest,
+            "determineReasonCode",
+            new Class<?>[]{int.class, boolean.class, boolean.class},
+            404,
+            false,
+            true
+        ));
+        assertEquals("upstream_5xx", invokePrivate(
+            underTest,
+            "determineReasonCode",
+            new Class<?>[]{int.class, boolean.class, boolean.class},
+            503,
+            false,
+            true
+        ));
+        assertEquals("parse_error", invokePrivate(
+            underTest,
+            "determineReasonCode",
+            new Class<?>[]{int.class, boolean.class, boolean.class},
+            200,
+            false,
+            false
+        ));
+        assertEquals("batch_processing_failure", invokePrivate(
+            underTest,
+            "determineReasonCode",
+            new Class<?>[]{int.class, boolean.class, boolean.class},
+            200,
+            false,
+            true
+        ));
+
+        assertTrue((boolean) invokePrivate(underTest, "isDailySummarySession", new Class<?>[]{String.class}, "  DASHBOARD-DAILY-SUMMARY-1  "));
+        assertFalse((boolean) invokePrivate(underTest, "isDailySummarySession", new Class<?>[]{String.class}, "session-1"));
+
+        MapBatchResult auth401 = mock(MapBatchResult.class);
+        when(auth401.isSuccess()).thenReturn(false);
+        when(auth401.getHttpStatus()).thenReturn(401);
+        MapBatchResult auth403 = mock(MapBatchResult.class);
+        when(auth403.isSuccess()).thenReturn(false);
+        when(auth403.getHttpStatus()).thenReturn(403);
+        MapBatchResult success = mock(MapBatchResult.class);
+        when(success.isSuccess()).thenReturn(true);
+
+        assertTrue((boolean) invokePrivate(
+            underTest,
+            "allMapFailuresAreAuthFailures",
+            new Class<?>[]{List.class},
+            List.of(auth401, auth403)
+        ));
+        assertFalse((boolean) invokePrivate(
+            underTest,
+            "allMapFailuresAreAuthFailures",
+            new Class<?>[]{List.class},
+            List.of(auth401, success)
+        ));
+
+        assertTrue((boolean) invokePrivate(
+            underTest,
+            "isLikelyContextLimitError",
+            new Class<?>[]{String.class, int.class},
+            "maximum context length requested",
+            400
+        ));
+        assertFalse((boolean) invokePrivate(
+            underTest,
+            "isLikelyContextLimitError",
+            new Class<?>[]{String.class, int.class},
+            "gateway timeout",
+            504
+        ));
+        }
+
+        @Test
+        public void testPrivateHelperCoverage_chunkingAndExtraction() throws Throwable
+        {
+        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+            mock(WorkspaceClient.class),
+            new ReviewContextBuilderService(new ReviewSamplingService()),
+            new PromptTemplateService()
+        );
+
+        @SuppressWarnings("unchecked")
+        List<List<String>> chunked = (List<List<String>>) invokePrivate(
+            underTest,
+            "chunk",
+            new Class<?>[]{List.class, int.class},
+            List.of("a", "b", "c", "d", "e"),
+            2
+        );
+        assertEquals(3, chunked.size());
+        assertEquals(List.of("a", "b"), chunked.get(0));
+        assertEquals(List.of("e"), chunked.get(2));
+
+        @SuppressWarnings("unchecked")
+        List<String> bounded = (List<String>) invokePrivate(
+            underTest,
+            "boundFinalInputs",
+            new Class<?>[]{List.class, int.class, int.class},
+            List.of("", "abcdef", "xyz"),
+            1,
+            3
+        );
+        assertEquals(1, bounded.size());
+        assertEquals("abcdef", bounded.get(0));
+
+        @SuppressWarnings("unchecked")
+        List<String> fallbackBounded = (List<String>) invokePrivate(
+            underTest,
+            "boundFinalInputs",
+            new Class<?>[]{List.class, int.class, int.class},
+            List.of("   ", ""),
+            2,
+            4
+        );
+        assertEquals(1, fallbackBounded.size());
+
+        @SuppressWarnings("unchecked")
+        List<String> uniqueChatIds = (List<String>) invokePrivate(
+            underTest,
+            "extractUniqueChatIds",
+            new Class<?>[]{List.class},
+            java.util.Arrays.asList(entry("A"), entry("a"), entry("B"), null, entry(""))
+        );
+        assertEquals(List.of("a", "b"), uniqueChatIds);
+
+        @SuppressWarnings("unchecked")
+        List<SelectedEntry> filtered = (List<SelectedEntry>) invokePrivate(
+            underTest,
+            "filterEntriesByChatIds",
+            new Class<?>[]{List.class, Set.class},
+            List.of(entry("A"), entry("B"), entry("C")),
+            new LinkedHashSet<>(List.of("b", "c"))
+        );
+        assertEquals(2, filtered.size());
+        assertEquals("B", filtered.get(0).getChatId());
+        assertEquals("C", filtered.get(1).getChatId());
+
+        assertEquals("message text", invokePrivate(
+            underTest,
+            "extractPrimaryTextFromWorkspaceResponse",
+            new Class<?>[]{String.class},
+            "{\"message\":\"message text\"}"
+        ));
+        assertEquals("raw-body", invokePrivate(
+            underTest,
+            "extractPrimaryTextFromWorkspaceResponse",
+            new Class<?>[]{String.class},
+            "raw-body"
+        ));
+
+        String canonical = (String) invokePrivate(
+            underTest,
+            "canonicalizeForValidation",
+            new Class<?>[]{String.class},
+            "A\u0001B\n\tC"
+        );
+        assertEquals("AB\n\tC", canonical);
+
+        String outbound = (String) invokePrivate(
+            underTest,
+            "buildOutboundMessage",
+            new Class<?>[]{String.class, String.class, int.class},
+            "prompt",
+            "ctx",
+            8
+        );
+        assertEquals("prompt\n\n", outbound);
+
+        assertEquals("", invokePrivate(underTest, "trimTo", new Class<?>[]{String.class, int.class}, null, 3));
+        assertEquals("abc", invokePrivate(underTest, "trimTo", new Class<?>[]{String.class, int.class}, "abcdef", 3));
+        }
+
+        @Test
+        public void testRun_whenAllMapBatchesUnauthorized_returnsAuthFailureReduceResult() throws Throwable
+        {
+        WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
+        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+            workspaceClient,
+            new ReviewContextBuilderService(new ReviewSamplingService()),
+            new PromptTemplateService()
+        );
+
+        when(workspaceClient.sendChat(anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean(), any(JsonArray.class), anyString()))
+            .thenReturn(new WorkspaceResponse(401, "{\"message\":\"unauthorized\"}", "application/json"));
+        when(workspaceClient.isLikelyContextTooLarge(any(WorkspaceResponse.class))).thenReturn(false);
+
+        OrchestrationResult result = underTest.run(
+            "https://api.example.com",
+            "api-key",
+            "Summarize chats",
+            "chat",
+            "session-1",
+            false,
+            Json.createArrayBuilder().build(),
+            List.of(entry("c1")),
+            "req-auth"
+        );
+
+        assertEquals(403, result.finalResponse().statusCode());
+        assertFalse(result.coverageComplete());
+        assertEquals(1, result.totalBatches());
+        assertEquals(1, result.failedBatchIndexes().size());
+        assertEquals(1, result.missingChatIds().size());
+        }
+
+        @Test
+        public void testRun_withSuccessfulMap_executesReduceAndReturnsCoverage() throws Throwable
+        {
+        WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
+        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+            workspaceClient,
+            new ReviewContextBuilderService(new ReviewSamplingService()),
+            new PromptTemplateService()
+        );
+
+        String mapBody = "{\"textResponse\":\"### chat c1\\ncovered_chat_ids: [c1]\\nExecutive chat analysis\\nKey metrics\\nRisks and opportunities\\nRecommendations\\nCoverage and methodology\"}";
+        String reduceBody = "{\"textResponse\":\"## Executive Chat Analysis\\n## Key Metrics\\n## Risks and Opportunities\\n## Recommendations\\n## Coverage and Methodology\\n- chats provided: 1\\n- chats used in analysis: 1\\n- chats not used: 0\"}";
+
+        when(workspaceClient.sendChat(anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean(), any(JsonArray.class), anyString()))
+            .thenReturn(
+                new WorkspaceResponse(200, mapBody, "application/json"),
+                new WorkspaceResponse(200, reduceBody, "application/json")
+            );
+        when(workspaceClient.isLikelyContextTooLarge(any(WorkspaceResponse.class))).thenReturn(false);
+
+        OrchestrationResult result = underTest.run(
+            "https://api.example.com",
+            "api-key",
+            "Summarize chats",
+            "chat",
+            "session-1",
+            false,
+            Json.createArrayBuilder().build(),
+            List.of(entry("c1")),
+            "req-success"
+        );
+
+        assertEquals(1, result.totalBatches());
+        assertEquals(1, result.mapBatchResults().size());
+        assertEquals(0, result.failedBatchIndexes().size());
+        assertEquals(1, result.mapOutputs().size());
+        assertTrue(result.coverageComplete());
+        assertEquals(0, result.missingChatIds().size());
+        assertNotNull(result.reduceRequest());
+        assertNotNull(result.reduceResult());
+        }
+
+        private static SelectedEntry entry(String chatId) {
+        return new SelectedEntry(chatId, "prompt", "response", "2026-01-01T00:00:00Z", "session");
+        }
+
+        private static Object invokePrivate(Object target, String methodName, Class<?>[] paramTypes, Object... args) throws Throwable {
+        try {
+            Method method = target.getClass().getDeclaredMethod(methodName, paramTypes);
+            method.setAccessible(true);
+            return method.invoke(target, args);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause() == null ? ex : ex.getCause();
+        }
+        }
+
     private static OrchestrationResult createOrchestrationResult(
             WorkspaceResponse finalResponse,
             List<String> mapOutputs,

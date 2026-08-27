@@ -26,8 +26,6 @@ import com.sim.chatserver.widget.WidgetEntry;
 
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
-import jakarta.json.Json;
-import jakarta.json.JsonArrayBuilder;
 
 /**
  * Term-focused dashboard logic (term summary + chart payload).
@@ -234,17 +232,34 @@ public class DashboardTermService {
             return "[]";
         }
 
-        JsonArrayBuilder builder = Json.createArrayBuilder();
+        StringBuilder out = new StringBuilder("[");
+        boolean first = true;
         for (Map.Entry<String, Integer> entry : summary.getTermCounts().entrySet()) {
             String label = entry.getKey() == null ? "" : entry.getKey();
-            Integer boxedCount = entry.getValue();
-            int count = boxedCount == null ? 0 : boxedCount.intValue();
+            int count = entry.getValue() == null ? 0 : entry.getValue().intValue();
+            String escaped = escapeJson(label);
 
-            builder.add(Json.createObjectBuilder()
-                    .add("label", label)
-                    .add("count", count)
-                    .add("term", label));
+            if (!first) {
+                out.append(',');
+            }
+            first = false;
+
+            out.append("{\"label\":\"")
+                    .append(escaped)
+                    .append("\",\"count\":")
+                    .append(count)
+                    .append(",\"term\":\"")
+                    .append(escaped)
+                    .append("\"}");
         }
-        return builder.build().toString();
+        out.append(']');
+        return out.toString();
+    }
+
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 }

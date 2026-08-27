@@ -13,7 +13,7 @@ import java.util.logging.Logger;
 public final class HashUtil {
 
     private static final Logger LOG = Logger.getLogger(HashUtil.class.getName());
-    private static final char[] HEX = createHexAlphabet();
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
 
     private HashUtil() {
         // util
@@ -25,17 +25,6 @@ public final class HashUtil {
 
     static String sha256Hex(String value) {
         return digestHex("SHA-256", value);
-    }
-
-    private static char[] createHexAlphabet() {
-        char[] alphabet = new char[16];
-        for (int i = 0; i < 10; i++) {
-            alphabet[i] = (char) ('0' + i);
-        }
-        for (int i = 10; i < 16; i++) {
-            alphabet[i] = (char) ('a' + (i - 10));
-        }
-        return alphabet;
     }
 
     private static String digestHex(String algorithm, String value) {

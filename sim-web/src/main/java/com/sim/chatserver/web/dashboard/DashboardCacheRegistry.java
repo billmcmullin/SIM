@@ -198,41 +198,27 @@ final class DashboardCacheRegistry {
     }
 
     SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
-        long now = nowMillis();
-        boolean triggerRefresh = false;
-
-        Entry<SessionOverview> current;
         synchronized (sessionLock) {
-            current = sessionOverviewCache.get(key);
+            long now = nowMillis();
+            Entry<SessionOverview> current = sessionOverviewCache.get(key);
             if (isFresh(current, now)) {
                 return current.value;
             }
-            if (isWithinGrace(current, now) && current.refreshing) {
+
+            if (isWithinGrace(current, now)) {
+                if (!current.refreshing) {
+                    current.refreshing = true;
+                    startAsyncSessionRefresh(key, loader);
+                }
                 return current.value;
             }
-            if (isWithinGrace(current, now) && !current.refreshing) {
-                current.refreshing = true;
-                triggerRefresh = true;
-            }
-        }
-        if (triggerRefresh) {
-            startAsyncSessionRefresh(key, loader);
-            return current == null ? null : current.value;
-        }
 
-        synchronized (sessionLock) {
-            Entry<SessionOverview> second = sessionOverviewCache.get(key);
-            long now2 = nowMillis();
-            if (isFresh(second, now2)) {
-                return second.value;
-            }
-
-            SessionOverview fallback = second == null ? null : second.value;
+            SessionOverview fallback = current == null ? null : current.value;
             SessionOverview fresh = safeLoad(loader, fallback);
             Entry<SessionOverview> updated = Entry.of(
                     fresh,
-                    now2 + SESSION_OVERVIEW_TTL_MILLIS,
-                    now2 + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
+                    now + SESSION_OVERVIEW_TTL_MILLIS,
+                    now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
             );
 
             sessionOverviewCache.put(key, updated);
@@ -282,50 +268,28 @@ final class DashboardCacheRegistry {
             long ttlMillis,
             Supplier<T> loader
     ) {
-        long now = nowMillis();
-        Entry<T> current = getter.get();
-        boolean triggerRefresh = false;
+        synchronized (lock) {
+            long now = nowMillis();
+            Entry<T> current = getter.get();
 
-        if (isFresh(current, now)) {
-            return current.value;
-        }
+            if (isFresh(current, now)) {
+                return current.value;
+            }
 
-        if (isWithinGrace(current, now)) {
-            if (!current.refreshing) {
-                T staleValue;
-                synchronized (lock) {
-                    Entry<T> c2 = getter.get();
-                    long now2 = nowMillis();
-                    if (isFresh(c2, now2)) {
-                        return c2.value;
-                    }
-                    if (isWithinGrace(c2, now2) && !c2.refreshing) {
-                        c2.refreshing = true;
-                        triggerRefresh = true;
-                    }
-                    staleValue = c2 == null ? null : c2.value;
-                }
-                if (triggerRefresh) {
+            if (isWithinGrace(current, now)) {
+                if (!current.refreshing) {
+                    current.refreshing = true;
                     startAsyncSingleRefresh(lock, getter, setter, ttlMillis, loader);
                 }
-                return staleValue;
-            }
-            return current.value;
-        }
-
-        synchronized (lock) {
-            Entry<T> c3 = getter.get();
-            long now3 = nowMillis();
-            if (isFresh(c3, now3)) {
-                return c3.value;
+                return current.value;
             }
 
-            T fallback = c3 == null ? null : c3.value;
+            T fallback = current == null ? null : current.value;
             T fresh = safeLoad(loader, fallback);
             Entry<T> updated = Entry.of(
                     fresh,
-                    now3 + ttlMillis,
-                    now3 + ttlMillis + STALE_GRACE_MILLIS
+                    now + ttlMillis,
+                    now + ttlMillis + STALE_GRACE_MILLIS
             );
             setter.accept(updated);
             return updated.value;
@@ -378,38 +342,24 @@ final class DashboardCacheRegistry {
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
         submitRefreshTask(() -> {
-            SessionOverview fallback;
             synchronized (sessionLock) {
-                Entry<SessionOverview> snapshot = sessionOverviewCache.get(key);
-                fallback = snapshot == null ? null : snapshot.value;
-            }
-
-            try {
+                Entry<SessionOverview> current = sessionOverviewCache.get(key);
+                SessionOverview fallback = current == null ? null : current.value;
                 SessionOverview fresh = safeLoad(loader, fallback);
                 long now = nowMillis();
 
-                synchronized (sessionLock) {
-                    Entry<SessionOverview> current = sessionOverviewCache.get(key);
-                    if (current == null) {
-                        sessionOverviewCache.put(key, Entry.of(
-                                fresh,
-                                now + SESSION_OVERVIEW_TTL_MILLIS,
-                                now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
-                        ));
-                        evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
-                    } else {
-                        current.value = fresh;
-                        current.expiresAt = now + SESSION_OVERVIEW_TTL_MILLIS;
-                        current.staleUntil = now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS;
-                        current.refreshing = false;
-                    }
-                }
-            } finally {
-                synchronized (sessionLock) {
-                    Entry<SessionOverview> current = sessionOverviewCache.get(key);
-                    if (current != null) {
-                        current.refreshing = false;
-                    }
+                if (current == null) {
+                    sessionOverviewCache.put(key, Entry.of(
+                            fresh,
+                            now + SESSION_OVERVIEW_TTL_MILLIS,
+                            now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
+                    ));
+                    evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
+                } else {
+                    current.value = fresh;
+                    current.expiresAt = now + SESSION_OVERVIEW_TTL_MILLIS;
+                    current.staleUntil = now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS;
+                    current.refreshing = false;
                 }
             }
         });
@@ -451,9 +401,10 @@ final class DashboardCacheRegistry {
     }
 
     private static <K, V> void evictIfNeeded(LinkedHashMap<K, V> map, int maxSize) {
-        while (map.size() > maxSize) {
-            K eldest = map.keySet().iterator().next();
-            map.remove(eldest);
+        var iterator = map.entrySet().iterator();
+        while (map.size() > maxSize && iterator.hasNext()) {
+            iterator.next();
+            iterator.remove();
         }
     }
 

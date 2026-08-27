@@ -101,7 +101,7 @@ public final class TextBudgetUtil {
         if (estimated <= 1L) {
             return 1;
         }
-        return estimated >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) estimated;
+        return Math.toIntExact(Math.min(estimated, (long) Integer.MAX_VALUE));
     }
 
     /**

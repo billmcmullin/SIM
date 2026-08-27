@@ -80,22 +80,10 @@ public final class DashboardTemplateRenderer {
         if (value == null) {
             return "";
         }
-        StringBuilder out = new StringBuilder(value.length() + 16);
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
-            if (ch == '\\') {
-                out.append("\\\\");
-            } else if (ch == '\'') {
-                out.append("\\'");
-            } else if (ch == '\n') {
-                out.append("\\n");
-            } else if (ch == '\r') {
-                out.append("\\r");
-            } else {
-                out.append(ch);
-            }
-        }
-        return out.toString();
+        return value.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     private static String loadTemplate(ServletContext context, String path) throws IOException {

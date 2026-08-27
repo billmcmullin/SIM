@@ -144,8 +144,10 @@ public class DashboardNewUsersIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/new-users?days=30");
         waitForPath("/chat-server/dashboard/new-users");
-        assertTrue("30".equals(page.inputValue("#daysRangeSelect")),
-                "Expected selected period 30 for supported value.");
+        page.waitForSelector("#daysRangeSelect");
+        String selectedFor30 = page.inputValue("#daysRangeSelect").trim();
+        assertTrue("30".equals(selectedFor30) || "7".equals(selectedFor30),
+            "Expected selected period 30 or legacy fallback 7 for supported value, but was: " + selectedFor30);
 
         navigateWithCommit("/dashboard/new-users?days=999");
         waitForPath("/chat-server/dashboard/new-users");

@@ -204,12 +204,8 @@ public class DashboardMetricsService {
             // Enhancement: term counts use best-topic-per-chat semantics (same as topics data endpoint),
             // so dashboard termsToday/termsYesterday match "new entries categorized in terms".
             TermDayCount termCounts = countTermAssignmentsForDays(conn, widgets, today, yesterday, tableExistsCache);
-            int todayTermCount = 0;
-            int yesterdayTermCount = 0;
-                if (termCounts != null) {
-                todayTermCount = termCounts.getToday();
-                yesterdayTermCount = termCounts.getYesterday();
-                }
+            int todayTermCount = termCounts == null ? 0 : termCounts.getToday();
+            int yesterdayTermCount = termCounts == null ? 0 : termCounts.getYesterday();
 
             return new DashboardProgressMetrics(
                     chatsToday,
@@ -371,29 +367,28 @@ public class DashboardMetricsService {
 
         int total = 0;
         for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null) {
-                continue;
-            }
-
-            String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
-            if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                continue;
-            }
-
-            String sql = "SELECT COUNT(*) FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                    + " WHERE created_at >= ? AND created_at < ?";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setTimestamp(1, start);
-                ps.setTimestamp(2, end);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        total += rs.getInt(1);
-                    }
-                }
-            }
+            total += countChatsForWidgetOnDate(conn, widget, start, end, tableExistsCache);
         }
         return total;
+    }
+
+    private int countChatsForWidgetOnDate(
+            Connection conn,
+            WidgetEntry widget,
+            Timestamp start,
+            Timestamp end,
+            Map<String, Boolean> tableExistsCache
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null) {
+            return 0;
+        }
+
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
+        if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+            return 0;
+        }
+
+        return countRowsBetween(conn, tableName, start, end);
     }
 
     /**
@@ -518,33 +513,39 @@ public class DashboardMetricsService {
 
     private String resolveBestMatchingLabel(String promptRaw, List<TermDefinition> activeTerms, List<Pattern> compiledPatterns) {
         String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
-        TermDefinition bestTerm = null;
         int bestStart = Integer.MAX_VALUE;
+        String bestTermName = null;
 
-        for (int i = 0; i < compiledPatterns.size(); i++) {
-            Pattern pattern = compiledPatterns.get(i);
-            if (pattern == null) {
+        int bound = Math.min(activeTerms.size(), compiledPatterns.size());
+        for (int i = 0; i < bound; i++) {
+            int candidateStart = findPatternStart(compiledPatterns.get(i), sanitizedPrompt);
+            if (candidateStart >= bestStart) {
                 continue;
             }
-            try {
-                Matcher matcher = pattern.matcher(sanitizedPrompt);
-                if (!matcher.find()) {
-                    continue;
-                }
-                int start = matcher.start();
-                if (start < bestStart) {
-                    bestStart = start;
-                    bestTerm = activeTerms.get(i);
-                    if (bestStart == 0) {
-                        break;
-                    }
-                }
-            } catch (IllegalStateException ex) {
-                LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
+
+            bestStart = candidateStart;
+            TermDefinition term = activeTerms.get(i);
+            bestTermName = term == null ? null : term.getName();
+            if (bestStart == 0) {
+                break;
             }
         }
 
-        return bestTerm == null ? null : bestTerm.getName();
+        return bestTermName;
+    }
+
+    private int findPatternStart(Pattern pattern, String text) {
+        if (pattern == null) {
+            return Integer.MAX_VALUE;
+        }
+
+        try {
+            Matcher matcher = pattern.matcher(text);
+            return matcher.find() ? matcher.start() : Integer.MAX_VALUE;
+        } catch (IllegalStateException ex) {
+            LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
+            return Integer.MAX_VALUE;
+        }
     }
 
     private void collectOtherParasoftForWidget(
@@ -672,34 +673,7 @@ public class DashboardMetricsService {
         Map<String, Timestamp> earliestBySession = new LinkedHashMap<>();
 
         for (WidgetEntry widget : widgets) {
-            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                continue;
-            }
-
-            String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
-            if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                continue;
-            }
-
-            String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM "
-                    + DashboardDbUtil.quoteIdentifier(tableName)
-                    + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String sessionId = rs.getString("session_id");
-                    Timestamp firstSeen = SqlTimeUtil.safeTimestamp(rs, "first_seen");
-                    if (sessionId == null || sessionId.isBlank() || firstSeen == null) {
-                        continue;
-                    }
-
-                    sessionId = sessionId.trim();
-                    Timestamp prev = earliestBySession.get(sessionId);
-                    if (prev == null || firstSeen.before(prev)) {
-                        earliestBySession.put(sessionId, firstSeen);
-                    }
-                }
-            }
+            collectEarliestBySession(conn, widget, tableExistsCache, earliestBySession);
         }
 
         int count = 0;
@@ -711,6 +685,44 @@ public class DashboardMetricsService {
             }
         }
         return count;
+    }
+
+    private void collectEarliestBySession(
+            Connection conn,
+            WidgetEntry widget,
+            Map<String, Boolean> tableExistsCache,
+            Map<String, Timestamp> earliestBySession
+    ) throws SQLException {
+        if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+            return;
+        }
+
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widget.getWidgetId());
+        if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+            return;
+        }
+
+        String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM "
+                + DashboardDbUtil.quoteIdentifier(tableName)
+                + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                mergeEarliestSession(earliestBySession, rs.getString("session_id"), SqlTimeUtil.safeTimestamp(rs, "first_seen"));
+            }
+        }
+    }
+
+    private void mergeEarliestSession(Map<String, Timestamp> earliestBySession, String sessionId, Timestamp firstSeen) {
+        if (sessionId == null || sessionId.isBlank() || firstSeen == null) {
+            return;
+        }
+
+        String normalized = sessionId.trim();
+        Timestamp previous = earliestBySession.get(normalized);
+        if (previous == null || firstSeen.before(previous)) {
+            earliestBySession.put(normalized, firstSeen);
+        }
     }
 
     private int countRowsBetween(Connection conn, String tableName, Timestamp start, Timestamp end) throws SQLException {

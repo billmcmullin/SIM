@@ -361,7 +361,6 @@ public class WidgetSyncServlet extends HttpServlet {
         private final AtomicLong summaryIntervalSeconds = new AtomicLong(DEFAULT_SUMMARY_INTERVAL_SECONDS);
         private final AtomicReference<String> summaryPromptTemplate = new AtomicReference<>(DEFAULT_SUMMARY_PROMPT);
         private final AtomicReference<Timestamp> summaryLastRun = new AtomicReference<>();
-        private long lastSyncRequestAtNanos;
         private ScheduledFuture<?> scheduledFuture;
         private long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
         private boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
@@ -390,6 +389,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private static final Object syncRateLimitLock = new Object();
+    private static final AtomicLong SYNC_LAST_REQUEST_AT_NANOS = new AtomicLong(0L);
 
     private static final Set<String> ensuredTables = ConcurrentHashMap.newKeySet();
     private static final Map<String, RecentChatIdCache> recentChatIdsByWidget = new ConcurrentHashMap<>();
@@ -899,12 +899,20 @@ public class WidgetSyncServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, payload);
     }
 
-    private synchronized void updateInterval(long newIntervalSeconds) {
-        STATE.syncIntervalSeconds = newIntervalSeconds;
-        scheduleSyncTask();
+    private void updateInterval(long newIntervalSeconds) {
+        synchronized (WidgetSyncServlet.class) {
+            STATE.syncIntervalSeconds = newIntervalSeconds;
+            scheduleSyncTaskLocked();
+        }
     }
 
-    private synchronized void scheduleSyncTask() {
+    private void scheduleSyncTask() {
+        synchronized (WidgetSyncServlet.class) {
+            scheduleSyncTaskLocked();
+        }
+    }
+
+    private void scheduleSyncTaskLocked() {
         if (isSyncDisabled()) {
             return;
         }
@@ -1012,17 +1020,18 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        if (throwable == null) {
-            return false;
+        Throwable current = throwable;
+        for (int depth = 0; depth < 32 && current != null; depth++) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == null || current.equals(cause)) {
+                return false;
+            }
+            current = cause;
         }
-        if (throwable instanceof InterruptedException) {
-            return true;
-        }
-        Throwable cause = throwable.getCause();
-        if (throwable.equals(cause)) {
-            return false;
-        }
-        return causedByInterrupted(cause);
+        return false;
     }
 
     private List<WidgetSyncStatus> runSync(String requestedWidgetId) {
@@ -1171,7 +1180,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void beginSyncProgress(String phase, String message) {
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             STATE.syncStartedAt = Instant.now();
             STATE.syncFinishedAt = null;
             STATE.syncPhase = defaultIfBlank(phase, "running");
@@ -1188,7 +1197,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void startWidgetSyncProgress(int totalWidgets) {
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             STATE.syncPhase = "syncing_widgets";
             STATE.syncTotalWidgets = Math.max(0, totalWidgets);
             syncCompletedWidgets.set(0);
@@ -1210,14 +1219,14 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void updateCurrentWidgetProgress(String widgetId, String tableName, int widgetIndex, int totalWidgets) {
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             STATE.syncCurrentWidgetId = defaultIfBlank(widgetId, "");
             STATE.syncCurrentWidgetTable = defaultIfBlank(tableName, "");
             STATE.syncCurrentWidgetIndex = Math.max(0, widgetIndex);
 
             int safeTotal = Math.max(0, totalWidgets);
             if (safeTotal > 0) {
-                int scaledPercent = 5 + toSafeInt(Math.round(((Math.max(0, widgetIndex - 1) * 100.0d) / safeTotal) * 0.85d));
+                int scaledPercent = scaledWidgetSyncProgress(Math.max(0, widgetIndex - 1), safeTotal);
                 STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
@@ -1240,11 +1249,10 @@ public class WidgetSyncServlet extends HttpServlet {
             syncFailedWidgets.incrementAndGet();
         }
 
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             int total = Math.max(0, STATE.syncTotalWidgets);
             if (total > 0) {
-                int widgetPercent = toSafeInt(Math.round((completed * 100.0d) / total));
-                int scaledPercent = 5 + toSafeInt(Math.round(widgetPercent * 0.85d));
+                int scaledPercent = scaledWidgetSyncProgress(completed, total);
                 STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
             }
 
@@ -1262,7 +1270,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void updateSyncProgress(String phase, String message, int minimumPercent) {
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             if (phase != null && !phase.isBlank()) {
                 STATE.syncPhase = phase;
             }
@@ -1274,7 +1282,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void finishSyncProgress(boolean success, String message) {
-        withSyncProgressLock(() -> {
+        withSyncProgressLocked(() -> {
             STATE.syncFinishedAt = Instant.now();
             STATE.syncPhase = success ? "completed" : "failed";
             STATE.syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
@@ -1285,13 +1293,23 @@ public class WidgetSyncServlet extends HttpServlet {
         });
     }
 
-    private void withSyncProgressLock(Runnable action) {
+    private void withSyncProgressLocked(Runnable action) {
         if (action == null) {
             return;
         }
         synchronized (syncProgressLock) {
             action.run();
         }
+    }
+
+    private int scaledWidgetSyncProgress(int completedWidgets, int totalWidgets) {
+        if (totalWidgets <= 0) {
+            return 0;
+        }
+        double ratio = (Math.max(0, completedWidgets) * 100.0d) / totalWidgets;
+        long scaledPercent = 5L + Math.round(ratio * 0.85d);
+        long bounded = Math.max(0L, Math.min(90L, scaledPercent));
+        return toSafeInt(bounded);
     }
 
     private int computeSyncProgressPercent(boolean running, int totalWidgets, int completedWidgets) {
@@ -2723,12 +2741,12 @@ public class WidgetSyncServlet extends HttpServlet {
         final long minGapNanos = TimeUnit.MILLISECONDS.toNanos(SYNC_MIN_REQUEST_GAP_MS);
         withSyncRateLimitLock(() -> {
             long now = System.nanoTime();
-            long nextAllowed = STATE.lastSyncRequestAtNanos + minGapNanos;
+            long nextAllowed = SYNC_LAST_REQUEST_AT_NANOS.get() + minGapNanos;
             if (now < nextAllowed) {
                 waitNanosHolder[0] = nextAllowed - now;
-                STATE.lastSyncRequestAtNanos = nextAllowed;
+                SYNC_LAST_REQUEST_AT_NANOS.set(nextAllowed);
             } else {
-                STATE.lastSyncRequestAtNanos = now;
+                SYNC_LAST_REQUEST_AT_NANOS.set(now);
             }
         });
 
@@ -2863,7 +2881,13 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private synchronized void loadSyncSettings() {
+    private void loadSyncSettings() {
+        synchronized (WidgetSyncServlet.class) {
+            loadSyncSettingsLocked();
+        }
+    }
+
+    private void loadSyncSettingsLocked() {
         try {
             WidgetSyncJdbcStore.SyncSettingsData defaults = new WidgetSyncJdbcStore.SyncSettingsData(
                     STATE.syncIntervalSeconds,

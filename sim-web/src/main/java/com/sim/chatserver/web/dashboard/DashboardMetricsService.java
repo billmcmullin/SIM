@@ -204,12 +204,8 @@ final class DashboardMetricsService {
             // Enhancement: term counts use best-topic-per-chat semantics (same as topics data endpoint),
             // so dashboard termsToday/termsYesterday match "new entries categorized in terms".
             TermDayCount termCounts = countTermAssignmentsForDays(conn, widgets, today, yesterday, tableExistsCache);
-            int todayTermCount = 0;
-            int yesterdayTermCount = 0;
-                if (termCounts != null) {
-                todayTermCount = termCounts.getToday();
-                yesterdayTermCount = termCounts.getYesterday();
-                }
+            int todayTermCount = termCounts == null ? 0 : termCounts.getToday();
+            int yesterdayTermCount = termCounts == null ? 0 : termCounts.getYesterday();
 
             return new DashboardProgressMetrics(
                     chatsToday,

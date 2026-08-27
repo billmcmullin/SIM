@@ -656,16 +656,17 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        if (throwable == null) {
-            return false;
+        Throwable current = throwable;
+        for (int depth = 0; depth < 32 && current != null; depth++) {
+            if (current instanceof InterruptedException) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == null || cause.equals(current)) {
+                return false;
+            }
+            current = cause;
         }
-        if (throwable instanceof InterruptedException) {
-            return true;
-        }
-        Throwable cause = throwable.getCause();
-        if (cause != null && cause.equals(throwable)) {
-            return false;
-        }
-        return causedByInterrupted(cause);
+        return false;
     }
 }
