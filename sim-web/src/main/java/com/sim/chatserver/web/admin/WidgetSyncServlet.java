@@ -46,9 +46,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,6 +69,7 @@ import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -357,7 +355,7 @@ public class WidgetSyncServlet extends HttpServlet {
             DEFAULT_SUMMARY_MAX_REQUEST_BYTES,
             MAX_SUMMARY_PROMPT_CHARS
         );
-        private ScheduledExecutorService scheduler = createScheduler();
+        private ScheduledExecutorService scheduler = WidgetSyncSchedulerManager.createScheduler(log);
         private final AtomicLong summaryIntervalSeconds = new AtomicLong(DEFAULT_SUMMARY_INTERVAL_SECONDS);
         private final AtomicReference<String> summaryPromptTemplate = new AtomicReference<>(DEFAULT_SUMMARY_PROMPT);
         private final AtomicReference<Timestamp> summaryLastRun = new AtomicReference<>();
@@ -403,75 +401,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getName() + ".termsStore.override";
 
-    private static ScheduledExecutorService createScheduler() {
-        return lookupManagedScheduledExecutor();
-    }
-
-    private static ScheduledExecutorService lookupManagedScheduledExecutor() {
-        return lookupExecutor("java:comp/DefaultManagedScheduledExecutorService", ScheduledExecutorService.class);
-    }
-
-    private static <T> T lookupExecutor(String jndiName, Class<T> type) {
-        if (jndiName == null || type == null) {
-            return null;
-        }
-        InitialContext context = null;
-        try {
-            context = new InitialContext();
-            Object value = context.lookup(jndiName);
-            if (type.isInstance(value)) {
-                return type.cast(value);
-            }
-            log.log(Level.WARNING, "JNDI resource {0} is not a {1}", new Object[]{jndiName, type.getSimpleName()});
-            return null;
-        } catch (NamingException ex) {
-            log.log(Level.WARNING, "Unable to lookup managed executor {0}", jndiName);
-            log.log(Level.FINE, "Managed executor lookup failure details", ex);
-            return null;
-        } finally {
-            if (context != null) {
-                try {
-                    context.close();
-                } catch (NamingException closeEx) {
-                    log.log(Level.FINE, "Failed to close InitialContext", closeEx);
-                }
-            }
-        }
-    }
-
     private static synchronized void ensureExecutorsRunning() {
-        if (STATE.scheduler == null || isExecutorStopped(STATE.scheduler, "scheduler")) {
-            STATE.scheduler = createScheduler();
-            if (STATE.scheduler == null) {
-                log.warning("Managed scheduled executor is unavailable; automatic widget sync scheduling is disabled.");
-            }
-        }
-    }
-
-    private static boolean isExecutorStopped(ExecutorService executor, String executorName) {
-        if (executor == null) {
-            return true;
-        }
-        try {
-            return executor.isShutdown() || executor.isTerminated();
-        } catch (IllegalStateException | UnsupportedOperationException | SecurityException ex) {
-            if (isContainerManagedExecutor(executor)) {
-                log.log(Level.FINE, "Skipping lifecycle check for container-managed executor {0}", executorName);
-                return false;
-            }
-            log.log(Level.WARNING, "Executor lifecycle check failed for " + executorName + "; recreating local executor", ex);
-            return true;
-        }
-    }
-
-    private static boolean isContainerManagedExecutor(ExecutorService executor) {
-        if (executor == null) {
-            return false;
-        }
-        String typeName = executor.getClass().getName();
-        return typeName.contains("ManagedExecutorService")
-                || typeName.contains("ManagedScheduledExecutorService")
-                || typeName.contains("jboss.as.ee.concurrent.adapter");
+        STATE.scheduler = WidgetSyncSchedulerManager.ensureSchedulerRunning(STATE.scheduler, log, "scheduler");
     }
 
     private static boolean isSyncDisabled() {
@@ -566,24 +497,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (STATE.scheduledFuture != null) {
             STATE.scheduledFuture.cancel(false);
         }
-        shutdownExecutorQuietly(STATE.scheduler, "scheduler");
-    }
-
-    private void shutdownExecutorQuietly(ExecutorService executor, String executorName) {
-        if (executor == null) {
-            return;
-        }
-        if (isContainerManagedExecutor(executor)) {
-            log.log(Level.FINE, "Skipping shutdown for container-managed executor {0}", executorName);
-            return;
-        }
-        try {
-            if (!executor.isShutdown()) {
-                executor.shutdownNow();
-            }
-        } catch (IllegalStateException | UnsupportedOperationException | SecurityException ex) {
-            log.log(Level.FINE, "Executor shutdown failed for " + executorName, ex);
-        }
+        WidgetSyncSchedulerManager.shutdownExecutorQuietly(STATE.scheduler, log, "scheduler");
     }
 
     @Override
@@ -616,31 +530,26 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
+        String requestedWidgetId = firstParam(req, "widgetId");
         beginSyncProgress("manual_sync", "Manual sync started.");
         try {
-            List<WidgetSyncStatus> statuses = runSync(firstParam(req, "widgetId"));
-            updateLastSyncedMaybePersist(true);
+            WidgetSyncExecutionCoordinator.OrchestrationResult<WidgetSyncStatus> execution =
+                    WidgetSyncExecutionCoordinator.execute(
+                            WidgetSyncExecutionCoordinator.Mode.MANUAL,
+                            requestedWidgetId,
+                            this::runSync,
+                            this::updateLastSyncedMaybePersist,
+                            this::updateSyncProgress,
+                            this::runDailySummaryGeneration,
+                            () -> STATE.summaryAutoPausedUntilManualSuccess,
+                            () -> defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"),
+                            () -> STATE.summaryAutoEnabled,
+                            this::isSummaryRunDueNow,
+                            this::computeNextSummaryRunAtIso,
+                            log
+                    );
 
-            boolean summaryRan = false;
-            boolean summarySuccess = true;
-
-            // Manual sync keeps summary generation behavior, but does not bypass pause-on-failure policy.
-            if (STATE.summaryAutoPausedUntilManualSuccess) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because automatic summaries are paused. reason={0}",
-                        defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"));
-            } else if (!STATE.summaryAutoEnabled) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because automatic summary generation is disabled.");
-            } else if (!isSummaryRunDueNow()) {
-                log.log(Level.INFO,
-                        "Skipping summary generation during manual sync because summary interval has not elapsed. nextRunAt={0}",
-                        computeNextSummaryRunAtIso());
-            } else {
-                summaryRan = true;
-                updateSyncProgress("summary_generation", "Generating daily summary...", 92);
-                summarySuccess = runDailySummaryGeneration(false);
-            }
+            List<WidgetSyncStatus> statuses = execution.statuses();
 
             JsonArrayBuilder arr = Json.createArrayBuilder();
             for (WidgetSyncStatus status : statuses) {
@@ -652,19 +561,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     .add("widgetStatus", arr)
                     .build();
 
-            String completionMessage;
-            if (!summaryRan) {
-                completionMessage = STATE.summaryAutoPausedUntilManualSuccess
-                        ? "Sync completed. Summary generation is paused until an admin generates a summary."
-                        : (!STATE.summaryAutoEnabled
-                        ? "Sync completed. Automatic summary generation is disabled."
-                        : "Sync completed. Summary generation skipped until the configured interval elapses.");
-            } else if (!summarySuccess) {
-                completionMessage = "Sync completed. Summary generation failed and automatic summaries are now paused.";
-            } else {
-                completionMessage = "Sync completed successfully.";
-            }
-            finishSyncProgress(true, completionMessage);
+            finishSyncProgress(true, execution.completionMessage());
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
@@ -674,7 +571,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "manual-sync-failed",
                     "Widget sync failed",
-                    "widgetId=" + defaultString(firstParam(req, "widgetId")),
+                    "widgetId=" + defaultString(requestedWidgetId),
                     e
             );
             finishSyncProgress(false, "Sync failed. Check server logs.");
@@ -700,19 +597,11 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isTimerRequest(HttpServletRequest req) {
-        if (req == null || req.getHttpServletMapping() == null) {
-            return false;
-        }
-        String pattern = req.getHttpServletMapping().getPattern();
-        return "/admin/widgets/sync/timer".equals(pattern);
+        return WidgetSyncRequestMatcher.matchesPattern(req, "/admin/widgets/sync/timer");
     }
 
     private boolean isSummaryRetryRequest(HttpServletRequest req) {
-        if (req == null || req.getHttpServletMapping() == null) {
-            return false;
-        }
-        String pattern = req.getHttpServletMapping().getPattern();
-        return SUMMARY_RETRY_PATTERN.equals(pattern);
+        return WidgetSyncRequestMatcher.matchesPattern(req, SUMMARY_RETRY_PATTERN);
     }
 
     private void handleManualSummaryRetry(HttpServletRequest req, HttpServletResponse resp) {
@@ -934,42 +823,25 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         beginSyncProgress("scheduled_sync", "Scheduled sync started.");
         try {
-            List<WidgetSyncStatus> statuses = runSync(null);
-            updateLastSyncedMaybePersist(false);
+            WidgetSyncExecutionCoordinator.OrchestrationResult<WidgetSyncStatus> execution =
+                    WidgetSyncExecutionCoordinator.execute(
+                            WidgetSyncExecutionCoordinator.Mode.SCHEDULED,
+                            null,
+                            this::runSync,
+                            this::updateLastSyncedMaybePersist,
+                            this::updateSyncProgress,
+                            this::runDailySummaryGeneration,
+                            () -> STATE.summaryAutoPausedUntilManualSuccess,
+                            () -> defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"),
+                            () -> STATE.summaryAutoEnabled,
+                            this::isSummaryRunDueNow,
+                            this::computeNextSummaryRunAtIso,
+                            log
+                    );
 
-            boolean summaryRan = false;
-            boolean summarySuccess = true;
+            finishSyncProgress(true, execution.completionMessage());
 
-            if (STATE.summaryAutoPausedUntilManualSuccess) {
-                log.log(Level.INFO,
-                        "Skipping scheduled summary generation while paused. reason={0}",
-                        defaultIfBlank(STATE.summaryAutoPausedReason, "manual summary generation required"));
-            } else if (!STATE.summaryAutoEnabled) {
-                log.log(Level.INFO, "Skipping scheduled summary generation because automatic summary is disabled.");
-            } else if (!isSummaryRunDueNow()) {
-                log.log(Level.INFO,
-                        "Skipping scheduled summary generation because summary interval has not elapsed. nextRunAt={0}",
-                        computeNextSummaryRunAtIso());
-            } else {
-                summaryRan = true;
-                updateSyncProgress("summary_generation", "Generating daily summary...", 92);
-                summarySuccess = runDailySummaryGeneration(false);
-            }
-
-            if (!summaryRan) {
-                finishSyncProgress(true,
-                        STATE.summaryAutoPausedUntilManualSuccess
-                                ? "Scheduled sync completed. Summary generation remains paused."
-                        : (!STATE.summaryAutoEnabled
-                        ? "Scheduled sync completed. Automatic summary generation is disabled."
-                        : "Scheduled sync completed. Summary generation skipped until the configured interval elapses."));
-            } else if (!summarySuccess) {
-                finishSyncProgress(true, "Scheduled sync completed. Summary generation failed and was paused.");
-            } else {
-                finishSyncProgress(true, "Scheduled sync completed successfully.");
-            }
-
-            log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + statuses.size() + " widget entries.");
+            log.log(Level.INFO, () -> "Automatic widget sync completed. Synced " + execution.statuses().size() + " widget entries.");
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
@@ -1020,142 +892,60 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        for (int depth = 0; depth < 32 && current != null; depth++) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            Throwable cause = current.getCause();
-            if (cause == null || current.equals(cause)) {
-                return false;
-            }
-            current = cause;
-        }
-        return false;
+        return ThrowableUtil.hasInterruptedCause(throwable);
     }
 
     private List<WidgetSyncStatus> runSync(String requestedWidgetId) {
-        ServerConfig config = loadServerConfig("widget sync");
-        if (config == null) {
-            throw new IllegalStateException("Server configuration is missing.");
-        }
+        return WidgetSyncRunService.run(
+                requestedWidgetId,
+                () -> loadServerConfig("widget sync"),
+                () -> loadWidgetEntries("sync"),
+                this::startWidgetSyncProgress,
+                this::updateCurrentWidgetProgress,
+                this::clearCurrentWidgetProgress,
+                this::sanitizeWidgetTableName,
+                this::syncSingleWidget
+        );
+    }
 
-        List<WidgetEntry> widgets = loadWidgetEntries("sync");
-        if (requestedWidgetId != null && !requestedWidgetId.isBlank()) {
-            widgets.removeIf(w -> w == null || !requestedWidgetId.equals(w.getWidgetId()));
-        }
-
-        List<WidgetEntry> valid = widgets.stream()
-                .filter(w -> w != null && w.getWidgetId() != null && !w.getWidgetId().isBlank())
-            .sorted((left, right) -> left.getWidgetId().compareToIgnoreCase(right.getWidgetId()))
-                .toList();
-
-        startWidgetSyncProgress(valid.size());
-
-        List<WidgetSyncStatus> statuses = new ArrayList<>(valid.size());
-        int totalWidgets = valid.size();
-
-        for (int i = 0; i < totalWidgets; i++) {
-            if (Thread.currentThread().isInterrupted()) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Widget sync interrupted before processing next widget.");
-            }
-
-            WidgetEntry widget = valid.get(i);
-            String widgetId = widget == null ? "" : defaultString(widget.getWidgetId());
-            updateCurrentWidgetProgress(widgetId, sanitizeWidgetTableName(widgetId), i + 1, totalWidgets);
-
-            WidgetSyncStatus status = syncSingleWidget(config, widgetId);
-            statuses.add(status);
-        }
-
+    private void clearCurrentWidgetProgress() {
         STATE.syncCurrentWidgetId = "";
         STATE.syncCurrentWidgetTable = "";
         STATE.syncCurrentWidgetIndex = 0;
-        return statuses;
     }
 
     private WidgetSyncStatus syncSingleWidget(ServerConfig config, String widgetId) {
         String tableName = sanitizeWidgetTableName(widgetId);
         boolean success = false;
+        RecentChatIdCache recentCache = recentChatIdCacheForWidget(tableName);
 
         try {
-            STATE.jdbcStore.ensureWidgetTable(dataSourceHolder(), tableName, ensuredTables);
-
-            updateSyncProgress(
-                "syncing_widgets",
-                currentWidgetStepMessage(widgetId, "Calling API for chat messages..."),
-                STATE.syncProgressPercent
+            WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+                    () -> STATE.jdbcStore.ensureWidgetTable(dataSourceHolder(), tableName, ensuredTables),
+                    step -> updateSyncProgress(
+                            "syncing_widgets",
+                            currentWidgetStepMessage(widgetId, step),
+                            STATE.syncProgressPercent
+                    ),
+                    () -> fetchWidgetChatsWithRetry(config, widgetId),
+                    this::collectUniqueChatIds,
+                    candidateChatIds -> {
+                        if (recentCache == null || candidateChatIds == null || candidateChatIds.isEmpty()) {
+                            return null;
+                        }
+                        return recentCache.missingFromCache(candidateChatIds);
+                    },
+                    (sourceChats, allowedIds) -> filterChatsByIds(sourceChats, new LinkedHashSet<>(allowedIds)),
+                    chatsForUpsert -> STATE.jdbcStore.insertWidgetChats(dataSourceHolder(), tableName, toChatUpsertRows(chatsForUpsert)),
+                    candidateChatIds -> {
+                        if (recentCache != null && candidateChatIds != null && !candidateChatIds.isEmpty()) {
+                            recentCache.recordAll(candidateChatIds);
+                        }
+                    }
             );
-
-            List<JsonObject> chats = fetchWidgetChatsWithRetry(config, widgetId);
-            List<String> candidateChatIds = collectUniqueChatIds(chats);
-            RecentChatIdCache recentCache = recentChatIdCacheForWidget(tableName);
-
-            boolean skippedByRecentCache = false;
-            List<JsonObject> chatsForUpsert = chats;
-            if (recentCache != null && !candidateChatIds.isEmpty()) {
-                List<String> missingChatIds = recentCache.missingFromCache(candidateChatIds);
-                if (missingChatIds.isEmpty()) {
-                    skippedByRecentCache = true;
-                    updateSyncProgress(
-                        "syncing_widgets",
-                        currentWidgetStepMessage(widgetId, "Payload unchanged from recent syncs. Skipping DB upsert."),
-                        STATE.syncProgressPercent
-                    );
-                } else if (missingChatIds.size() < candidateChatIds.size()) {
-                    Set<String> missingIdSet = new LinkedHashSet<>(missingChatIds);
-                    chatsForUpsert = filterChatsByIds(chats, missingIdSet);
-                    int filteredCount = Math.max(0, candidateChatIds.size() - missingChatIds.size());
-                    updateSyncProgress(
-                        "syncing_widgets",
-                        currentWidgetStepMessage(widgetId, "Filtered " + filteredCount + " known chat(s) before DB upsert."),
-                        STATE.syncProgressPercent
-                    );
-                }
-            }
-
-            updateSyncProgress(
-                "syncing_widgets",
-                currentWidgetStepMessage(widgetId, "API returned " + chats.size() + " chat(s). Checking for new entries..."),
-                STATE.syncProgressPercent
-            );
-
-            int inserted = 0;
-            if (!skippedByRecentCache && !chatsForUpsert.isEmpty()) {
-            updateSyncProgress(
-                "syncing_widgets",
-                currentWidgetStepMessage(widgetId, "Upserting chat(s) into database..."),
-                STATE.syncProgressPercent
-            );
-                inserted = STATE.jdbcStore.insertWidgetChats(dataSourceHolder(), tableName, toChatUpsertRows(chatsForUpsert));
-            updateSyncProgress(
-                "syncing_widgets",
-                currentWidgetStepMessage(widgetId, "Added " + inserted + " new chat(s) to database."),
-                STATE.syncProgressPercent
-            );
-            } else {
-            updateSyncProgress(
-                "syncing_widgets",
-                currentWidgetStepMessage(widgetId, "No new chats detected. Database unchanged."),
-                STATE.syncProgressPercent
-            );
-            }
-
-                if (recentCache != null && !candidateChatIds.isEmpty()) {
-                recentCache.recordAll(candidateChatIds);
-                }
-
-            String message = chats.isEmpty()
-                    ? "No chat rows returned from server."
-                    : (skippedByRecentCache
-                    ? "Fetched " + chats.size() + " chat(s), payload unchanged from recent sync cache. Table unchanged."
-                : (inserted <= 0
-                    ? "Fetched " + chats.size() + " chat(s), no new chat entries detected. Table unchanged."
-                    : "Fetched " + chats.size() + " chat(s), inserted " + inserted + " new chat(s)."));
 
             success = true;
-            return new WidgetSyncStatus(widgetId, tableName, true, true, message);
+            return new WidgetSyncStatus(widgetId, tableName, true, true, result.message());
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             if (causedByInterrupted(e)) {
                 Thread.currentThread().interrupt();
@@ -1384,12 +1174,13 @@ public class WidgetSyncServlet extends HttpServlet {
             String apiKey = requestContext.apiKey;
             String canonicalTargetUrl = requestContext.canonicalTargetUrl;
             ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = requestContext.resolvedSummaryAuth;
+            String resolvedSummaryPrompt = resolveSummaryPrompt();
 
             STATE.summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
 
             List<TermDefinition> termDefinitions = loadSummaryTerms();
             List<SelectedEntry> upstreamEntries = limitSummaryEntriesForUpstream(entries);
-            String promptGuide = normalizeSummarySnippet(resolveSummaryPrompt(), SUMMARY_GENTLE_GUIDANCE_CHARS);
+            String promptGuide = normalizeSummarySnippet(resolvedSummaryPrompt, SUMMARY_GENTLE_GUIDANCE_CHARS);
             SummaryPayloadPlan payloadPlan = buildPerformanceSafeSummaryRequestMessage(promptGuide, upstreamEntries, entries.size());
             String singlePassMessage = payloadPlan.message;
             int entryCountSent = payloadPlan.includedEntries;
@@ -1416,151 +1207,236 @@ public class WidgetSyncServlet extends HttpServlet {
                         new Object[]{entryCountSent, payloadPlan.requestBytes});
             }
 
-            WorkspaceResponse finalResp;
-            try {
-                finalResp = runSinglePassSummaryChat(
-                        canonicalTargetUrl,
-                        apiKey,
-                        singlePassMessage,
-                        summaryRequestId
-                );
-            } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
-                finalResp = null;
-                String summary = isUpstreamSummaryRequired()
-                    ? "Single-pass summary request failed while upstream summary is required"
-                    : "Single-pass summary request failed; falling back locally";
-                logWarningWithDiagnostics(
-                        "summary-single-pass-failed",
-                    summary,
-                        "requestId=" + summaryRequestId + "\nentryCountSent=" + entryCountSent,
-                        ex
-                );
-            }
-
-            if (finalResp != null) {
-                ServerDiagnosticsLog.write(
-                        "widget-sync",
-                        summaryRequestId,
-                        "summary-response-single-pass",
-                        "status=" + finalResp.statusCode()
-                                + "\ncontentType=" + defaultString(finalResp.contentType())
-                                + "\nbodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
-                );
-            }
+            WorkspaceResponse finalResp = requestSummarySinglePass(
+                    canonicalTargetUrl,
+                    apiKey,
+                    singlePassMessage,
+                    summaryRequestId,
+                    entryCountSent
+            );
 
             if (finalResp == null) {
-                String reason = "Summary request returned no response.";
-                if (shouldUseLocalSummaryFallback(0)) {
-                    String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, 0, reason);
-                    persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, 0, reason);
-                    return true;
-                }
-                return failDailySummary(day, slot, entryCount,
-                        "Summary request failed.",
-                        reason + " Upstream summary is required.");
+                return handleSummaryNoResponse(day, slot, entryCount, entries, termDefinitions);
             }
 
-            int statusCode = finalResp.statusCode();
-            if (statusCode < 200 || statusCode >= 300) {
-                if (shouldRetryDirectSummaryFallback(finalResp)) {
-                    try {
-                        log.log(Level.INFO,
-                                "Retrying summary using direct fallback after single-pass upstream status={0}",
-                                new Object[]{statusCode});
-                        WorkspaceResponse directFallback = runDirectSummaryChat(
-                                canonicalTargetUrl,
-                                apiKey,
-                                resolveSummaryPrompt(),
-                                upstreamEntries,
-                                summaryRequestId + "-direct-fallback"
-                        );
+            finalResp = maybeRunDirectSummaryFallback(
+                    finalResp,
+                    canonicalTargetUrl,
+                    apiKey,
+                    resolvedSummaryPrompt,
+                    upstreamEntries,
+                    summaryRequestId
+            );
 
-                        if (directFallback != null) {
-                            ServerDiagnosticsLog.write(
-                                    "widget-sync",
-                                    summaryRequestId,
-                                    "summary-response-direct-fallback",
-                                    "status=" + directFallback.statusCode()
-                                            + "\ncontentType=" + defaultString(directFallback.contentType())
-                                            + "\nbodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
-                            );
-                            finalResp = directFallback;
-                            statusCode = finalResp.statusCode();
-                        }
-                    } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
-                        logWarningWithDiagnostics(
-                                "summary-direct-fallback-failed",
-                                "Direct summary fallback failed after single-pass upstream failure",
-                                "requestId=" + summaryRequestId + "\nstatusCode=" + statusCode,
-                                ex
-                        );
-                    }
-                }
-
-                String upstreamText = extractPrimaryText(finalResp.body());
-                if (upstreamText == null || upstreamText.isBlank()) {
-                    upstreamText = "Workspace returned HTTP " + statusCode + '.';
-                }
-                String truncated = upstreamText.length() > 1200 ? upstreamText.substring(0, 1200) : upstreamText;
-                String friendlyFailure = buildUserFacingSummaryFailureMessage(
-                        statusCode,
-                        truncated,
+            if (finalResp.statusCode() < 200 || finalResp.statusCode() >= 300) {
+                return handleSummaryFailedResponse(
+                        day,
+                        slot,
+                        entryCount,
+                        entries,
+                        termDefinitions,
+                        finalResp,
                         workspaceSlug,
                         canonicalTargetUrl
                 );
-
-                if (shouldUseLocalSummaryFallback(statusCode, truncated)) {
-                    String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, statusCode, truncated);
-                    persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, statusCode, truncated);
-                    return true;
-                }
-
-                return failDailySummary(day, slot, entryCount,
-                        friendlyFailure,
-                        truncated);
             }
 
-            String raw = extractPrimaryText(finalResp.body());
-            if (raw == null || raw.isBlank()) {
-                String reason = "No summary message returned by upstream service.";
-                if (shouldUseLocalSummaryFallback(finalResp.statusCode())) {
-                    String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, finalResp.statusCode(), reason);
-                    persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, finalResp.statusCode(), reason);
-                    return true;
-                }
-                return failDailySummary(day, slot, entryCount,
-                        "Summary response was empty.",
-                        reason + " Upstream summary is required.");
-            }
-
-            String overall = section(raw, "Overall");
-            String quality = section(raw, "Quality");
-            String response = section(raw, "Response");
-            String usage = section(raw, "Usage");
-
-            if (overall.isBlank()) {
-                overall = raw.length() > 1200 ? raw.substring(0, 1200) : raw;
-            }
-            if (quality.isBlank()) {
-                quality = "No specific quality notes generated.";
-            }
-            if (response.isBlank()) {
-                response = "No specific response notes generated.";
-            }
-            if (usage.isBlank()) {
-                usage = "No specific usage notes generated.";
-            }
-
-            STATE.summaryStore.upsertSummary(day, slot, "success", 100, "Summary generated.",
-                    overall, quality, response, usage, entries.size(), false, true);
-            resumeAutomaticSummaryGeneration("Summary generated successfully.");
-            return true;
+            return handleSummarySuccessResponse(day, slot, entryCount, entries, termDefinitions, finalResp);
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             logDailySummaryFailure(manualTrigger ? "manual-summary-retry" : "auto-summary", e);
             return failDailySummary(day, slot, Math.max(0, entryCount),
                     "Summary generation failed.",
                     "Summary generation failed due to an internal error: " + defaultString(e.getMessage()));
         }
+    }
+
+    private WorkspaceResponse requestSummarySinglePass(
+            String canonicalTargetUrl,
+            String apiKey,
+            String singlePassMessage,
+            String summaryRequestId,
+            int entryCountSent
+    ) {
+        WorkspaceResponse finalResp;
+        try {
+            finalResp = runSinglePassSummaryChat(
+                    canonicalTargetUrl,
+                    apiKey,
+                    singlePassMessage,
+                    summaryRequestId
+            );
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
+            String summary = isUpstreamSummaryRequired()
+                    ? "Single-pass summary request failed while upstream summary is required"
+                    : "Single-pass summary request failed; falling back locally";
+            logWarningWithDiagnostics(
+                    "summary-single-pass-failed",
+                    summary,
+                    "requestId=" + summaryRequestId + "\nentryCountSent=" + entryCountSent,
+                    ex
+            );
+            return null;
+        }
+
+        if (finalResp != null) {
+            ServerDiagnosticsLog.write(
+                    "widget-sync",
+                    summaryRequestId,
+                    "summary-response-single-pass",
+                    "status=" + finalResp.statusCode()
+                            + "\ncontentType=" + defaultString(finalResp.contentType())
+                            + "\nbodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
+            );
+        }
+
+        return finalResp;
+    }
+
+    private WorkspaceResponse maybeRunDirectSummaryFallback(
+            WorkspaceResponse finalResp,
+            String canonicalTargetUrl,
+            String apiKey,
+            String summaryPrompt,
+            List<SelectedEntry> upstreamEntries,
+            String summaryRequestId
+    ) {
+        if (finalResp == null || !shouldRetryDirectSummaryFallback(finalResp)) {
+            return finalResp;
+        }
+
+        int statusCode = finalResp.statusCode();
+        try {
+            log.log(Level.INFO,
+                    "Retrying summary using direct fallback after single-pass upstream status={0}",
+                    new Object[]{statusCode});
+
+            WorkspaceResponse directFallback = runDirectSummaryChat(
+                    canonicalTargetUrl,
+                    apiKey,
+                    summaryPrompt,
+                    upstreamEntries,
+                    summaryRequestId + "-direct-fallback"
+            );
+
+            if (directFallback != null) {
+                ServerDiagnosticsLog.write(
+                        "widget-sync",
+                        summaryRequestId,
+                        "summary-response-direct-fallback",
+                        "status=" + directFallback.statusCode()
+                                + "\ncontentType=" + defaultString(directFallback.contentType())
+                                + "\nbodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
+                );
+                return directFallback;
+            }
+        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
+            logWarningWithDiagnostics(
+                    "summary-direct-fallback-failed",
+                    "Direct summary fallback failed after single-pass upstream failure",
+                    "requestId=" + summaryRequestId + "\nstatusCode=" + statusCode,
+                    ex
+            );
+        }
+
+        return finalResp;
+    }
+
+    private boolean handleSummaryNoResponse(
+            LocalDate day,
+            int slot,
+            int entryCount,
+            List<SelectedEntry> entries,
+            List<TermDefinition> termDefinitions
+    ) {
+        String reason = "Summary request returned no response.";
+        if (shouldUseLocalSummaryFallback(0)) {
+            String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, 0, reason);
+            persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, 0, reason);
+            return true;
+        }
+        return failDailySummary(day, slot, entryCount,
+                "Summary request failed.",
+                reason + " Upstream summary is required.");
+    }
+
+    private boolean handleSummaryFailedResponse(
+            LocalDate day,
+            int slot,
+            int entryCount,
+            List<SelectedEntry> entries,
+            List<TermDefinition> termDefinitions,
+            WorkspaceResponse finalResp,
+            String workspaceSlug,
+            String canonicalTargetUrl
+    ) {
+        int statusCode = finalResp.statusCode();
+        String upstreamText = extractPrimaryText(finalResp.body());
+        if (upstreamText == null || upstreamText.isBlank()) {
+            upstreamText = "Workspace returned HTTP " + statusCode + '.';
+        }
+
+        String truncated = upstreamText.length() > 1200 ? upstreamText.substring(0, 1200) : upstreamText;
+        String friendlyFailure = buildUserFacingSummaryFailureMessage(
+                statusCode,
+                truncated,
+                workspaceSlug,
+                canonicalTargetUrl
+        );
+
+        if (shouldUseLocalSummaryFallback(statusCode, truncated)) {
+            String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, statusCode, truncated);
+            persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, statusCode, truncated);
+            return true;
+        }
+
+        return failDailySummary(day, slot, entryCount,
+                friendlyFailure,
+                truncated);
+    }
+
+    private boolean handleSummarySuccessResponse(
+            LocalDate day,
+            int slot,
+            int entryCount,
+            List<SelectedEntry> entries,
+            List<TermDefinition> termDefinitions,
+            WorkspaceResponse finalResp
+    ) {
+        String raw = extractPrimaryText(finalResp.body());
+        if (raw == null || raw.isBlank()) {
+            String reason = "No summary message returned by upstream service.";
+            if (shouldUseLocalSummaryFallback(finalResp.statusCode())) {
+                String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, finalResp.statusCode(), reason);
+                persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, finalResp.statusCode(), reason);
+                return true;
+            }
+            return failDailySummary(day, slot, entryCount,
+                    "Summary response was empty.",
+                    reason + " Upstream summary is required.");
+        }
+
+        String overall = section(raw, "Overall");
+        String quality = section(raw, "Quality");
+        String response = section(raw, "Response");
+        String usage = section(raw, "Usage");
+
+        if (overall.isBlank()) {
+            overall = raw.length() > 1200 ? raw.substring(0, 1200) : raw;
+        }
+        if (quality.isBlank()) {
+            quality = "No specific quality notes generated.";
+        }
+        if (response.isBlank()) {
+            response = "No specific response notes generated.";
+        }
+        if (usage.isBlank()) {
+            usage = "No specific usage notes generated.";
+        }
+
+        STATE.summaryStore.upsertSummary(day, slot, "success", 100, "Summary generated.",
+                overall, quality, response, usage, entries.size(), false, true);
+        resumeAutomaticSummaryGeneration("Summary generated successfully.");
+        return true;
     }
 
     private SummaryRequestContext prepareSummaryRequestContext(LocalDate day, int slot, int entryCount) {
@@ -4429,20 +4305,28 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isHttpsRequiredWithAuth() {
-        String env = readEnvSanitized(REQUIRE_HTTPS_WITH_AUTH_ENV, 16);
-        if (env == null || env.isBlank()) {
+        String configured = readSystemPropertyOrEnvSanitized(
+                REQUIRE_HTTPS_WITH_AUTH_PROP,
+                REQUIRE_HTTPS_WITH_AUTH_ENV,
+                16
+        );
+        if (configured == null || configured.isBlank()) {
             return false;
         }
-        return Boolean.parseBoolean(env.trim());
+        return Boolean.parseBoolean(configured.trim());
     }
 
     private boolean isUpstreamSummaryRequired() {
-        String env = readEnvSanitized(REQUIRE_UPSTREAM_SUMMARY_ENV, 16);
-        if (env == null || env.isBlank()) {
+        String configured = readSystemPropertyOrEnvSanitized(
+                REQUIRE_UPSTREAM_SUMMARY_PROP,
+                REQUIRE_UPSTREAM_SUMMARY_ENV,
+                16
+        );
+        if (configured == null || configured.isBlank()) {
             // Default to strict mode so summaries come from AnythingLLM unless explicitly relaxed.
             return true;
         }
-        return Boolean.parseBoolean(env.trim());
+        return Boolean.parseBoolean(configured.trim());
     }
 
     private String firstParam(HttpServletRequest req, String name) {
@@ -4585,8 +4469,17 @@ public class WidgetSyncServlet extends HttpServlet {
         if (propertyName == null || propertyName.isBlank()) {
             return null;
         }
+
         String mappedEnv = propertyName.toUpperCase(Locale.ROOT).replace('.', '_');
         return readEnvSanitized(mappedEnv, maxLen);
+    }
+
+    private static String readSystemPropertyOrEnvSanitized(String propertyName, String envName, int maxLen) {
+        String propertyValue = readSystemPropertySanitized(propertyName, maxLen);
+        if (propertyValue != null && !propertyValue.isBlank()) {
+            return propertyValue;
+        }
+        return readEnvSanitized(envName, maxLen);
     }
 
     private static String readEnvSanitized(String envName, int maxLen) {

@@ -16,8 +16,13 @@ import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.Types;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -270,6 +275,162 @@ class DatabaseImportServiceTest {
         assertEquals("\"good_name\"", q.invoke(service, "good_name"));
         InvocationTargetException qEx = assertThrows(InvocationTargetException.class, () -> q.invoke(service, "bad-name"));
         assertTrue(qEx.getCause() instanceof IllegalArgumentException);
+    }
+
+    @Test
+    void replaceTableData_whenNoMatchingColumns_throwsImportException() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        Connection conn = mock(Connection.class);
+        PreparedStatement truncatePs = mock(PreparedStatement.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columnsRs = mock(ResultSet.class);
+
+        when(conn.prepareStatement(org.mockito.ArgumentMatchers.anyString())).thenReturn(truncatePs);
+        when(conn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, "public", "widget_entries", null)).thenReturn(columnsRs);
+        when(columnsRs.next()).thenReturn(true, false);
+        when(columnsRs.getString("COLUMN_NAME")).thenReturn("other_column");
+        when(columnsRs.getInt("DATA_TYPE")).thenReturn(Types.VARCHAR);
+        when(columnsRs.getInt("NULLABLE")).thenReturn(ResultSetMetaData.columnNullable);
+        when(columnsRs.wasNull()).thenReturn(false);
+
+        Class<?> csvType = Class.forName("com.sim.chatserver.web.admin.DatabaseImportService$CsvTableData");
+        Constructor<?> csvCtor = csvType.getDeclaredConstructor(List.class, List.class);
+        csvCtor.setAccessible(true);
+        Object csv = csvCtor.newInstance(
+            List.of("missing_col"),
+            List.of(List.of("value")));
+
+        Method replaceTableData = DatabaseImportService.class.getDeclaredMethod(
+            "replaceTableData",
+            Connection.class,
+            String.class,
+            csvType);
+        replaceTableData.setAccessible(true);
+
+        InvocationTargetException ex = assertThrows(
+            InvocationTargetException.class,
+            () -> replaceTableData.invoke(service, conn, "widget_entries", csv));
+        assertEquals("ImportException", ex.getCause().getClass().getSimpleName());
+        assertTrue(ex.getCause().getMessage().contains("No matching columns"));
+    }
+
+    @Test
+    void replaceTableData_whenRowsAreValid_insertsAndReturnsCount() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        Connection conn = mock(Connection.class);
+        PreparedStatement truncatePs = mock(PreparedStatement.class);
+        PreparedStatement insertPs = mock(PreparedStatement.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet columnsRs = mock(ResultSet.class);
+
+        when(conn.prepareStatement(org.mockito.ArgumentMatchers.anyString())).thenReturn(truncatePs, insertPs);
+        when(conn.getMetaData()).thenReturn(meta);
+        when(meta.getColumns(null, "public", "widget_entries", null)).thenReturn(columnsRs);
+        when(columnsRs.next()).thenReturn(true, true, true, true, false);
+        when(columnsRs.getString("COLUMN_NAME")).thenReturn("name", "count", "active", "created_at");
+        when(columnsRs.getInt("DATA_TYPE")).thenReturn(Types.VARCHAR, Types.INTEGER, Types.BOOLEAN, Types.TIMESTAMP);
+        when(columnsRs.getInt("NULLABLE")).thenReturn(
+            ResultSetMetaData.columnNullable,
+            ResultSetMetaData.columnNullable,
+            ResultSetMetaData.columnNullable,
+            ResultSetMetaData.columnNullable);
+        when(columnsRs.wasNull()).thenReturn(false);
+        when(insertPs.executeBatch()).thenReturn(new int[]{1, 1});
+
+        Class<?> csvType = Class.forName("com.sim.chatserver.web.admin.DatabaseImportService$CsvTableData");
+        Constructor<?> csvCtor = csvType.getDeclaredConstructor(List.class, List.class);
+        csvCtor.setAccessible(true);
+        Object csv = csvCtor.newInstance(
+            List.of("name", "count", "active", "created_at"),
+            List.of(
+                List.of("alpha", "7", "true", "2026-08-24T10:15:30Z"),
+                List.of("beta", "8", "0", "2026-08-24T10:15:31Z")));
+
+        Method replaceTableData = DatabaseImportService.class.getDeclaredMethod(
+            "replaceTableData",
+            Connection.class,
+            String.class,
+            csvType);
+        replaceTableData.setAccessible(true);
+
+        int inserted = (int) replaceTableData.invoke(service, conn, "widget_entries", csv);
+        assertEquals(2, inserted);
+        verify(insertPs, org.mockito.Mockito.times(2)).addBatch();
+        verify(insertPs).executeBatch();
+    }
+
+    @Test
+    void realignSequenceBackedColumns_whenValidSequenceExists_executesSetval() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        Connection conn = mock(Connection.class);
+        PreparedStatement lookupPs = mock(PreparedStatement.class);
+        PreparedStatement setvalPs = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+
+        when(conn.prepareStatement(org.mockito.ArgumentMatchers.anyString())).thenReturn(lookupPs, setvalPs);
+        when(lookupPs.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true, true, false);
+        when(rs.getString("column_name")).thenReturn("bad-name", "id");
+        when(rs.getString("seq_name")).thenReturn("public.bad_seq", "public.widget_entries_id_seq");
+
+        Method realign = DatabaseImportService.class.getDeclaredMethod(
+            "realignSequenceBackedColumns",
+            Connection.class,
+            String.class);
+        realign.setAccessible(true);
+        realign.invoke(service, conn, "widget_entries");
+
+        verify(setvalPs).setString(1, "public.widget_entries_id_seq");
+        verify(setvalPs).execute();
+    }
+
+    @Test
+    void normalizeZipWidgetTables_whenMappedTablesOverlap_mergesRows() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        Connection conn = mock(Connection.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet tablesRs = mock(ResultSet.class);
+        PreparedStatement widgetLookupPs = mock(PreparedStatement.class);
+        ResultSet widgetRs = mock(ResultSet.class);
+
+        when(conn.getMetaData()).thenReturn(meta);
+        when(meta.getTables(null, "public", "widget_entries", new String[]{"TABLE"})).thenReturn(tablesRs);
+        when(tablesRs.next()).thenReturn(true);
+
+        when(conn.prepareStatement(org.mockito.ArgumentMatchers.anyString())).thenReturn(widgetLookupPs);
+        when(widgetLookupPs.executeQuery()).thenReturn(widgetRs);
+        when(widgetRs.next()).thenReturn(true, true, false);
+        when(widgetRs.getString("widget_id")).thenReturn("widget-1", "widget_1");
+
+        Class<?> csvType = Class.forName("com.sim.chatserver.web.admin.DatabaseImportService$CsvTableData");
+        Constructor<?> csvCtor = csvType.getDeclaredConstructor(List.class, List.class);
+        csvCtor.setAccessible(true);
+        Object csvA = csvCtor.newInstance(List.of("chat_id", "prompt"), List.of(List.of("a", "p1")));
+        Object csvB = csvCtor.newInstance(List.of("chat_id", "prompt"), List.of(List.of("b", "p2")));
+
+        Map<String, Object> zipTables = new LinkedHashMap<>();
+        zipTables.put("widget-1", csvA);
+        zipTables.put("widget_1", csvB);
+
+        Method normalize = DatabaseImportService.class.getDeclaredMethod(
+            "normalizeZipWidgetTables",
+            Connection.class,
+            Map.class);
+        normalize.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> normalized = (Map<String, Object>) normalize.invoke(service, conn, zipTables);
+
+        assertTrue(normalized.containsKey("widget_1"));
+        assertTrue(!normalized.containsKey("widget-1"));
+
+        Object merged = normalized.get("widget_1");
+        java.lang.reflect.Field rowsField = csvType.getDeclaredField("rows");
+        rowsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<List<String>> mergedRows = (List<List<String>>) rowsField.get(merged);
+        assertEquals(2, mergedRows.size());
     }
 
     private static final class CapturingOutputStream extends ServletOutputStream {

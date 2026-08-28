@@ -36,11 +36,11 @@
         <hikaricp.version>7.1.0</hikaricp.version>
         <postgres.version>42.7.13</postgres.version>
 
-        <junit.version>6.1.2</junit.version>
+        <junit.version>6.1.3</junit.version>
         <mockito.version>5.23.0</mockito.version>
         <mockito-inline.version>5.2.0</mockito-inline.version>
 
-        <dependency-check.version>12.2.2</dependency-check.version>
+        <dependency-check.version>13.0.0</dependency-check.version>
         <dependency-check.failBuildOnCVSS>10</dependency-check.failBuildOnCVSS>
         <dependency-check.skip>false</dependency-check.skip>
 
@@ -55,13 +55,13 @@
         <openpdf.version>3.0.5</openpdf.version>
         <flexmark.version>0.64.8</flexmark.version>
 
-        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
-        <maven.war.plugin.version>3.4.0</maven.war.plugin.version>
-        <maven.surefire.plugin.version>3.5.5</maven.surefire.plugin.version>
+        <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
+        <maven.war.plugin.version>3.5.1</maven.war.plugin.version>
+        <maven.surefire.plugin.version>3.6.0-M1</maven.surefire.plugin.version>
 
         <jakarta.mail.version>2.2.0-M1</jakarta.mail.version>
         <angus.mail.version>2.1.0-M1</angus.mail.version>
-        <greenmail.version>2.1.11</greenmail.version>
+        <greenmail.version>2.1.13</greenmail.version>
     
     </properties>
 

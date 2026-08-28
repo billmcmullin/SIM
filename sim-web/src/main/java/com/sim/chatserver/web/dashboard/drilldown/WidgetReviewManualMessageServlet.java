@@ -44,6 +44,7 @@ import com.sim.chatserver.service.WorkspaceClient;
 import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -1048,18 +1049,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        for (int depth = 0; depth < 32 && current != null; depth++) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            Throwable cause = current.getCause();
-            if (cause == null || cause.equals(current)) {
-                return false;
-            }
-            current = cause;
-        }
-        return false;
+        return ThrowableUtil.hasInterruptedCause(throwable);
     }
 
     private void mirrorWorkspaceResponse(HttpServletResponse resp, WorkspaceResponse remote) {

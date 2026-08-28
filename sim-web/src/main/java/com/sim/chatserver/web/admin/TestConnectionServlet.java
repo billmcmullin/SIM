@@ -25,6 +25,7 @@ import com.sim.chatserver.service.ApiAuthResolver;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -656,17 +657,6 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private boolean causedByInterrupted(Throwable throwable) {
-        Throwable current = throwable;
-        for (int depth = 0; depth < 32 && current != null; depth++) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            Throwable cause = current.getCause();
-            if (cause == null || cause.equals(current)) {
-                return false;
-            }
-            current = cause;
-        }
-        return false;
+        return ThrowableUtil.hasInterruptedCause(throwable);
     }
 }
