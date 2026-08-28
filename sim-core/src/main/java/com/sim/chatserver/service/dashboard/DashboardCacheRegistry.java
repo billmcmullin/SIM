@@ -198,6 +198,8 @@ public class DashboardCacheRegistry {
     }
 
     final SessionOverview getSessionOverview(String key, Supplier<SessionOverview> loader) {
+        boolean startRefresh = false;
+        SessionOverview valueToReturn = null;
         synchronized (sessionLock) {
             long now = nowMillis();
             Entry<SessionOverview> current = sessionOverviewCache.get(key);
@@ -208,23 +210,28 @@ public class DashboardCacheRegistry {
             if (isWithinGrace(current, now)) {
                 if (!current.refreshing) {
                     current.refreshing = true;
-                    startAsyncSessionRefresh(key, loader);
+                    startRefresh = true;
                 }
-                return current.value;
+                valueToReturn = current.value;
+            } else {
+                SessionOverview fallback = current == null ? null : current.value;
+                SessionOverview fresh = safeLoad(loader, fallback);
+                Entry<SessionOverview> updated = Entry.of(
+                        fresh,
+                        now + SESSION_OVERVIEW_TTL_MILLIS,
+                        now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
+                );
+
+                sessionOverviewCache.put(key, updated);
+                evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
+                return updated.value;
             }
-
-            SessionOverview fallback = current == null ? null : current.value;
-            SessionOverview fresh = safeLoad(loader, fallback);
-            Entry<SessionOverview> updated = Entry.of(
-                    fresh,
-                    now + SESSION_OVERVIEW_TTL_MILLIS,
-                    now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
-            );
-
-            sessionOverviewCache.put(key, updated);
-            evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
-            return updated.value;
         }
+
+        if (startRefresh) {
+            startAsyncSessionRefresh(key, loader);
+        }
+        return valueToReturn;
     }
 
     final void clearAll() {
@@ -268,6 +275,8 @@ public class DashboardCacheRegistry {
             long ttlMillis,
             Supplier<T> loader
     ) {
+        boolean startRefresh = false;
+        T valueToReturn = null;
         synchronized (lock) {
             long now = nowMillis();
             Entry<T> current = getter.get();
@@ -279,21 +288,26 @@ public class DashboardCacheRegistry {
             if (isWithinGrace(current, now)) {
                 if (!current.refreshing) {
                     current.refreshing = true;
-                    startAsyncSingleRefresh(lock, getter, setter, ttlMillis, loader);
+                    startRefresh = true;
                 }
-                return current.value;
+                valueToReturn = current.value;
+            } else {
+                T fallback = current == null ? null : current.value;
+                T fresh = safeLoad(loader, fallback);
+                Entry<T> updated = Entry.of(
+                        fresh,
+                        now + ttlMillis,
+                        now + ttlMillis + STALE_GRACE_MILLIS
+                );
+                setter.accept(updated);
+                return updated.value;
             }
-
-            T fallback = current == null ? null : current.value;
-            T fresh = safeLoad(loader, fallback);
-            Entry<T> updated = Entry.of(
-                    fresh,
-                    now + ttlMillis,
-                    now + ttlMillis + STALE_GRACE_MILLIS
-            );
-            setter.accept(updated);
-            return updated.value;
         }
+
+        if (startRefresh) {
+            startAsyncSingleRefresh(lock, getter, setter, ttlMillis, loader);
+        }
+        return valueToReturn;
     }
 
     private <T> void startAsyncSingleRefresh(
@@ -304,63 +318,61 @@ public class DashboardCacheRegistry {
             Supplier<T> loader
     ) {
         submitRefreshTask(() -> {
-            T fallback;
+            Entry<T> snapshot = getter.get();
+            T fallback = snapshot == null ? null : snapshot.value;
+            T fresh = safeLoad(loader, fallback);
+            long now = nowMillis();
+
             synchronized (lock) {
-                Entry<T> snapshot = getter.get();
-                fallback = snapshot == null ? null : snapshot.value;
-            }
-
-            try {
-                T fresh = safeLoad(loader, fallback);
-                long now = nowMillis();
-
-                synchronized (lock) {
-                    Entry<T> current = getter.get();
-                    if (current == null) {
-                        setter.accept(Entry.of(
-                                fresh,
-                                now + ttlMillis,
-                                now + ttlMillis + STALE_GRACE_MILLIS
-                        ));
-                    } else {
-                        current.value = fresh;
-                        current.expiresAt = now + ttlMillis;
-                        current.staleUntil = now + ttlMillis + STALE_GRACE_MILLIS;
-                        current.refreshing = false;
-                    }
+                Entry<T> current = getter.get();
+                Entry<T> target;
+                if (current == null) {
+                    target = Entry.of(
+                            fresh,
+                            now + ttlMillis,
+                            now + ttlMillis + STALE_GRACE_MILLIS
+                    );
+                    setter.accept(target);
+                } else {
+                    current.value = fresh;
+                    current.expiresAt = now + ttlMillis;
+                    current.staleUntil = now + ttlMillis + STALE_GRACE_MILLIS;
+                    target = current;
                 }
-            } finally {
-                synchronized (lock) {
-                    Entry<T> current = getter.get();
-                    if (current != null) {
-                        current.refreshing = false;
-                    }
-                }
+                target.refreshing = false;
             }
         });
     }
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
         submitRefreshTask(() -> {
+            Entry<SessionOverview> snapshot;
+            synchronized (sessionLock) {
+                snapshot = sessionOverviewCache.get(key);
+            }
+
+            SessionOverview fallback = snapshot == null ? null : snapshot.value;
+            SessionOverview fresh = safeLoad(loader, fallback);
+            long now = nowMillis();
+
             synchronized (sessionLock) {
                 Entry<SessionOverview> current = sessionOverviewCache.get(key);
-                SessionOverview fallback = current == null ? null : current.value;
-                SessionOverview fresh = safeLoad(loader, fallback);
-                long now = nowMillis();
-
+                Entry<SessionOverview> target;
                 if (current == null) {
-                    sessionOverviewCache.put(key, Entry.of(
+                    target = Entry.of(
                             fresh,
                             now + SESSION_OVERVIEW_TTL_MILLIS,
                             now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
-                    ));
+                    );
+                    sessionOverviewCache.put(key, target);
                     evictIfNeeded(sessionOverviewCache, SESSION_OVERVIEW_CACHE_MAX);
                 } else {
                     current.value = fresh;
                     current.expiresAt = now + SESSION_OVERVIEW_TTL_MILLIS;
                     current.staleUntil = now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS;
-                    current.refreshing = false;
+                    target = current;
                 }
+                target.refreshing = false;
             }
         });
     }

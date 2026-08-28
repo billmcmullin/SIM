@@ -606,16 +606,11 @@ public class DashboardServlet extends HttpServlet {
 
     static final class DashboardThreadFactory implements ThreadFactory {
 
-        private final ThreadFactory delegate = Executors.defaultThreadFactory();
         private int idx = 1;
-
-        private Thread createDelegateThread(Runnable r) {
-            return delegate.newThread(r);
-        }
 
         @Override
         public synchronized Thread newThread(Runnable r) {
-            Thread t = createDelegateThread(r);
+            Thread t = new Thread(r);
             t.setName("dashboard-worker-" + (idx++));
             t.setDaemon(true);
             return t;

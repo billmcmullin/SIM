@@ -1,8 +1,13 @@
 package com.sim.chatserver.service.dashboard;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
@@ -16,8 +21,12 @@ import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
 import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -672,5 +681,116 @@ public class DashboardCacheRegistryTest
         // Then - assertions for result of method getWidgetStats(Supplier)
         assertNull(result);
 
+    }
+
+    @Test
+    public void testGetTermSummaryGraceRefreshesAsync() throws Throwable
+    {
+        DashboardCacheRegistry underTest = new DashboardCacheRegistry();
+        AtomicInteger refreshLoads = new AtomicInteger(0);
+
+        TermSummary initial = new TermSummary();
+        initial.ensureTerm("alpha");
+        TermSummary cached = underTest.getTermSummary(() -> initial);
+
+        Object cacheEntry = getPrivateField(underTest, DashboardCacheRegistry.class, "termSummaryCache");
+        long now = System.currentTimeMillis();
+        setPrivateField(cacheEntry, cacheEntry.getClass(), "expiresAt", now - 1000L);
+        setPrivateField(cacheEntry, cacheEntry.getClass(), "staleUntil", now + 30000L);
+        setPrivateField(cacheEntry, cacheEntry.getClass(), "refreshing", false);
+
+        TermSummary stale = underTest.getTermSummary(() -> {
+            refreshLoads.incrementAndGet();
+            TermSummary refreshed = new TermSummary();
+            refreshed.ensureTerm("beta");
+            return refreshed;
+        });
+        assertSame(cached, stale);
+        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+
+        TermSummary refreshedResult = underTest.getTermSummary(() -> cached);
+        assertNotSame(cached, refreshedResult);
+    }
+
+    @Test
+    public void testGetSessionOverviewGraceRefreshesAsync() throws Throwable
+    {
+        DashboardCacheRegistry underTest = new DashboardCacheRegistry();
+        AtomicInteger refreshLoads = new AtomicInteger(0);
+
+        SessionOverview initial = mock(SessionOverview.class);
+        underTest.getSessionOverview("k", () -> initial);
+
+        @SuppressWarnings("unchecked")
+        LinkedHashMap<String, Object> sessionMap = (LinkedHashMap<String, Object>) getPrivateField(
+                underTest,
+                DashboardCacheRegistry.class,
+                "sessionOverviewCache"
+        );
+        Object entry = sessionMap.get("k");
+        long now = System.currentTimeMillis();
+        setPrivateField(entry, entry.getClass(), "expiresAt", now - 1000L);
+        setPrivateField(entry, entry.getClass(), "staleUntil", now + 30000L);
+        setPrivateField(entry, entry.getClass(), "refreshing", false);
+
+        SessionOverview refreshedValue = mock(SessionOverview.class);
+        SessionOverview stale = underTest.getSessionOverview("k", () -> {
+            refreshLoads.incrementAndGet();
+            return refreshedValue;
+        });
+        assertSame(initial, stale);
+        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+
+        SessionOverview refreshed = underTest.getSessionOverview("k", () -> mock(SessionOverview.class));
+        assertSame(refreshedValue, refreshed);
+        assertNotSame(initial, refreshed);
+    }
+
+    @Test
+    public void testSerializationGuardsThrowNotSerializable() throws Throwable
+    {
+        DashboardCacheRegistry underTest = new DashboardCacheRegistry();
+
+        Method readObject = DashboardCacheRegistry.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+        Exception readFailure = assertThrows(Exception.class, () -> readObject.invoke(underTest, new Object[]{null}));
+        assertTrue(readFailure.getCause() instanceof java.io.NotSerializableException);
+
+        Method writeObject = DashboardCacheRegistry.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+        Exception writeFailure = assertThrows(Exception.class, () -> writeObject.invoke(underTest, new Object[]{null}));
+        assertTrue(writeFailure.getCause() instanceof java.io.NotSerializableException);
+    }
+
+    private static Object getPrivateField(Object object, Class<?> fieldClass, String fieldName)
+    {
+        try {
+            Field field = fieldClass.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(object);
+        } catch (NoSuchFieldException e) {
+            throw (AssertionError) new AssertionError("No such field found").initCause(e);
+        } catch (IllegalAccessException e) {
+            throw (AssertionError) new AssertionError("Unable to access the specified private field").initCause(e);
+        } catch (SecurityException e) {
+            throw (AssertionError) new AssertionError("There was a security exception when attempting to access a private field").initCause(e);
+        }
+    }
+
+    private static boolean waitForCondition(BooleanSupplier condition, long timeoutMillis)
+    {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return condition.getAsBoolean();
+            }
+        }
+        return condition.getAsBoolean();
     }
 }

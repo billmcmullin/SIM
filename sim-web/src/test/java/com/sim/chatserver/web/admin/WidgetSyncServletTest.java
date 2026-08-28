@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.admin;
 
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
@@ -7,6 +8,7 @@ import java.io.StringWriter;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -65,6 +67,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -868,6 +871,23 @@ class WidgetSyncServletTest {
             assertEquals("ab\n\tc", invoke("stripControlCharacters", new Class<?>[]{String.class}, "a\u0001b\n\tc"));
 
             assertNull(invokeStatic("readSystemPropertySanitized", new Class<?>[]{String.class, int.class}, " ", 16));
+            String mappedFromEnv = (String) invokeStatic("readSystemPropertySanitized", new Class<?>[]{String.class, int.class}, "os", 32);
+            assertNotNull(mappedFromEnv);
+            assertFalse(mappedFromEnv.isBlank());
+
+            String fallbackEnv = (String) invokeStatic("readSystemPropertyOrEnvSanitized", new Class<?>[]{String.class, String.class, int.class}, "missing.property", "OS", 32);
+            assertNotNull(fallbackEnv);
+            assertFalse(fallbackEnv.isBlank());
+
+            String preferredPropertyValue = (String) invokeStatic("readSystemPropertyOrEnvSanitized", new Class<?>[]{String.class, String.class, int.class}, "os", " ", 32);
+            assertEquals(mappedFromEnv, preferredPropertyValue);
+
+            assertNull(invokeStatic("readEnvSanitized", new Class<?>[]{String.class, int.class}, " ", 16));
+
+            assertTrue((boolean) invoke("causedByInterrupted", new Class<?>[]{Throwable.class},
+                new IllegalStateException(new InterruptedException("stop"))));
+            assertFalse((boolean) invoke("causedByInterrupted", new Class<?>[]{Throwable.class}, new IllegalArgumentException("nope")));
+
             assertEquals("abcd", invokeStatic("sanitizeConfigToken", new Class<?>[]{String.class, int.class}, "abcd1234", 4));
 
             Class<?> statusClass = Class.forName("com.sim.chatserver.web.admin.WidgetSyncServlet$WidgetSyncStatus");
@@ -1786,6 +1806,434 @@ class WidgetSyncServletTest {
                     assertTrue(batches.stream().allMatch(batch -> batch.length() <= 850));
                 } finally {
                     setStaticField("summaryMaxUpstreamEntries", previousSummaryMaxUpstreamEntries);
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsWithRetry_whenNonRetryableFailure_throwsLastFailure() throws Exception {
+                ServerConfig config = new ServerConfig("", 0, null, "api-key", "workspace");
+
+                Exception thrown = assertThrows(Exception.class, () -> invoke(
+                    "fetchWidgetChatsWithRetry",
+                    new Class<?>[]{ServerConfig.class, String.class},
+                    config,
+                    "widget-a"
+                ));
+
+                assertTrue(thrown.getCause() instanceof IllegalStateException);
+                assertTrue(thrown.getCause().getMessage().contains("Server host configuration is missing"));
+                }
+
+                @Test
+                @SuppressWarnings("unchecked")
+                void fetchWidgetChatsWithRetry_whenFirstAttemptFailsThenSucceeds_returnsRetryResult() throws Exception {
+                AtomicInteger attempts = new AtomicInteger(0);
+
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    int attempt = attempts.incrementAndGet();
+                    if (attempt == 1) {
+                        byte[] body = "{\"error\":\"transient\"}".getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(500, body.length);
+                        try (java.io.OutputStream out = exchange.getResponseBody()) {
+                            out.write(body);
+                        }
+                        return;
+                    }
+
+                    byte[] body = ("[{\"id\":\"c-retry\",\"prompt\":\"p\",\"response\":\"ok\","
+                        + "\"created_at\":\"2026-08-28T10:00:00Z\",\"session_id\":\"s\"}]")
+                        .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer retry-token");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    List<JsonObject> rows = (List<JsonObject>) invoke(
+                        "fetchWidgetChatsWithRetry",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    );
+
+                    assertEquals(2, attempts.get());
+                    assertEquals(1, rows.size());
+                    assertEquals("c-retry", rows.get(0).getString("id"));
+                } finally {
+                    server.stop(0);
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsWithRetry_whenRequestInterrupted_breaksAndPreservesInterrupt() throws Exception {
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    try {
+                        Thread.sleep(2000L);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                    byte[] body = "[]".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer retry-token");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    Thread.currentThread().interrupt();
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsWithRetry",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    assertTrue(thrown.getCause().getMessage().contains("interrupted"));
+                    assertTrue(Thread.currentThread().isInterrupted());
+                } finally {
+                    Thread.interrupted();
+                    server.stop(0);
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsWithRetry_whenBackoffSleepInterrupted_throwsBackoffInterrupted() throws Exception {
+                AtomicInteger attempts = new AtomicInteger(0);
+
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    attempts.incrementAndGet();
+                    byte[] body = "{\"error\":\"transient\"}".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(500, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer retry-token");
+                Thread current = Thread.currentThread();
+                Thread interrupter = new Thread(() -> {
+                    try {
+                        Thread.sleep(200L);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                    current.interrupt();
+                });
+                interrupter.setDaemon(true);
+                interrupter.start();
+
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsWithRetry",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(attempts.get() >= 1);
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    assertTrue(thrown.getCause().getMessage().contains("retry backoff interrupted"));
+                    assertTrue(thrown.getCause().getCause() instanceof InterruptedException);
+                } finally {
+                    Thread.interrupted();
+                    server.stop(0);
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsOnce_whenRequireHttpsWithAuthAndHttpUrl_throwsFast() throws Exception {
+                String previous = System.getProperty("sim.widget.sync.require.https.with.auth");
+                System.setProperty("sim.widget.sync.require.https.with.auth", "true");
+                try {
+                    ServerConfig config = new ServerConfig("", 0, "http://api.example.com", "api-key", "workspace");
+
+                    assertFalse((boolean) invoke("isHttpsRequiredWithAuth"));
+                    java.net.URI syncUri = (java.net.URI) invoke(
+                        "buildSyncUri",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    );
+                    assertFalse((boolean) invoke("isHttpsUri", new Class<?>[]{java.net.URI.class}, syncUri));
+
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsOnce",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    String message = thrown.getCause().getMessage();
+                    assertTrue(message != null && !message.isBlank());
+                } finally {
+                    if (previous == null) {
+                        System.clearProperty("sim.widget.sync.require.https.with.auth");
+                    } else {
+                        System.setProperty("sim.widget.sync.require.https.with.auth", previous);
+                    }
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsOnce_whenHttpAllowedButNoAuthCandidate_hitsCatchPath() throws Exception {
+                String previous = System.getProperty("sim.widget.sync.require.https.with.auth");
+                System.setProperty("sim.widget.sync.require.https.with.auth", "false");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound(org.mockito.ArgumentMatchers.nullable(String.class)))
+                            .thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://api.example.com", "api-key", "workspace");
+
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsOnce",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    assertTrue(thrown.getCause().getMessage().contains("Sync API key is required"));
+                } finally {
+                    if (previous == null) {
+                        System.clearProperty("sim.widget.sync.require.https.with.auth");
+                    } else {
+                        System.setProperty("sim.widget.sync.require.https.with.auth", previous);
+                    }
+                }
+                }
+
+                @Test
+                @SuppressWarnings("unchecked")
+                void buildAuthCandidates_skipsBlankNormalizedRawValueEvenWhenTokenPresent() throws Exception {
+                Class<?> resolvedType = Class.forName("com.sim.chatserver.service.ApiAuthResolver$ResolvedApiAuth");
+                Constructor<?> constructor = resolvedType.getDeclaredConstructor(String.class, String.class, String.class, String.class);
+                constructor.setAccessible(true);
+
+                ApiAuthResolver.ResolvedApiAuth blankRawButToken = (ApiAuthResolver.ResolvedApiAuth) constructor.newInstance(
+                    "   ",
+                    "token-a",
+                    "Authorization",
+                    "REQUESTED"
+                );
+                ApiAuthResolver.ResolvedApiAuth valid = (ApiAuthResolver.ResolvedApiAuth) constructor.newInstance(
+                    "Bearer token-b",
+                    "token-b",
+                    "Authorization",
+                    "GLOBAL"
+                );
+
+                List<ApiAuthResolver.ResolvedApiAuth> candidates = (List<ApiAuthResolver.ResolvedApiAuth>) invoke(
+                    "buildAuthCandidates",
+                    new Class<?>[]{resolvedType, resolvedType},
+                    blankRawButToken,
+                    valid
+                );
+
+                assertEquals(1, candidates.size());
+                assertEquals("token-b", candidates.get(0).token());
+                }
+
+                @Test
+                void throttleSyncRequestRate_whenGapRequired_waitsAndAdvancesClock() throws Exception {
+                Field lastReqField = WidgetSyncServlet.class.getDeclaredField("SYNC_LAST_REQUEST_AT_NANOS");
+                lastReqField.setAccessible(true);
+                AtomicLong lastReq = (AtomicLong) lastReqField.get(null);
+
+                long previous = lastReq.get();
+                try {
+                    lastReq.set(System.nanoTime());
+                    long start = System.nanoTime();
+                    invoke("throttleSyncRequestRate");
+                    long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+                    assertTrue(elapsedMs >= 1L);
+                    assertTrue(lastReq.get() > 0L);
+                } finally {
+                    lastReq.set(previous);
+                }
+                }
+
+                @Test
+                void sendSyncRequest_whenNoAuthCandidates_throwsRequiredApiKey() throws Exception {
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound(org.mockito.ArgumentMatchers.nullable(String.class)))
+                            .thenReturn(null);
+
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "sendSyncRequest",
+                        new Class<?>[]{java.net.URI.class, String.class},
+                        java.net.URI.create("https://api.example.com/api/v1/embed/widget-a/chats"),
+                        "api-key"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    assertTrue(thrown.getCause().getMessage().contains("required"));
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsOnce_whenUpstream500_throwsTransientServerError() throws Exception {
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    byte[] body = "{\"error\":\"boom\"}".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(500, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer primary-token");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsOnce",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    String message = thrown.getCause().getMessage();
+                    assertTrue(message.contains("transient server error 500"));
+                    assertTrue(message.contains("boom"));
+                } finally {
+                    server.stop(0);
+                }
+                }
+
+                @Test
+                void fetchWidgetChatsOnce_whenUpstreamRedirect_throwsStatusError() throws Exception {
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    byte[] body = "redirected".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "text/plain");
+                    exchange.sendResponseHeaders(302, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer primary-token");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(null);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    Exception thrown = assertThrows(Exception.class, () -> invoke(
+                        "fetchWidgetChatsOnce",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    ));
+
+                    assertTrue(thrown.getCause() instanceof IllegalStateException);
+                    String message = thrown.getCause().getMessage();
+                    assertTrue(message.contains("Sync API returned 302"));
+                    assertTrue(message.contains("redirected"));
+                } finally {
+                    server.stop(0);
+                }
+                }
+
+                @Test
+                @SuppressWarnings("unchecked")
+                void fetchWidgetChatsOnce_whenPrimaryAuthRejected_fallsBackToSecondaryAuth() throws Exception {
+                AtomicInteger attempts = new AtomicInteger(0);
+                AtomicReference<String> firstAuthHeader = new AtomicReference<>();
+                AtomicReference<String> secondAuthHeader = new AtomicReference<>();
+
+                HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+                server.createContext("/", exchange -> {
+                    int attempt = attempts.incrementAndGet();
+                    String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
+
+                    if (attempt == 1) {
+                        firstAuthHeader.set(authHeader);
+                        byte[] body = "unauthorized".getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "text/plain");
+                        exchange.sendResponseHeaders(401, body.length);
+                        try (java.io.OutputStream out = exchange.getResponseBody()) {
+                            out.write(body);
+                        }
+                        return;
+                    }
+
+                    secondAuthHeader.set(authHeader);
+                    if (!"Bearer secondary-token".equals(authHeader)) {
+                        byte[] body = "forbidden".getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "text/plain");
+                        exchange.sendResponseHeaders(403, body.length);
+                        try (java.io.OutputStream out = exchange.getResponseBody()) {
+                            out.write(body);
+                        }
+                        return;
+                    }
+
+                    byte[] body = ("[{\"id\":\"c-1\",\"prompt\":\"p-1\",\"response\":\"r-1\","
+                        + "\"created_at\":\"2026-08-28T09:00:00Z\",\"session_id\":\"s-1\"}]")
+                        .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (java.io.OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
+                server.start();
+
+                ApiAuthResolver.ResolvedApiAuth primary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer primary-token");
+                ApiAuthResolver.ResolvedApiAuth secondary = ApiAuthResolver.resolveForServerConfigOutbound("Bearer secondary-token");
+                try (MockedStatic<ApiAuthResolver> authMock = mockStatic(ApiAuthResolver.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound("")).thenReturn(primary);
+                    authMock.when(() -> ApiAuthResolver.resolveForOutbound((String) null)).thenReturn(secondary);
+
+                    ServerConfig config = new ServerConfig("", 0, "http://127.0.0.1:" + server.getAddress().getPort(), "", "workspace");
+                    List<JsonObject> rows = (List<JsonObject>) invoke(
+                        "fetchWidgetChatsOnce",
+                        new Class<?>[]{ServerConfig.class, String.class},
+                        config,
+                        "widget-a"
+                    );
+
+                    assertEquals(2, attempts.get());
+                    assertEquals("Bearer primary-token", firstAuthHeader.get());
+                    assertEquals("Bearer secondary-token", secondAuthHeader.get());
+                    assertEquals(1, rows.size());
+                    assertEquals("c-1", rows.get(0).getString("id"));
+                } finally {
+                    server.stop(0);
                 }
                 }
     

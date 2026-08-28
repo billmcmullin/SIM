@@ -10,6 +10,9 @@ import static org.mockito.Mockito.when;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
 import java.sql.Timestamp;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -28,12 +31,14 @@ import org.mockito.Mockito;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletMapping;
@@ -44,6 +49,29 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 
 class AllSessionsServiceTest {
+
+    @Test
+    void handleGet_summaryPath_unauthenticated_returnsUnauthorized() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/data");
+        when(req.getSession(false)).thenReturn(null);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        service.handleGet(req, resp);
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("Authentication required"));
+    }
 
     @Test
     void handleGet_summaryPath_authenticatedWithNoWidgets_returnsOkPayload() throws Exception {
@@ -116,6 +144,32 @@ class AllSessionsServiceTest {
     }
 
     @Test
+    void handleGet_chatsPath_missingSessionId_returnsBadRequest() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/chats");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getParameterValues("sessionId")).thenReturn(null);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        service.handleGet(req, resp);
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("sessionId required"));
+    }
+
+    @Test
     void handlePost_selectPath_payloadWithoutValidChatIds_returnsBadRequest() throws Exception {
         AllSessionsService service = new AllSessionsService();
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -148,6 +202,167 @@ class AllSessionsServiceTest {
                 .readObject();
         assertEquals("error", payload.getString("status"));
         assertTrue(payload.getString("message").contains("No valid chat IDs"));
+    }
+
+    @Test
+    void handlePost_unknownPath_returnsMethodNotAllowed() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/unknown");
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        service.handlePost(req, resp);
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("Method not allowed"));
+    }
+
+    @Test
+    void handlePost_selectPath_invalidContentLength_returnsBadRequest() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getContentLengthLong()).thenReturn(-1L);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        service.handlePost(req, resp);
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("Invalid JSON payload"));
+    }
+
+    @Test
+    void handlePost_selectPath_missingSelectedChatIds_returnsBadRequest() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getContentLengthLong()).thenReturn(16L);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        JsonObject requestPayload = Json.createObjectBuilder().add("status", "ok").build();
+
+        try (MockedStatic<JsonRequestParserUtil> parserMock = Mockito.mockStatic(JsonRequestParserUtil.class)) {
+            parserMock.when(() -> JsonRequestParserUtil.parseObject(req, 64 * 1024)).thenReturn(requestPayload);
+            service.handlePost(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("selectedChatIds required"));
+    }
+
+    @Test
+    void handlePost_selectPath_validPayload_createsSelection() throws Exception {
+        AllSessionsService service = new AllSessionsService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+        ServletContext servletContext = mock(ServletContext.class);
+        @SuppressWarnings("unchecked")
+        CDI<Object> cdi = mock(CDI.class);
+        @SuppressWarnings("unchecked")
+        Instance<AppDataSourceHolder> holderInstance = mock(Instance.class);
+        AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection conn = mock(Connection.class);
+        DatabaseMetaData meta = mock(DatabaseMetaData.class);
+        ResultSet tablesRs = mock(ResultSet.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rowsRs = mock(ResultSet.class);
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/dashboard/sessions/select");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getContentLengthLong()).thenReturn(64L);
+        when(req.getServletContext()).thenReturn(servletContext);
+        when(servletContext.getContextPath()).thenReturn("/chat-server");
+
+        when(cdi.select(AppDataSourceHolder.class)).thenReturn(holderInstance);
+        when(holderInstance.get()).thenReturn(holder);
+        when(holder.getDataSource()).thenReturn(dataSource);
+        when(dataSource.getConnection()).thenReturn(conn);
+
+        when(conn.getMetaData()).thenReturn(meta);
+        when(meta.getTables(null, null, "widget_1", new String[]{"TABLE"})).thenReturn(tablesRs);
+        when(tablesRs.next()).thenReturn(true, false);
+
+        when(conn.prepareStatement(Mockito.anyString())).thenReturn(ps);
+        when(ps.executeQuery()).thenReturn(rowsRs);
+        when(rowsRs.next()).thenReturn(true, false);
+        when(rowsRs.getString("widget_chat_id")).thenReturn("chat-1");
+        when(rowsRs.getString("prompt")).thenReturn("hello");
+        when(rowsRs.getString("response_text")).thenReturn("world");
+        when(rowsRs.getString("created_at")).thenReturn("2026-08-26T00:00:00Z");
+        when(rowsRs.getString("session_id")).thenReturn("session-1");
+
+        var widget = mock(com.sim.chatserver.widget.WidgetEntry.class);
+        when(widget.getWidgetId()).thenReturn("widget-1");
+
+        JsonObject requestPayload = Json.createObjectBuilder()
+                .add("selectedChatIds", Json.createArrayBuilder().add("chat-1"))
+                .build();
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        when(resp.getOutputStream()).thenReturn(new CapturingOutputStream(body));
+
+        try (MockedStatic<JsonRequestParserUtil> parserMock = Mockito.mockStatic(JsonRequestParserUtil.class);
+             MockedStatic<WidgetStore> widgetStoreMock = Mockito.mockStatic(WidgetStore.class);
+             MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class);
+             MockedStatic<WidgetReviewStartServlet> startStatic = Mockito.mockStatic(WidgetReviewStartServlet.class)) {
+
+            parserMock.when(() -> JsonRequestParserUtil.parseObject(req, 64 * 1024)).thenReturn(requestPayload);
+            widgetStoreMock.when(() -> WidgetStore.list(null)).thenReturn(List.of(widget));
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            startStatic.when(() -> WidgetReviewStartServlet.createSnapshotSelection(
+                    Mockito.eq(session),
+                    Mockito.eq("Selected Session Chats"),
+                    Mockito.anyList(),
+                    Mockito.eq("/chat-server/dashboard/sessions")))
+                    .thenReturn("selection-123");
+
+            service.handlePost(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(
+                new StringReader(new String(body.toByteArray(), java.nio.charset.StandardCharsets.UTF_8)))
+                .readObject();
+        assertEquals("ok", payload.getString("status"));
+        assertEquals("selection-123", payload.getString("selectionId"));
+        assertEquals(1, payload.getInt("count"));
     }
 
     @Test

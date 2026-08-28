@@ -3,12 +3,16 @@ package com.sim.chatserver.web.dashboard;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
 
@@ -141,6 +145,81 @@ class DashboardCacheRegistryTest {
         assertEquals(2, second.getChatsToday());
     }
 
+    @Test
+    void getTermSummary_withGraceEntry_triggersAsyncRefresh() {
+        DashboardCacheRegistry registry = new DashboardCacheRegistry();
+        AtomicInteger refreshLoads = new AtomicInteger(0);
+
+        TermSummary initial = new TermSummary();
+        initial.ensureTerm("alpha");
+        TermSummary cached = registry.getTermSummary(() -> initial);
+
+        Object entry = getPrivateField(registry, DashboardCacheRegistry.class, "termSummaryCache");
+        long now = System.currentTimeMillis();
+        setPrivateField(entry, entry.getClass(), "expiresAt", now - 1000L);
+        setPrivateField(entry, entry.getClass(), "staleUntil", now + 30_000L);
+        setPrivateField(entry, entry.getClass(), "refreshing", false);
+
+        TermSummary stale = registry.getTermSummary(() -> {
+            refreshLoads.incrementAndGet();
+            TermSummary refreshed = new TermSummary();
+            refreshed.ensureTerm("beta");
+            return refreshed;
+        });
+        assertSame(cached, stale);
+
+        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+
+        TermSummary refreshedResult = registry.getTermSummary(() -> cached);
+        assertNotSame(cached, refreshedResult);
+    }
+
+    @Test
+    void getSessionOverview_withGraceEntry_triggersAsyncRefresh() {
+        DashboardCacheRegistry registry = new DashboardCacheRegistry();
+        AtomicInteger refreshLoads = new AtomicInteger(0);
+
+        DashboardLocalViewModels.SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
+
+        @SuppressWarnings("unchecked")
+        LinkedHashMap<String, Object> map = (LinkedHashMap<String, Object>) getPrivateField(
+                registry,
+                DashboardCacheRegistry.class,
+                "sessionOverviewCache");
+        Object entry = map.get("key");
+        long now = System.currentTimeMillis();
+        setPrivateField(entry, entry.getClass(), "expiresAt", now - 1000L);
+        setPrivateField(entry, entry.getClass(), "staleUntil", now + 30_000L);
+        setPrivateField(entry, entry.getClass(), "refreshing", false);
+
+        DashboardLocalViewModels.SessionOverview stale = registry.getSessionOverview("key", () -> {
+            refreshLoads.incrementAndGet();
+            return overview("key", 2);
+        });
+        assertSame(initial, stale);
+
+        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+
+        DashboardLocalViewModels.SessionOverview refreshed = registry.getSessionOverview("key", () -> overview("key", 3));
+        assertNotSame(initial, refreshed);
+        assertEquals("key-2", refreshed.getTopSessions().get(0).getSessionId());
+    }
+
+    @Test
+    void serializationGuards_throwNotSerializableException() throws Exception {
+        DashboardCacheRegistry registry = new DashboardCacheRegistry();
+
+        Method readObject = DashboardCacheRegistry.class.getDeclaredMethod("readObject", java.io.ObjectInputStream.class);
+        readObject.setAccessible(true);
+        Exception readFailure = assertThrows(Exception.class, () -> readObject.invoke(registry, new Object[]{null}));
+        assertTrue(readFailure.getCause() instanceof java.io.NotSerializableException);
+
+        Method writeObject = DashboardCacheRegistry.class.getDeclaredMethod("writeObject", java.io.ObjectOutputStream.class);
+        writeObject.setAccessible(true);
+        Exception writeFailure = assertThrows(Exception.class, () -> writeObject.invoke(registry, new Object[]{null}));
+        assertTrue(writeFailure.getCause() instanceof java.io.NotSerializableException);
+    }
+
     private static DashboardLocalViewModels.SessionOverview overview(String key, int marker) {
         return new DashboardLocalViewModels.SessionOverview(
                 List.of(new SessionStat(key + "-" + marker, marker, "last")),
@@ -174,5 +253,21 @@ class DashboardCacheRegistryTest {
         } catch (NoSuchFieldException | IllegalAccessException ex) {
             throw new AssertionError("Unable to read private field " + fieldName, ex);
         }
+    }
+
+    private static boolean waitForCondition(BooleanSupplier condition, long timeoutMillis) {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return condition.getAsBoolean();
+            }
+        }
+        return condition.getAsBoolean();
     }
 }

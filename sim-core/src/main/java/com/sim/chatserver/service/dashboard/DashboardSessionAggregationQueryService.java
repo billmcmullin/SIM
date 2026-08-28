@@ -31,6 +31,12 @@ public final class DashboardSessionAggregationQueryService {
             return accumulators;
         }
 
+        boolean hasFilter = sessionIdFilter != null && !sessionIdFilter.isBlank();
+        String likePattern = null;
+        if (hasFilter) {
+            likePattern = '%' + sessionIdFilter.trim() + '%';
+        }
+
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
             for (WidgetEntry widget : widgets) {
@@ -47,7 +53,6 @@ public final class DashboardSessionAggregationQueryService {
                         .append(quoteIdentifier(tableName))
                         .append(" WHERE session_id IS NOT NULL");
 
-                boolean hasFilter = sessionIdFilter != null && !sessionIdFilter.isBlank();
                 if (hasFilter) {
                     sql.append(" AND session_id ILIKE ?");
                 }
@@ -55,10 +60,7 @@ public final class DashboardSessionAggregationQueryService {
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql.toString())) {
                     if (hasFilter) {
-                        String trimmedFilter = sessionIdFilter.trim();
-                        StringBuilder likePattern = new StringBuilder(trimmedFilter.length() + 2);
-                        likePattern.append('%').append(trimmedFilter).append('%');
-                        ps.setString(1, likePattern.toString());
+                        ps.setString(1, likePattern);
                     }
 
                     try (ResultSet rs = ps.executeQuery()) {

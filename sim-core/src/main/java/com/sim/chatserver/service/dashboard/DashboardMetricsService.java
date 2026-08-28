@@ -62,7 +62,7 @@ public class DashboardMetricsService {
         return new DashboardMetricsService(dsHolder, termsStore, topTopicLimit);
     }
 
-    static final class DashboardProgressMetrics {
+    public static final class DashboardProgressMetrics {
 
         private final int chatsToday;
         private final int chatsYesterday;
@@ -72,7 +72,7 @@ public class DashboardMetricsService {
         private final int termsYesterday;
         private final ProgressStat termsProgression;
 
-        DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        public DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
@@ -84,36 +84,36 @@ public class DashboardMetricsService {
             this.termsProgression = new ProgressStat(normalizedTermsToday, normalizedTermsYesterday);
         }
 
-        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        public static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
-        int getChatsToday() {
+        public int getChatsToday() {
             return chatsToday;
         }
 
-        int getChatsYesterday() {
+        public int getChatsYesterday() {
             return chatsYesterday;
         }
 
-        ProgressStat getChatsProgression() {
+        public ProgressStat getChatsProgression() {
             return chatsProgression;
         }
 
-        int getTermsToday() {
+        public int getTermsToday() {
             return termsToday;
         }
 
-        int getTermsYesterday() {
+        public int getTermsYesterday() {
             return termsYesterday;
         }
 
-        ProgressStat getTermsProgression() {
+        public ProgressStat getTermsProgression() {
             return termsProgression;
         }
     }
 
-    final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
+    public final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         List<WidgetStat> stats = new ArrayList<>();
         if (widgets == null || widgets.isEmpty()) {
             return stats;
@@ -162,7 +162,7 @@ public class DashboardMetricsService {
         return stats;
     }
 
-    final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+    public final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -177,7 +177,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+    public final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -191,7 +191,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
+    public final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -204,8 +204,12 @@ public class DashboardMetricsService {
             // Enhancement: term counts use best-topic-per-chat semantics (same as topics data endpoint),
             // so dashboard termsToday/termsYesterday match "new entries categorized in terms".
             TermDayCount termCounts = countTermAssignmentsForDays(conn, widgets, today, yesterday, tableExistsCache);
-            int todayTermCount = termCounts == null ? 0 : termCounts.getToday();
-            int yesterdayTermCount = termCounts == null ? 0 : termCounts.getYesterday();
+            int todayTermCount = 0;
+            int yesterdayTermCount = 0;
+            if (termCounts != null) {
+                todayTermCount = termCounts.getToday();
+                yesterdayTermCount = termCounts.getYesterday();
+            }
 
             return new DashboardProgressMetrics(
                     chatsToday,
@@ -219,7 +223,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+    public final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
         if (widgets == null || widgets.isEmpty()) {
             return List.of();
         }
@@ -308,7 +312,7 @@ public class DashboardMetricsService {
                 .collect(Collectors.toList());
     }
 
-    final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+    public final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
         if (widgets == null || widgets.isEmpty() || limit <= 0) {
             return List.of();
         }
