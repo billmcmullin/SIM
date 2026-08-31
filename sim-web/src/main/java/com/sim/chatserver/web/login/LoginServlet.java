@@ -129,7 +129,7 @@ public class LoginServlet extends HttpServlet {
         }
     }
 
-    protected UserService resolveUserService() {
+    private UserService resolveUserService() {
         try {
             return CDI.current().select(UserService.class).get();
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException ex) {

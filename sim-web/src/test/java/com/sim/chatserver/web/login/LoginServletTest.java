@@ -222,7 +222,6 @@ public class LoginServletTest
     }
     private LoginServlet servletWithUserService(UserService userService) {
         return new LoginServlet() {
-            @Override
             protected UserService resolveUserService() {
                 return userService;
             }

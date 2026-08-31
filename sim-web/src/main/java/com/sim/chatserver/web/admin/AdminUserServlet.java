@@ -126,7 +126,7 @@ public class AdminUserServlet extends HttpServlet {
         return true;
     }
 
-    protected UserService resolveUserService() {
+    private UserService resolveUserService() {
         return CDI.current().select(UserService.class).get();
     }
 

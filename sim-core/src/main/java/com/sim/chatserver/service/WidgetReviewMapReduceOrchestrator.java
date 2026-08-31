@@ -142,7 +142,7 @@ public class WidgetReviewMapReduceOrchestrator {
         return new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
     }
 
-    WidgetReviewMapReduceOrchestrator(
+    private WidgetReviewMapReduceOrchestrator(
             WorkspaceClient workspaceClient,
             ReviewContextBuilderService contextBuilderService,
             PromptTemplateService promptTemplateService

@@ -1,5 +1,6 @@
 package com.sim.chatserver.model.review;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -329,7 +330,7 @@ public class CoverageSummaryTest
         CoverageSummary underTest = CoverageSummary.fromIds(allChatIds, usedChatIds, reasonsChatsNotUsed, totalBatches, successfulBatches, failedBatchIndexes);
 
         // When
-        int result = underTest.getFailedBatchCount();
+        int result = invokeFailedBatchCount(underTest);
 
     }
 
@@ -601,5 +602,11 @@ public class CoverageSummaryTest
         // When
         String result = underTest.toString();
 
+    }
+
+    private static int invokeFailedBatchCount(CoverageSummary underTest) throws Exception {
+        Method method = CoverageSummary.class.getDeclaredMethod("getFailedBatchCount");
+        method.setAccessible(true);
+        return ((Integer) method.invoke(underTest)).intValue();
     }
 }

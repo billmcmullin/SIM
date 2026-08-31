@@ -310,7 +310,7 @@ public final class ReviewJobStatus {
      *
      * QUEUED => 0..5 MAP => 5..80 REDUCE => 80..95 DONE => 100
      */
-    int progressPercent() {
+    private int progressPercent() {
         if (done) {
             return 100;
         }

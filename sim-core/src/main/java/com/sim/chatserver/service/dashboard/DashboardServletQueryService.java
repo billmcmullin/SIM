@@ -25,11 +25,11 @@ public final class DashboardServletQueryService {
 
     private final Logger log;
 
-    DashboardServletQueryService(Logger log) {
+    private DashboardServletQueryService(Logger log) {
         this.log = log;
     }
 
-    public static DashboardServletQueryService create(Logger log) {
+    static DashboardServletQueryService create(Logger log) {
         return new DashboardServletQueryService(log);
     }
 

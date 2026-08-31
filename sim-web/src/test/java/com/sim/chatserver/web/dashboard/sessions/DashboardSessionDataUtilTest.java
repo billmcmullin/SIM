@@ -25,8 +25,8 @@ class DashboardSessionDataUtilTest {
 
     @Test
     void mapWidgetDisplayNames_handlesNullsAndFallbacks() {
-        WidgetEntry a = new WidgetEntry(1, "widget_a", "Widget A", Instant.now());
-        WidgetEntry b = new WidgetEntry(2, "widget_b", "   ", Instant.now());
+        WidgetEntry a = com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget_a", "Widget A", Instant.now());
+        WidgetEntry b = com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "widget_b", "   ", Instant.now());
 
         Map<String, String> map = DashboardSessionDataUtil.mapWidgetDisplayNames(Arrays.asList(a, null, b));
         assertEquals(2, map.size());

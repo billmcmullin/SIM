@@ -68,7 +68,7 @@ final class DashboardMetricsService {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
-        static DashboardProgressMetrics fromCore(com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics core) {
+        private static DashboardProgressMetrics fromCore(com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics core) {
             if (core == null) {
                 return new DashboardProgressMetrics(0, 0, 0, 0);
             }

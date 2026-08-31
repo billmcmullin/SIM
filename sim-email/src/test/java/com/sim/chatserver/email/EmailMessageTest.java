@@ -11,7 +11,7 @@ class EmailMessageTest {
 
     @Test
     void build_success_withTextBodyAndSingleTo() {
-        EmailMessage msg = EmailMessage.builder()
+        EmailMessage msg = EmailMessageTestBuilder.builder()
                 .from("sender@example.com")
                 .to("to@example.com")
                 .subject("Test Subject")
@@ -33,7 +33,7 @@ class EmailMessageTest {
 
     @Test
     void build_success_withHtmlOrMarkdownBody() {
-        EmailMessage htmlMsg = EmailMessage.builder()
+        EmailMessage htmlMsg = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("HTML")
                 .htmlBody("<p>Hello</p>")
@@ -42,7 +42,7 @@ class EmailMessageTest {
         assertEquals("HTML", htmlMsg.subject());
         assertEquals("<p>Hello</p>", htmlMsg.htmlBody());
 
-        EmailMessage mdMsg = EmailMessage.builder()
+        EmailMessage mdMsg = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("MD")
                 .markdownBody("**Hello**")
@@ -55,7 +55,7 @@ class EmailMessageTest {
     @Test
     void build_throwsNpe_whenSubjectMissing() {
         NullPointerException ex = assertThrows(NullPointerException.class, ()
-                -> EmailMessage.builder()
+                -> EmailMessageTestBuilder.builder()
                         .to("to@example.com")
                         .textBody("Hello")
                         .build()
@@ -66,7 +66,7 @@ class EmailMessageTest {
     @Test
     void build_throwsIllegalArgument_whenNoRecipients() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, ()
-                -> EmailMessage.builder()
+                -> EmailMessageTestBuilder.builder()
                         .subject("No recipients")
                         .textBody("Hello")
                         .build()
@@ -77,7 +77,7 @@ class EmailMessageTest {
     @Test
     void build_throwsIllegalArgument_whenAllBodiesBlankOrMissing() {
         IllegalArgumentException ex1 = assertThrows(IllegalArgumentException.class, ()
-                -> EmailMessage.builder()
+                -> EmailMessageTestBuilder.builder()
                         .to("to@example.com")
                         .subject("No body")
                         .build()
@@ -85,7 +85,7 @@ class EmailMessageTest {
         assertEquals("At least one body (text/html/markdown) is required", ex1.getMessage());
 
         IllegalArgumentException ex2 = assertThrows(IllegalArgumentException.class, ()
-                -> EmailMessage.builder()
+                -> EmailMessageTestBuilder.builder()
                         .to("to@example.com")
                         .subject("Blank body")
                         .textBody("   ")
@@ -98,7 +98,7 @@ class EmailMessageTest {
 
     @Test
     void builder_accumulatesRecipients_fromSingleAndListMethods() {
-        EmailMessage msg = EmailMessage.builder()
+        EmailMessage msg = EmailMessageTestBuilder.builder()
                 .to("to1@example.com")
                 .to(List.of("to2@example.com", "to3@example.com"))
                 .cc("cc1@example.com")
@@ -116,7 +116,7 @@ class EmailMessageTest {
 
     @Test
     void allRecipientsReadOnly_returnsCombinedInOrder_andUnmodifiable() {
-        EmailMessage msg = EmailMessage.builder()
+        EmailMessage msg = EmailMessageTestBuilder.builder()
                 .to(List.of("to1@example.com", "to2@example.com"))
                 .cc("cc1@example.com")
                 .bcc(List.of("bcc1@example.com", "bcc2@example.com"))
@@ -136,7 +136,7 @@ class EmailMessageTest {
 
     @Test
     void builtCollections_areImmutable() {
-        EmailMessage msg = EmailMessage.builder()
+        EmailMessage msg = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .cc("cc@example.com")
                 .bcc("bcc@example.com")

@@ -151,7 +151,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             initializedStore.ensureTable();
             initializedStore.ensureDefaultRow();
 
-            AutoEmailAlertScheduler initializedScheduler = new AutoEmailAlertScheduler(
+                AutoEmailAlertScheduler initializedScheduler = AutoEmailAlertScheduler.create(
                     initializedStore,
                     dsHolder.getDataSource(),
                     availabilityChecker,

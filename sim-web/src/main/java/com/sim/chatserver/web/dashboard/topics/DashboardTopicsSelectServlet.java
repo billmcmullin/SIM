@@ -166,7 +166,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
     }
 
-    AppDataSourceHolder dataSourceHolder() {
+    private final AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
 

@@ -202,7 +202,7 @@ public final class ReduceResult {
         return latencyMs;
     }
 
-    int getFailedBatchCount() {
+    private int getFailedBatchCount() {
         return failedBatchIndexes.size();
     }
 

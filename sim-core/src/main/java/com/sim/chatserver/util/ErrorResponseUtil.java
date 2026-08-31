@@ -22,7 +22,7 @@ public final class ErrorResponseUtil {
         // util
     }
 
-    static void writeError(HttpServletResponse resp, int status, String message) throws IOException {
+    private static void writeError(HttpServletResponse resp, int status, String message) throws IOException {
         writeError(resp, status, DEFAULT_ERROR_CODE, message, null);
     }
 

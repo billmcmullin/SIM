@@ -9,7 +9,7 @@ public final class EmailConfigResolver {
     private final DbEmailConfigProvider dbProvider;
     private final DbGraphEmailConfigProvider graphDbProvider; // optional, can be null
 
-    EmailConfigResolver(DbEmailConfigProvider dbProvider) {
+    private EmailConfigResolver(DbEmailConfigProvider dbProvider) {
         this(dbProvider, null);
     }
 

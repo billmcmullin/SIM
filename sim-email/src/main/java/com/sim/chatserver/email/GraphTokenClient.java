@@ -145,7 +145,7 @@ public class GraphTokenClient {
         }
     }
 
-    final HttpsURLConnection openConnection(String tokenUrl) throws IOException {
+    private HttpsURLConnection openConnection(String tokenUrl) throws IOException {
         URL url = URI.create(tokenUrl).toURL();
         return (HttpsURLConnection) url.openConnection();
     }

@@ -1,5 +1,6 @@
 package com.sim.chatserver.model.review;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -261,7 +262,7 @@ public class ReduceResultTest
         ReduceResult underTest = ReduceResult.failed(requestId, httpStatus, errorMessage, totalSelected, totalBatches, mapOutputsReceived, failedBatchIndexes);
 
         // When
-        int result = underTest.getFailedBatchCount();
+        int result = invokeFailedBatchCount(underTest);
 
     }
 
@@ -719,5 +720,11 @@ public class ReduceResultTest
         // When
         String result = underTest.toString();
 
+    }
+
+    private static int invokeFailedBatchCount(ReduceResult underTest) throws Exception {
+        Method method = ReduceResult.class.getDeclaredMethod("getFailedBatchCount");
+        method.setAccessible(true);
+        return ((Integer) method.invoke(underTest)).intValue();
     }
 }

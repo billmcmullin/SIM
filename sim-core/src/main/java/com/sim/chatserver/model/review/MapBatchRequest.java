@@ -125,7 +125,7 @@ public final class MapBatchRequest {
         return authoritativeAllSelectedChatIds;
     }
 
-    public List<String> getExpectedChatIds() {
+    List<String> getExpectedChatIds() {
         return expectedChatIds;
     }
 
@@ -141,11 +141,11 @@ public final class MapBatchRequest {
         return expectedChatIds;
     }
 
-    public boolean hasAuthoritativeAllIds() {
+    boolean hasAuthoritativeAllIds() {
         return !authoritativeAllSelectedChatIds.isEmpty();
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         JsonArrayBuilder ids = Json.createArrayBuilder();
         for (String id : expectedChatIds) {
             ids.add(id);

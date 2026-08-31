@@ -52,7 +52,7 @@ public class DashboardMetricsService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    DashboardMetricsService(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+    private DashboardMetricsService(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
         this.dsHolder = dsHolder;
         this.termsStore = termsStore;
         this.topTopicLimit = topTopicLimit;
@@ -72,7 +72,7 @@ public class DashboardMetricsService {
         private final int termsYesterday;
         private final ProgressStat termsProgression;
 
-        public DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
@@ -84,7 +84,7 @@ public class DashboardMetricsService {
             this.termsProgression = new ProgressStat(normalizedTermsToday, normalizedTermsYesterday);
         }
 
-        public static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
@@ -96,7 +96,7 @@ public class DashboardMetricsService {
             return chatsYesterday;
         }
 
-        public ProgressStat getChatsProgression() {
+        ProgressStat getChatsProgression() {
             return chatsProgression;
         }
 
@@ -108,7 +108,7 @@ public class DashboardMetricsService {
             return termsYesterday;
         }
 
-        public ProgressStat getTermsProgression() {
+        ProgressStat getTermsProgression() {
             return termsProgression;
         }
     }

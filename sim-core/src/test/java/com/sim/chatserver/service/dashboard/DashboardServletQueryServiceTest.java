@@ -61,7 +61,7 @@ class DashboardServletQueryServiceTest {
 
     @Test
     void quoteIdentifier_allowsSimpleNamesAndRejectsInvalidNames() throws Exception {
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
 
         assertEquals("\"widget_1\"", invokeQuoteIdentifier(service, "widget_1"));
 
@@ -77,12 +77,12 @@ class DashboardServletQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
         mockDataSourceHolderCdi(dataSource);
 
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
         DashboardTermService termService = mock(DashboardTermService.class);
 
         LocalDate start = LocalDate.of(2026, 8, 1);
         LocalDate end = LocalDate.of(2026, 8, 24);
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget_1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "widget_1", "Widget 1", Instant.now()));
         List<TermDefinition> terms = List.of(mock(TermDefinition.class));
         TermSummary expected = new TermSummary();
 
@@ -101,7 +101,7 @@ class DashboardServletQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
         mockDataSourceHolderCdi(dataSource);
 
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
         DashboardTermService termService = mock(DashboardTermService.class);
         when(termService.loadAllTerms()).thenThrow(new IllegalStateException("db down"));
 
@@ -116,13 +116,13 @@ class DashboardServletQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
         mockDataSourceHolderCdi(dataSource);
 
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
         DashboardSessionService sessionService = mock(DashboardSessionService.class);
 
         LocalDate start = LocalDate.of(2026, 8, 1);
         LocalDate end = LocalDate.of(2026, 8, 24);
         int activeDays = 7;
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget_1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "widget_1", "Widget 1", Instant.now()));
 
         SessionOverview expected = new SessionOverview(
                 List.of(),
@@ -148,7 +148,7 @@ class DashboardServletQueryServiceTest {
         when(dataSource.getConnection()).thenThrow(new SQLException("no conn"));
         mockDataSourceHolderCdi(dataSource);
 
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
         String json = service.buildLastFiveDaysTrendJson(List.of());
 
         JsonObject parsed = Json.createReader(new StringReader(json)).readObject();
@@ -178,9 +178,9 @@ class DashboardServletQueryServiceTest {
 
         mockDataSourceHolderCdi(dataSource);
 
-        DashboardServletQueryService service = new DashboardServletQueryService(Logger.getLogger("test"));
+        DashboardServletQueryService service = DashboardServletQueryService.create(Logger.getLogger("test"));
         String json = service.buildLastFiveDaysTrendJson(
-                List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now())));
+                List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now())));
 
         JsonObject parsed = Json.createReader(new StringReader(json)).readObject();
         assertEquals(5, parsed.getInt("days"));

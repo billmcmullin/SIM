@@ -171,7 +171,7 @@ public class WidgetAvailabilityServlet extends HttpServlet {
                 || "y".equals(normalized);
     }
 
-    protected WidgetAvailabilityChecker availabilityChecker() {
+    private WidgetAvailabilityChecker availabilityChecker() {
         return CDI.current().select(WidgetAvailabilityChecker.class).get();
     }
 }

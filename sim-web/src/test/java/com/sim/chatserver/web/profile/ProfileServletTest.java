@@ -470,7 +470,6 @@ public class ProfileServletTest
         }
     private ProfileServlet servletWithUserService(UserService userService) {
         return new ProfileServlet() {
-            @Override
             protected UserService resolveUserService() {
                 return userService;
             }

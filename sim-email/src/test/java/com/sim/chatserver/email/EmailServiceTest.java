@@ -14,7 +14,7 @@ class EmailServiceTest {
     @Test
     void sendAsync_invokesSendWithSameMessage() throws Exception {
         CapturingEmailService service = new CapturingEmailService();
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("subject")
                 .textBody("body")

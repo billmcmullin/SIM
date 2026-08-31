@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Constructor;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -74,8 +75,8 @@ class DashboardDrilldownSelectionQueryServiceTest {
              MockedStatic<WidgetStore> widgetStore = Mockito.mockStatic(WidgetStore.class);
              MockedStatic<DashboardDbUtil> dbUtil = Mockito.mockStatic(DashboardDbUtil.class)) {
 
-            WidgetEntry w1 = new WidgetEntry(1, "w1", "W1", Instant.now());
-            WidgetEntry w2 = new WidgetEntry(2, "w2", "W2", Instant.now());
+            WidgetEntry w1 = newWidgetEntry(1, "w1", "W1", Instant.now());
+            WidgetEntry w2 = newWidgetEntry(2, "w2", "W2", Instant.now());
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(w1, w2));
 
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("w1")).thenReturn("w1_table");
@@ -123,8 +124,8 @@ class DashboardDrilldownSelectionQueryServiceTest {
              MockedStatic<DashboardDbUtil> dbUtil = Mockito.mockStatic(DashboardDbUtil.class)) {
 
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(
-                    new WidgetEntry(1, "w1", "W1", Instant.now()),
-                    new WidgetEntry(2, "w2", "W2", Instant.now())));
+                    newWidgetEntry(1, "w1", "W1", Instant.now()),
+                    newWidgetEntry(2, "w2", "W2", Instant.now())));
 
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("w1")).thenReturn("w1_table");
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("w2")).thenReturn("w2_table");
@@ -172,8 +173,8 @@ class DashboardDrilldownSelectionQueryServiceTest {
              MockedStatic<DashboardDbUtil> dbUtil = Mockito.mockStatic(DashboardDbUtil.class)) {
 
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(
-                    new WidgetEntry(1, "w1", "W1", Instant.now()),
-                    new WidgetEntry(2, "w2", "W2", Instant.now())));
+                    newWidgetEntry(1, "w1", "W1", Instant.now()),
+                    newWidgetEntry(2, "w2", "W2", Instant.now())));
 
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("w1")).thenReturn("w1_table");
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("w2")).thenReturn("w2_table");
@@ -200,7 +201,7 @@ class DashboardDrilldownSelectionQueryServiceTest {
              MockedStatic<WidgetStore> widgetStore = Mockito.mockStatic(WidgetStore.class)) {
 
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(
-                    new WidgetEntry(1, "w1", "W1", Instant.now())));
+                    newWidgetEntry(1, "w1", "W1", Instant.now())));
 
             List<TermChatSnapshot> out = service.collectSessionEntries("session-x");
             assertTrue(out.isEmpty());
@@ -216,5 +217,15 @@ class DashboardDrilldownSelectionQueryServiceTest {
         when(current.select(AppDataSourceHolder.class)).thenReturn((Instance) instance);
         cdi.when(CDI::current).thenReturn(current);
         return cdi;
+    }
+
+    private static WidgetEntry newWidgetEntry(int id, String widgetId, String displayName, Instant createdAt) {
+        try {
+            Constructor<WidgetEntry> ctor = WidgetEntry.class.getDeclaredConstructor(int.class, String.class, String.class, Instant.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(Integer.valueOf(id), widgetId, displayName, createdAt);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate WidgetEntry for test", ex);
+        }
     }
 }

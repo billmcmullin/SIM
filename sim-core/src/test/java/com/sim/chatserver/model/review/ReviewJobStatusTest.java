@@ -1,5 +1,6 @@
 package com.sim.chatserver.model.review;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -649,7 +650,7 @@ public class ReviewJobStatusTest
         ReviewJobStatus underTest = ReviewJobStatus.queued(jobId, requestId, totalSelected);
 
         // When
-        int result = underTest.progressPercent();
+        int result = invokeProgressPercent(underTest);
 
     }
 
@@ -744,5 +745,11 @@ public class ReviewJobStatusTest
         // When
         String result = underTest.toString();
 
+    }
+
+    private static int invokeProgressPercent(ReviewJobStatus underTest) throws Exception {
+        Method method = ReviewJobStatus.class.getDeclaredMethod("progressPercent");
+        method.setAccessible(true);
+        return ((Integer) method.invoke(underTest)).intValue();
     }
 }

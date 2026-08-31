@@ -34,7 +34,7 @@ final class WidgetSyncSchedulerManager {
         return current;
     }
 
-    static boolean isExecutorStopped(ExecutorService executor, Logger log, String executorName) {
+    private static boolean isExecutorStopped(ExecutorService executor, Logger log, String executorName) {
         if (executor == null) {
             return true;
         }
@@ -50,7 +50,7 @@ final class WidgetSyncSchedulerManager {
         }
     }
 
-    static boolean isContainerManagedExecutor(ExecutorService executor) {
+    private static boolean isContainerManagedExecutor(ExecutorService executor) {
         if (executor == null) {
             return false;
         }

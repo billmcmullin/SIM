@@ -62,7 +62,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
             this.date = date;
         }
 
-        static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
+        private static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
             return new Selection(
                     safe(widgetId),
                     safe(widgetId),
@@ -74,11 +74,11 @@ public class WidgetReviewStartServlet extends HttpServlet {
             );
         }
 
-        static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
+        private static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
             return fromWidget(widgetId, chatIds, searchTerms, null);
         }
 
-        static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
+        private static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
             List<String> chatIds = snapshots.stream()
                     .map(TermChatSnapshot::getChatId)
                     .filter(v -> v != null && !v.isBlank())

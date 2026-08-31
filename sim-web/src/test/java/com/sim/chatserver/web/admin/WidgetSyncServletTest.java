@@ -1415,10 +1415,10 @@ class WidgetSyncServletTest {
                     String trimmed = (String) invoke(
                             "trimToUtf8Bytes",
                             new Class<?>[]{String.class, int.class},
-                            "a🙂b",
+                            "aðŸ™‚b",
                             5
                     );
-                    assertEquals("a🙂", trimmed);
+                    assertEquals("aðŸ™‚", trimmed);
 
                     assertEquals(1, invoke("utf8LengthForCodePoint", new Class<?>[]{int.class}, (int) 'a'));
                     assertEquals(2, invoke("utf8LengthForCodePoint", new Class<?>[]{int.class}, 0x07FF));
@@ -1486,10 +1486,10 @@ class WidgetSyncServletTest {
 
                     try (MockedStatic<WidgetStore> widgetStoreMock = mockStatic(WidgetStore.class)) {
                         widgetStoreMock.when(() -> WidgetStore.list(null)).thenReturn(Arrays.asList(
-                                new com.sim.chatserver.widget.WidgetEntry(1, "Alpha-1", "Alpha", Instant.now()),
-                                new com.sim.chatserver.widget.WidgetEntry(2, "  ", "Blank", Instant.now()),
+                                com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "Alpha-1", "Alpha", Instant.now()),
+                                com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "  ", "Blank", Instant.now()),
                                 null,
-                                new com.sim.chatserver.widget.WidgetEntry(3, "beta", "Beta", Instant.now())
+                                com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(3, "beta", "Beta", Instant.now())
                         ));
 
                         List<SelectedEntry> loaded = (List<SelectedEntry>) invoke(

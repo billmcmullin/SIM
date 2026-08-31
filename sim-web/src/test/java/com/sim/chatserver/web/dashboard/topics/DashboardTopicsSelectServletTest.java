@@ -343,12 +343,7 @@ public class DashboardTopicsSelectServletTest
     }
 
     private DashboardTopicsSelectServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
-        return new DashboardTopicsSelectServlet() {
-            @Override
-            protected AppDataSourceHolder dataSourceHolder() {
-                return dsHolder;
-            }
-        };
+        return new DashboardTopicsSelectServlet();
     }
 }
 

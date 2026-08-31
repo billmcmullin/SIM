@@ -282,7 +282,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
         return out;
     }
 
-    protected TermsStore termsStore() {
+    private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
     }
 

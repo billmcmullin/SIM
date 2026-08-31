@@ -36,8 +36,10 @@ import static org.mockito.Mockito.verify;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.StringReader;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.function.Supplier;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -659,7 +661,18 @@ public class WidgetExportServletTest
             };
         }
     private WidgetExportServlet servletWithDataSourceHolder(AppDataSourceHolder dsHolder) {
-        return new WidgetExportServlet(dsHolder);
+        WidgetExportServlet servlet = new WidgetExportServlet();
+        try {
+            Field field = WidgetExportServlet.class.getDeclaredField("dataSourceHolderOverride");
+            field.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            ThreadLocal<Supplier<AppDataSourceHolder>> override =
+                    (ThreadLocal<Supplier<AppDataSourceHolder>>) field.get(servlet);
+            override.set(dsHolder == null ? null : () -> dsHolder);
+            return servlet;
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to set dataSourceHolderOverride in test", ex);
+        }
     }
 }
 

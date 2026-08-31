@@ -270,7 +270,7 @@ class WidgetTableDataServiceTest {
     }
 
     private WidgetEntry widget(String widgetId) {
-        return new WidgetEntry(1, widgetId, "Widget " + widgetId, Instant.parse("2026-01-01T00:00:00Z"));
+        return com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, widgetId, "Widget " + widgetId, Instant.parse("2026-01-01T00:00:00Z"));
     }
 
     private void stubFirstParam(MockedStatic<ServletRequestParamUtil> reqParams,

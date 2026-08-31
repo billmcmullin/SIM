@@ -68,7 +68,7 @@ public class UpstreamRequestService {
      * Backward-compatible overload. If upstreamUrl is full endpoint, used
      * as-is. If it's origin-only, workspace is unknown and will fail fast.
      */
-    final UpstreamResponse sendChat(
+    private UpstreamResponse sendChat(
             String upstreamUrl,
             String apiKey,
             String message,
@@ -461,12 +461,12 @@ public class UpstreamRequestService {
 
         private final transient String code;
 
-        UpstreamConnectivityException(String code, String message, Throwable cause) {
+        private UpstreamConnectivityException(String code, String message, Throwable cause) {
             super(message, cause);
             this.code = code;
         }
 
-        final String code() {
+        private String code() {
             return code == null ? "" : code;
         }
     }

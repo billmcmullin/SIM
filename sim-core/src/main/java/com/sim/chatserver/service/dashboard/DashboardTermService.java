@@ -67,7 +67,7 @@ public class DashboardTermService {
     /**
      * Existing behavior: all-time (no date filter).
      */
-    final TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+    private TermSummary buildTermSummary(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
         return buildTermSummary(conn, widgets, terms, null, null);
     }
 

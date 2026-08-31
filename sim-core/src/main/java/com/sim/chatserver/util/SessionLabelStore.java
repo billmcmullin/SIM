@@ -153,7 +153,7 @@ public final class SessionLabelStore {
         private final String displayName;
         private final String email;
 
-        SessionLabel(String displayName, String email) {
+        private SessionLabel(String displayName, String email) {
             this.displayName = displayName == null ? "" : displayName;
             this.email = email == null ? "" : email;
         }

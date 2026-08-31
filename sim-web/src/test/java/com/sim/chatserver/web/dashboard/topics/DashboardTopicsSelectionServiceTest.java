@@ -63,7 +63,7 @@ class DashboardTopicsSelectionServiceTest {
         requested.add("chat-2");
 
         Map<String, WidgetEntry> widgetById = new LinkedHashMap<>();
-        widgetById.put("widget-1", new WidgetEntry(1, "widget-1", "Widget One", Instant.now()));
+        widgetById.put("widget-1", com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget One", Instant.now()));
 
         DashboardTopicsSelectionService.SelectionResolution result = service.resolveSelectedChats(requested, widgetById);
 
@@ -98,7 +98,7 @@ class DashboardTopicsSelectionServiceTest {
 
         Set<String> requested = Set.of("chat-1");
         Map<String, WidgetEntry> widgetById = Map.of(
-                "widget-1", new WidgetEntry(1, "widget-1", "Widget One", Instant.now())
+                "widget-1", com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget One", Instant.now())
         );
 
         DashboardTopicsSelectionService.SelectionResolution result = service.resolveSelectedChats(requested, widgetById);

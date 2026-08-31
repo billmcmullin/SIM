@@ -1,5 +1,7 @@
 package com.sim.chatserver.util;
 
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -622,7 +624,7 @@ public class TextBudgetUtilTest
         // When
         String value = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        String result = TextBudgetUtil.trimTo(value, maxChars);
+        String result = invokeTrimTo(value, maxChars);
 
     }
 
@@ -638,7 +640,7 @@ public class TextBudgetUtilTest
         // When
         String value = "value"; // UTA: default value
         int maxChars = 0; // UTA: configured value
-        String result = TextBudgetUtil.trimTo(value, maxChars);
+        String result = invokeTrimTo(value, maxChars);
 
     }
 
@@ -654,7 +656,7 @@ public class TextBudgetUtilTest
         // When
         String value = "*"; // UTA: configured value
         int maxChars = 1; // UTA: configured value
-        String result = TextBudgetUtil.trimTo(value, maxChars);
+        String result = invokeTrimTo(value, maxChars);
 
     }
 
@@ -670,7 +672,7 @@ public class TextBudgetUtilTest
         // When
         String value = "**"; // UTA: configured value
         int maxChars = 1; // UTA: configured value
-        String result = TextBudgetUtil.trimTo(value, maxChars);
+        String result = invokeTrimTo(value, maxChars);
 
     }
 
@@ -685,5 +687,11 @@ public class TextBudgetUtilTest
             assertTrue(appendedAll);
             assertEquals("abc", sb.toString());
         }
+
+    private static String invokeTrimTo(String value, int maxChars) throws Exception {
+        Method trimTo = TextBudgetUtil.class.getDeclaredMethod("trimTo", String.class, int.class);
+        trimTo.setAccessible(true);
+        return (String) trimTo.invoke(null, value, Integer.valueOf(maxChars));
+    }
 }
 

@@ -67,7 +67,7 @@ public class PromptTemplateServiceTest
         // When
         String message = null; // UTA: configured value
         boolean compactRubric = false; // UTA: configured value
-        String result = underTest.addReportRubricIfMissing(message, compactRubric);
+        String result = invokeAddReportRubricIfMissing(underTest, message, compactRubric);
 
     }
 
@@ -86,7 +86,7 @@ public class PromptTemplateServiceTest
         // When
         String message = null; // UTA: configured value
         boolean compactRubric = true; // UTA: configured value
-        String result = underTest.addReportRubricIfMissing(message, compactRubric);
+        String result = invokeAddReportRubricIfMissing(underTest, message, compactRubric);
 
     }
 
@@ -105,7 +105,7 @@ public class PromptTemplateServiceTest
         // When
         String message = "message"; // UTA: default value
         boolean compactRubric = false; // UTA: configured value
-        String result = underTest.addReportRubricIfMissing(message, compactRubric);
+        String result = invokeAddReportRubricIfMissing(underTest, message, compactRubric);
 
     }
 
@@ -124,7 +124,7 @@ public class PromptTemplateServiceTest
         // When
         String message = "message"; // UTA: default value
         boolean compactRubric = true; // UTA: configured value
-        String result = underTest.addReportRubricIfMissing(message, compactRubric);
+        String result = invokeAddReportRubricIfMissing(underTest, message, compactRubric);
 
     }
 
@@ -367,7 +367,7 @@ public class PromptTemplateServiceTest
 
         // When
         String message = null; // UTA: configured value
-        boolean result = underTest.looksStructuredAlready(message);
+        boolean result = invokeLooksStructuredAlready(underTest, message);
 
     }
 
@@ -385,7 +385,7 @@ public class PromptTemplateServiceTest
 
         // When
         String message = "message"; // UTA: default value
-        boolean result = underTest.looksStructuredAlready(message);
+        boolean result = invokeLooksStructuredAlready(underTest, message);
 
     }
 
@@ -440,7 +440,7 @@ public class PromptTemplateServiceTest
         // When
         String message = null; // UTA: configured value
         boolean enforceMarkdownOnly = true; // UTA: configured value
-        String result = underTest.withPromptInjectionGuardrails(message, enforceMarkdownOnly);
+        String result = invokeWithPromptInjectionGuardrails(underTest, message, enforceMarkdownOnly);
 
     }
 
@@ -459,7 +459,7 @@ public class PromptTemplateServiceTest
         // When
         String message = null; // UTA: configured value
         boolean enforceMarkdownOnly = false; // UTA: configured value
-        String result = underTest.withPromptInjectionGuardrails(message, enforceMarkdownOnly);
+        String result = invokeWithPromptInjectionGuardrails(underTest, message, enforceMarkdownOnly);
 
     }
 
@@ -478,7 +478,7 @@ public class PromptTemplateServiceTest
         // When
         String message = "message"; // UTA: default value
         boolean enforceMarkdownOnly = true; // UTA: configured value
-        String result = underTest.withPromptInjectionGuardrails(message, enforceMarkdownOnly);
+        String result = invokeWithPromptInjectionGuardrails(underTest, message, enforceMarkdownOnly);
 
     }
 
@@ -497,7 +497,7 @@ public class PromptTemplateServiceTest
         // When
         String message = "message"; // UTA: default value
         boolean enforceMarkdownOnly = false; // UTA: configured value
-        String result = underTest.withPromptInjectionGuardrails(message, enforceMarkdownOnly);
+        String result = invokeWithPromptInjectionGuardrails(underTest, message, enforceMarkdownOnly);
 
     }
 
@@ -514,11 +514,11 @@ public class PromptTemplateServiceTest
         }
     
         @Test
-        void addReportRubricIfMissing_overloadReturnsInputWhenAlreadyStructured() {
+        void addReportRubricIfMissing_overloadReturnsInputWhenAlreadyStructured() throws Throwable {
             PromptTemplateService service = new PromptTemplateService();
             String structured = "## Executive Summary\nAlready structured";
     
-            String result = service.addReportRubricIfMissing(structured, true);
+            String result = invokeAddReportRubricIfMissing(service, structured, true);
     
             assertEquals(structured, result);
         }
@@ -546,5 +546,33 @@ public class PromptTemplateServiceTest
             NotSerializableException cause = assertInstanceOf(NotSerializableException.class, ex.getCause());
             assertEquals(PromptTemplateService.class.getName(), cause.getMessage());
         }
-}
+    private static String invokeAddReportRubricIfMissing(PromptTemplateService service, String message, boolean compactRubric) throws Throwable {
+        Method m = PromptTemplateService.class.getDeclaredMethod("addReportRubricIfMissing", String.class, boolean.class);
+        m.setAccessible(true);
+        try {
+            return (String) m.invoke(service, message, Boolean.valueOf(compactRubric));
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
 
+    private static boolean invokeLooksStructuredAlready(PromptTemplateService service, String message) throws Throwable {
+        Method m = PromptTemplateService.class.getDeclaredMethod("looksStructuredAlready", String.class);
+        m.setAccessible(true);
+        try {
+            return ((Boolean) m.invoke(service, message)).booleanValue();
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
+    private static String invokeWithPromptInjectionGuardrails(PromptTemplateService service, String message, boolean enforceMarkdownOnly) throws Throwable {
+        Method m = PromptTemplateService.class.getDeclaredMethod("withPromptInjectionGuardrails", String.class, boolean.class);
+        m.setAccessible(true);
+        try {
+            return (String) m.invoke(service, message, Boolean.valueOf(enforceMarkdownOnly));
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+}

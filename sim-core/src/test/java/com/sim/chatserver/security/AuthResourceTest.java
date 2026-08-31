@@ -92,7 +92,7 @@ public class AuthResourceTest {
 
     private Response loginAllowingMissingRuntimeDelegate(AuthResource underTest, Map<String, String> payload) {
         try {
-            return underTest.login(payload);
+            return underTest.loginApi(payload);
         } catch (RuntimeException ex) {
             assertTrue(
                     causedByMissingRuntimeDelegate(ex),

@@ -24,7 +24,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "SyncCustomerProfileSalesforceServlet", urlPatterns = {"/admin/sync-customer-profile"})
 public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
-    private static final SalesforceClient SALESFORCE_CLIENT = new SalesforceClient();
+    private static final SalesforceClient SALESFORCE_CLIENT = SalesforceClient.create();
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
 

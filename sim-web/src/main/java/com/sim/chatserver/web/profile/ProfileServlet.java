@@ -113,7 +113,7 @@ public class ProfileServlet extends HttpServlet {
         }
     }
 
-    protected UserService resolveUserService() {
+    private UserService resolveUserService() {
         return CDI.current().select(UserService.class).get();
     }
 

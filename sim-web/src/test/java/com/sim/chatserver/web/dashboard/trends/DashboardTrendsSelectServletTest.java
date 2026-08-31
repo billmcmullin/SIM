@@ -231,7 +231,7 @@ class DashboardTrendsSelectServletTest {
         CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
         when(cdi.select(AppDataSourceHolder.class)).thenReturn(instance);
 
-        WidgetEntry widget = new WidgetEntry(1, "w1", "Widget One", Instant.parse("2026-08-27T00:00:00Z"));
+        WidgetEntry widget = com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.parse("2026-08-27T00:00:00Z"));
 
         try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class);
              MockedStatic<WidgetStore> widgetStoreStatic = Mockito.mockStatic(WidgetStore.class);
@@ -290,7 +290,7 @@ class DashboardTrendsSelectServletTest {
         CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
         when(cdi.select(AppDataSourceHolder.class)).thenReturn(instance);
 
-        WidgetEntry widget = new WidgetEntry(1, "w1", "Widget One", Instant.parse("2026-08-27T00:00:00Z"));
+        WidgetEntry widget = com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.parse("2026-08-27T00:00:00Z"));
 
         try (MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class);
              MockedStatic<WidgetStore> widgetStoreStatic = Mockito.mockStatic(WidgetStore.class);

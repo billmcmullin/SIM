@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Connection;
@@ -25,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import javax.sql.DataSource;
 
@@ -79,10 +81,11 @@ import jakarta.enterprise.inject.spi.CDI;
         DashboardTopicsQueryService service = new DashboardTopicsQueryService();
         List<WidgetEntry> widgets = new ArrayList<>();
         widgets.add(null);
-        widgets.add(new WidgetEntry(1, "widget-1", "", Instant.now()));
-        widgets.add(new WidgetEntry(2, "   ", "ignored", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "   ", "ignored", Instant.now()));
 
-        DashboardTopicsQueryService.TopicCountResult result = service.collectTopicCounts(
+        DashboardTopicsQueryService.TopicCountResult result = invokeCollectTopicCounts(
+            service,
                 widgets,
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 5),
@@ -139,10 +142,11 @@ import jakarta.enterprise.inject.spi.CDI;
 
         DashboardTopicsQueryService service = new DashboardTopicsQueryService();
         List<WidgetEntry> widgets = List.of(
-                new WidgetEntry(1, "missing-table", "Missing", Instant.now()),
-                new WidgetEntry(2, "widget-2", "Widget 2", Instant.now()));
+                com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "missing-table", "Missing", Instant.now()),
+                com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "widget-2", "Widget 2", Instant.now()));
 
-        DashboardTopicsQueryService.TopicCountResult result = service.collectTopicCounts(
+        DashboardTopicsQueryService.TopicCountResult result = invokeCollectTopicCounts(
+            service,
                 widgets,
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 5),
@@ -171,9 +175,10 @@ import jakarta.enterprise.inject.spi.CDI;
         mockCdi(holder);
 
         DashboardTopicsQueryService service = new DashboardTopicsQueryService();
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
 
-        assertThrows(SQLException.class, () -> service.collectTopicCounts(
+        assertThrows(SQLException.class, () -> invokeCollectTopicCounts(
+            service,
                 widgets,
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 5),
@@ -211,7 +216,7 @@ import jakarta.enterprise.inject.spi.CDI;
         Map<String, Integer> global = Map.of("A", Integer.valueOf(1));
         Map<String, Map<String, Integer>> byWidget = Map.of("W", Map.of("A", Integer.valueOf(1)));
         DashboardTopicsQueryService.TopicCountResult result =
-                new DashboardTopicsQueryService.TopicCountResult(global, byWidget);
+            newTopicCountResult(global, byWidget);
         assertEquals(global, result.globalCounts());
         assertEquals(byWidget, result.byWidgetCounts());
     }
@@ -248,6 +253,39 @@ import jakarta.enterprise.inject.spi.CDI;
         Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
         method.setAccessible(true);
         return method.invoke(target, args);
+    }
+
+        @SuppressWarnings("unchecked")
+        private static DashboardTopicsQueryService.TopicCountResult invokeCollectTopicCounts(
+            DashboardTopicsQueryService service,
+            List<WidgetEntry> widgets,
+            LocalDate startInclusive,
+            LocalDate endExclusive,
+            Function<String, Set<String>> topicMatcher
+        ) throws Exception {
+        return (DashboardTopicsQueryService.TopicCountResult) invoke(
+            service,
+            "collectTopicCounts",
+            new Class[]{List.class, LocalDate.class, LocalDate.class, Function.class},
+            widgets,
+            startInclusive,
+            endExclusive,
+            topicMatcher
+        );
+        }
+
+    private static DashboardTopicsQueryService.TopicCountResult newTopicCountResult(
+            Map<String, Integer> global,
+            Map<String, Map<String, Integer>> byWidget
+    ) {
+        try {
+            Constructor<DashboardTopicsQueryService.TopicCountResult> ctor = DashboardTopicsQueryService.TopicCountResult.class
+                    .getDeclaredConstructor(Map.class, Map.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(global, byWidget);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate TopicCountResult for test", ex);
+        }
     }
 }
 

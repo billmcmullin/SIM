@@ -105,7 +105,7 @@ class DashboardBootstrapServletTest {
         try (MockedStatic<WidgetStore> widgetStoreStatic = Mockito.mockStatic(WidgetStore.class);
                 MockedStatic<ServletJsonResponseUtil> jsonStatic = Mockito.mockStatic(ServletJsonResponseUtil.class)) {
             widgetStoreStatic.when(() -> WidgetStore.list(null))
-                    .thenReturn(java.util.List.of(new WidgetEntry(1, "w1", "Widget One", Instant.now())));
+                    .thenReturn(java.util.List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.now())));
             jsonStatic.when(() -> ServletJsonResponseUtil.writeJson(any(), anyInt(), any(JsonObject.class)))
                     .thenAnswer(invocation -> {
                         status.set(invocation.getArgument(1));
@@ -148,7 +148,7 @@ class DashboardBootstrapServletTest {
         try (MockedStatic<WidgetStore> widgetStoreStatic = Mockito.mockStatic(WidgetStore.class);
                 MockedStatic<ServletJsonResponseUtil> jsonStatic = Mockito.mockStatic(ServletJsonResponseUtil.class)) {
             widgetStoreStatic.when(() -> WidgetStore.list(null))
-                    .thenReturn(java.util.List.of(new WidgetEntry(1, "w1", "Widget One", Instant.now())));
+                    .thenReturn(java.util.List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.now())));
             jsonStatic.when(() -> ServletJsonResponseUtil.writeJson(any(), anyInt(), any(JsonObject.class)))
                     .thenAnswer(invocation -> {
                         payload.set(invocation.getArgument(2));
@@ -170,7 +170,7 @@ class DashboardBootstrapServletTest {
         Method format = DashboardBootstrapServlet.class.getDeclaredMethod("formatTimestamp", Timestamp.class);
         format.setAccessible(true);
 
-        assertEquals("—", format.invoke(servlet, (Object) null));
+        assertEquals("â€”", format.invoke(servlet, (Object) null));
 
         Timestamp ts = Timestamp.from(Instant.parse("2026-08-01T10:15:30Z"));
         String expected = ts.toInstant()

@@ -74,7 +74,7 @@ class SmtpEmailServiceTest {
         EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
         SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject(" ")
                 .textBody("Hello")
@@ -89,7 +89,7 @@ class SmtpEmailServiceTest {
         EmailConfig config = new EmailConfig("smtp.example.com", 587, false, true, false, "", "", "default@example.com");
         SmtpEmailService service = new SmtpEmailService(config, mock(MarkdownRenderer.class));
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("   ")
                 .subject("Subject")
                 .textBody("Hello")
@@ -105,7 +105,7 @@ class SmtpEmailServiceTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .from("sender@example.com")
                 .to("to@example.com")
                 .subject("Subject")
@@ -136,7 +136,7 @@ class SmtpEmailServiceTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .from("   ")
                 .to("to@example.com")
                 .subject("Subject")
@@ -164,7 +164,7 @@ class SmtpEmailServiceTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .textBody("Hello")
@@ -180,7 +180,7 @@ class SmtpEmailServiceTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .textBody("Hello")
@@ -203,7 +203,7 @@ class SmtpEmailServiceTest {
         MarkdownRenderer renderer = mock(MarkdownRenderer.class);
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to1@example.com")
                 .to("   ")
                 .cc("cc1@example.com")
@@ -240,7 +240,7 @@ class SmtpEmailServiceTest {
 
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .textBody("Hello text")
@@ -286,7 +286,7 @@ class SmtpEmailServiceTest {
 
         SmtpEmailService service = new SmtpEmailService(config, renderer);
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .htmlBody("<p>explicit html</p>")
@@ -325,7 +325,7 @@ class SmtpEmailServiceTest {
         EmailAttachment a1 = new EmailAttachment("a.txt", "text/plain", "abc".getBytes());
         EmailAttachment a2 = new EmailAttachment("b.json", "application/json", "{\"x\":1}".getBytes());
 
-        EmailMessage message = EmailMessage.builder()
+        EmailMessage message = EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .textBody("Hello")
@@ -354,7 +354,7 @@ class SmtpEmailServiceTest {
     }
 
     private EmailMessage validMessage() {
-        return EmailMessage.builder()
+        return EmailMessageTestBuilder.builder()
                 .to("to@example.com")
                 .subject("Subject")
                 .textBody("Hello")

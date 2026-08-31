@@ -10,7 +10,7 @@ public final class WidgetEntry {
     private final String displayName;
     private final Instant createdAt;
 
-    public WidgetEntry(int id, String widgetId, String displayName, Instant createdAt) {
+    WidgetEntry(int id, String widgetId, String displayName, Instant createdAt) {
         this.id = id;
         this.widgetId = Objects.requireNonNull(widgetId, "widgetId");
         this.displayName = Objects.requireNonNull(displayName, "displayName");

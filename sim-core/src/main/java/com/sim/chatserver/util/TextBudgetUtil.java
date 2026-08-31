@@ -36,7 +36,7 @@ public final class TextBudgetUtil {
     /**
      * Returns text trimmed to max chars.
      */
-    static String trimTo(String value, int maxChars) {
+    private static String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
             return "";
         }

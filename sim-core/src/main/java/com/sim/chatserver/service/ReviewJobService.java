@@ -777,35 +777,35 @@ public class ReviewJobService {
             this.contentType = contentType == null || contentType.isBlank() ? "application/json" : contentType;
         }
 
-        int httpStatus() {
+        private int httpStatus() {
             return httpStatus;
         }
 
-        boolean success() {
+        private boolean success() {
             return success;
         }
 
-        String message() {
+        private String message() {
             return message;
         }
 
-        String errorMessage() {
+        private String errorMessage() {
             return errorMessage;
         }
 
-        int totalBatches() {
+        private int totalBatches() {
             return totalBatches;
         }
 
-        int completedBatches() {
+        private int completedBatches() {
             return completedBatches;
         }
 
-        int failedBatches() {
+        private int failedBatches() {
             return failedBatches;
         }
 
-        int retries() {
+        private int retries() {
             return retries;
         }
 
@@ -817,35 +817,35 @@ public class ReviewJobService {
             return missingChatIds.isEmpty();
         }
 
-        List<String> allSelectedChatIds() {
+        private List<String> allSelectedChatIds() {
             return allSelectedChatIds;
         }
 
-        List<String> usedChatIds() {
+        private List<String> usedChatIds() {
             return usedChatIds;
         }
 
-        List<String> missingChatIds() {
+        private List<String> missingChatIds() {
             return missingChatIds;
         }
 
-        List<Integer> failedBatchIndexes() {
+        private List<Integer> failedBatchIndexes() {
             return failedBatchIndexes;
         }
 
-        List<String> warnings() {
+        private List<String> warnings() {
             return warnings;
         }
 
-        String finalReport() {
+        private String finalReport() {
             return finalReport;
         }
 
-        String rawResponseBody() {
+        private String rawResponseBody() {
             return rawResponseBody;
         }
 
-        String contentType() {
+        private String contentType() {
             return contentType;
         }
     }

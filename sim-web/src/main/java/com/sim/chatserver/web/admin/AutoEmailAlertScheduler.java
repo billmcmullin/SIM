@@ -108,7 +108,7 @@ public class AutoEmailAlertScheduler {
 
     private ScheduledFuture<?> future;
 
-    AutoEmailAlertScheduler(
+    private AutoEmailAlertScheduler(
             AutoEmailAlertConfigStore store,
             DataSource dataSource,
             WidgetAvailabilityChecker availabilityChecker,
@@ -124,6 +124,16 @@ public class AutoEmailAlertScheduler {
                 AutoEmailAlertScheduler::loadAwsConfigFromStore,
                 AutoEmailAlertScheduler::invokeEc2Restart
         );
+    }
+
+    static AutoEmailAlertScheduler create(
+            AutoEmailAlertConfigStore store,
+            DataSource dataSource,
+            WidgetAvailabilityChecker availabilityChecker,
+            TermsStore termsStore,
+            DbEmailConfigProvider dbEmailConfigProvider
+    ) {
+        return new AutoEmailAlertScheduler(store, dataSource, availabilityChecker, termsStore, dbEmailConfigProvider);
     }
 
     AutoEmailAlertScheduler(

@@ -1,5 +1,6 @@
 package com.sim.chatserver.service;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -521,7 +522,7 @@ public class UserServiceTest
 
         // When
         String username = "username"; // UTA: default value
-        UserAccount result = underTest.findByUsername(username);
+        UserAccount result = invokeFindByUsername(underTest, username);
 
     }
 
@@ -652,7 +653,7 @@ public class UserServiceTest
 
         // When
         String username = "username"; // UTA: default value
-        boolean result = underTest.userExists(username);
+        boolean result = invokeUserExists(underTest, username);
 
     }
 
@@ -674,8 +675,20 @@ public class UserServiceTest
         // When
         String username = "username"; // UTA: default value
         assertThrows(IllegalStateException.class, () -> {
-            underTest.userExists(username);
+            invokeUserExists(underTest, username);
         });
 
+    }
+
+    private static boolean invokeUserExists(UserService underTest, String username) throws Exception {
+        Method method = UserService.class.getDeclaredMethod("userExists", String.class);
+        method.setAccessible(true);
+        return ((Boolean) method.invoke(underTest, username)).booleanValue();
+    }
+
+    private static UserAccount invokeFindByUsername(UserService underTest, String username) throws Exception {
+        Method method = UserService.class.getDeclaredMethod("findByUsername", String.class);
+        method.setAccessible(true);
+        return (UserAccount) method.invoke(underTest, username);
     }
 }

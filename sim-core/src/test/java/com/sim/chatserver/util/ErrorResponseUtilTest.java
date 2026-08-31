@@ -34,7 +34,7 @@ public class ErrorResponseUtilTest
         HttpServletResponse resp = null; // UTA: configured value
         int status = 1; // UTA: default value
         String message = "message"; // UTA: default value
-        ErrorResponseUtil.writeError(resp, status, message);
+        ErrorResponseUtil.writeError(resp, status, message, null);
 
     }
 
@@ -53,7 +53,7 @@ public class ErrorResponseUtilTest
         when(resp.getWriter()).thenReturn(getWriterResult);
         int status = 1; // UTA: default value
         String message = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, message);
+        ErrorResponseUtil.writeError(resp, status, message, null);
 
     }
 
@@ -72,7 +72,7 @@ public class ErrorResponseUtilTest
         when(resp.getWriter()).thenReturn(getWriterResult);
         int status = 1; // UTA: default value
         String message = "********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, message);
+        ErrorResponseUtil.writeError(resp, status, message, null);
 
     }
 
@@ -91,7 +91,7 @@ public class ErrorResponseUtilTest
         when(resp.getWriter()).thenReturn(getWriterResult);
         int status = 1; // UTA: default value
         String message = "*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, message);
+        ErrorResponseUtil.writeError(resp, status, message, null);
 
     }
 
@@ -110,7 +110,7 @@ public class ErrorResponseUtilTest
         when(resp.getWriter()).thenReturn(getWriterResult);
         int status = 1; // UTA: default value
         String message = "message"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, message);
+        ErrorResponseUtil.writeError(resp, status, message, null);
 
     }
 
