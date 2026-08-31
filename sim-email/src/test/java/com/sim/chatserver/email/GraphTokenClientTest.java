@@ -2,6 +2,8 @@ package com.sim.chatserver.email;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.URL;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -11,13 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
 
 class GraphTokenClientTest {
 
@@ -61,11 +63,13 @@ class GraphTokenClientTest {
                 new ByteArrayInputStream("{\"access_token\":\"tok-abc\",\"expires_in\":3600}".getBytes())
         );
 
-        GraphTokenClient client = spy(new GraphTokenClient(config));
-        doReturn(conn).when(client).openConnection(anyString());
-
-        String t1 = client.getAccessToken();
-        String t2 = client.getAccessToken();
+        GraphTokenClient client = new GraphTokenClient(config);
+        String t1;
+        String t2;
+        try (MockedStatic<URI> uriMock = mockUriConnection(conn)) {
+            t1 = client.getAccessToken();
+            t2 = client.getAccessToken();
+        }
 
         assertEquals("tok-abc", t1);
         assertEquals("tok-abc", t2);
@@ -97,10 +101,11 @@ class GraphTokenClientTest {
         when(conn.getResponseCode()).thenReturn(401);
         when(conn.getErrorStream()).thenReturn(new ByteArrayInputStream("{\"error\":\"unauthorized\"}".getBytes()));
 
-        GraphTokenClient client = spy(new GraphTokenClient(config));
-        doReturn(conn).when(client).openConnection(anyString());
-
-        EmailException ex = assertThrows(EmailException.class, client::getAccessToken);
+        GraphTokenClient client = new GraphTokenClient(config);
+        EmailException ex;
+        try (MockedStatic<URI> uriMock = mockUriConnection(conn)) {
+            ex = assertThrows(EmailException.class, client::getAccessToken);
+        }
         assertTrue(ex.getMessage().contains("Failed to acquire Graph token. HTTP 401"));
         assertNotNull(ex.getCause());
         assertTrue(ex.getCause().getMessage().contains("graph_token_http_401"));
@@ -124,10 +129,11 @@ class GraphTokenClientTest {
         when(conn.getResponseCode()).thenReturn(200);
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"expires_in\":3600}".getBytes()));
 
-        GraphTokenClient client = spy(new GraphTokenClient(config));
-        doReturn(conn).when(client).openConnection(anyString());
-
-        EmailException ex = assertThrows(EmailException.class, client::getAccessToken);
+        GraphTokenClient client = new GraphTokenClient(config);
+        EmailException ex;
+        try (MockedStatic<URI> uriMock = mockUriConnection(conn)) {
+            ex = assertThrows(EmailException.class, client::getAccessToken);
+        }
         assertTrue(ex.getMessage().contains("Graph token response missing access_token"));
         assertNotNull(ex.getCause());
         assertTrue(ex.getCause().getMessage().contains("missing_access_token"));
@@ -149,14 +155,25 @@ class GraphTokenClientTest {
         HttpsURLConnection conn = mock(HttpsURLConnection.class);
         when(conn.getOutputStream()).thenThrow(new IllegalArgumentException("boom"));
 
-        GraphTokenClient client = spy(new GraphTokenClient(config));
-        doReturn(conn).when(client).openConnection(anyString());
-
-        EmailException ex = assertThrows(EmailException.class, client::getAccessToken);
+        GraphTokenClient client = new GraphTokenClient(config);
+        EmailException ex;
+        try (MockedStatic<URI> uriMock = mockUriConnection(conn)) {
+            ex = assertThrows(EmailException.class, client::getAccessToken);
+        }
         assertEquals("Graph token acquisition failed", ex.getMessage());
         assertNotNull(ex.getCause());
         assertEquals("boom", ex.getCause().getMessage());
 
         verify(conn, times(1)).disconnect();
+    }
+
+    private static MockedStatic<URI> mockUriConnection(HttpsURLConnection connection) throws Exception {
+        MockedStatic<URI> uriMock = Mockito.mockStatic(URI.class);
+        URI uri = mock(URI.class);
+        URL url = mock(URL.class);
+        when(url.openConnection()).thenReturn(connection);
+        when(uri.toURL()).thenReturn(url);
+        uriMock.when(() -> URI.create(anyString())).thenReturn(uri);
+        return uriMock;
     }
 }

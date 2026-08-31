@@ -139,7 +139,7 @@ class WidgetTableViewServletTest {
                 .thenReturn(new ByteArrayInputStream("${user}|${role}|${contextPath}|${widgetId}|${widgetName}|${selectedDate}|${selectedDateLabel}".getBytes(StandardCharsets.UTF_8)));
         when(resp.getOutputStream()).thenReturn(servletOutput(out));
 
-        WidgetEntry widget = new WidgetEntry(1, "widget-1", "Widget Display", Instant.parse("2026-08-27T00:00:00Z"));
+        WidgetEntry widget = com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget Display", Instant.parse("2026-08-27T00:00:00Z"));
 
         try (MockedStatic<WidgetStore> widgetStore = Mockito.mockStatic(WidgetStore.class)) {
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(widget));

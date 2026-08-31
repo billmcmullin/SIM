@@ -2,6 +2,8 @@ package com.sim.chatserver.web.dashboard.widgets;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -708,7 +710,7 @@ public class WidgetReviewStartServletTest
             List<TermChatSnapshot> snapshots = new ArrayList<TermChatSnapshot>(); // UTA: default value
             TermChatSnapshot item = mock(TermChatSnapshot.class);
             snapshots.add(item);
-            Selection result = Selection.fromTermSnapshots(displayName, backUrl, snapshots);
+            Selection result = invokeFromTermSnapshots(displayName, backUrl, snapshots);
     
             // Then - assertions for result of method fromTermSnapshots(String, String, List)
             assertAll(() -> {
@@ -755,7 +757,7 @@ public class WidgetReviewStartServletTest
             List<TermChatSnapshot> snapshots = new ArrayList<TermChatSnapshot>(); // UTA: default value
             TermChatSnapshot item = mock(TermChatSnapshot.class);
             snapshots.add(item);
-            Selection result = Selection.fromTermSnapshots(displayName, backUrl, snapshots);
+            Selection result = invokeFromTermSnapshots(displayName, backUrl, snapshots);
     
             // Then - assertions for result of method fromTermSnapshots(String, String, List)
             assertAll(() -> {
@@ -802,7 +804,7 @@ public class WidgetReviewStartServletTest
             List<TermChatSnapshot> snapshots = new ArrayList<TermChatSnapshot>(); // UTA: default value
             TermChatSnapshot item = mock(TermChatSnapshot.class);
             snapshots.add(item);
-            Selection result = Selection.fromTermSnapshots(displayName, backUrl, snapshots);
+            Selection result = invokeFromTermSnapshots(displayName, backUrl, snapshots);
     
             // Then - assertions for result of method fromTermSnapshots(String, String, List)
             assertAll(() -> {
@@ -849,7 +851,7 @@ public class WidgetReviewStartServletTest
             List<TermChatSnapshot> snapshots = new ArrayList<TermChatSnapshot>(); // UTA: default value
             TermChatSnapshot item = mock(TermChatSnapshot.class);
             snapshots.add(item);
-            Selection result = Selection.fromTermSnapshots(displayName, backUrl, snapshots);
+            Selection result = invokeFromTermSnapshots(displayName, backUrl, snapshots);
     
             // Then - assertions for result of method fromTermSnapshots(String, String, List)
             assertAll(() -> {
@@ -897,7 +899,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -938,7 +940,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -979,7 +981,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1026,7 +1028,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1073,7 +1075,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = "*"; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1114,7 +1116,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = ""; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1155,7 +1157,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = "*"; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1196,7 +1198,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
             String date = ""; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1237,7 +1239,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = "*"; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1284,7 +1286,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = ""; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1331,7 +1333,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = "*"; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1378,7 +1380,7 @@ public class WidgetReviewStartServletTest
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
             String date = ""; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms, date);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
             assertAll(() -> {
@@ -1424,7 +1426,7 @@ public class WidgetReviewStartServletTest
             String item = "item"; // UTA: default value
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
             assertAll(() -> {
@@ -1464,7 +1466,7 @@ public class WidgetReviewStartServletTest
             String item = "item"; // UTA: default value
             chatIds.add(item);
             SearchTerms searchTerms = mock(SearchTerms.class);
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
             assertAll(() -> {
@@ -1504,7 +1506,7 @@ public class WidgetReviewStartServletTest
             String item = "item"; // UTA: default value
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
             assertAll(() -> {
@@ -1550,7 +1552,7 @@ public class WidgetReviewStartServletTest
             String item = "item"; // UTA: default value
             chatIds.add(item);
             SearchTerms searchTerms = null; // UTA: configured value
-            Selection result = Selection.fromWidget(widgetId, chatIds, searchTerms);
+            Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
             // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
             assertAll(() -> {
@@ -1579,4 +1581,44 @@ public class WidgetReviewStartServletTest
             });
     
         }
+
+    private static Selection invokeFromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots)
+            throws Throwable {
+        Method method = Selection.class.getDeclaredMethod("fromTermSnapshots", String.class, String.class, List.class);
+        method.setAccessible(true);
+        try {
+            return (Selection) method.invoke(null, displayName, backUrl, snapshots);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
+    private static Selection invokeFromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date)
+            throws Throwable {
+        Method method = Selection.class.getDeclaredMethod(
+                "fromWidget",
+                String.class,
+                List.class,
+                SearchTerms.class,
+                String.class
+        );
+        method.setAccessible(true);
+        try {
+            return (Selection) method.invoke(null, widgetId, chatIds, searchTerms, date);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
+
+    private static Selection invokeFromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms)
+            throws Throwable {
+        Method method = Selection.class.getDeclaredMethod("fromWidget", String.class, List.class, SearchTerms.class);
+        method.setAccessible(true);
+        try {
+            return (Selection) method.invoke(null, widgetId, chatIds, searchTerms);
+        } catch (InvocationTargetException ex) {
+            throw ex.getCause();
+        }
+    }
 }
+

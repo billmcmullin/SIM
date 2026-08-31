@@ -1,5 +1,7 @@
 package com.sim.chatserver.security.review;
 
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.security.review.TrustedUrlValidator.ValidationResult;
@@ -23,7 +25,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        ValidationResult underTest = ValidationResult.invalid(reason);
+        ValidationResult underTest = invokeInvalid(reason);
 
         // When
         String result = underTest.getHost();
@@ -41,7 +43,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        ValidationResult underTest = ValidationResult.invalid(reason);
+        ValidationResult underTest = invokeInvalid(reason);
 
         // When
         int result = underTest.getPort();
@@ -59,7 +61,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        ValidationResult underTest = ValidationResult.invalid(reason);
+        ValidationResult underTest = invokeInvalid(reason);
 
         // When
         String result = underTest.getReason();
@@ -77,7 +79,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        ValidationResult underTest = ValidationResult.invalid(reason);
+        ValidationResult underTest = invokeInvalid(reason);
 
         // When
         String result = underTest.getScheme();
@@ -95,7 +97,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // When
         String reason = "reason"; // UTA: default value
-        ValidationResult result = ValidationResult.invalid(reason);
+        ValidationResult result = invokeInvalid(reason);
 
     }
 
@@ -110,7 +112,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // When
         String reason = null; // UTA: configured value
-        ValidationResult result = ValidationResult.invalid(reason);
+        ValidationResult result = invokeInvalid(reason);
 
     }
 
@@ -125,7 +127,7 @@ public class TrustedUrlValidator_ValidationResultTest
     {
         // Given
         String reason = "reason"; // UTA: default value
-        ValidationResult underTest = ValidationResult.invalid(reason);
+        ValidationResult underTest = invokeInvalid(reason);
 
         // When
         boolean result = underTest.isValid();
@@ -145,7 +147,7 @@ public class TrustedUrlValidator_ValidationResultTest
         String host = "host"; // UTA: default value
         String scheme = "scheme"; // UTA: default value
         int port = 1; // UTA: default value
-        ValidationResult underTest = ValidationResult.valid(host, scheme, port);
+        ValidationResult underTest = invokeValid(host, scheme, port);
 
         // When
         String result = underTest.toString();
@@ -165,7 +167,7 @@ public class TrustedUrlValidator_ValidationResultTest
         String host = "host"; // UTA: default value
         String scheme = "scheme"; // UTA: default value
         int port = 1; // UTA: default value
-        ValidationResult result = ValidationResult.valid(host, scheme, port);
+        ValidationResult result = invokeValid(host, scheme, port);
 
     }
 
@@ -182,7 +184,7 @@ public class TrustedUrlValidator_ValidationResultTest
         String host = "host"; // UTA: default value
         String scheme = null; // UTA: configured value
         int port = 1; // UTA: default value
-        ValidationResult result = ValidationResult.valid(host, scheme, port);
+        ValidationResult result = invokeValid(host, scheme, port);
 
     }
 
@@ -199,7 +201,7 @@ public class TrustedUrlValidator_ValidationResultTest
         String host = null; // UTA: configured value
         String scheme = "scheme"; // UTA: default value
         int port = 1; // UTA: default value
-        ValidationResult result = ValidationResult.valid(host, scheme, port);
+        ValidationResult result = invokeValid(host, scheme, port);
 
     }
 
@@ -216,7 +218,19 @@ public class TrustedUrlValidator_ValidationResultTest
         String host = null; // UTA: configured value
         String scheme = null; // UTA: configured value
         int port = 1; // UTA: default value
-        ValidationResult result = ValidationResult.valid(host, scheme, port);
+        ValidationResult result = invokeValid(host, scheme, port);
 
+    }
+
+    private static ValidationResult invokeInvalid(String reason) throws Exception {
+        Method method = ValidationResult.class.getDeclaredMethod("invalid", String.class);
+        method.setAccessible(true);
+        return (ValidationResult) method.invoke(null, reason);
+    }
+
+    private static ValidationResult invokeValid(String host, String scheme, int port) throws Exception {
+        Method method = ValidationResult.class.getDeclaredMethod("valid", String.class, String.class, int.class);
+        method.setAccessible(true);
+        return (ValidationResult) method.invoke(null, host, scheme, Integer.valueOf(port));
     }
 }

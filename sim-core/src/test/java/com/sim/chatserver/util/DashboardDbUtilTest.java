@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import com.sim.chatserver.model.DashboardViewModels.CacheValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -257,7 +258,7 @@ public class DashboardDbUtilTest
         when(getMetaDataResult.getTables(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String[].class))).thenReturn(getTablesResult);
         when(conn.getMetaData()).thenReturn(getMetaDataResult);
         String tableName = "tableName"; // UTA: default value
-        boolean result = DashboardDbUtil.tableExists(conn, tableName);
+        boolean result = invokeTableExists(conn, tableName);
 
     }
 
@@ -279,7 +280,7 @@ public class DashboardDbUtilTest
         when(getMetaDataResult.getTables(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String[].class))).thenReturn(getTablesResult);
         when(conn.getMetaData()).thenReturn(getMetaDataResult);
         String tableName = "tableName"; // UTA: default value
-        boolean result = DashboardDbUtil.tableExists(conn, tableName);
+        boolean result = invokeTableExists(conn, tableName);
 
     }
 
@@ -304,7 +305,7 @@ public class DashboardDbUtilTest
         when(getMetaDataResult.getTables(nullable(String.class), nullable(String.class), nullable(String.class), nullable(String[].class))).thenReturn(getTablesResult, getTablesResult2);
         when(conn.getMetaData()).thenReturn(getMetaDataResult);
         String tableName = "tableName"; // UTA: default value
-        boolean result = DashboardDbUtil.tableExists(conn, tableName);
+        boolean result = invokeTableExists(conn, tableName);
 
     }
 
@@ -502,7 +503,7 @@ public class DashboardDbUtilTest
     
         @Test
         void tableExists_returnsFalseForInvalidInput() throws Exception {
-            assertFalse(DashboardDbUtil.tableExists(null, "table"));
+            assertFalse(invokeTableExists(null, "table"));
         }
     
         @Test
@@ -560,4 +561,10 @@ public class DashboardDbUtilTest
                 cache.clear();
             }
         }
+
+    private static boolean invokeTableExists(Connection conn, String tableName) throws Exception {
+        Method method = DashboardDbUtil.class.getDeclaredMethod("tableExists", Connection.class, String.class);
+        method.setAccessible(true);
+        return ((Boolean) method.invoke(null, conn, tableName)).booleanValue();
+    }
 }

@@ -146,7 +146,7 @@ public final class CoverageSummary {
         return successfulBatches;
     }
 
-    int getFailedBatchCount() {
+    private int getFailedBatchCount() {
         return failedBatchIndexes.size();
     }
 

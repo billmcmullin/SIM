@@ -211,7 +211,7 @@ class GraphMailClientTest {
             String htmlBody,
             String markdownBody
     ) {
-        EmailMessage.Builder builder = EmailMessage.builder()
+        EmailMessageTestBuilder builder = EmailMessageTestBuilder.builder()
                 .subject(subject)
                 .textBody(textBody)
                 .htmlBody(htmlBody)

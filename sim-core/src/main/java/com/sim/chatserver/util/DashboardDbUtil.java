@@ -60,7 +60,7 @@ public final class DashboardDbUtil {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    static boolean tableExists(Connection conn, String tableName) throws SQLException {
+    private static boolean tableExists(Connection conn, String tableName) throws SQLException {
         if (conn == null || tableName == null || tableName.isBlank()) {
             return false;
         }

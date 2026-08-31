@@ -107,7 +107,6 @@ public class WidgetAvailabilityServletTest {
 
     private WidgetAvailabilityServlet servletWithChecker(WidgetAvailabilityChecker checker) {
         return new WidgetAvailabilityServlet() {
-            @Override
             protected WidgetAvailabilityChecker availabilityChecker() {
                 return checker;
             }

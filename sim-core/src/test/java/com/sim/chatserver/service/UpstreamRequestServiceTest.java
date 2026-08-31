@@ -1,6 +1,8 @@
 package com.sim.chatserver.service;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
 
@@ -458,7 +460,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -486,7 +488,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -514,7 +516,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = "requestId"; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -542,7 +544,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -570,7 +572,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -598,7 +600,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = null; // UTA: configured value
         String requestId = null; // UTA: configured value
         assertThrows(IOException.class, () -> {
-            underTest.sendChat(upstreamUrl, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -794,10 +796,10 @@ public class UpstreamRequestServiceTest
         String code = "code"; // UTA: default value
         String message = "message"; // UTA: default value
         Throwable cause = mock(Throwable.class);
-        UpstreamConnectivityException underTest = new UpstreamConnectivityException(code, message, cause);
+        UpstreamConnectivityException underTest = newUpstreamConnectivityException(code, message, cause);
 
         // When
-        String result = underTest.code();
+        String result = invokeUpstreamConnectivityCode(underTest);
 
         // Then - assertions for result of method code()
         assertEquals("code", result);
@@ -945,6 +947,27 @@ public class UpstreamRequestServiceTest
         // Then - assertions for result of method toString()
         assertEquals("UpstreamResponse[statusCode=1, contentType=contentType, body=body]", result);
 
+    }
+
+    private static UpstreamConnectivityException newUpstreamConnectivityException(
+            String code,
+            String message,
+            Throwable cause
+    ) {
+        try {
+            Constructor<UpstreamConnectivityException> ctor = UpstreamConnectivityException.class
+                    .getDeclaredConstructor(String.class, String.class, Throwable.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(code, message, cause);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate UpstreamConnectivityException for test", ex);
+        }
+    }
+
+    private static String invokeUpstreamConnectivityCode(UpstreamConnectivityException ex) throws Exception {
+        Method method = UpstreamConnectivityException.class.getDeclaredMethod("code");
+        method.setAccessible(true);
+        return (String) method.invoke(ex);
     }
 }
 

@@ -52,7 +52,7 @@ public class AuthResource {
         return login(payload);
     }
 
-    Response login(Map<String, String> payload) {
+    private final Response login(Map<String, String> payload) {
         Credentials credentials = extractCredentials(payload);
         if (credentials == null) {
             return badRequest();

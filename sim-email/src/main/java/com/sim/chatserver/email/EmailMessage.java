@@ -78,7 +78,7 @@ public final class EmailMessage {
         attachments.forEach(consumer);
     }
 
-    static Builder builder() {
+    private static Builder builder() {
         return new Builder();
     }
 
@@ -129,7 +129,7 @@ public final class EmailMessage {
         private String markdownBody;
         private final List<EmailAttachment> attachments = new ArrayList<>();
 
-        Builder from(String from) {
+        private Builder from(String from) {
             this.from = from;
             return this;
         }
@@ -138,12 +138,12 @@ public final class EmailMessage {
             return to(recipient);
         }
 
-        Builder to(String recipient) {
+        private Builder to(String recipient) {
             this.to.add(recipient);
             return this;
         }
 
-        Builder to(List<String> recipients) {
+        private Builder to(List<String> recipients) {
             this.to.addAll(recipients);
             return this;
         }
@@ -152,12 +152,12 @@ public final class EmailMessage {
             return cc(recipient);
         }
 
-        Builder cc(String recipient) {
+        private Builder cc(String recipient) {
             this.cc.add(recipient);
             return this;
         }
 
-        Builder cc(List<String> recipients) {
+        private Builder cc(List<String> recipients) {
             this.cc.addAll(recipients);
             return this;
         }
@@ -166,37 +166,37 @@ public final class EmailMessage {
             return bcc(recipient);
         }
 
-        Builder bcc(String recipient) {
+        private Builder bcc(String recipient) {
             this.bcc.add(recipient);
             return this;
         }
 
-        Builder bcc(List<String> recipients) {
+        private Builder bcc(List<String> recipients) {
             this.bcc.addAll(recipients);
             return this;
         }
 
-        Builder subject(String subject) {
+        private Builder subject(String subject) {
             this.subject = subject;
             return this;
         }
 
-        Builder textBody(String textBody) {
+        private Builder textBody(String textBody) {
             this.textBody = textBody;
             return this;
         }
 
-        Builder htmlBody(String htmlBody) {
+        private Builder htmlBody(String htmlBody) {
             this.htmlBody = htmlBody;
             return this;
         }
 
-        Builder markdownBody(String markdownBody) {
+        private Builder markdownBody(String markdownBody) {
             this.markdownBody = markdownBody;
             return this;
         }
 
-        Builder attachment(EmailAttachment attachment) {
+        private Builder attachment(EmailAttachment attachment) {
             this.attachments.add(attachment);
             return this;
         }
@@ -210,7 +210,7 @@ public final class EmailMessage {
             return this;
         }
 
-        EmailMessage build() {
+        private EmailMessage build() {
             Objects.requireNonNull(subject, "subject is required");
             if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
                 throw new IllegalArgumentException("At least one recipient is required");

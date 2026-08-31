@@ -57,7 +57,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -87,7 +87,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -119,7 +119,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -152,7 +152,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -184,7 +184,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -218,7 +218,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -252,7 +252,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
         ReviewContextBuilderService contextBuilderService = mock(ReviewContextBuilderService.class);
         PromptTemplateService promptTemplateService = mock(PromptTemplateService.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(workspaceClient, contextBuilderService, promptTemplateService);
 
         // When
         String targetUrl = "targetUrl"; // UTA: default value
@@ -1658,7 +1658,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         @Test
         public void testPrivateHelperCoverage_normalizationAndReasoning() throws Throwable
         {
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(
             mock(WorkspaceClient.class),
             new ReviewContextBuilderService(new ReviewSamplingService()),
             new PromptTemplateService()
@@ -1809,7 +1809,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         @Test
         public void testPrivateHelperCoverage_chunkingAndExtraction() throws Throwable
         {
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(
             mock(WorkspaceClient.class),
             new ReviewContextBuilderService(new ReviewSamplingService()),
             new PromptTemplateService()
@@ -1910,7 +1910,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         public void testRun_whenAllMapBatchesUnauthorized_returnsAuthFailureReduceResult() throws Throwable
         {
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(
             workspaceClient,
             new ReviewContextBuilderService(new ReviewSamplingService()),
             new PromptTemplateService()
@@ -1943,7 +1943,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         public void testRun_withSuccessfulMap_executesReduceAndReturnsCoverage() throws Throwable
         {
         WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
-        WidgetReviewMapReduceOrchestrator underTest = new WidgetReviewMapReduceOrchestrator(
+        WidgetReviewMapReduceOrchestrator underTest = WidgetReviewMapReduceOrchestrator.createDefault(
             workspaceClient,
             new ReviewContextBuilderService(new ReviewSamplingService()),
             new PromptTemplateService()

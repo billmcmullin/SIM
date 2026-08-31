@@ -64,8 +64,8 @@ class DashboardTrendsQueryServiceTest {
              MockedStatic<DashboardDbUtil> dbUtil = Mockito.mockStatic(DashboardDbUtil.class)) {
 
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(
-                    new WidgetEntry(1, "wid1", "", Instant.now()),
-                    new WidgetEntry(2, " ", "ignored", Instant.now())));
+                    DashboardWidgetEntryTestFactory.newWidgetEntry(1, "wid1", "", Instant.now()),
+                    DashboardWidgetEntryTestFactory.newWidgetEntry(2, " ", "ignored", Instant.now())));
 
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("wid1")).thenReturn("wid1_table");
             dbUtil.when(DashboardDbUtil::newRequestTableCache).thenReturn(new HashMap<>());
@@ -124,8 +124,8 @@ class DashboardTrendsQueryServiceTest {
              MockedStatic<DashboardDbUtil> dbUtil = Mockito.mockStatic(DashboardDbUtil.class)) {
 
             widgetStore.when(() -> WidgetStore.list(null)).thenReturn(List.of(
-                    new WidgetEntry(1, "wid1", "W1", Instant.now()),
-                    new WidgetEntry(2, "wid2", "W2", Instant.now())));
+                    DashboardWidgetEntryTestFactory.newWidgetEntry(1, "wid1", "W1", Instant.now()),
+                    DashboardWidgetEntryTestFactory.newWidgetEntry(2, "wid2", "W2", Instant.now())));
 
             dbUtil.when(() -> DashboardDbUtil.sanitizeWidgetTableName("wid2")).thenReturn("wid2_table");
             dbUtil.when(DashboardDbUtil::newRequestTableCache).thenReturn(new HashMap<>());

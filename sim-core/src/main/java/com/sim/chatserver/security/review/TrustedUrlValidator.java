@@ -176,11 +176,11 @@ public final class TrustedUrlValidator {
             this.port = port;
         }
 
-        static ValidationResult valid(String host, String scheme, int port) {
+        private static ValidationResult valid(String host, String scheme, int port) {
             return new ValidationResult(true, "", host, scheme, port);
         }
 
-        static ValidationResult invalid(String reason) {
+        private static ValidationResult invalid(String reason) {
             return new ValidationResult(false, reason, "", "", -1);
         }
 

@@ -1,5 +1,6 @@
 package com.sim.chatserver.term;
 
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -55,7 +56,7 @@ class TermsStoreTest {
         when(ds.getConnection()).thenReturn(conn);
         when(conn.prepareStatement(anyString())).thenReturn(ps);
 
-        underTest.setDataSourceHolder(dsHolder);
+        invokeSetDataSourceHolder(underTest, dsHolder);
     }
 
     @Test
@@ -192,8 +193,8 @@ class TermsStoreTest {
 
     @Test
     void findFirstMatchingTermForPrompt_nullOrEmpty_returnsNull() throws Exception {
-        assertNull(underTest.findFirstMatchingTermForPrompt(null));
-        assertNull(underTest.findFirstMatchingTermForPrompt(""));
+        assertNull(invokeFindFirstMatchingTermForPrompt(underTest, null));
+        assertNull(invokeFindFirstMatchingTermForPrompt(underTest, ""));
     }
 
     @Test
@@ -214,7 +215,7 @@ class TermsStoreTest {
         when(listRs.getObject("match_type")).thenReturn("WILDCARD");
         when(listRs.getBoolean("system_flag")).thenReturn(false);
 
-        TermDefinition out = underTest.findFirstMatchingTermInPrompts(Arrays.asList("hello world", "other"));
+        TermDefinition out = invokeFindFirstMatchingTermInPrompts(underTest, Arrays.asList("hello world", "other"));
 
         assertNotNull(out);
         assertEquals("termA", out.getName());
@@ -225,7 +226,27 @@ class TermsStoreTest {
 
     @Test
     void findFirstMatchingTermInPrompts_nullOrEmptyIterable_returnsNull() throws Exception {
-        assertNull(underTest.findFirstMatchingTermInPrompts(null));
-        assertNull(underTest.findFirstMatchingTermInPrompts(Collections.emptyList()));
+        assertNull(invokeFindFirstMatchingTermInPrompts(underTest, null));
+        assertNull(invokeFindFirstMatchingTermInPrompts(underTest, Collections.emptyList()));
+    }
+
+    private static void invokeSetDataSourceHolder(TermsStore underTest, AppDataSourceHolder holder) throws Exception {
+        Method method = TermsStore.class.getDeclaredMethod("setDataSourceHolder", AppDataSourceHolder.class);
+        method.setAccessible(true);
+        method.invoke(underTest, holder);
+    }
+
+    private static TermDefinition invokeFindFirstMatchingTermForPrompt(TermsStore underTest, String prompt)
+            throws Exception {
+        Method method = TermsStore.class.getDeclaredMethod("findFirstMatchingTermForPrompt", String.class);
+        method.setAccessible(true);
+        return (TermDefinition) method.invoke(underTest, prompt);
+    }
+
+    private static TermDefinition invokeFindFirstMatchingTermInPrompts(TermsStore underTest, Iterable<String> prompts)
+            throws Exception {
+        Method method = TermsStore.class.getDeclaredMethod("findFirstMatchingTermInPrompts", Iterable.class);
+        method.setAccessible(true);
+        return (TermDefinition) method.invoke(underTest, prompts);
     }
 }

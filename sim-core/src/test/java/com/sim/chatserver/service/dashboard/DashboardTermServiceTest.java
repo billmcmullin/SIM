@@ -54,7 +54,7 @@ public class DashboardTermServiceTest
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         TermDefinition item = mock(TermDefinition.class);
         terms.add(item);
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -77,7 +77,7 @@ public class DashboardTermServiceTest
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         TermDefinition item = mock(TermDefinition.class);
         terms.add(item);
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -100,7 +100,7 @@ public class DashboardTermServiceTest
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
         List<TermDefinition> terms = null; // UTA: configured value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -121,7 +121,7 @@ public class DashboardTermServiceTest
         Connection conn = mock(Connection.class);
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -144,7 +144,7 @@ public class DashboardTermServiceTest
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -169,7 +169,7 @@ public class DashboardTermServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -211,7 +211,7 @@ public class DashboardTermServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -236,7 +236,7 @@ public class DashboardTermServiceTest
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         TermDefinition item2 = mock(TermDefinition.class);
         terms.add(item2);
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -261,7 +261,7 @@ public class DashboardTermServiceTest
         WidgetEntry item2 = mock(WidgetEntry.class);
         widgets.add(item2);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
-        TermSummary result = underTest.buildTermSummary(conn, widgets, terms);
+        TermSummary result = underTest.buildTermSummaryForDashboard(conn, widgets, terms);
 
     }
 
@@ -293,7 +293,7 @@ public class DashboardTermServiceTest
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         assertThrows(SQLException.class, () -> {
-            underTest.buildTermSummary(conn, widgets, terms);
+            underTest.buildTermSummaryForDashboard(conn, widgets, terms);
         });
 
     }
@@ -329,7 +329,7 @@ public class DashboardTermServiceTest
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         assertThrows(SQLException.class, () -> {
-            underTest.buildTermSummary(conn, widgets, terms);
+            underTest.buildTermSummaryForDashboard(conn, widgets, terms);
         });
 
     }
@@ -365,7 +365,7 @@ public class DashboardTermServiceTest
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         assertThrows(SQLException.class, () -> {
-            underTest.buildTermSummary(conn, widgets, terms);
+            underTest.buildTermSummaryForDashboard(conn, widgets, terms);
         });
 
     }
@@ -403,7 +403,7 @@ public class DashboardTermServiceTest
         widgets.add(item);
         List<TermDefinition> terms = new ArrayList<TermDefinition>(); // UTA: default value
         assertThrows(SQLException.class, () -> {
-            underTest.buildTermSummary(conn, widgets, terms);
+            underTest.buildTermSummaryForDashboard(conn, widgets, terms);
         });
 
     }

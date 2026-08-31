@@ -162,7 +162,7 @@ class AdminConfigServletTest {
                 MockedStatic<WidgetStore> widgetStatic = Mockito.mockStatic(WidgetStore.class)) {
             configStatic.when(EncryptedDbConfigStore::load).thenReturn(cfg);
             widgetStatic.when(() -> WidgetStore.list(null))
-                    .thenReturn(List.of(new WidgetEntry(1, "w1", "Widget One", Instant.now())));
+                    .thenReturn(List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.now())));
 
             servlet.doGet(req, resp);
         }
@@ -251,7 +251,7 @@ class AdminConfigServletTest {
         assertEquals("[]", emptyWidgets);
 
         String widgets = invokeStaticListString("serializeWidgets",
-                List.of(new WidgetEntry(7, "wid-1", "Display One", Instant.now())));
+                List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(7, "wid-1", "Display One", Instant.now())));
         assertTrue(widgets.contains("\"id\":7"));
         assertTrue(widgets.contains("\"widgetId\":\"wid-1\""));
 
@@ -345,7 +345,6 @@ class AdminConfigServletTest {
             this.termsStore = termsStore;
         }
 
-        @Override
         protected TermsStore termsStore() {
             return termsStore;
         }

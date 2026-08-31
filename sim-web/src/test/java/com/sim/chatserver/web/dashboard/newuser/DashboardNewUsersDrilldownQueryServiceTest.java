@@ -62,8 +62,8 @@ import com.sim.chatserver.widget.WidgetEntry;
 
         List<WidgetEntry> widgets = new ArrayList<>();
         widgets.add(null);
-        widgets.add(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
-        widgets.add(new WidgetEntry(2, "   ", "Ignored", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "   ", "Ignored", Instant.now()));
 
         Map<String, Timestamp> earliest = service.findEarliestBySession(widgets);
         assertEquals(1, earliest.size());
@@ -95,7 +95,7 @@ import com.sim.chatserver.widget.WidgetEntry;
         DashboardNewUsersDrilldownQueryService service =
                 new DashboardNewUsersDrilldownQueryService(holder, Logger.getLogger("test"));
 
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
         Map<String, Integer> totals = service.findTotalChatsBySession(widgets);
 
         assertEquals(Integer.valueOf(5), totals.get("s1"));
@@ -120,7 +120,7 @@ import com.sim.chatserver.widget.WidgetEntry;
 
         DashboardNewUsersDrilldownQueryService service =
                 new DashboardNewUsersDrilldownQueryService(holder, Logger.getLogger("test"));
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
 
         assertTrue(service.findEarliestBySession(widgets).isEmpty());
 
@@ -157,8 +157,8 @@ import com.sim.chatserver.widget.WidgetEntry;
             new DashboardNewUsersDrilldownQueryService(holder, Logger.getLogger("test"));
 
         List<WidgetEntry> widgets = List.of(
-            new WidgetEntry(1, "missing-table", "Missing", Instant.now()),
-            new WidgetEntry(2, "widget-2", "Widget 2", Instant.now()));
+            com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "missing-table", "Missing", Instant.now()),
+            com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "widget-2", "Widget 2", Instant.now()));
 
         assertTrue(service.findEarliestBySession(widgets).isEmpty());
         }
@@ -187,7 +187,7 @@ import com.sim.chatserver.widget.WidgetEntry;
 
         DashboardNewUsersDrilldownQueryService service =
             new DashboardNewUsersDrilldownQueryService(holder, Logger.getLogger("test"));
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
 
         assertTrue(service.findEarliestBySession(widgets).isEmpty());
         }
@@ -215,9 +215,9 @@ import com.sim.chatserver.widget.WidgetEntry;
 
         List<WidgetEntry> widgets = new ArrayList<>();
         widgets.add(null);
-        widgets.add(new WidgetEntry(1, "   ", "Blank", Instant.now()));
-        widgets.add(new WidgetEntry(2, "missing-table", "Missing", Instant.now()));
-        widgets.add(new WidgetEntry(3, "widget-3", "Widget 3", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "   ", "Blank", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(2, "missing-table", "Missing", Instant.now()));
+        widgets.add(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(3, "widget-3", "Widget 3", Instant.now()));
 
         assertTrue(service.findTotalChatsBySession(widgets).isEmpty());
         }
@@ -244,7 +244,7 @@ import com.sim.chatserver.widget.WidgetEntry;
 
         DashboardNewUsersDrilldownQueryService service =
             new DashboardNewUsersDrilldownQueryService(holder, Logger.getLogger("test"));
-        List<WidgetEntry> widgets = List.of(new WidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
+        List<WidgetEntry> widgets = List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-1", "Widget 1", Instant.now()));
 
         assertTrue(service.findTotalChatsBySession(widgets).isEmpty());
 

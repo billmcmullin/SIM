@@ -106,51 +106,51 @@ public final class ReduceRequest {
         return totalBatches;
     }
 
-    public List<String> getMapOutputs() {
+    List<String> getMapOutputs() {
         return mapOutputs;
     }
 
-    public List<Integer> getFailedBatchIndexes() {
+    List<Integer> getFailedBatchIndexes() {
         return failedBatchIndexes;
     }
 
-    public List<String> getFailedBatchReasons() {
+    List<String> getFailedBatchReasons() {
         return failedBatchReasons;
     }
 
-    public List<String> getAllSelectedChatIds() {
+    List<String> getAllSelectedChatIds() {
         return allSelectedChatIds;
     }
 
-    public List<String> getUsedChatIds() {
+    List<String> getUsedChatIds() {
         return usedChatIds;
     }
 
-    public List<String> getMissingChatIds() {
+    List<String> getMissingChatIds() {
         return missingChatIds;
     }
 
-    public boolean isCoverageComplete() {
+    boolean isCoverageComplete() {
         return coverageComplete;
     }
 
-    public int getMapOutputsCount() {
+    int getMapOutputsCount() {
         return mapOutputs.size();
     }
 
-    public int getFailedBatchCount() {
+    int getFailedBatchCount() {
         return failedBatchIndexes.size();
     }
 
-    public boolean hasFailures() {
+    boolean hasFailures() {
         return !failedBatchIndexes.isEmpty();
     }
 
-    public boolean hasMapOutputs() {
+    boolean hasMapOutputs() {
         return !mapOutputs.isEmpty();
     }
 
-    public JsonObject toJson() {
+    JsonObject toJson() {
         JsonArrayBuilder outputs = Json.createArrayBuilder();
         for (String out : mapOutputs) {
             outputs.add(out == null ? "" : out);

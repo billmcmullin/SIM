@@ -67,7 +67,7 @@ public class PromptTemplateService {
         return withPromptInjectionGuardrails(m, enforceMarkdownOnly);
     }
 
-    final String addReportRubricIfMissing(String message, boolean compactRubric) {
+    private String addReportRubricIfMissing(String message, boolean compactRubric) {
         String m = safe(message);
         if (m.isBlank()) {
             return compactRubric ? compactRubric() : baseRubric();
@@ -81,7 +81,7 @@ public class PromptTemplateService {
         return rubric + "\n\nUser request:\n" + m;
     }
 
-    final String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
+    private String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
         String m = safe(message);
         String guardrails = enforceMarkdownOnly
                 ? defaultGuardrails()
@@ -93,7 +93,7 @@ public class PromptTemplateService {
         return guardrails + "\n\nTask:\n" + m;
     }
 
-    final boolean looksStructuredAlready(String message) {
+    private boolean looksStructuredAlready(String message) {
         String lower = safe(message).toLowerCase(Locale.ROOT);
 
         return lower.contains("## executive summary")

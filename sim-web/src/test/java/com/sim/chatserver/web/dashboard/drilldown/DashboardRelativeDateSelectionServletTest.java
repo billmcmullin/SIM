@@ -458,7 +458,6 @@ public class DashboardRelativeDateSelectionServletTest
     }
     private DashboardRelativeDateSelectionServlet servletWithTermsStore(TermsStore termsStore) {
         return new DashboardRelativeDateSelectionServlet() {
-            @Override
             protected TermsStore termsStore() {
                 return termsStore;
             }

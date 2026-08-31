@@ -3112,7 +3112,7 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        List<String> result = underTest.allSelectedChatIds();
+        List<String> result = jobResultList(underTest, "allSelectedChatIds");
 
         // Then - assertions for result of method allSelectedChatIds()
         assertNotNull(result);
@@ -3120,39 +3120,39 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3186,47 +3186,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        int result = underTest.completedBatches();
+        int result = jobResultInt(underTest, "completedBatches");
 
         // Then - assertions for result of method completedBatches()
         assertEquals(1, result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3260,47 +3260,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        String result = underTest.contentType();
+        String result = jobResultString(underTest, "contentType");
 
         // Then - assertions for result of method contentType()
         assertEquals("application/json", result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         });
 
     }
@@ -3341,42 +3341,42 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3417,42 +3417,42 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3486,47 +3486,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        String result = underTest.errorMessage();
+        String result = jobResultString(underTest, "errorMessage");
 
         // Then - assertions for result of method errorMessage()
         assertEquals("", result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3560,7 +3560,7 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        List<Integer> result = underTest.failedBatchIndexes();
+        List<Integer> result = jobResultList(underTest, "failedBatchIndexes");
 
         // Then - assertions for result of method failedBatchIndexes()
         assertNotNull(result);
@@ -3568,39 +3568,39 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3634,47 +3634,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        int result = underTest.failedBatches();
+        int result = jobResultInt(underTest, "failedBatches");
 
         // Then - assertions for result of method failedBatches()
         assertEquals(1, result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3708,47 +3708,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        String result = underTest.finalReport();
+        String result = jobResultString(underTest, "finalReport");
 
         // Then - assertions for result of method finalReport()
         assertEquals("", result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3782,47 +3782,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        int result = underTest.httpStatus();
+        int result = jobResultInt(underTest, "httpStatus");
 
         // Then - assertions for result of method httpStatus()
         assertEquals(1, result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3856,47 +3856,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        String result = underTest.message();
+        String result = jobResultString(underTest, "message");
 
         // Then - assertions for result of method message()
         assertEquals("message", result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -3930,7 +3930,7 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        List<String> result = underTest.missingChatIds();
+        List<String> result = jobResultList(underTest, "missingChatIds");
 
         // Then - assertions for result of method missingChatIds()
         assertNotNull(result);
@@ -3938,39 +3938,39 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4004,47 +4004,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        String result = underTest.rawResponseBody();
+        String result = jobResultString(underTest, "rawResponseBody");
 
         // Then - assertions for result of method rawResponseBody()
         assertEquals("", result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4078,47 +4078,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        int result = underTest.retries();
+        int result = jobResultInt(underTest, "retries");
 
         // Then - assertions for result of method retries()
         assertEquals(1, result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4152,47 +4152,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        boolean result = underTest.success();
+        boolean result = jobResultBoolean(underTest, "success");
 
         // Then - assertions for result of method success()
         assertFalse(result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4226,47 +4226,47 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        int result = underTest.totalBatches();
+        int result = jobResultInt(underTest, "totalBatches");
 
         // Then - assertions for result of method totalBatches()
         assertEquals(1, result);
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4300,7 +4300,7 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        List<String> result = underTest.usedChatIds();
+        List<String> result = jobResultList(underTest, "usedChatIds");
 
         // Then - assertions for result of method usedChatIds()
         assertNotNull(result);
@@ -4308,39 +4308,39 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertNotNull(underTest.warnings());
-            assertEquals(0, underTest.warnings().size());
+            assertNotNull(jobResultList(underTest, "warnings"));
+            assertEquals(0, jobResultList(underTest, "warnings").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
@@ -4374,7 +4374,7 @@ public class ReviewJobServiceTest
         JobResult underTest = new JobResult(httpStatus, success, message, errorMessage, totalBatches, completedBatches, failedBatches, retries, allSelectedChatIds, usedChatIds, missingChatIds, failedBatchIndexes, warnings, finalReport, rawResponseBody, contentType);
 
         // When
-        List<String> result = underTest.warnings();
+        List<String> result = jobResultList(underTest, "warnings");
 
         // Then - assertions for result of method warnings()
         assertNotNull(result);
@@ -4382,42 +4382,66 @@ public class ReviewJobServiceTest
 
         // Then - assertions for this instance of ReviewJobService.JobResult
         assertAll(() -> {
-            assertEquals(1, underTest.httpStatus());
+            assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
-            assertFalse(underTest.success());
+            assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
-            assertEquals("message", underTest.message());
+            assertEquals("message", jobResultString(underTest, "message"));
         }, () -> {
-            assertEquals("", underTest.errorMessage());
+            assertEquals("", jobResultString(underTest, "errorMessage"));
         }, () -> {
-            assertEquals(1, underTest.totalBatches());
+            assertEquals(1, jobResultInt(underTest, "totalBatches"));
         }, () -> {
-            assertEquals(1, underTest.completedBatches());
+            assertEquals(1, jobResultInt(underTest, "completedBatches"));
         }, () -> {
-            assertEquals(1, underTest.failedBatches());
+            assertEquals(1, jobResultInt(underTest, "failedBatches"));
         }, () -> {
-            assertEquals(1, underTest.retries());
+            assertEquals(1, jobResultInt(underTest, "retries"));
         }, () -> {
-            assertNotNull(underTest.allSelectedChatIds());
-            assertEquals(0, underTest.allSelectedChatIds().size());
+            assertNotNull(jobResultList(underTest, "allSelectedChatIds"));
+            assertEquals(0, jobResultList(underTest, "allSelectedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.usedChatIds());
-            assertEquals(0, underTest.usedChatIds().size());
+            assertNotNull(jobResultList(underTest, "usedChatIds"));
+            assertEquals(0, jobResultList(underTest, "usedChatIds").size());
         }, () -> {
-            assertNotNull(underTest.missingChatIds());
-            assertEquals(0, underTest.missingChatIds().size());
+            assertNotNull(jobResultList(underTest, "missingChatIds"));
+            assertEquals(0, jobResultList(underTest, "missingChatIds").size());
         }, () -> {
-            assertNotNull(underTest.failedBatchIndexes());
-            assertEquals(0, underTest.failedBatchIndexes().size());
+            assertNotNull(jobResultList(underTest, "failedBatchIndexes"));
+            assertEquals(0, jobResultList(underTest, "failedBatchIndexes").size());
         }, () -> {
-            assertEquals("", underTest.finalReport());
+            assertEquals("", jobResultString(underTest, "finalReport"));
         }, () -> {
-            assertEquals("", underTest.rawResponseBody());
+            assertEquals("", jobResultString(underTest, "rawResponseBody"));
         }, () -> {
-            assertEquals("application/json", underTest.contentType());
+            assertEquals("application/json", jobResultString(underTest, "contentType"));
         });
 
     }
+    private static Object invokeJobResultAccessor(JobResult underTest, String methodName) {
+        try {
+            Method m = JobResult.class.getDeclaredMethod(methodName);
+            m.setAccessible(true);
+            return m.invoke(underTest);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to invoke JobResult." + methodName, ex);
+        }
+    }
+
+    private static int jobResultInt(JobResult underTest, String methodName) {
+        return ((Integer) invokeJobResultAccessor(underTest, methodName)).intValue();
+    }
+
+    private static boolean jobResultBoolean(JobResult underTest, String methodName) {
+        return ((Boolean) invokeJobResultAccessor(underTest, methodName)).booleanValue();
+    }
+
+    private static String jobResultString(JobResult underTest, String methodName) {
+        return (String) invokeJobResultAccessor(underTest, methodName);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> List<T> jobResultList(JobResult underTest, String methodName) {
+        return (List<T>) invokeJobResultAccessor(underTest, methodName);
+    }
 }
-
-

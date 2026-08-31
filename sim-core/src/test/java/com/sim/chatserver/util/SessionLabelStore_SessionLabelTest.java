@@ -1,5 +1,7 @@
 package com.sim.chatserver.util;
 
+import java.lang.reflect.Constructor;
+
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
@@ -26,7 +28,7 @@ public class SessionLabelStore_SessionLabelTest
         // Given
         String displayName = "displayName"; // UTA: default value
         String email = "email"; // UTA: default value
-        SessionLabel underTest = new SessionLabel(displayName, email);
+        SessionLabel underTest = newSessionLabel(displayName, email);
 
         // When
         String result = underTest.getDisplayName();
@@ -51,7 +53,7 @@ public class SessionLabelStore_SessionLabelTest
         // Given
         String displayName = "displayName"; // UTA: default value
         String email = "email"; // UTA: default value
-        SessionLabel underTest = new SessionLabel(displayName, email);
+        SessionLabel underTest = newSessionLabel(displayName, email);
 
         // When
         String result = underTest.getEmail();
@@ -62,5 +64,15 @@ public class SessionLabelStore_SessionLabelTest
         // Then - assertions for this instance of SessionLabelStore.SessionLabel
         assertEquals("displayName", underTest.getDisplayName());
 
+    }
+
+    private static SessionLabel newSessionLabel(String displayName, String email) {
+        try {
+            Constructor<SessionLabel> ctor = SessionLabel.class.getDeclaredConstructor(String.class, String.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(displayName, email);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate SessionLabel for test", ex);
+        }
     }
 }

@@ -1,5 +1,7 @@
 package com.sim.chatserver.service;
 
+import java.lang.reflect.Method;
+
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.model.UserAccount;
@@ -16,6 +18,19 @@ import static org.mockito.Mockito.when;
 public class AuthServiceTest
 {
 
+    private static UserAccount invokeAuthenticate(AuthService underTest, String username, String password) throws Throwable {
+        Method method = AuthService.class.getDeclaredMethod("authenticate", String.class, String.class);
+        method.setAccessible(true);
+        try {
+            return (UserAccount) method.invoke(underTest, username, password);
+        } catch (java.lang.reflect.InvocationTargetException ex) {
+            if (ex.getCause() != null) {
+                throw ex.getCause();
+            }
+            throw ex;
+        }
+    }
+
     /**
      * Parasoft Jtest UTA: Test for authenticate(String, String)
      *
@@ -31,7 +46,7 @@ public class AuthServiceTest
         // When
         String username = null; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -50,7 +65,7 @@ public class AuthServiceTest
         // When
         String username = ""; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -67,13 +82,13 @@ public class AuthServiceTest
         AuthService underTest = new AuthService();
         UserService userServiceValue = mock(UserService.class);
         UserAccount findByUsernameResult = null; // UTA: configured value
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -90,13 +105,13 @@ public class AuthServiceTest
         AuthService underTest = new AuthService();
         UserService userServiceValue = mock(UserService.class);
         UserAccount findByUsernameResult = mock(UserAccount.class);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -115,13 +130,13 @@ public class AuthServiceTest
         UserAccount findByUsernameResult = mock(UserAccount.class);
         String getPasswordHashResult = null; // UTA: configured value
         when(findByUsernameResult.getPasswordHash()).thenReturn(getPasswordHashResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -140,13 +155,13 @@ public class AuthServiceTest
         UserAccount findByUsernameResult = mock(UserAccount.class);
         String getPasswordHashResult = "getPasswordHashResult"; // UTA: default value
         when(findByUsernameResult.getPasswordHash()).thenReturn(getPasswordHashResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -168,13 +183,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -196,13 +211,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -224,13 +239,13 @@ public class AuthServiceTest
 
         String getUsernameResult = ""; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -252,13 +267,13 @@ public class AuthServiceTest
 
         String getUsernameResult = ""; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -283,13 +298,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -314,13 +329,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -342,13 +357,13 @@ public class AuthServiceTest
 
         String getUsernameResult = "*"; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = null; // UTA: configured value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -373,13 +388,13 @@ public class AuthServiceTest
 
         String getUsernameResult = ""; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -404,13 +419,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -435,13 +450,13 @@ public class AuthServiceTest
 
         String getUsernameResult = null; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -460,13 +475,13 @@ public class AuthServiceTest
         UserAccount findByUsernameResult = mock(UserAccount.class);
         String getUsernameResult = "*"; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -488,13 +503,13 @@ public class AuthServiceTest
 
         String getUsernameResult = ""; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 
@@ -516,13 +531,13 @@ public class AuthServiceTest
 
         String getUsernameResult = ""; // UTA: configured value
         when(findByUsernameResult.getUsername()).thenReturn(getUsernameResult);
-        when(userServiceValue.findByUsername(nullable(String.class))).thenReturn(findByUsernameResult);
+        when(userServiceValue.authenticateAndGetUser(nullable(String.class), nullable(String.class))).thenReturn(findByUsernameResult);
         underTest.userService = userServiceValue;
 
         // When
         String username = "*"; // UTA: configured value
         String password = "password"; // UTA: default value
-        UserAccount result = underTest.authenticate(username, password);
+        UserAccount result = invokeAuthenticate(underTest, username, password);
 
     }
 }

@@ -178,6 +178,6 @@ class DashboardTermSelectionQueryServiceTest {
     }
 
     private static WidgetEntry widget(String widgetId) {
-        return new WidgetEntry(1, widgetId, "Widget", Instant.now());
+        return DashboardWidgetEntryTestFactory.newWidgetEntry(1, widgetId, "Widget", Instant.now());
     }
 }

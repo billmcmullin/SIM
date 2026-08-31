@@ -310,7 +310,7 @@ public class AdminConfigServlet extends HttpServlet {
         return escapeHtml(input);
     }
 
-    protected TermsStore termsStore() {
+    private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
     }
 }

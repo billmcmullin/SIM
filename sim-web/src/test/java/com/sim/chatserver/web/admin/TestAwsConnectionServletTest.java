@@ -75,12 +75,7 @@ class TestAwsConnectionServletTest {
 
     @Test
     void doPost_returnsOk_whenAwsTestSucceeds() throws Exception {
-        TestAwsConnectionServlet servlet = new TestAwsConnectionServlet() {
-            @Override
-            String describeInstanceState(String region, String accessKeyId, String secretAccessKey, String instanceId) {
-                return "running";
-            }
-        };
+        TestAwsConnectionServlet servlet = new TestAwsConnectionServlet();
 
         HttpServletRequest req = requestWithParams(Map.of(
                 "awsRegion", new String[]{"us-east-1"},

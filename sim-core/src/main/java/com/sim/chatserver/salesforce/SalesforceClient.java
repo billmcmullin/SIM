@@ -52,11 +52,15 @@ public class SalesforceClient {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public SalesforceClient() {
+    private SalesforceClient() {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(8))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build());
+    }
+
+    public static SalesforceClient create() {
+        return new SalesforceClient();
     }
 
     SalesforceClient(HttpClient httpClient) {
@@ -76,7 +80,7 @@ public class SalesforceClient {
      * Search Salesforce Contact by friendly name. If instanceUrl/apiKey are
      * null/blank, falls back to persisted config.
      */
-    final SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey)
+    private SalesforceCustomerMatch findBestCustomerMatch(String friendlyName, String instanceUrl, String apiKey)
             throws IOException, InterruptedException, SQLException, SalesforceClientException {
         String searchName = trimToNull(friendlyName);
         if (searchName == null) {
@@ -327,7 +331,7 @@ public class SalesforceClient {
 
         private final transient int statusCode;
 
-        SalesforceClientException(int statusCode, String message) {
+        private SalesforceClientException(int statusCode, String message) {
             super(message);
             this.statusCode = statusCode;
         }

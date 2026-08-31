@@ -61,19 +61,7 @@ public class WidgetExportServlet extends HttpServlet {
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
-    private static final ThreadLocal<Supplier<AppDataSourceHolder>> DATA_SOURCE_HOLDER_OVERRIDE = new ThreadLocal<>();
-
-    public WidgetExportServlet() { // parasoft-suppress OWASP2025.A1.DPPM "Public no-arg constructor is required by servlet container lifecycle."
-        DATA_SOURCE_HOLDER_OVERRIDE.remove();
-    }
-
-    WidgetExportServlet(AppDataSourceHolder dataSourceHolder) {
-        DATA_SOURCE_HOLDER_OVERRIDE.set(dataSourceHolder == null ? null : () -> dataSourceHolder);
-    }
-
-    WidgetExportServlet(Supplier<AppDataSourceHolder> dataSourceHolderSupplier) {
-        DATA_SOURCE_HOLDER_OVERRIDE.set(dataSourceHolderSupplier);
-    }
+    private final ThreadLocal<Supplier<AppDataSourceHolder>> dataSourceHolderOverride = new ThreadLocal<>();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -712,7 +700,7 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private AppDataSourceHolder dataSourceHolder() {
-        Supplier<AppDataSourceHolder> override = DATA_SOURCE_HOLDER_OVERRIDE.get();
+        Supplier<AppDataSourceHolder> override = dataSourceHolderOverride.get();
         if (override != null) {
             return override.get();
         }

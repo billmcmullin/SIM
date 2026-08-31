@@ -183,7 +183,7 @@ public class TestAwsConnectionServlet extends HttpServlet {
         }
     }
 
-    String describeInstanceState(String region,
+    private final String describeInstanceState(String region,
             String accessKeyId,
             String secretAccessKey,
             String instanceId) {

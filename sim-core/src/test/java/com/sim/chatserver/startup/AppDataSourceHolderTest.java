@@ -1,5 +1,6 @@
 package com.sim.chatserver.startup;
 
+import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
 import javax.sql.DataSource;
@@ -24,6 +25,50 @@ import static org.mockito.Mockito.when;
 public class AppDataSourceHolderTest
 {
 
+    private static void invokeClose(AppDataSourceHolder underTest) {
+        invokeVoidUnchecked(underTest, "close", new Class<?>[]{});
+    }
+
+    private static void invokeSetEmf(AppDataSourceHolder underTest, EntityManagerFactory emf) {
+        invokeVoidUnchecked(underTest, "setEmf", new Class<?>[]{EntityManagerFactory.class}, emf);
+    }
+
+    private static String invokeGetActiveJdbcUrl(AppDataSourceHolder underTest) throws Throwable {
+        return (String) invokeChecked(underTest, "getActiveJdbcUrl", new Class<?>[]{});
+    }
+
+    private static void invokeSwitchToExternalAndPersist(AppDataSourceHolder underTest, DbConfig cfg, Consumer<String> callback) {
+        invokeVoidUnchecked(underTest, "switchToExternalAndPersist", new Class<?>[]{DbConfig.class, Consumer.class}, cfg, callback);
+    }
+
+    private static void invokeInit(AppDataSourceHolder underTest) {
+        invokeVoidUnchecked(underTest, "init", new Class<?>[]{});
+    }
+
+    private static Object invokeChecked(Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+            throws Throwable {
+        Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+        method.setAccessible(true);
+        try {
+            return method.invoke(target, args);
+        } catch (java.lang.reflect.InvocationTargetException ex) {
+            if (ex.getCause() != null) {
+                throw ex.getCause();
+            }
+            throw ex;
+        }
+    }
+
+    private static void invokeVoidUnchecked(Object target, String methodName, Class<?>[] parameterTypes, Object... args) {
+        try {
+            invokeChecked(target, methodName, parameterTypes, args);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Throwable ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     /**
      * Parasoft Jtest UTA: Test for close()
      *
@@ -37,7 +82,7 @@ public class AppDataSourceHolderTest
         AppDataSourceHolder underTest = new AppDataSourceHolder();
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -53,10 +98,10 @@ public class AppDataSourceHolderTest
         // Given
         AppDataSourceHolder underTest = new AppDataSourceHolder();
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -75,7 +120,7 @@ public class AppDataSourceHolderTest
         underTest.setDataSource(dataSource);
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -91,12 +136,12 @@ public class AppDataSourceHolderTest
         // Given
         AppDataSourceHolder underTest = new AppDataSourceHolder();
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
         DataSource dataSource = mock(DataSource.class);
         underTest.setDataSource(dataSource);
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -113,10 +158,10 @@ public class AppDataSourceHolderTest
         AppDataSourceHolder underTest = new AppDataSourceHolder();
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
         doThrow(RuntimeException.class).when(emf).close();
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -133,12 +178,12 @@ public class AppDataSourceHolderTest
         AppDataSourceHolder underTest = new AppDataSourceHolder();
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
         doThrow(RuntimeException.class).when(emf).close();
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
         DataSource dataSource = mock(DataSource.class);
         underTest.setDataSource(dataSource);
 
         // When
-        underTest.close();
+        invokeClose(underTest);
 
     }
 
@@ -157,7 +202,7 @@ public class AppDataSourceHolderTest
         underTest.setDataSource(dataSource);
 
         // When
-        String result = underTest.getActiveJdbcUrl();
+        String result = invokeGetActiveJdbcUrl(underTest);
 
     }
 
@@ -174,7 +219,7 @@ public class AppDataSourceHolderTest
         AppDataSourceHolder underTest = new AppDataSourceHolder();
 
         // When
-        String result = underTest.getActiveJdbcUrl();
+        String result = invokeGetActiveJdbcUrl(underTest);
 
     }
 
@@ -209,7 +254,7 @@ public class AppDataSourceHolderTest
         // Given
         AppDataSourceHolder underTest = new AppDataSourceHolder();
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
 
         // When
         EntityManagerFactory result = underTest.getEmf();
@@ -249,7 +294,7 @@ public class AppDataSourceHolderTest
 
         // When
         assertThrows(IllegalStateException.class, () -> {
-            underTest.init();
+            invokeInit(underTest);
         });
 
     }
@@ -322,7 +367,7 @@ public class AppDataSourceHolderTest
 
         // When
         EntityManagerFactory emf = mock(EntityManagerFactory.class);
-        underTest.setEmf(emf);
+        invokeSetEmf(underTest, emf);
 
     }
 
@@ -353,7 +398,7 @@ public class AppDataSourceHolderTest
         when(cfg.getPort()).thenReturn(getPortResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -385,7 +430,7 @@ public class AppDataSourceHolderTest
         when(cfg.getPort()).thenReturn(getPortResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -417,7 +462,7 @@ public class AppDataSourceHolderTest
         when(cfg.getPort()).thenReturn(getPortResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -449,7 +494,7 @@ public class AppDataSourceHolderTest
         when(cfg.getPort()).thenReturn(getPortResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -481,7 +526,7 @@ public class AppDataSourceHolderTest
         when(cfg.getPort()).thenReturn(getPortResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -522,7 +567,7 @@ public class AppDataSourceHolderTest
         when(cfg.getUsername()).thenReturn(getUsernameResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }
@@ -563,7 +608,7 @@ public class AppDataSourceHolderTest
         when(cfg.getUsername()).thenReturn(getUsernameResult);
         Consumer<String> callback = mock(Consumer.class);
         assertThrows(RuntimeException.class, () -> {
-            underTest.switchToExternalAndPersist(cfg, callback);
+            invokeSwitchToExternalAndPersist(underTest, cfg, callback);
         });
 
     }

@@ -375,7 +375,7 @@ class DashboardMetricsServiceTest {
 
     private static WidgetEntry widget(String id, String displayName) {
         String safeDisplay = displayName == null ? "" : displayName;
-        return new WidgetEntry(1, id, safeDisplay, Instant.now());
+        return com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, id, safeDisplay, Instant.now());
     }
 
     private static ResultSet mockCountResultSet(int count) throws SQLException {

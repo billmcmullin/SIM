@@ -708,7 +708,6 @@ public class AdminUserServletTest
 
     private AdminUserServlet servletWithUserService(UserService userService) {
         return new AdminUserServlet() {
-            @Override
             protected UserService resolveUserService() {
                 return userService;
             }

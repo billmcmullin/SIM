@@ -74,7 +74,7 @@ class DashboardSessionAggregationQueryServiceCoreTest {
                     .thenReturn(true);
 
             Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> out = service.collectAccumulators(
-                    List.of(new WidgetEntry(1, "w1", "W1", Instant.now())),
+                    List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "w1", "W1", Instant.now())),
                     "sid");
 
             assertEquals(1, out.size());
@@ -123,8 +123,8 @@ class DashboardSessionAggregationQueryServiceCoreTest {
 
             Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> out = service.collectAccumulators(
                     List.of(
-                            new WidgetEntry(1, "w1", "W1", Instant.now()),
-                            new WidgetEntry(2, "w2", "W2", Instant.now())),
+                            DashboardWidgetEntryTestFactory.newWidgetEntry(1, "w1", "W1", Instant.now()),
+                            DashboardWidgetEntryTestFactory.newWidgetEntry(2, "w2", "W2", Instant.now())),
                     null);
 
             assertEquals(1, out.size());
@@ -144,7 +144,7 @@ class DashboardSessionAggregationQueryServiceCoreTest {
 
         try (MockedStatic<CDI> cdi = mockCdi(holder)) {
             assertThrows(IllegalStateException.class,
-                    () -> service.collectAccumulators(List.of(new WidgetEntry(1, "w1", "W1", Instant.now())), null));
+                    () -> service.collectAccumulators(List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "w1", "W1", Instant.now())), null));
         }
     }
 

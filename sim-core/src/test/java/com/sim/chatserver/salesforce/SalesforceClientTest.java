@@ -1,5 +1,7 @@
 package com.sim.chatserver.salesforce;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.http.HttpClient;
 import java.sql.SQLException;
 
@@ -71,7 +73,7 @@ public class SalesforceClientTest
         String friendlyName = null; // UTA: configured value
         String instanceUrl = "instanceUrl"; // UTA: default value
         String apiKey = "apiKey"; // UTA: default value
-        SalesforceCustomerMatch result = underTest.findBestCustomerMatch(friendlyName, instanceUrl, apiKey);
+        SalesforceCustomerMatch result = invokeFindBestCustomerMatch(underTest, friendlyName, instanceUrl, apiKey);
 
     }
 
@@ -92,7 +94,7 @@ public class SalesforceClientTest
         String friendlyName = ""; // UTA: configured value
         String instanceUrl = "instanceUrl"; // UTA: default value
         String apiKey = "apiKey"; // UTA: default value
-        SalesforceCustomerMatch result = underTest.findBestCustomerMatch(friendlyName, instanceUrl, apiKey);
+        SalesforceCustomerMatch result = invokeFindBestCustomerMatch(underTest, friendlyName, instanceUrl, apiKey);
 
     }
 
@@ -114,7 +116,7 @@ public class SalesforceClientTest
         String instanceUrl = ""; // UTA: configured value
         String apiKey = null; // UTA: configured value
         assertThrows(SQLException.class, () -> {
-            underTest.findBestCustomerMatch(friendlyName, instanceUrl, apiKey);
+            invokeFindBestCustomerMatch(underTest, friendlyName, instanceUrl, apiKey);
         });
 
     }
@@ -137,8 +139,35 @@ public class SalesforceClientTest
         String instanceUrl = null; // UTA: configured value
         String apiKey = ""; // UTA: configured value
         assertThrows(SQLException.class, () -> {
-            underTest.findBestCustomerMatch(friendlyName, instanceUrl, apiKey);
+            invokeFindBestCustomerMatch(underTest, friendlyName, instanceUrl, apiKey);
         });
 
+    }
+
+    private static SalesforceCustomerMatch invokeFindBestCustomerMatch(
+            SalesforceClient underTest,
+            String friendlyName,
+            String instanceUrl,
+            String apiKey
+    ) throws Exception {
+        Method method = SalesforceClient.class.getDeclaredMethod(
+                "findBestCustomerMatch",
+                String.class,
+                String.class,
+                String.class
+        );
+        method.setAccessible(true);
+        try {
+            return (SalesforceCustomerMatch) method.invoke(underTest, friendlyName, instanceUrl, apiKey);
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw ex;
+        }
     }
 }

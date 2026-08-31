@@ -27,7 +27,7 @@ class EmailConfigResolverTest {
         try (MockedStatic<EmailConfigLoader> loader = mockStatic(EmailConfigLoader.class)) {
             loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(env);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertNotNull(result);
@@ -52,7 +52,7 @@ class EmailConfigResolverTest {
             loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(badEnv);
             loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(props);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertEquals(EmailConfigSource.PROPERTIES, result.source());
@@ -76,7 +76,7 @@ class EmailConfigResolverTest {
             loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
             when(db.load()).thenReturn(dbCfg);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertEquals(EmailConfigSource.DATABASE, result.source());
@@ -99,7 +99,7 @@ class EmailConfigResolverTest {
             );
             when(db.load()).thenReturn(null);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertEquals(EmailConfigSource.NONE, result.source());
@@ -117,7 +117,7 @@ class EmailConfigResolverTest {
             loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(null);
             loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(null);
+            EmailConfigResolver resolver = EmailConfigResolver.create(null);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertEquals(EmailConfigSource.NONE, result.source());
@@ -136,7 +136,7 @@ class EmailConfigResolverTest {
             loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
             when(db.load()).thenThrow(new RuntimeException("db down"));
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             RuntimeException ex = assertThrows(RuntimeException.class, resolver::resolve);
             assertEquals("db down", ex.getMessage());
             verify(db, times(1)).load();
@@ -156,7 +156,7 @@ class EmailConfigResolverTest {
             loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(propsBad65536);
             when(db.load()).thenReturn(dbGood65535);
 
-            EmailConfigResolver resolver = new EmailConfigResolver(db);
+            EmailConfigResolver resolver = EmailConfigResolver.create(db);
             ResolvedEmailConfig result = resolver.resolve();
 
             assertEquals(EmailConfigSource.DATABASE, result.source());

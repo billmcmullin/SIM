@@ -3,8 +3,6 @@ package com.sim.chatserver.service;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.mindrot.jbcrypt.BCrypt;
-
 import com.sim.chatserver.model.UserAccount;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -22,8 +20,6 @@ public class AuthService {
     private static final String LOG_LOOKUP_INIT = "AuthService.authenticate: lookup initiated";
     private static final String LOG_EMPTY_USERNAME = "AuthService.authenticate: empty username";
     private static final String LOG_USER_NOT_FOUND = "AuthService.authenticate: user not found";
-    private static final String LOG_BCRYPT_THROW = "AuthService.authenticate: BCrypt check threw: {0}";
-    private static final String LOG_BCRYPT_RESULT = "AuthService.authenticate: bcrypt result={0}";
     private static final String LOG_FOUND_USER = "AuthService.authenticate: found user={0} role={1}";
 
     @Inject
@@ -39,7 +35,7 @@ public class AuthService {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public UserAccount authenticate(String username, String password) {
+    private UserAccount authenticate(String username, String password) {
         // Avoid work if FINE is disabled
         if (log.isLoggable(Level.FINE)) {
             log.fine(LOG_LOOKUP_INIT);
@@ -52,8 +48,7 @@ public class AuthService {
             return null;
         }
 
-        // Single lookup
-        UserAccount user = userService.findByUsername(normalizedUsername);
+        UserAccount user = userService.authenticateAndGetUser(normalizedUsername, password);
         if (user == null) {
             log.info(LOG_USER_NOT_FOUND);
             return null;
@@ -65,28 +60,7 @@ public class AuthService {
                     new Object[]{maskIdentifier(user.getUsername()), safeToString(user.getRole())});
         }
 
-        // Fast fail for obviously invalid inputs to avoid BCrypt cost
-        if (password == null) {
-            if (log.isLoggable(Level.INFO)) {
-                log.log(Level.INFO, LOG_BCRYPT_RESULT, Boolean.FALSE);
-            }
-            return null;
-        }
-
-        String storedHash = user.getPasswordHash();
-        boolean ok = false;
-        try {
-            // No sensitive data in logs
-            ok = storedHash != null && BCrypt.checkpw(password, storedHash);
-        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
-            log.log(Level.WARNING, LOG_BCRYPT_THROW, e.toString());
-        }
-
-        if (log.isLoggable(Level.INFO)) {
-            log.log(Level.INFO, LOG_BCRYPT_RESULT, Boolean.valueOf(ok));
-        }
-
-        return ok ? user : null;
+        return user;
     }
 
     /**
