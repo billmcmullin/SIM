@@ -119,7 +119,7 @@ public class DashboardServlet extends HttpServlet {
         final LocalDate rangeStartFinal = rangeStart;
         final LocalDate rangeEndFinal = rangeEnd;
 
-        final LocalDate dayToday = rangeEndFinal;
+        final LocalDate dayToday = LocalDate.now(ZoneId.systemDefault());
         final LocalDate dayYesterday = dayToday.minusDays(1);
 
         DashboardMetricsService metricsService = DashboardMetricsService.create(dsHolder, termsStore, TOP_TOPIC_LIMIT);
@@ -151,26 +151,15 @@ public class DashboardServlet extends HttpServlet {
             DASHBOARD_EXECUTOR
         ).completeOnTimeout(List.of(), 800, TimeUnit.MILLISECONDS);
 
-        CompletableFuture<TermSummary> termSummaryFuture = CompletableFuture.supplyAsync(
-            () -> cacheRegistry.getTermSummary(() -> jdbcDataService.loadTermSummary(
-                    termService,
-                    termsStore,
-                    dsHolder,
-                    widgetsFinal,
-                    rangeStartFinal,
-                    rangeEndFinal)),
-                DASHBOARD_EXECUTOR
-        ).completeOnTimeout(null, 1100, TimeUnit.MILLISECONDS);
-
         CompletableFuture<TermSummary> todayTermSummaryFuture = CompletableFuture.supplyAsync(
             () -> jdbcDataService.loadTermSummary(termService, termsStore, dsHolder, widgetsFinal, dayToday, dayToday),
                 DASHBOARD_EXECUTOR
-        ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
+        ).completeOnTimeout(null, 1800, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> yesterdayTermSummaryFuture = CompletableFuture.supplyAsync(
             () -> jdbcDataService.loadTermSummary(termService, termsStore, dsHolder, widgetsFinal, dayYesterday, dayYesterday),
                 DASHBOARD_EXECUTOR
-        ).completeOnTimeout(null, 450, TimeUnit.MILLISECONDS);
+        ).completeOnTimeout(null, 1800, TimeUnit.MILLISECONDS);
 
         CompletableFuture<TermSummary> allTimeTermSummaryFuture = CompletableFuture.supplyAsync(
             () -> jdbcDataService.loadTermSummary(
@@ -181,7 +170,7 @@ public class DashboardServlet extends HttpServlet {
                     LocalDate.of(1970, 1, 1),
                     rangeEndFinal),
                 DASHBOARD_EXECUTOR
-        ).completeOnTimeout(null, 550, TimeUnit.MILLISECONDS);
+        ).completeOnTimeout(null, 2500, TimeUnit.MILLISECONDS);
 
         CompletableFuture<SessionOverview> sessionOverviewFuture = CompletableFuture.supplyAsync(
                 () -> {
@@ -208,7 +197,6 @@ public class DashboardServlet extends HttpServlet {
         ProgressStat newUserProgression = safeJoin(newUserProgressionFuture, new ProgressStat(0, 0), "new user progression");
         List<OtherParasoftEntry> otherParasoftLatest = safeJoin(otherParasoftFuture, List.of(), "other parasoft latest");
         List<TopTopic> dailyTopTopics = safeJoin(topTopicsFuture, List.of(), "top topics today vs yesterday");
-        TermSummary termSummary = safeJoin(termSummaryFuture, null, "term summary");
         TermSummary todayTermSummary = safeJoin(todayTermSummaryFuture, null, "today term summary");
         TermSummary yesterdayTermSummary = safeJoin(yesterdayTermSummaryFuture, null, "yesterday term summary");
         TermSummary allTimeTermSummary = safeJoin(allTimeTermSummaryFuture, null, "all-time term summary");
@@ -233,7 +221,8 @@ public class DashboardServlet extends HttpServlet {
         );
         String otherParasoftLatestRows = DashboardRowsRenderer.renderOtherParasoftLatestRows(otherParasoftLatest, req.getContextPath());
 
-        String termChartJson = toChartJson(termSummary);
+        String termChartJson = toChartJson(todayTermSummary);
+        String termChartTotalJson = toChartJson(allTimeTermSummary);
 
         if (allTimeTermSummary != null) {
             storeTermSnapshots(session, allTimeTermSummary);
@@ -311,7 +300,8 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("otherParasoftLatestRows", otherParasoftLatestRows),
                 Map.entry("widgetStatsRows", widgetStatsRows),
                 Map.entry("widgetPieChartData", escapeForJs(buildWidgetPieChartData(widgetStats))),
-                Map.entry("termChartData", termChartJson),
+                Map.entry("termChartData", escapeForJs(termChartJson)),
+                Map.entry("termChartTotalData", escapeForJs(termChartTotalJson)),
                 Map.entry("termIncreaseMapJson", escapeForJs(termIncreaseMapJson)),
                 Map.entry("termTotalMapJson", escapeForJs(termTotalMapJson)),
                 Map.entry("termLegendDefaultMode", "increase"),

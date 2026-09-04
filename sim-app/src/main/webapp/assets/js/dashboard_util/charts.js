@@ -91,7 +91,8 @@
     }
 
     function bootPieAndTermCharts(contextPath) {
-        const termSlices = core.parseSlices(window.termChartData || []);
+        const dayTermSlices = core.parseSlices(window.termChartData || []);
+        const totalTermSlices = core.parseSlices(window.termChartTotalData || []);
         const widgetSlices = core.parseSlices(window.widgetPieChartData || []);
         const termIncreaseMap = core.parseObject(window.termIncreaseMapJson || {});
         const termTotalMap = core.parseObject(window.termTotalMapJson || {});
@@ -105,6 +106,13 @@
         const widgetPieCtx = widgetChartEl?.getContext('2d');
 
         let termChartInstance = null;
+
+        function getSlicesForMode(mode) {
+            if (mode === 'total') {
+                return totalTermSlices;
+            }
+            return dayTermSlices;
+        }
 
         async function openTermReview(term) {
             if (!term) {
@@ -144,10 +152,11 @@
             return Number.isFinite(fallbackCount) ? Math.max(0, fallbackCount) : 0;
         }
 
-        function buildTermChartValues(mode) {
-            const values = new Array(termSlices.length);
-            for (let i = 0; i < termSlices.length; i++) {
-                const s = termSlices[i] || {};
+        function buildTermChartValues(mode, slices) {
+            const safeSlices = Array.isArray(slices) ? slices : [];
+            const values = new Array(safeSlices.length);
+            for (let i = 0; i < safeSlices.length; i++) {
+                const s = safeSlices[i] || {};
                 values[i] = getTermValueForMode(s.term || '', s.count, mode);
             }
             return values;
@@ -158,24 +167,28 @@
             if (!summaryEl) {
                 return;
             }
+
+            const activeSlices = getSlicesForMode(mode);
             let total = 0;
-            for (let i = 0; i < termSlices.length; i++) {
-                const s = termSlices[i] || {};
+            for (let i = 0; i < activeSlices.length; i++) {
+                const s = activeSlices[i] || {};
                 total += getTermValueForMode(s.term || '', s.count, mode);
             }
+
             summaryEl.textContent = mode === 'increase'
                 ? `Showing increases (today): ${total} total entries`
                 : `Showing totals (all entries): ${total} total entries`;
         }
 
         function renderOrUpdateTermChart(mode) {
-            if (!ctx || !termSlices.length) {
+            const activeSlices = getSlicesForMode(mode);
+            if (!ctx || !activeSlices.length) {
                 return;
             }
 
-            const labels = termSlices.map(s => (s?.label ?? ''));
-            const colors = termSlices.map((_, i) => palette[i % palette.length]);
-            const values = buildTermChartValues(mode);
+            const labels = activeSlices.map(s => (s?.label ?? ''));
+            const colors = activeSlices.map((_, i) => palette[i % palette.length]);
+            const values = buildTermChartValues(mode, activeSlices);
 
             if (!termChartInstance) {
                 termChartInstance = new Chart(ctx, {
@@ -187,13 +200,13 @@
                                 callbacks: {
                                     title: contextRows => {
                                         const i = contextRows?.[0]?.dataIndex;
-                                        return (i !== undefined ? termSlices[i]?.term : '') || '';
+                                        return (i !== undefined ? activeSlices[i]?.term : '') || '';
                                     },
                                     label: context => {
                                         const i = context.dataIndex;
-                                        const slice = termSlices[i];
+                                        const slice = activeSlices[i];
                                         const term = slice?.term || '';
-                                        const value = getTermValueForMode(term, slice?.count, legendMode);
+                                        const value = getTermValueForMode(term, slice?.count, mode);
                                         return `${slice?.label ?? ''}: ${value}`;
                                     }
                                 }
@@ -206,7 +219,7 @@
                             if (!elements?.length) {
                                 return;
                             }
-                            const slice = termSlices[elements[0].index];
+                            const slice = activeSlices[elements[0].index];
                             if (!slice) {
                                 return;
                             }
@@ -215,7 +228,9 @@
                     }
                 });
             } else {
+                termChartInstance.data.labels = labels;
                 termChartInstance.data.datasets[0].data = values;
+                termChartInstance.data.datasets[0].backgroundColor = colors;
                 termChartInstance.update();
             }
 
@@ -351,13 +366,14 @@
                 return;
             }
             legendEl.innerHTML = '';
-            if (!termSlices.length) {
+            const activeSlices = getSlicesForMode(legendMode);
+            if (!activeSlices.length) {
                 return;
             }
 
             const frag = document.createDocumentFragment();
-            for (let i = 0; i < termSlices.length; i++) {
-                frag.appendChild(buildLegendChip(termSlices[i] || {}, i));
+            for (let i = 0; i < activeSlices.length; i++) {
+                frag.appendChild(buildLegendChip(activeSlices[i] || {}, i));
             }
             legendEl.appendChild(frag);
 

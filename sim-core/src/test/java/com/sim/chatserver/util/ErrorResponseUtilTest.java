@@ -9,8 +9,10 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 /**
  * Parasoft Jtest UTA: Test class for ErrorResponseUtil
@@ -287,7 +289,7 @@ public class ErrorResponseUtilTest
         String code = "code"; // UTA: default value
         String message = "message"; // UTA: default value
         String requestId = "requestId"; // UTA: default value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -308,7 +310,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = null; // UTA: configured value
         String requestId = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -329,7 +331,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = null; // UTA: configured value
         String requestId = "requestId"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -350,7 +352,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = "********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************"; // UTA: configured value
         String requestId = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -371,7 +373,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = "********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************"; // UTA: configured value
         String requestId = "requestId"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -392,7 +394,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = "message"; // UTA: configured value
         String requestId = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -413,7 +415,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = "message"; // UTA: configured value
         String requestId = "requestId"; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -434,7 +436,7 @@ public class ErrorResponseUtilTest
         String code = null; // UTA: configured value
         String message = "*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************"; // UTA: configured value
         String requestId = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
@@ -455,11 +457,55 @@ public class ErrorResponseUtilTest
         String code = "code"; // UTA: configured value
         String message = null; // UTA: configured value
         String requestId = null; // UTA: configured value
-        ErrorResponseUtil.writeError(resp, status, code, message, requestId);
+        invokeWriteError(resp, status, code, message, requestId);
 
     }
 
+    private static void invokeWriteError(
+            HttpServletResponse resp,
+            int status,
+            String code,
+            String message,
+            String requestId
+    ) throws Throwable {
+        Method method = ErrorResponseUtil.class.getDeclaredMethod(
+                "writeError",
+                HttpServletResponse.class,
+                int.class,
+                String.class,
+                String.class,
+                String.class
+        );
+        method.setAccessible(true);
+        try {
+            method.invoke(null, resp, status, code, message, requestId);
+        } catch (InvocationTargetException ex) {
+            if (ex.getCause() != null) {
+                throw ex.getCause();
+            }
+            throw ex;
+        }
+    }
 
+    @Test
+    public void testWriteErrorPrivateOverload_delegatesWithDefaultCode() throws Throwable {
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        PrintWriter writer = mock(PrintWriter.class);
+        when(resp.getWriter()).thenReturn(writer);
+
+        Method method = ErrorResponseUtil.class.getDeclaredMethod(
+                "writeError",
+                HttpServletResponse.class,
+                int.class,
+                String.class
+        );
+        method.setAccessible(true);
+
+        method.invoke(null, resp, 400, "bad input");
+
+        verify(resp).setStatus(400);
+        verify(resp).setContentType("application/json; charset=UTF-8");
+    }
 
     // Merged from ErrorResponseUtilBranchTest
     @Test

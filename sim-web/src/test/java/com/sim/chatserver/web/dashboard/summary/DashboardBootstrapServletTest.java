@@ -170,7 +170,7 @@ class DashboardBootstrapServletTest {
         Method format = DashboardBootstrapServlet.class.getDeclaredMethod("formatTimestamp", Timestamp.class);
         format.setAccessible(true);
 
-        assertEquals("â€”", format.invoke(servlet, (Object) null));
+        assertEquals("\u2014", format.invoke(servlet, (Object) null));
 
         Timestamp ts = Timestamp.from(Instant.parse("2026-08-01T10:15:30Z"));
         String expected = ts.toInstant()

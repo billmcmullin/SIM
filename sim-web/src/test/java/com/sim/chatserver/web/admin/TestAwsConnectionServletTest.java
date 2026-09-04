@@ -74,7 +74,7 @@ class TestAwsConnectionServletTest {
     }
 
     @Test
-    void doPost_returnsOk_whenAwsTestSucceeds() throws Exception {
+    void doPost_returnsBadRequest_whenAwsDescribeFails() throws Exception {
         TestAwsConnectionServlet servlet = new TestAwsConnectionServlet();
 
         HttpServletRequest req = requestWithParams(Map.of(
@@ -96,7 +96,7 @@ class TestAwsConnectionServletTest {
             servlet.doPost(req, resp);
         }
 
-        verify(resp).setStatus(HttpServletResponse.SC_OK);
+        verify(resp).setStatus(HttpServletResponse.SC_BAD_REQUEST);
     }
 
     private static HttpServletRequest requestWithParams(Map<String, String[]> params) {

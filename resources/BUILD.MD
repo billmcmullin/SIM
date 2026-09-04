@@ -62,6 +62,39 @@ mvn clean test-compile jtest:agent verify jtest:monitor -pl sim-core,sim-web,sim
 mvn clean test-compile jtest:agent verify jtest:jtest -pl sim-core,sim-web,sim-app,sim-email -Djtest.config="<TEST CONFIG>" -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -DignoreHttpsErrors=true
 ```
 
+- Show SOAtest goal parameters:
+
+```bash
+mvn soatest:help -Ddetail=true -Dgoal=soatest
+```
+
+- PowerShell note: in this workspace, use `mvn --%` when passing dotted SOAtest properties (for example, `-Dsoatest.config`) to avoid argument parsing issues.
+- Parameter note: `soatest.config` must be a SOAtest test configuration name/URI (example: `soatest.builtin://Demo Configuration`), while `SIM_Test.properties` should be passed with `soatest.settings`.
+
+- Run SOAtest suites using project defaults (override via `-Dsoatest.*`):
+
+```bash
+mvn soatest:soatest -Dsoatest.home=<SOATEST_HOME> -Dsoatest.config="<SOATEST_CONFIG>" -Dsoatest.settings=resources/soatest/SIM_Test.properties -Dsoatest.resources=resources/soatest/SIM.tst -Dsoatest.data=target/soatest/workspace -Dsoatest.report=target/soatest/report -Dsoatest.showdetails=true
+```
+
+- PowerShell equivalent:
+
+```bash
+mvn --% soatest:soatest -Dsoatest.home=<SOATEST_HOME> -Dsoatest.config="<SOATEST_CONFIG>" -Dsoatest.settings=resources/soatest/SIM_Test.properties -Dsoatest.resources=resources/soatest/SIM.tst -Dsoatest.data=target/soatest/workspace -Dsoatest.report=target/soatest/report -Dsoatest.showdetails=true
+```
+
+- Publish SOAtest report results to DTP (requires DTP connection in settings file):
+
+```bash
+mvn soatest:soatest -Dsoatest.home=<SOATEST_HOME> -Dsoatest.config="<SOATEST_CONFIG>" -Dsoatest.settings=resources/soatest/SIM_Test.properties -Dsoatest.publish=true -Dsoatest.report=target/soatest/report
+```
+
+- PowerShell equivalent:
+
+```bash
+mvn --% soatest:soatest -Dsoatest.home=<SOATEST_HOME> -Dsoatest.config="<SOATEST_CONFIG>" -Dsoatest.settings=resources/soatest/SIM_Test.properties -Dsoatest.publish=true -Dsoatest.report=target/soatest/report
+```
+
 - Run OWASP
 
 ```bash

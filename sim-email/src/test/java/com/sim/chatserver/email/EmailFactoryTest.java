@@ -2,6 +2,7 @@ package com.sim.chatserver.email;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
@@ -14,7 +15,7 @@ class EmailFactoryTest {
     @Test
     @DisplayName("fromEnvOrProperties returns SMTP service")
     void fromEnvOrProperties_returnsSmtpService() {
-        EmailConfig config = smtpConfig();
+        EmailConfig config = mock(EmailConfig.class);
 
         try (MockedStatic<EmailConfigLoader> loaderMock = mockStatic(EmailConfigLoader.class)) {
             loaderMock.when(EmailConfigLoader::load).thenReturn(config);
@@ -34,13 +35,14 @@ class EmailFactoryTest {
     @Test
     @DisplayName("forProvider throws for invalid resolved config")
     void forProvider_invalidResolved_throws() {
+        EmailConfig smtpConfig = mock(EmailConfig.class);
         ResolvedEmailConfig resolved = new ResolvedEmailConfig(
-                smtpConfig(),
+            smtpConfig,
                 EmailConfigSource.NONE,
                 false,
                 "not valid",
                 EmailProviderType.SMTP,
-                smtpConfig()
+            smtpConfig
         );
 
         assertThrows(IllegalArgumentException.class, () -> EmailFactory.forProvider(resolved));
@@ -49,13 +51,27 @@ class EmailFactoryTest {
     @Test
     @DisplayName("forProvider returns SMTP service")
     void forProvider_smtp_returnsSmtpService() {
-        EmailConfig config = smtpConfig();
+        EmailConfig config = mock(EmailConfig.class);
         ResolvedEmailConfig resolved = ResolvedEmailConfig.smtp(
                 config,
                 EmailConfigSource.DATABASE,
                 true,
                 "ok"
         );
+
+        EmailService service = EmailFactory.forProvider(resolved);
+
+        assertInstanceOf(SmtpEmailService.class, service);
+    }
+
+    @Test
+    @DisplayName("forProvider defaults null provider type to SMTP")
+    void forProvider_nullProviderType_defaultsToSmtp() {
+        EmailConfig config = mock(EmailConfig.class);
+        ResolvedEmailConfig resolved = mock(ResolvedEmailConfig.class);
+        when(resolved.valid()).thenReturn(true);
+        when(resolved.providerType()).thenReturn(null);
+        when(resolved.config()).thenReturn(config);
 
         EmailService service = EmailFactory.forProvider(resolved);
 
@@ -95,13 +111,7 @@ class EmailFactoryTest {
     @Test
     @DisplayName("forProvider returns Graph service")
     void forProvider_graph_returnsGraphService() {
-        GraphEmailConfig graph = new GraphEmailConfig(
-                "tenant-id",
-                "client-id",
-                "client-secret",
-                "sender@example.com",
-                "login.microsoftonline.com"
-        );
+        GraphEmailConfig graph = mock(GraphEmailConfig.class);
         ResolvedEmailConfig resolved = ResolvedEmailConfig.graph(
                 graph,
                 EmailConfigSource.PROPERTIES,
@@ -114,16 +124,19 @@ class EmailFactoryTest {
         assertInstanceOf(GraphEmailService.class, service);
     }
 
-    private static EmailConfig smtpConfig() {
-        return new EmailConfig(
-                "smtp.example.com",
-                587,
+    @Test
+    @DisplayName("createForProvider delegates to provider factory")
+    void createForProvider_returnsSmtpService() {
+        EmailConfig smtpConfig = mock(EmailConfig.class);
+        ResolvedEmailConfig resolved = ResolvedEmailConfig.smtp(
+            smtpConfig,
+                EmailConfigSource.PROPERTIES,
                 true,
-                true,
-                false,
-                "smtp-user",
-                "smtp-pass",
-                "noreply@example.com"
+                "ok"
         );
+
+        EmailService service = EmailFactory.createForProvider(resolved);
+
+        assertInstanceOf(SmtpEmailService.class, service);
     }
 }

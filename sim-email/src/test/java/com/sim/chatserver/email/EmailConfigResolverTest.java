@@ -1,5 +1,7 @@
 package com.sim.chatserver.email;
 
+import java.lang.reflect.Constructor;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -163,5 +165,86 @@ class EmailConfigResolverTest {
             assertTrue(result.valid());
             assertEquals(65535, result.config().port());
         }
+    }
+
+    @Test
+    void resolveEffectiveConfig_delegatesToResolverAndReturnsResult() {
+        DbEmailConfigProvider db = mock(DbEmailConfigProvider.class);
+        EmailConfig dbCfg = new EmailConfig("smtp.db.com", 465, true, false, true, "dbu", "dbp", "db@x.com");
+
+        try (MockedStatic<EmailConfigLoader> loader = mockStatic(EmailConfigLoader.class)) {
+            loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(null);
+            loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
+            when(db.load()).thenReturn(dbCfg);
+
+            ResolvedEmailConfig result = EmailConfigResolver.resolveEffectiveConfig(db);
+
+            assertEquals(EmailConfigSource.DATABASE, result.source());
+            assertTrue(result.valid());
+            assertSame(dbCfg, result.config());
+            verify(db, times(1)).load();
+        }
+    }
+
+    @Test
+    void resolve_usesGraphDatabaseProvider_whenAvailableAndUsable() throws Exception {
+        DbEmailConfigProvider db = mock(DbEmailConfigProvider.class);
+        DbGraphEmailConfigProvider graphDb = mock(DbGraphEmailConfigProvider.class);
+        GraphEmailConfig graphCfg = mock(GraphEmailConfig.class);
+        when(graphCfg.isUsable()).thenReturn(true);
+        when(graphDb.load()).thenReturn(graphCfg);
+
+        try (MockedStatic<EmailConfigLoader> loader = mockStatic(EmailConfigLoader.class)) {
+            loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(null);
+            loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
+
+            EmailConfigResolver resolver = createResolver(db, graphDb);
+            ResolvedEmailConfig result = resolver.resolve();
+
+            assertEquals(EmailConfigSource.DATABASE, result.source());
+            assertTrue(result.valid());
+            assertEquals(EmailProviderType.GRAPH, result.providerType());
+            assertSame(graphCfg, result.providerConfig());
+
+            verify(graphDb, times(1)).load();
+            verify(db, never()).load();
+        }
+    }
+
+    @Test
+    void resolve_fallsBackToSmtpDatabase_whenGraphDbConfigNotUsable() throws Exception {
+        DbEmailConfigProvider db = mock(DbEmailConfigProvider.class);
+        DbGraphEmailConfigProvider graphDb = mock(DbGraphEmailConfigProvider.class);
+        GraphEmailConfig graphCfg = mock(GraphEmailConfig.class);
+        EmailConfig smtpDb = mock(EmailConfig.class);
+        when(graphCfg.isUsable()).thenReturn(false);
+        when(graphDb.load()).thenReturn(graphCfg);
+        when(db.load()).thenReturn(smtpDb);
+        when(smtpDb.host()).thenReturn("smtp.db.com");
+        when(smtpDb.port()).thenReturn(587);
+
+        try (MockedStatic<EmailConfigLoader> loader = mockStatic(EmailConfigLoader.class)) {
+            loader.when(EmailConfigLoader::loadEnvOnly).thenReturn(null);
+            loader.when(EmailConfigLoader::loadPropertiesOnly).thenReturn(null);
+
+            EmailConfigResolver resolver = createResolver(db, graphDb);
+            ResolvedEmailConfig result = resolver.resolve();
+
+            assertEquals(EmailConfigSource.DATABASE, result.source());
+            assertTrue(result.valid());
+            assertEquals(EmailProviderType.SMTP, result.providerType());
+            assertSame(smtpDb, result.config());
+
+            verify(graphDb, times(1)).load();
+            verify(db, times(1)).load();
+        }
+    }
+
+    private EmailConfigResolver createResolver(DbEmailConfigProvider db,
+            DbGraphEmailConfigProvider graphDb) throws Exception {
+        Constructor<EmailConfigResolver> ctor = EmailConfigResolver.class
+                .getDeclaredConstructor(DbEmailConfigProvider.class, DbGraphEmailConfigProvider.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(db, graphDb);
     }
 }

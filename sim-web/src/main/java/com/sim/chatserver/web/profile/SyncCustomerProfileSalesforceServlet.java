@@ -69,10 +69,10 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
             SalesforceCustomerMatch match;
             try {
-                match = SALESFORCE_CLIENT.findBestCustomerMatch(searchName);
+                match = SALESFORCE_CLIENT.lookupBestCustomerMatch(searchName);
             } catch (SalesforceClient.SalesforceClientException sce) {
                 logFailure("Salesforce request failed while syncing customer profile", sce);
-                writeJson(resp, sce.getStatusCode(), errorPayload("Salesforce request failed."));
+                writeJson(resp, sce.statusCode(), errorPayload("Salesforce request failed."));
                 return;
             } catch (IllegalStateException ise) {
                 logFailure("Invalid Salesforce request state while syncing customer profile", ise);
@@ -103,30 +103,35 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 return;
             }
 
-            CustomerProfile profile = new CustomerProfile();
-            profile.setSessionId(sessionId != null ? sessionId : "friendly:" + searchName);
-            profile.setFriendlyName(match.getName() != null ? match.getName() : friendlyName);
-            profile.setSalesforceContactId(match.getContactId());
-            profile.setSalesforceAccountId(match.getAccountId());
-            profile.setEmail(match.getEmail());
-            profile.setPhone(match.getPhone());
-            profile.setTitle(match.getTitle());
-            profile.setDepartment(match.getDepartment());
-            profile.setRawJson(match.getRawJson());
-            profile.setLastSyncedAt(OffsetDateTime.now(ZoneOffset.UTC));
+                String resolvedSessionId = sessionId != null ? sessionId : "friendly:" + searchName;
+                String resolvedFriendlyName = match.fullName() != null ? match.fullName() : friendlyName;
+                OffsetDateTime syncedAt = OffsetDateTime.now(ZoneOffset.UTC);
 
-            CustomerProfileStore.upsert(profile);
+                CustomerProfile profile = CustomerProfile.fromSalesforceSync(
+                    resolvedSessionId,
+                    resolvedFriendlyName,
+                    match.contactId(),
+                    match.accountId(),
+                    match.emailValue(),
+                    match.phoneValue(),
+                    match.titleValue(),
+                    match.departmentValue(),
+                    match.rawJsonValue(),
+                    syncedAt
+                );
+
+                CustomerProfileStore.saveProfile(profile);
 
             JsonObject profileJson = Json.createObjectBuilder()
-                    .add("sessionId", nullToEmpty(profile.getSessionId()))
-                    .add("friendlyName", nullToEmpty(profile.getFriendlyName()))
-                    .add("salesforceContactId", nullToEmpty(profile.getSalesforceContactId()))
-                    .add("salesforceAccountId", nullToEmpty(profile.getSalesforceAccountId()))
-                    .add("email", nullToEmpty(profile.getEmail()))
-                    .add("phone", nullToEmpty(profile.getPhone()))
-                    .add("title", nullToEmpty(profile.getTitle()))
-                    .add("department", nullToEmpty(profile.getDepartment()))
-                    .add("lastSyncedAt", profile.getLastSyncedAt() == null ? "" : profile.getLastSyncedAt().toString())
+                    .add("sessionId", nullToEmpty(resolvedSessionId))
+                    .add("friendlyName", nullToEmpty(resolvedFriendlyName))
+                    .add("salesforceContactId", nullToEmpty(match.contactId()))
+                    .add("salesforceAccountId", nullToEmpty(match.accountId()))
+                    .add("email", nullToEmpty(match.emailValue()))
+                    .add("phone", nullToEmpty(match.phoneValue()))
+                    .add("title", nullToEmpty(match.titleValue()))
+                    .add("department", nullToEmpty(match.departmentValue()))
+                    .add("lastSyncedAt", syncedAt.toString())
                     .build();
 
             JsonObject ok = Json.createObjectBuilder()

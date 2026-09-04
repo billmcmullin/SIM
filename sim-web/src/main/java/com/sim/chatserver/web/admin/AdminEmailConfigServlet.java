@@ -44,8 +44,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         }
 
         DbEmailConfigProvider provider = emailConfigProvider();
-        EmailConfigResolver resolver = EmailConfigResolver.create(provider);
-        ResolvedEmailConfig resolved = resolver.resolve();
+        ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(provider);
 
         EmailConfig effective = resolved.config();
 
@@ -245,8 +244,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
                 cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);
             } else {
-                EmailConfigResolver resolver = EmailConfigResolver.create(provider);
-                ResolvedEmailConfig resolved = resolver.resolve();
+                ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(provider);
                 if (!resolved.valid() || resolved.config() == null) {
                     writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "No valid effective SMTP config to test.");
                     return;

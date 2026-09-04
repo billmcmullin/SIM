@@ -1338,6 +1338,46 @@ public class CustomerProfileTest
 
     }
 
+    @Test
+    public void testFromSalesforceSync_populatesAllFields() {
+        OffsetDateTime syncedAt = OffsetDateTime.parse("2026-09-04T08:00:00Z");
+
+        CustomerProfile profile = CustomerProfile.fromSalesforceSync(
+                "sess-123",
+                "Alice Example",
+                "003-contact",
+                "001-account",
+                "alice@example.com",
+                "+1-555-0100",
+                "Manager",
+                "Support",
+                "{\"raw\":true}",
+                syncedAt
+        );
+
+        assertAll(() -> {
+            assertEquals("sess-123", profile.getSessionId());
+        }, () -> {
+            assertEquals("Alice Example", profile.getFriendlyName());
+        }, () -> {
+            assertEquals("003-contact", profile.getSalesforceContactId());
+        }, () -> {
+            assertEquals("001-account", profile.getSalesforceAccountId());
+        }, () -> {
+            assertEquals("alice@example.com", profile.getEmail());
+        }, () -> {
+            assertEquals("+1-555-0100", profile.getPhone());
+        }, () -> {
+            assertEquals("Manager", profile.getTitle());
+        }, () -> {
+            assertEquals("Support", profile.getDepartment());
+        }, () -> {
+            assertEquals("{\"raw\":true}", profile.getRawJson());
+        }, () -> {
+            assertEquals(syncedAt, profile.getLastSyncedAt());
+        });
+    }
+
 
     // Merged from CustomerProfileSerializationGuardTest
     

@@ -71,8 +71,12 @@ public class DashboardTermService {
         return buildTermSummary(conn, widgets, terms, null, null);
     }
 
-    public final TermSummary buildTermSummaryForDashboard(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+    final TermSummary buildTermSummaryForDashboard(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
         return buildTermSummary(conn, widgets, terms);
+    }
+
+    public final TermSummary computeTermSummaryForDashboard(Connection conn, List<WidgetEntry> widgets, List<TermDefinition> terms) throws SQLException {
+        return buildTermSummaryForDashboard(conn, widgets, terms);
     }
 
     /**

@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.persistence.PersistenceException;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,7 +29,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mockStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 /**
@@ -406,7 +411,6 @@ public class ProfileServletTest
         @BeforeEach
         void setUp() throws Exception {
             servlet = new ProfileServlet();
-            servlet = servletWithUserService(userService);
     
             responseWriter = new StringWriter();
             when(resp.getWriter()).thenReturn(new PrintWriter(responseWriter, true));
@@ -434,7 +438,7 @@ public class ProfileServletTest
             when(userService.updateCredentials("old-user", "new-user", "new-pass")).thenReturn(userAccount);
             when(userAccount.getUsername()).thenReturn("new-user");
     
-            servlet.doPost(req, resp);
+            withUserServiceCdi(userService, () -> servlet.doPost(req, resp));
     
             verify(resp).setStatus(HttpServletResponse.SC_OK);
             verify(session).setAttribute("user", "new-user");
@@ -450,7 +454,7 @@ public class ProfileServletTest
             when(userService.updateCredentials("old-user", "new-user", "new-pass"))
                     .thenThrow(new PersistenceException("duplicate"));
     
-            servlet.doPost(req, resp);
+                withUserServiceCdi(userService, () -> servlet.doPost(req, resp));
     
             verify(resp).setStatus(HttpServletResponse.SC_CONFLICT);
             assertEquals(true, responseWriter.toString().contains("Could not update profile."));
@@ -463,7 +467,7 @@ public class ProfileServletTest
             when(userService.updateCredentials("old-user", "new-user", "new-pass"))
                     .thenThrow(new IllegalStateException("db unavailable"));
     
-            servlet.doPost(req, resp);
+                withUserServiceCdi(userService, () -> servlet.doPost(req, resp));
     
             verify(resp).setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             assertEquals(true, responseWriter.toString().contains("Failed to update profile."));
@@ -474,6 +478,27 @@ public class ProfileServletTest
                 return userService;
             }
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void withUserServiceCdi(UserService userService, ThrowingRunnable action) {
+        Instance<UserService> instance = (Instance<UserService>) mock(Instance.class);
+        when(instance.get()).thenReturn(userService);
+
+        CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
+        when(cdi.select(UserService.class)).thenReturn(instance);
+
+        try (MockedStatic<CDI> cdiStatic = mockStatic(CDI.class)) {
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            action.run();
+        } catch (Exception ex) {
+            throw new AssertionError(ex);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 }
 

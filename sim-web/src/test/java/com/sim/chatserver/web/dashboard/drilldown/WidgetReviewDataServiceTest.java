@@ -3,7 +3,15 @@ package com.sim.chatserver.web.dashboard.drilldown;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mockStatic;
 
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Timestamp;
@@ -12,10 +20,142 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
+
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
 class WidgetReviewDataServiceTest {
+
+    @Test
+    void handleGet_whenUnauthenticated_returnsUnauthorizedJson() throws Exception {
+        WidgetReviewDataService service = new WidgetReviewDataService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        StringWriter body = new StringWriter();
+
+        when(req.getSession(false)).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        service.handleGet(req, resp);
+
+        verify(resp).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        JsonObject payload = Json.createReader(new StringReader(body.toString())).readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("Authentication required"));
+    }
+
+    @Test
+    void handleGet_whenSelectionMissing_returnsNotFound() throws Exception {
+        WidgetReviewDataService service = new WidgetReviewDataService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpSession session = mock(HttpSession.class);
+        StringWriter body = new StringWriter();
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getParameterValues("selectionId")).thenReturn(new String[]{"sel-1"});
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        try (MockedStatic<WidgetReviewStartServlet> startMock = mockStatic(WidgetReviewStartServlet.class)) {
+            startMock.when(() -> WidgetReviewStartServlet.fetchSelection(session, "sel-1")).thenReturn(null);
+
+            service.handleGet(req, resp);
+        }
+
+        verify(resp).setStatus(HttpServletResponse.SC_NOT_FOUND);
+        JsonObject payload = Json.createReader(new StringReader(body.toString())).readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("Selection not found"));
+    }
+
+    @Test
+    void handleGet_snapshotSelection_filtersAndPaginatesRows() throws Exception {
+        WidgetReviewDataService service = new WidgetReviewDataService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpSession session = mock(HttpSession.class);
+        StringWriter body = new StringWriter();
+
+        List<TermChatSnapshot> snapshots = List.of(
+                new TermChatSnapshot("Term", "", "chat-1", "alpha", "ok", ts("2026-08-26T10:00:00Z"), ""),
+                new TermChatSnapshot("Term", "", "chat-2", "beta", "error response", ts("2026-08-27T10:00:00Z"), "")
+        );
+
+        WidgetReviewStartServlet.Selection selection = newSelection(
+                "widget-x",
+                List.of("chat-1", "chat-2"),
+                snapshots,
+                "global",
+                "prompt",
+                "response",
+                "2026-08-27"
+        );
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getParameterValues("selectionId")).thenReturn(new String[]{"sel-snap"});
+        when(req.getParameterValues("search")).thenReturn(new String[]{"no-such-token"});
+        when(req.getParameterValues("sortColumn")).thenReturn(new String[]{"created_at"});
+        when(req.getParameterValues("sortDir")).thenReturn(new String[]{"DESC"});
+        when(req.getParameterValues("limit")).thenReturn(new String[]{"1"});
+        when(req.getParameterValues("page")).thenReturn(new String[]{"1"});
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        try (MockedStatic<WidgetReviewStartServlet> startMock = mockStatic(WidgetReviewStartServlet.class)) {
+            startMock.when(() -> WidgetReviewStartServlet.fetchSelection(session, "sel-snap")).thenReturn(selection);
+
+            service.handleGet(req, resp);
+        }
+
+        JsonObject payload = Json.createReader(new StringReader(body.toString())).readObject();
+        assertEquals("ok", payload.getString("status"));
+        assertEquals(0, payload.getInt("totalRows"));
+        assertEquals(1, payload.getInt("totalPages"));
+        assertEquals(0, payload.getJsonArray("rows").size());
+    }
+
+    @Test
+    void handleGet_dbSelectionWithoutChatIds_returnsBadRequest() throws Exception {
+        WidgetReviewDataService service = new WidgetReviewDataService();
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpSession session = mock(HttpSession.class);
+        StringWriter body = new StringWriter();
+
+        WidgetReviewStartServlet.Selection selection = newSelection(
+                "",
+                List.of(),
+                null,
+                "",
+                "",
+                "",
+                null
+        );
+
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("alice");
+        when(req.getParameterValues("selectionId")).thenReturn(new String[]{"sel-db"});
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        try (MockedStatic<WidgetReviewStartServlet> startMock = mockStatic(WidgetReviewStartServlet.class)) {
+            startMock.when(() -> WidgetReviewStartServlet.fetchSelection(session, "sel-db")).thenReturn(selection);
+
+            service.handleGet(req, resp);
+        }
+
+        verify(resp).setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        JsonObject payload = Json.createReader(new StringReader(body.toString())).readObject();
+        assertEquals("error", payload.getString("status"));
+        assertTrue(payload.getString("message").contains("No chat IDs specified"));
+    }
 
     @Test
     void parseAndIdentifierHelpers_coverSafetyAndDefaults() throws Exception {
@@ -150,5 +290,38 @@ class WidgetReviewDataServiceTest {
 
     private String invokeString(Object target, String methodName, Class<?>[] paramTypes, Object... args) throws Exception {
         return (String) invokeObject(target, methodName, paramTypes, args);
+    }
+
+    private WidgetReviewStartServlet.Selection newSelection(
+            String widgetId,
+            List<String> chatIds,
+            List<TermChatSnapshot> snapshots,
+            String global,
+            String prompt,
+            String response,
+            String date) throws Exception {
+        Class<?> searchTermsClass = Class.forName("com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet$SearchTerms");
+        Constructor<?> searchTermsCtor = searchTermsClass.getDeclaredConstructor(String.class, String.class, String.class);
+        searchTermsCtor.setAccessible(true);
+        Object searchTerms = searchTermsCtor.newInstance(global, prompt, response);
+
+        Class<?> selectionClass = Class.forName("com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet$Selection");
+        Constructor<?> selectionCtor = selectionClass.getDeclaredConstructor(
+                String.class,
+                String.class,
+                String.class,
+                List.class,
+                List.class,
+                searchTermsClass,
+                String.class);
+        selectionCtor.setAccessible(true);
+        return (WidgetReviewStartServlet.Selection) selectionCtor.newInstance(
+                widgetId,
+                widgetId,
+                null,
+                chatIds,
+                snapshots,
+                searchTerms,
+                date);
     }
 }
