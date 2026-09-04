@@ -2,6 +2,7 @@ package com.sim.chatserver.service;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
@@ -460,7 +461,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -488,7 +489,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -516,7 +517,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = "requestId"; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -544,7 +545,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -572,7 +573,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -600,7 +601,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = null; // UTA: configured value
         String requestId = null; // UTA: configured value
         assertThrows(IOException.class, () -> {
-            underTest.sendChat(upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamUrl, null, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -629,7 +630,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -658,7 +659,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -687,7 +688,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = "requestId"; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -716,7 +717,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -745,7 +746,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = mock(JsonArray.class);
         String requestId = null; // UTA: configured value
         assertThrows(UpstreamConnectivityException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -774,7 +775,7 @@ public class UpstreamRequestServiceTest
         JsonArray attachments = null; // UTA: configured value
         String requestId = null; // UTA: configured value
         assertThrows(IOException.class, () -> {
-            underTest.sendChat(upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
+            invokeSendChat(underTest, upstreamBaseOrEndpoint, workspace, apiKey, message, mode, sessionId, reset, attachments, requestId);
         });
 
     }
@@ -968,6 +969,52 @@ public class UpstreamRequestServiceTest
         Method method = UpstreamConnectivityException.class.getDeclaredMethod("code");
         method.setAccessible(true);
         return (String) method.invoke(ex);
+    }
+
+    private static UpstreamResponse invokeSendChat(
+            UpstreamRequestService underTest,
+            String upstreamBaseOrEndpoint,
+            String workspace,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments,
+            String requestId
+    ) throws Throwable {
+        Method method = UpstreamRequestService.class.getDeclaredMethod(
+                "sendChat",
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                boolean.class,
+                JsonArray.class,
+                String.class
+        );
+        method.setAccessible(true);
+        try {
+            return (UpstreamResponse) method.invoke(
+                    underTest,
+                    upstreamBaseOrEndpoint,
+                    workspace,
+                    apiKey,
+                    message,
+                    mode,
+                    sessionId,
+                    reset,
+                    attachments,
+                    requestId
+            );
+        } catch (InvocationTargetException ex) {
+            if (ex.getCause() != null) {
+                throw ex.getCause();
+            }
+            throw ex;
+        }
     }
 }
 

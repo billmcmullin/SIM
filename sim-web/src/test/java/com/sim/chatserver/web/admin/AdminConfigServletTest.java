@@ -32,6 +32,8 @@ import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletContext;
@@ -47,7 +49,9 @@ class AdminConfigServletTest {
         TermsStore termsStore = mock(TermsStore.class);
         TestableAdminConfigServlet servlet = new TestableAdminConfigServlet(termsStore);
 
-        try (MockedStatic<EncryptedDbConfigStore> configStatic = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+        try (MockedStatic<EncryptedDbConfigStore> configStatic = Mockito.mockStatic(EncryptedDbConfigStore.class);
+                MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            mockTermsStoreLookup(cdiStatic, termsStore);
             servlet.init();
             configStatic.verify(EncryptedDbConfigStore::ensureTable);
             verify(termsStore).ensureTable();
@@ -159,7 +163,9 @@ class AdminConfigServletTest {
         when(resp.getWriter()).thenReturn(new PrintWriter(body));
 
         try (MockedStatic<EncryptedDbConfigStore> configStatic = Mockito.mockStatic(EncryptedDbConfigStore.class);
-                MockedStatic<WidgetStore> widgetStatic = Mockito.mockStatic(WidgetStore.class)) {
+            MockedStatic<WidgetStore> widgetStatic = Mockito.mockStatic(WidgetStore.class);
+            MockedStatic<CDI> cdiStatic = Mockito.mockStatic(CDI.class)) {
+            mockTermsStoreLookup(cdiStatic, termsStore);
             configStatic.when(EncryptedDbConfigStore::load).thenReturn(cfg);
             widgetStatic.when(() -> WidgetStore.list(null))
                     .thenReturn(List.of(com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "w1", "Widget One", Instant.now())));
@@ -348,6 +354,16 @@ class AdminConfigServletTest {
         protected TermsStore termsStore() {
             return termsStore;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void mockTermsStoreLookup(MockedStatic<CDI> cdiStatic, TermsStore termsStore) {
+        Instance<TermsStore> instance = (Instance<TermsStore>) mock(Instance.class);
+        when(instance.get()).thenReturn(termsStore);
+
+        CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
+        when(cdi.select(TermsStore.class)).thenReturn(instance);
+        cdiStatic.when(CDI::current).thenReturn(cdi);
     }
 
     private static final class InputStreamThatFailsOnRead extends java.io.InputStream {

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -35,7 +36,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
     void sendHealthTestEmail_coversNullConfigAndFailurePaths() {
         AutoEmailAlertConfigStore store = mock(AutoEmailAlertConfigStore.class);
         WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
-        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+        AutoEmailAlertScheduler scheduler = newScheduler(
                 store,
                 mock(DataSource.class),
                 checker,
@@ -65,7 +66,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
     void evaluateHealthAlert_downAndUpPaths_updateState() throws Exception {
         AutoEmailAlertConfigStore store = mock(AutoEmailAlertConfigStore.class);
         WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
-        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+        AutoEmailAlertScheduler scheduler = newScheduler(
                 store,
                 mock(DataSource.class),
                 checker,
@@ -108,7 +109,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
         AtomicReference<String> rebootCapture = new AtomicReference<>();
 
-        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+        AutoEmailAlertScheduler scheduler = newScheduler(
                 store,
                 mock(DataSource.class),
                 checker,
@@ -148,7 +149,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
     void attemptAutomaticAwsRestart_withValidAwsConfig_rebootsInstance() throws Exception {
         AtomicReference<String> capture = new AtomicReference<>();
 
-        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+        AutoEmailAlertScheduler scheduler = newScheduler(
                 mock(AutoEmailAlertConfigStore.class),
                 mock(DataSource.class),
                 mock(WidgetAvailabilityChecker.class),
@@ -185,7 +186,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         AutoEmailAlertConfigStore store = mock(AutoEmailAlertConfigStore.class);
         WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
 
-        AutoEmailAlertScheduler scheduler = new AutoEmailAlertScheduler(
+        AutoEmailAlertScheduler scheduler = newScheduler(
                 store,
                 mock(DataSource.class),
                 checker,
@@ -347,8 +348,42 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         assertTrue(termBody.contains("Increase: 10"));
     }
 
+    private AutoEmailAlertScheduler newScheduler(
+            AutoEmailAlertConfigStore store,
+            DataSource dataSource,
+            WidgetAvailabilityChecker checker,
+            TermsStore termsStore,
+            DbEmailConfigProvider dbEmailConfigProvider,
+            AutoEmailAlertScheduler.AwsConfigLoader awsConfigLoader,
+            AutoEmailAlertScheduler.Ec2RestartInvoker ec2RestartInvoker
+    ) {
+        try {
+            Constructor<AutoEmailAlertScheduler> ctor = AutoEmailAlertScheduler.class.getDeclaredConstructor(
+                    AutoEmailAlertConfigStore.class,
+                    DataSource.class,
+                    WidgetAvailabilityChecker.class,
+                    TermsStore.class,
+                    DbEmailConfigProvider.class,
+                    AutoEmailAlertScheduler.AwsConfigLoader.class,
+                    AutoEmailAlertScheduler.Ec2RestartInvoker.class
+            );
+            ctor.setAccessible(true);
+            return ctor.newInstance(
+                    store,
+                    dataSource,
+                    checker,
+                    termsStore,
+                    dbEmailConfigProvider,
+                    awsConfigLoader,
+                    ec2RestartInvoker
+            );
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate AutoEmailAlertScheduler for test", ex);
+        }
+    }
+
     private AutoEmailAlertScheduler newScheduler() {
-        return new AutoEmailAlertScheduler(
+        return newScheduler(
                 mock(AutoEmailAlertConfigStore.class),
                 mock(DataSource.class),
                 mock(WidgetAvailabilityChecker.class),

@@ -95,7 +95,7 @@ final class DashboardJdbcDataService {
             if (terms == null) {
                 terms = List.of();
             }
-            TermSummary allTimeSummary = termService.buildTermSummaryForDashboard(conn, widgets, terms);
+            TermSummary allTimeSummary = termService.computeTermSummaryForDashboard(conn, widgets, terms);
             return filterTermSummaryByRange(allTimeSummary, rangeStart, rangeEnd);
         } catch (SQLException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to compute term summary", ex);

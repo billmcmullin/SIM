@@ -84,7 +84,7 @@ public class UpstreamRequestService {
     /**
      * Preferred overload: base origin OR full endpoint + workspace.
      */
-    final UpstreamResponse sendChat(
+    private UpstreamResponse sendChat(
             String upstreamBaseOrEndpoint,
             String workspace,
             String apiKey,

@@ -1,5 +1,6 @@
 package com.sim.chatserver.service;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
 
@@ -683,12 +684,35 @@ public class UserServiceTest
     private static boolean invokeUserExists(UserService underTest, String username) throws Exception {
         Method method = UserService.class.getDeclaredMethod("userExists", String.class);
         method.setAccessible(true);
-        return ((Boolean) method.invoke(underTest, username)).booleanValue();
+        try {
+            return ((Boolean) method.invoke(underTest, username)).booleanValue();
+        } catch (InvocationTargetException ex) {
+            rethrowInvocationCause(ex);
+            throw ex;
+        }
     }
 
     private static UserAccount invokeFindByUsername(UserService underTest, String username) throws Exception {
         Method method = UserService.class.getDeclaredMethod("findByUsername", String.class);
         method.setAccessible(true);
-        return (UserAccount) method.invoke(underTest, username);
+        try {
+            return (UserAccount) method.invoke(underTest, username);
+        } catch (InvocationTargetException ex) {
+            rethrowInvocationCause(ex);
+            throw ex;
+        }
+    }
+
+    private static void rethrowInvocationCause(InvocationTargetException ex) throws Exception {
+        Throwable cause = ex.getCause();
+        if (cause instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (cause instanceof Error error) {
+            throw error;
+        }
+        if (cause instanceof Exception checkedException) {
+            throw checkedException;
+        }
     }
 }

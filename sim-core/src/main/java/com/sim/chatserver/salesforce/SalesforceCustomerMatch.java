@@ -21,64 +21,96 @@ public class SalesforceCustomerMatch {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public String getContactId() {
+    final String getContactId() {
         return contactId;
+    }
+
+    public String contactId() {
+        return getContactId();
     }
 
     final void setContactId(String contactId) {
         this.contactId = contactId;
     }
 
-    public String getAccountId() {
+    final String getAccountId() {
         return accountId;
+    }
+
+    public String accountId() {
+        return getAccountId();
     }
 
     final void setAccountId(String accountId) {
         this.accountId = accountId;
     }
 
-    public String getName() {
+    final String getName() {
         return name;
+    }
+
+    public String fullName() {
+        return getName();
     }
 
     final void setName(String name) {
         this.name = name;
     }
 
-    public String getEmail() {
+    final String getEmail() {
         return email;
+    }
+
+    public String emailValue() {
+        return getEmail();
     }
 
     final void setEmail(String email) {
         this.email = email;
     }
 
-    public String getPhone() {
+    final String getPhone() {
         return phone;
+    }
+
+    public String phoneValue() {
+        return getPhone();
     }
 
     final void setPhone(String phone) {
         this.phone = phone;
     }
 
-    public String getTitle() {
+    final String getTitle() {
         return title;
+    }
+
+    public String titleValue() {
+        return getTitle();
     }
 
     final void setTitle(String title) {
         this.title = title;
     }
 
-    public String getDepartment() {
+    final String getDepartment() {
         return department;
+    }
+
+    public String departmentValue() {
+        return getDepartment();
     }
 
     final void setDepartment(String department) {
         this.department = department;
     }
 
-    public String getRawJson() {
+    final String getRawJson() {
         return rawJson;
+    }
+
+    public String rawJsonValue() {
+        return getRawJson();
     }
 
     final void setRawJson(String rawJson) {

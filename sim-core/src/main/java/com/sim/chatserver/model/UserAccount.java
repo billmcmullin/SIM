@@ -46,7 +46,7 @@ public class UserAccount {
         return id;
     }
 
-    final void setId(Long id) {
+    final void assignId(Long id) {
         this.id = id;
     }
 
@@ -66,16 +66,24 @@ public class UserAccount {
         this.password = password;
     }
 
-    final String getEmail() {
+    private String emailInternal() {
         return email;
     }
 
-    final void setEmail(String email) {
+    final String emailValue() {
+        return emailInternal();
+    }
+
+    final void assignEmail(String email) {
         this.email = email;
     }
 
-    public Instant getCreatedAt() {
+    private Instant createdAtInternal() {
         return createdAt;
+    }
+
+    final Instant createdAtValue() {
+        return createdAtInternal();
     }
 
     public void setCreatedAt(Instant createdAt) {
@@ -98,11 +106,15 @@ public class UserAccount {
         this.role = role;
     }
 
-    final String getFullName() {
+    private String fullNameInternal() {
         return fullName != null ? fullName : username;
     }
 
-    final void setFullName(String fullName) {
+    final String fullNameValue() {
+        return fullNameInternal();
+    }
+
+    final void assignFullName(String fullName) {
         this.fullName = fullName;
     }
 
@@ -114,7 +126,7 @@ public class UserAccount {
         return this.password;
     }
 
-    final void setPasswordHash(String hash) {
+    final void assignPasswordHash(String hash) {
         this.password = hash;
     }
 

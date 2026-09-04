@@ -58,8 +58,12 @@ public class DashboardMetricsService {
         this.topTopicLimit = topTopicLimit;
     }
 
-    public static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+    static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
         return new DashboardMetricsService(dsHolder, termsStore, topTopicLimit);
+    }
+
+    public static DashboardMetricsService createForDashboard(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+        return create(dsHolder, termsStore, topTopicLimit);
     }
 
     public static final class DashboardProgressMetrics {
@@ -88,11 +92,11 @@ public class DashboardMetricsService {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
-        public int getChatsToday() {
+        final int getChatsToday() {
             return chatsToday;
         }
 
-        public int getChatsYesterday() {
+        final int getChatsYesterday() {
             return chatsYesterday;
         }
 
@@ -100,12 +104,28 @@ public class DashboardMetricsService {
             return chatsProgression;
         }
 
-        public int getTermsToday() {
+        final int getTermsToday() {
             return termsToday;
         }
 
-        public int getTermsYesterday() {
+        final int getTermsYesterday() {
             return termsYesterday;
+        }
+
+        public int chatsToday() {
+            return getChatsToday();
+        }
+
+        public int chatsYesterday() {
+            return getChatsYesterday();
+        }
+
+        public int termsToday() {
+            return getTermsToday();
+        }
+
+        public int termsYesterday() {
+            return getTermsYesterday();
         }
 
         ProgressStat getTermsProgression() {
@@ -113,7 +133,7 @@ public class DashboardMetricsService {
         }
     }
 
-    public final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
+    final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         List<WidgetStat> stats = new ArrayList<>();
         if (widgets == null || widgets.isEmpty()) {
             return stats;
@@ -162,7 +182,7 @@ public class DashboardMetricsService {
         return stats;
     }
 
-    public final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+    final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -177,7 +197,7 @@ public class DashboardMetricsService {
         }
     }
 
-    public final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+    final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -191,7 +211,7 @@ public class DashboardMetricsService {
         }
     }
 
-    public final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
+    final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -223,7 +243,7 @@ public class DashboardMetricsService {
         }
     }
 
-    public final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+    final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
         if (widgets == null || widgets.isEmpty()) {
             return List.of();
         }
@@ -312,7 +332,7 @@ public class DashboardMetricsService {
                 .collect(Collectors.toList());
     }
 
-    public final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+    final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
         if (widgets == null || widgets.isEmpty() || limit <= 0) {
             return List.of();
         }
@@ -351,6 +371,30 @@ public class DashboardMetricsService {
 
         all.sort(Comparator.comparing(OtherParasoftEntry::getCreatedAt).reversed());
         return all.stream().limit(limit).collect(Collectors.toList());
+    }
+
+    public final List<WidgetStat> collectWidgetStats(List<WidgetEntry> widgets) {
+        return buildWidgetStats(widgets);
+    }
+
+    public final ProgressStat collectChatProgression(List<WidgetEntry> widgets) {
+        return buildChatProgression(widgets);
+    }
+
+    public final ProgressStat collectNewUserProgression(List<WidgetEntry> widgets) {
+        return buildNewUserProgression(widgets);
+    }
+
+    public final DashboardProgressMetrics collectDashboardProgressMetrics(List<WidgetEntry> widgets) {
+        return buildDashboardProgressMetrics(widgets);
+    }
+
+    public final List<TopTopic> collectTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+        return buildTopTopicsTodayVsYesterday(widgets);
+    }
+
+    public final List<OtherParasoftEntry> collectLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+        return buildLatestOtherParasoftEntries(widgets, limit);
     }
 
     private int countRows(Connection conn, String tableName) throws SQLException {

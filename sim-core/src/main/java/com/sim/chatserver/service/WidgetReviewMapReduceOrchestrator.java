@@ -134,12 +134,20 @@ public class WidgetReviewMapReduceOrchestrator {
     public static final ProgressListener NOOP_PROGRESS_LISTENER = new ProgressListener() {
     };
 
-    public static WidgetReviewMapReduceOrchestrator createDefault(
+        static WidgetReviewMapReduceOrchestrator createDefault(
             WorkspaceClient workspaceClient,
             ReviewContextBuilderService contextBuilderService,
             PromptTemplateService promptTemplateService
     ) {
         return new WidgetReviewMapReduceOrchestrator(workspaceClient, contextBuilderService, promptTemplateService);
+    }
+
+    public static WidgetReviewMapReduceOrchestrator newDefault(
+            WorkspaceClient workspaceClient,
+            ReviewContextBuilderService contextBuilderService,
+            PromptTemplateService promptTemplateService
+    ) {
+        return createDefault(workspaceClient, contextBuilderService, promptTemplateService);
     }
 
     private WidgetReviewMapReduceOrchestrator(

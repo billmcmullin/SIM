@@ -41,7 +41,7 @@ class WidgetReviewOrchestrationRunnerTest {
         WidgetReviewMapReduceOrchestrator.OrchestrationResult expected = orchestrationResult(
                 workspaceResponse(202, "{\"status\":\"queued\"}", "application/json")
         );
-        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.newDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)
@@ -65,7 +65,7 @@ class WidgetReviewOrchestrationRunnerTest {
 
     @Test
     void run_rethrowsInterruptedException_andInterruptsThread() throws Exception {
-        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.newDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)
@@ -90,7 +90,7 @@ class WidgetReviewOrchestrationRunnerTest {
     @Test
     void run_wrapsUnexpectedExceptions_withIOException() throws Exception {
         IllegalStateException boom = new IllegalStateException("boom");
-        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.createDefault(
+        WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.newDefault(
                 mock(WorkspaceClient.class),
                 mock(ReviewContextBuilderService.class),
                 mock(PromptTemplateService.class)

@@ -136,7 +136,7 @@ public class AutoEmailAlertScheduler {
         return new AutoEmailAlertScheduler(store, dataSource, availabilityChecker, termsStore, dbEmailConfigProvider);
     }
 
-    AutoEmailAlertScheduler(
+    private AutoEmailAlertScheduler(
             AutoEmailAlertConfigStore store,
             DataSource dataSource,
             WidgetAvailabilityChecker availabilityChecker,
@@ -455,7 +455,7 @@ public class AutoEmailAlertScheduler {
         DashboardTermService termService = CDI.current().select(DashboardTermService.class).get();
 
         try (Connection conn = dataSource.getConnection()) {
-            TermSummary summary = termService.buildTermSummaryForDashboard(conn, widgets, terms);
+            TermSummary summary = termService.computeTermSummaryForDashboard(conn, widgets, terms);
             Map<String, Integer> counts = summary.getTermCounts();
             if (counts == null || counts.isEmpty()) {
                 return 0L;
@@ -484,14 +484,13 @@ public class AutoEmailAlertScheduler {
             List<EmailAttachment> attachments
     ) {
         try {
-            EmailConfigResolver resolver = EmailConfigResolver.create(dbEmailConfigProvider);
-            ResolvedEmailConfig resolved = resolver.resolve();
+            ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(dbEmailConfigProvider);
             if (!resolved.valid() || resolved.source() == EmailConfigSource.NONE) {
                 log.warning("Automatic alert email skipped: no valid email configuration available.");
                 return false;
             }
 
-            EmailService service = EmailFactory.forProvider(resolved);
+            EmailService service = EmailFactory.createForProvider(resolved);
             String htmlBodyValue = hasText(htmlBody) ? htmlBody : null;
             List<EmailAttachment> safeAttachments = attachments == null ? List.of() : attachments;
             EmailMessage message = EmailMessage.create(

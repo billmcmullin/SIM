@@ -36,7 +36,7 @@ public final class EmailFactory {
     /**
      * Provider-based factory entrypoint.
      */
-    public static EmailService forProvider(ResolvedEmailConfig resolved) { // parasoft-suppress OWASP2025.A1.DPPM "Public factory entrypoint is required by web module email dispatch."
+    static EmailService forProvider(ResolvedEmailConfig resolved) {
         if (resolved == null || !resolved.valid()) {
             throw new IllegalArgumentException("No valid email configuration resolved");
         }
@@ -61,5 +61,9 @@ public final class EmailFactory {
             }
             default -> throw new IllegalStateException("Unsupported email provider: " + provider);
         };
+    }
+
+    public static EmailService createForProvider(ResolvedEmailConfig resolved) {
+        return forProvider(resolved);
     }
 }

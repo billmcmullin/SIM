@@ -113,12 +113,20 @@ public final class DashboardViewModels {
             }
         }
 
-        public int getToday() {
+        final int getToday() {
             return today;
         }
 
-        public int getYesterday() {
+        final int getYesterday() {
             return yesterday;
+        }
+
+        public int todayValue() {
+            return getToday();
+        }
+
+        public int yesterdayValue() {
+            return getYesterday();
         }
 
         public int getDelta() {

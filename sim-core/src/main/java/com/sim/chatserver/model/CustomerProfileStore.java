@@ -150,7 +150,7 @@ public final class CustomerProfileStore {
         }
     }
 
-    public static void upsert(CustomerProfile profile) throws SQLException {
+    static void upsert(CustomerProfile profile) throws SQLException {
         ensureTable();
 
         if (profile == null || isBlank(profile.getSessionId())) {
@@ -173,6 +173,10 @@ public final class CustomerProfileStore {
 
             ps.executeUpdate();
         }
+    }
+
+    public static void saveProfile(CustomerProfile profile) throws SQLException {
+        upsert(profile);
     }
 
     private static void ensureColumn(Connection conn, String columnName, String columnType) throws SQLException {

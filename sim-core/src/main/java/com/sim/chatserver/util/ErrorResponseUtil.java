@@ -30,7 +30,7 @@ public final class ErrorResponseUtil {
         writeError(resp, status, DEFAULT_ERROR_CODE, message, requestId);
     }
 
-    static void writeError(HttpServletResponse resp,
+    private static void writeError(HttpServletResponse resp,
             int status,
             String code,
             String message,

@@ -38,7 +38,7 @@ final class DashboardMetricsService {
 
     static DashboardMetricsService create(AppDataSourceHolder dsHolder, com.sim.chatserver.term.TermsStore termsStore, int topTopicLimit) {
         return new DashboardMetricsService(
-                com.sim.chatserver.service.dashboard.DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit)
+            com.sim.chatserver.service.dashboard.DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit)
         );
     }
 
@@ -73,10 +73,10 @@ final class DashboardMetricsService {
                 return new DashboardProgressMetrics(0, 0, 0, 0);
             }
             return new DashboardProgressMetrics(
-                    core.getChatsToday(),
-                    core.getChatsYesterday(),
-                    Integer.valueOf(core.getTermsToday()),
-                    Integer.valueOf(core.getTermsYesterday())
+                    core.chatsToday(),
+                    core.chatsYesterday(),
+                    Integer.valueOf(core.termsToday()),
+                    Integer.valueOf(core.termsYesterday())
             );
         }
 
@@ -106,27 +106,27 @@ final class DashboardMetricsService {
     }
 
     List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
-        return delegate.buildWidgetStats(widgets);
+        return delegate.collectWidgetStats(widgets);
     }
 
     DashboardLocalViewModels.ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
-        return toLocalProgressStat(delegate.buildChatProgression(widgets));
+        return toLocalProgressStat(delegate.collectChatProgression(widgets));
     }
 
     DashboardLocalViewModels.ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
-        return toLocalProgressStat(delegate.buildNewUserProgression(widgets));
+        return toLocalProgressStat(delegate.collectNewUserProgression(widgets));
     }
 
     DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
-        return DashboardProgressMetrics.fromCore(delegate.buildDashboardProgressMetrics(widgets));
+        return DashboardProgressMetrics.fromCore(delegate.collectDashboardProgressMetrics(widgets));
     }
 
     List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
-        return delegate.buildTopTopicsTodayVsYesterday(widgets);
+        return delegate.collectTopTopicsTodayVsYesterday(widgets);
     }
 
     List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
-        return delegate.buildLatestOtherParasoftEntries(widgets, limit);
+        return delegate.collectLatestOtherParasoftEntries(widgets, limit);
     }
 
     private DashboardLocalViewModels.ProgressStat toLocalProgressStat(
@@ -135,7 +135,7 @@ final class DashboardMetricsService {
         if (coreProgress == null) {
             return new DashboardLocalViewModels.ProgressStat(0, 0);
         }
-        return new DashboardLocalViewModels.ProgressStat(coreProgress.getToday(), coreProgress.getYesterday());
+        return new DashboardLocalViewModels.ProgressStat(coreProgress.todayValue(), coreProgress.yesterdayValue());
     }
 
     private boolean matchesAnyPattern(String text, List<Pattern> patterns) {

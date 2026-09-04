@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
@@ -326,6 +327,37 @@ public class SalesforceCustomerMatchTest
         // When
         String result = underTest.toString();
 
+    }
+
+    @Test
+    public void testWrapperAccessors_returnUnderlyingValues() {
+        SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
+        underTest.setContactId("003-contact");
+        underTest.setAccountId("001-account");
+        underTest.setName("Alice Example");
+        underTest.setEmail("alice@example.com");
+        underTest.setPhone("+1-555-0100");
+        underTest.setTitle("Manager");
+        underTest.setDepartment("Support");
+        underTest.setRawJson("{\"raw\":true}");
+
+        assertAll(() -> {
+            assertEquals("003-contact", underTest.contactId());
+        }, () -> {
+            assertEquals("001-account", underTest.accountId());
+        }, () -> {
+            assertEquals("Alice Example", underTest.fullName());
+        }, () -> {
+            assertEquals("alice@example.com", underTest.emailValue());
+        }, () -> {
+            assertEquals("+1-555-0100", underTest.phoneValue());
+        }, () -> {
+            assertEquals("Manager", underTest.titleValue());
+        }, () -> {
+            assertEquals("Support", underTest.departmentValue());
+        }, () -> {
+            assertEquals("{\"raw\":true}", underTest.rawJsonValue());
+        });
     }
 
     @Test

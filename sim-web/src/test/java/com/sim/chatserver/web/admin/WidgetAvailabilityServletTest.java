@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker.WidgetAvailabilityResult;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.servlet.ServletOutputStream;
@@ -21,8 +23,10 @@ import jakarta.servlet.http.HttpSession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.MockedStatic;
 
 public class WidgetAvailabilityServletTest {
 
@@ -51,7 +55,7 @@ public class WidgetAvailabilityServletTest {
     @Test
     public void doGet_authenticatedHealthy_returnsOkJsonContract() throws Exception {
         WidgetAvailabilityChecker checker = mock(WidgetAvailabilityChecker.class);
-        WidgetAvailabilityServlet underTest = servletWithChecker(checker);
+        WidgetAvailabilityServlet underTest = new WidgetAvailabilityServlet();
 
         WidgetAvailabilityResult result = new WidgetAvailabilityResult(
                 true,
@@ -73,7 +77,10 @@ public class WidgetAvailabilityServletTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         when(resp.getOutputStream()).thenReturn(servletOutput(out));
 
-        underTest.doGet(req, resp);
+        try (MockedStatic<CDI> cdiStatic = mockStatic(CDI.class)) {
+            mockAvailabilityCheckerLookup(cdiStatic, checker);
+            underTest.doGet(req, resp);
+        }
 
         verify(resp).setStatus(HttpServletResponse.SC_OK);
         verify(resp).setContentType("application/json; charset=UTF-8");
@@ -105,11 +112,14 @@ public class WidgetAvailabilityServletTest {
         };
     }
 
-    private WidgetAvailabilityServlet servletWithChecker(WidgetAvailabilityChecker checker) {
-        return new WidgetAvailabilityServlet() {
-            protected WidgetAvailabilityChecker availabilityChecker() {
-                return checker;
-            }
-        };
+    @SuppressWarnings("unchecked")
+    private static void mockAvailabilityCheckerLookup(MockedStatic<CDI> cdiStatic,
+            WidgetAvailabilityChecker checker) {
+        Instance<WidgetAvailabilityChecker> instance = (Instance<WidgetAvailabilityChecker>) mock(Instance.class);
+        when(instance.get()).thenReturn(checker);
+
+        CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
+        when(cdi.select(WidgetAvailabilityChecker.class)).thenReturn(instance);
+        cdiStatic.when(CDI::current).thenReturn(cdi);
     }
 }

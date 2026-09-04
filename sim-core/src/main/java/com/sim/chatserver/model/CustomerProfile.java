@@ -25,11 +25,11 @@ public class CustomerProfile {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    public String getSessionId() {
+    final String getSessionId() {
         return sessionId;
     }
 
-    public void setSessionId(String sessionId) {
+    final void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 
@@ -45,7 +45,7 @@ public class CustomerProfile {
         return salesforceContactId;
     }
 
-    public void setSalesforceContactId(String salesforceContactId) {
+    final void setSalesforceContactId(String salesforceContactId) {
         this.salesforceContactId = salesforceContactId;
     }
 
@@ -53,7 +53,7 @@ public class CustomerProfile {
         return salesforceAccountId;
     }
 
-    public void setSalesforceAccountId(String salesforceAccountId) {
+    final void setSalesforceAccountId(String salesforceAccountId) {
         this.salesforceAccountId = salesforceAccountId;
     }
 
@@ -69,7 +69,7 @@ public class CustomerProfile {
         return phone;
     }
 
-    public void setPhone(String phone) {
+    final void setPhone(String phone) {
         this.phone = phone;
     }
 
@@ -77,7 +77,7 @@ public class CustomerProfile {
         return title;
     }
 
-    public void setTitle(String title) {
+    final void setTitle(String title) {
         this.title = title;
     }
 
@@ -85,7 +85,7 @@ public class CustomerProfile {
         return department;
     }
 
-    public void setDepartment(String department) {
+    final void setDepartment(String department) {
         this.department = department;
     }
 
@@ -93,7 +93,7 @@ public class CustomerProfile {
         return rawJson;
     }
 
-    public void setRawJson(String rawJson) {
+    final void setRawJson(String rawJson) {
         this.rawJson = rawJson;
     }
 
@@ -101,8 +101,34 @@ public class CustomerProfile {
         return lastSyncedAt;
     }
 
-    public void setLastSyncedAt(OffsetDateTime lastSyncedAt) {
+    final void setLastSyncedAt(OffsetDateTime lastSyncedAt) {
         this.lastSyncedAt = lastSyncedAt;
+    }
+
+    public static CustomerProfile fromSalesforceSync(
+            String sessionId,
+            String friendlyName,
+            String salesforceContactId,
+            String salesforceAccountId,
+            String email,
+            String phone,
+            String title,
+            String department,
+            String rawJson,
+            OffsetDateTime lastSyncedAt
+    ) {
+        CustomerProfile profile = new CustomerProfile();
+        profile.setSessionId(sessionId);
+        profile.setFriendlyName(friendlyName);
+        profile.setSalesforceContactId(salesforceContactId);
+        profile.setSalesforceAccountId(salesforceAccountId);
+        profile.setEmail(email);
+        profile.setPhone(phone);
+        profile.setTitle(title);
+        profile.setDepartment(department);
+        profile.setRawJson(rawJson);
+        profile.setLastSyncedAt(lastSyncedAt);
+        return profile;
     }
 
     final boolean isEmpty() {

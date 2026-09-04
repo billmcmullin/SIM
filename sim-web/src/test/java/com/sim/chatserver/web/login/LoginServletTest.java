@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.service.UserService;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -12,7 +14,9 @@ import jakarta.servlet.http.HttpSession;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
+import org.mockito.MockedStatic;
 /**
  * Parasoft Jtest UTA: Test class for LoginServlet
  *
@@ -34,7 +38,6 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -45,7 +48,7 @@ public class LoginServletTest
         HttpSession getSessionResult = null; // UTA: configured value
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        withUserServiceCdi(userServiceValue, () -> underTest.doGet(req, resp));
 
     }
 
@@ -61,7 +64,6 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -74,7 +76,7 @@ public class LoginServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        withUserServiceCdi(userServiceValue, () -> underTest.doGet(req, resp));
 
     }
 
@@ -90,7 +92,6 @@ public class LoginServletTest
         // Given
         LoginServlet underTest = new LoginServlet();
         UserService userServiceValue = mock(UserService.class);
-        underTest = servletWithUserService(userServiceValue);
 
         // When
         HttpServletRequest req = mock(HttpServletRequest.class);
@@ -103,7 +104,7 @@ public class LoginServletTest
         when(getSessionResult.getAttribute(nullable(String.class))).thenReturn(getAttributeResult);
         when(req.getSession(anyBoolean())).thenReturn(getSessionResult);
         HttpServletResponse resp = mock(HttpServletResponse.class);
-        underTest.doGet(req, resp);
+        withUserServiceCdi(userServiceValue, () -> underTest.doGet(req, resp));
 
     }
 
@@ -226,6 +227,25 @@ public class LoginServletTest
                 return userService;
             }
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void withUserServiceCdi(UserService userService, ThrowingRunnable action) throws Exception {
+        Instance<UserService> instance = (Instance<UserService>) mock(Instance.class);
+        when(instance.get()).thenReturn(userService);
+
+        CDI<Object> cdi = (CDI<Object>) mock(CDI.class);
+        when(cdi.select(UserService.class)).thenReturn(instance);
+
+        try (MockedStatic<CDI> cdiStatic = mockStatic(CDI.class)) {
+            cdiStatic.when(CDI::current).thenReturn(cdi);
+            action.run();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 }
 

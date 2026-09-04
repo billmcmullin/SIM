@@ -57,8 +57,7 @@ public class AdminEmailServlet extends HttpServlet {
 
         try {
             // Resolve SMTP source every request (ENV -> PROPERTIES -> DB)
-            EmailConfigResolver resolver = EmailConfigResolver.create(resolveDbProvider());
-            ResolvedEmailConfig resolved = resolver.resolve();
+            ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(resolveDbProvider());
             if (!resolved.valid() || resolved.config() == null || resolved.source() == EmailConfigSource.NONE) {
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error",
                         "No valid SMTP configuration found (ENV, properties, DB).");

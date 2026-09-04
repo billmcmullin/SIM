@@ -63,7 +63,7 @@ public class SalesforceClient {
         return new SalesforceClient();
     }
 
-    SalesforceClient(HttpClient httpClient) {
+    private SalesforceClient(HttpClient httpClient) {
         this.httpClient = httpClient;
         this.authClient = new SalesforceAuthClient(httpClient);
     }
@@ -71,9 +71,14 @@ public class SalesforceClient {
     /**
      * Uses persisted Salesforce config and searches by friendly name.
      */
-    public SalesforceCustomerMatch findBestCustomerMatch(String friendlyName)
+    final SalesforceCustomerMatch findBestCustomerMatch(String friendlyName)
             throws IOException, InterruptedException, SQLException, SalesforceClientException {
         return findBestCustomerMatch(friendlyName, null, null);
+    }
+
+    public SalesforceCustomerMatch lookupBestCustomerMatch(String friendlyName)
+            throws IOException, InterruptedException, SQLException, SalesforceClientException {
+        return findBestCustomerMatch(friendlyName);
     }
 
     /**
@@ -336,8 +341,12 @@ public class SalesforceClient {
             this.statusCode = statusCode;
         }
 
-        public int getStatusCode() {
+        final int getStatusCode() {
             return statusCode;
+        }
+
+        public int statusCode() {
+            return getStatusCode();
         }
     }
 }

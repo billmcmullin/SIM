@@ -23,21 +23,21 @@ public class UserAccountTest
 {
 
     /**
-     * Parasoft Jtest UTA: Test for getCreatedAt()
+     * Parasoft Jtest UTA: Test for createdAtValue()
      *
-     * @see com.sim.chatserver.model.UserAccount#getCreatedAt()
+     * @see com.sim.chatserver.model.UserAccount#createdAtValue()
      * @author bmcmullin
      */
     @Test
-    public void testGetCreatedAt() throws Throwable
+    public void testCreatedAtValue() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
-        Instant result = underTest.getCreatedAt();
+        Instant result = underTest.createdAtValue();
 
-        // Then - assertions for result of method getCreatedAt()
+        // Then - assertions for result of method createdAtValue()
         assertNull(result);
 
         // Then - assertions for this instance of UserAccount
@@ -48,27 +48,27 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for getEmail()
+     * Parasoft Jtest UTA: Test for emailValue()
      *
-     * @see com.sim.chatserver.model.UserAccount#getEmail()
+     * @see com.sim.chatserver.model.UserAccount#emailValue()
      * @author bmcmullin
      */
     @Test
-    public void testGetEmail() throws Throwable
+    public void testEmailValue() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
-        String result = underTest.getEmail();
+        String result = underTest.emailValue();
 
-        // Then - assertions for result of method getEmail()
+        // Then - assertions for result of method emailValue()
         assertNull(result);
 
         // Then - assertions for this instance of UserAccount
@@ -79,29 +79,29 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for getFullName()
+     * Parasoft Jtest UTA: Test for fullNameValue()
      *
-     * @see com.sim.chatserver.model.UserAccount#getFullName()
+     * @see com.sim.chatserver.model.UserAccount#fullNameValue()
      * @author bmcmullin
      */
     @Test
-    public void testGetFullName() throws Throwable
+    public void testFullNameValue() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
         String fullName = "fullName"; // UTA: default value
-        underTest.setFullName(fullName);
+        underTest.assignFullName(fullName);
 
         // When
-        String result = underTest.getFullName();
+        String result = underTest.fullNameValue();
 
-        // Then - assertions for result of method getFullName()
+        // Then - assertions for result of method fullNameValue()
         assertEquals("fullName", result);
 
         // Then - assertions for this instance of UserAccount
@@ -112,29 +112,29 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for getFullName()
+     * Parasoft Jtest UTA: Test for fullNameValue()
      *
-     * @see com.sim.chatserver.model.UserAccount#getFullName()
+     * @see com.sim.chatserver.model.UserAccount#fullNameValue()
      * @author bmcmullin
      */
     @Test
-    public void testGetFullName2() throws Throwable
+    public void testFullNameValueFallback() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
-        String result = underTest.getFullName();
+        String result = underTest.fullNameValue();
 
-        // Then - assertions for result of method getFullName()
+        // Then - assertions for result of method fullNameValue()
         assertNull(result);
 
         // Then - assertions for this instance of UserAccount
@@ -145,9 +145,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -176,9 +176,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -207,9 +207,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getUsername());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -238,9 +238,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getUsername());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -273,9 +273,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -306,9 +306,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -337,9 +337,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -368,28 +368,28 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNotNull(underTest.getCreatedAt());
+            assertNotNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for setEmail(String)
+     * Parasoft Jtest UTA: Test for assignEmail(String)
      *
-     * @see com.sim.chatserver.model.UserAccount#setEmail(String)
+     * @see com.sim.chatserver.model.UserAccount#assignEmail(String)
      * @author bmcmullin
      */
     @Test
-    public void testSetEmail() throws Throwable
+    public void testassignEmail() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
         String email = "email"; // UTA: default value
-        underTest.setEmail(email);
+        underTest.assignEmail(email);
 
         // Then - assertions for this instance of UserAccount
         assertAll(() -> {
@@ -399,28 +399,28 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertEquals("email", underTest.getEmail());
+            assertEquals("email", underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for setFullName(String)
+     * Parasoft Jtest UTA: Test for assignFullName(String)
      *
-     * @see com.sim.chatserver.model.UserAccount#setFullName(String)
+     * @see com.sim.chatserver.model.UserAccount#assignFullName(String)
      * @author bmcmullin
      */
     @Test
-    public void testSetFullName() throws Throwable
+    public void testassignFullName() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
         String fullName = "fullName"; // UTA: default value
-        underTest.setFullName(fullName);
+        underTest.assignFullName(fullName);
 
         // Then - assertions for this instance of UserAccount
         assertAll(() -> {
@@ -430,28 +430,28 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for setId(Long)
+     * Parasoft Jtest UTA: Test for assignId(Long)
      *
-     * @see com.sim.chatserver.model.UserAccount#setId(Long)
+     * @see com.sim.chatserver.model.UserAccount#assignId(Long)
      * @author bmcmullin
      */
     @Test
-    public void testSetId() throws Throwable
+    public void testAssignId() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
         Long id = 1L; // UTA: default value
-        underTest.setId(id);
+        underTest.assignId(id);
 
         // Then - assertions for this instance of UserAccount
         assertAll(() -> {
@@ -461,9 +461,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -492,28 +492,28 @@ public class UserAccountTest
         }, () -> {
             assertEquals("password", underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
 
     /**
-     * Parasoft Jtest UTA: Test for setPasswordHash(String)
+     * Parasoft Jtest UTA: Test for assignPasswordHash(String)
      *
-     * @see com.sim.chatserver.model.UserAccount#setPasswordHash(String)
+     * @see com.sim.chatserver.model.UserAccount#assignPasswordHash(String)
      * @author bmcmullin
      */
     @Test
-    public void testSetPasswordHash() throws Throwable
+    public void testAssignPasswordHash() throws Throwable
     {
         // Given
         UserAccount underTest = new UserAccount();
 
         // When
         String hash = "hash"; // UTA: default value
-        underTest.setPasswordHash(hash);
+        underTest.assignPasswordHash(hash);
 
         // Then - assertions for this instance of UserAccount
         assertAll(() -> {
@@ -523,9 +523,9 @@ public class UserAccountTest
         }, () -> {
             assertEquals("hash", underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -554,9 +554,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -585,9 +585,9 @@ public class UserAccountTest
         }, () -> {
             assertNull(underTest.getPasswordHash());
         }, () -> {
-            assertNull(underTest.getEmail());
+            assertNull(underTest.emailValue());
         }, () -> {
-            assertNull(underTest.getCreatedAt());
+            assertNull(underTest.createdAtValue());
         });
 
     }
@@ -610,3 +610,6 @@ public class UserAccountTest
         assertEquals(NotSerializableException.class, writeEx.getCause().getClass());
     }
 }
+
+
+

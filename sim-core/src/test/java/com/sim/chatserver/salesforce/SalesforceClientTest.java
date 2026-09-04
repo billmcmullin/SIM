@@ -1,5 +1,6 @@
 package com.sim.chatserver.salesforce;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.http.HttpClient;
@@ -29,7 +30,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = null; // UTA: configured value
@@ -48,7 +49,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = ""; // UTA: configured value
@@ -67,7 +68,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = null; // UTA: configured value
@@ -88,7 +89,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = ""; // UTA: configured value
@@ -109,7 +110,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = "*"; // UTA: configured value
@@ -132,7 +133,7 @@ public class SalesforceClientTest
     {
         // Given
         HttpClient httpClient = mock(HttpClient.class);
-        SalesforceClient underTest = new SalesforceClient(httpClient);
+        SalesforceClient underTest = newSalesforceClient(httpClient);
 
         // When
         String friendlyName = "*"; // UTA: configured value
@@ -168,6 +169,16 @@ public class SalesforceClientTest
                 throw error;
             }
             throw ex;
+        }
+    }
+
+    private static SalesforceClient newSalesforceClient(HttpClient httpClient) {
+        try {
+            Constructor<SalesforceClient> ctor = SalesforceClient.class.getDeclaredConstructor(HttpClient.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(httpClient);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Unable to instantiate SalesforceClient for test", ex);
         }
     }
 }

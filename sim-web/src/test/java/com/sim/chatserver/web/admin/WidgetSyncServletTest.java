@@ -169,6 +169,63 @@ class WidgetSyncServletTest {
     }
 
     @Test
+    void doGet_whenTimerRoute_returnsStatusPayload() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        StringWriter body = new StringWriter();
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/admin/widgets/sync/timer");
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        assertDoesNotThrow(() -> underTest.doGet(req, resp));
+
+        verify(resp).setStatus(HttpServletResponse.SC_OK);
+        assertTrue(body.toString().contains("\"status\":\"ok\""));
+    }
+
+    @Test
+    void doPost_whenTimerRouteAndNoSettings_returnsBadRequest() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        HttpSession session = mock(HttpSession.class);
+        StringWriter body = new StringWriter();
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/admin/widgets/sync/timer");
+        when(req.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn("admin");
+        when(session.getAttribute("role")).thenReturn("ADMIN");
+        when(req.getParameterValues(anyString())).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        assertDoesNotThrow(() -> underTest.doPost(req, resp));
+
+        verify(resp).setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        assertTrue(body.toString().contains("No timer or summary settings were provided"));
+    }
+
+    @Test
+    void doPost_whenManualSyncRouteWithoutAdmin_returnsUnauthorized() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        HttpServletMapping mapping = mock(HttpServletMapping.class);
+        StringWriter body = new StringWriter();
+
+        when(req.getHttpServletMapping()).thenReturn(mapping);
+        when(mapping.getPattern()).thenReturn("/admin/widgets/sync");
+        when(req.getSession(false)).thenReturn(null);
+        when(resp.getWriter()).thenReturn(new PrintWriter(body, true));
+
+        assertDoesNotThrow(() -> underTest.doPost(req, resp));
+
+        verify(resp).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        assertTrue(body.toString().toLowerCase(Locale.ROOT).contains("authentication"));
+    }
+
+    @Test
     void runSync_reflectionInvoke_shouldNotRequireRealDatasource() throws Exception {
         // If runSync exists (private/protected), invoke reflectively and ensure it doesn't blow up
         // because static config store is mocked.
@@ -1415,10 +1472,10 @@ class WidgetSyncServletTest {
                     String trimmed = (String) invoke(
                             "trimToUtf8Bytes",
                             new Class<?>[]{String.class, int.class},
-                            "aðŸ™‚b",
+                            "a\uD83D\uDE42b",
                             5
                     );
-                    assertEquals("aðŸ™‚", trimmed);
+                        assertEquals("a\uD83D\uDE42", trimmed);
 
                     assertEquals(1, invoke("utf8LengthForCodePoint", new Class<?>[]{int.class}, (int) 'a'));
                     assertEquals(2, invoke("utf8LengthForCodePoint", new Class<?>[]{int.class}, 0x07FF));

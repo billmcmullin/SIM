@@ -19,7 +19,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 @Path("/auth")
-public class AuthResource {
+public class AuthResource implements AuthApiEndpoint {
 
     private static final Logger log = Logger.getLogger(AuthResource.class.getName());
 

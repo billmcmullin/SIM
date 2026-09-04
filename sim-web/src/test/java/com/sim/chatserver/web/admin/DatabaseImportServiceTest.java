@@ -16,11 +16,13 @@ import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
+import java.sql.BatchUpdateException;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +43,94 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 
 class DatabaseImportServiceTest {
+
+    @Test
+    void readZipTables_whenZipContainsMixedEntries_readsOnlyCsvTables() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+
+        byte[] zipBytes;
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             ZipOutputStream zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
+            zos.putNextEntry(new ZipEntry("tables/server_config.csv"));
+            zos.write("id,name\n1,alpha\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+
+            zos.putNextEntry(new ZipEntry("notes/readme.txt"));
+            zos.write("ignore me".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+
+            zos.putNextEntry(new ZipEntry("server_config.csv"));
+            zos.write("id,name\n2,beta\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+            zos.finish();
+            zipBytes = baos.toByteArray();
+        }
+
+        Method readZipTables = DatabaseImportService.class.getDeclaredMethod("readZipTables", InputStream.class);
+        readZipTables.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tables = (Map<String, Object>) readZipTables.invoke(service, new ByteArrayInputStream(zipBytes));
+        assertEquals(1, tables.size());
+        assertTrue(tables.containsKey("server_config"));
+
+        Object csvData = tables.get("server_config");
+        java.lang.reflect.Field rowsField = csvData.getClass().getDeclaredField("rows");
+        rowsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<List<String>> rows = (List<List<String>>) rowsField.get(csvData);
+        assertEquals(1, rows.size());
+        assertEquals("alpha", rows.get(0).get(1));
+    }
+
+    @Test
+    void executeBatchWithContext_whenBatchUpdateFails_wrapsImportException() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        PreparedStatement ps = mock(PreparedStatement.class);
+
+        BatchUpdateException bue = new BatchUpdateException("batch failed", new int[]{0});
+        bue.setNextException(new SQLException("duplicate key"));
+        when(ps.executeBatch()).thenThrow(bue);
+
+        Method executeBatchWithContext = DatabaseImportService.class.getDeclaredMethod(
+                "executeBatchWithContext",
+                PreparedStatement.class,
+                String.class,
+                int.class);
+        executeBatchWithContext.setAccessible(true);
+
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class,
+                () -> executeBatchWithContext.invoke(service, ps, "server_config", 12));
+
+        Throwable cause = thrown.getCause();
+        assertEquals("ImportException", cause.getClass().getSimpleName());
+        assertTrue(cause.getMessage().contains("server_config"));
+        assertTrue(cause.getMessage().contains("12"));
+    }
+
+    @Test
+    void executeBatchWithContext_whenSqlExceptionFails_wrapsImportException() throws Exception {
+        DatabaseImportService service = new DatabaseImportService();
+        PreparedStatement ps = mock(PreparedStatement.class);
+
+        when(ps.executeBatch()).thenThrow(new SQLException("db down"));
+
+        Method executeBatchWithContext = DatabaseImportService.class.getDeclaredMethod(
+                "executeBatchWithContext",
+                PreparedStatement.class,
+                String.class,
+                int.class);
+        executeBatchWithContext.setAccessible(true);
+
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class,
+                () -> executeBatchWithContext.invoke(service, ps, "widget_entries", 9));
+
+        Throwable cause = thrown.getCause();
+        assertEquals("ImportException", cause.getClass().getSimpleName());
+        assertTrue(cause.getMessage().contains("widget_entries"));
+    }
 
     @Test
     void handlePost_whenUnauthenticated_returnsUnauthorizedJson() throws Exception {
@@ -453,6 +543,17 @@ class DatabaseImportServiceTest {
         @Override
         public void setWriteListener(WriteListener writeListener) {
             // no-op for unit tests
+        }
+    }
+
+    private static byte[] zipWithCsv(String entryName, String csvContent) throws Exception {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             ZipOutputStream zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
+            zos.putNextEntry(new ZipEntry(entryName));
+            zos.write(csvContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zos.closeEntry();
+            zos.finish();
+            return baos.toByteArray();
         }
     }
 }
