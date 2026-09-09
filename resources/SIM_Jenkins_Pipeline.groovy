@@ -27,8 +27,8 @@ pipeline {
         PLAYWRIGHT_BASE_URL    = 'http://chatserver:8080/chat-server'
 
         //CTP Information for Coverage
-        CTP_WEBSOCKET           = 'wss://ctp:8080/em/coverage/websocket'
-        CTP_QUEUE               = '/user/queue/environments/4/components/2/coverage'
+        CTP_WEBSOCKET           = 'ws://ctp:8080/em/coverage/websocket'
+        CTP_QUEUE               = '/user/queue/environments/11/components/31/coverage'
         TEST_USER               = 'jonnytest'
     }
 
@@ -39,7 +39,7 @@ pipeline {
             }
         }
 
-        stage('Create Jtest Properties file') {
+        stage('Create Parasoft Properties file') {
             steps {
                 script {
                     sh '''
@@ -64,13 +64,41 @@ pipeline {
                         echo "parasoft.eula.accepted=true" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "build.id=${BUILD_TAG}" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_3RDCHECK.properties
-                        echo "scope.scontrol=true" >> jtest_${JOB_NAME}.properties
+                        echo "scope.scontrol=true" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "scontrol.rep1.type=git" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "scontrol.rep1.git.url=${GIT_URL}" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "scontrol.rep1.git.branch=${BRANCH}" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "scontrol.rep1.git.workspace=${WORKSPACE}" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "scontrol.git.exec=/usr/bin/git" >> jtest_${JOB_NAME}_3RDCHECK.properties
                         echo "report.scontrol=full" >> jtest_${JOB_NAME}_3RDCHECK.properties
+
+                        echo "dtp.project=SIM Java" > jtest_${JOB_NAME}_SOA.properties
+                        echo "dtp.url=https://dtp:8443" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "dtp.user=ratchet" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "dtp.password=aCvxBC05GFbAjcw1TR0ZlA==" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "parasoft.eula.accepted=true" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "build.id=${BUILD_TAG}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scope.scontrol=true" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scontrol.rep1.type=git" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scontrol.rep1.git.url=${GIT_URL}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scontrol.rep1.git.branch=${BRANCH}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scontrol.rep1.git.workspace=${WORKSPACE}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "scontrol.git.exec=/usr/bin/git" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "report.scontrol=full" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "env.manager.notify=true" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "env.manager.password=aCvxBC05GFbAjcw1TR0ZlA==" >>jtest_${JOB_NAME}_SOA.properties
+                        echo "env.manager.server=http://ctp:8080/em" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "env.manager.server.name=host.docker.internal" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "env.manager.username=ratchet" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "license.start_deactivated=true" jtest_${JOB_NAME}_SOA.properties
+                        echo "soatest.license.custom_edition_features=SOAtest,RuleWizard,Command Line,SOA,Web,Server API Enabled,Message Packs,Advanced Test Generation 100 Users,Requirements Traceability,API Security Testing,LLM Integration,MCP Server" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "soatest.license.network.edition=custom_edition" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "soatest.license.use_network=true" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "virtualize.license.custom_edition_features=Virtualize,Service Enabled,Performance,Extension Pack,Validate,Message Packs,Unlimited Hits/Day,30 HPS,100 HPS,LLM Integration,MCP Server" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "virtualize.license.network.edition=custom_edition" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "virtualize.license.use_network=true" >> jtest_${JOB_NAME}_SOA.properties
+                        
                     '''
                 }
             }
@@ -123,7 +151,7 @@ pipeline {
             }
         }
 
-        stage('Prepare and Run Integration Tests') {
+        stage('Prepare and Run Functional Tests') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
@@ -178,7 +206,7 @@ pipeline {
                         fi
 
                         if grep -q 'ctp\\.subscription\\.url=' "${AGENT_FILE}"; then
-                            sed -i 's/^ctp\\.subscription\\.url=.*/ctp.subscription.url=${CTP_QUEUE}/' "${AGENT_FILE}"
+                            sed -i "s/^ctp\\.subscription\\.url=.*/ctp.subscription.url=${CTP_QUEUE}/" "${AGENT_FILE}"
                         else
                             echo "ctp.subscription.queue=${CTP_QUEUE}" >> "${AGENT_FILE}"
                         fi
@@ -208,6 +236,8 @@ pipeline {
 
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
+                        
+                        sleep 10
 
                         ./mvnw verify -pl sim-playwright \
                             -DbaseUrl="${PLAYWRIGHT_BASE_URL}" \
@@ -223,6 +253,17 @@ pipeline {
                             -Dexec.mainClass=com.microsoft.playwright.CLI \
                             -Dparasoft.coverage.baggageHeader="test-operator-id=${TEST_USER}" \
                             -Dplaywright.skipITs=false
+                        
+                        ./mvnw -N soatest:soatest \
+                            -Dsoatest.home="/home/jenkins/agent/soatest/2026.1" \
+                            -Dsoatest.settings="jtest_${JOB_NAME}_SOA.properties" \
+                            -Dsoatest.data="/tmp/workspace" \
+                            -Dsoatest.import="${WORKSPACE}/resources/soatest" \
+                            -Dsoatest.noimport=false \
+                            -Dsoatest.config="${WORKSPACE}/resources/soatest/SIM_Test.properties" \
+                            -Dsoatest.publish=${PUBLISH} \
+                            -Dsoatest.report="${WORKSPACE}/report/soatest"    
+                            
                     '''
                 }
             }

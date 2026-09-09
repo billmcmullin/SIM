@@ -498,7 +498,10 @@ final class DashboardJdbcDataService {
             return 0;
         }
         Number currentValue = values.get(index);
-        return currentValue == null ? 0 : currentValue.intValue();
+        if (currentValue == null) {
+            return 0;
+        }
+        return Integer.parseInt(currentValue.toString());
     }
 
     private String readRawDbText(ResultSet rs, String column) {
@@ -596,10 +599,10 @@ final class DashboardJdbcDataService {
                                 continue;
                             }
 
-                            Integer existing = totalDaily.get(entryDate);
+                            Object existing = totalDaily.get(entryDate);
                             int currentCount = 0;
                             if (existing != null) {
-                                currentCount = existing.intValue();
+                                currentCount = Integer.parseInt(existing.toString());
                             }
                             totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
                         }
@@ -614,10 +617,10 @@ final class DashboardJdbcDataService {
         JsonArrayBuilder values = Json.createArrayBuilder();
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
-            Integer dayCount = entry.getValue();
+            Object dayCount = entry.getValue();
             int safeCount = 0;
             if (dayCount != null) {
-                safeCount = dayCount.intValue();
+                safeCount = Integer.parseInt(dayCount.toString());
             }
             values.add(safeCount);
         }

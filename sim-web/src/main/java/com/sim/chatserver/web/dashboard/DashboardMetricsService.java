@@ -52,19 +52,19 @@ final class DashboardMetricsService {
         private final int termsYesterday;
         private final DashboardLocalViewModels.ProgressStat termsProgression;
 
-        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Object termsTodayCount, Object termsYesterdayCount) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new DashboardLocalViewModels.ProgressStat(chatsToday, chatsYesterday);
 
-            int normalizedTermsToday = termsTodayCount == null ? 0 : termsTodayCount.intValue();
-            int normalizedTermsYesterday = termsYesterdayCount == null ? 0 : termsYesterdayCount.intValue();
+            int normalizedTermsToday = termsTodayCount == null ? 0 : Integer.parseInt(termsTodayCount.toString());
+            int normalizedTermsYesterday = termsYesterdayCount == null ? 0 : Integer.parseInt(termsYesterdayCount.toString());
             this.termsToday = normalizedTermsToday;
             this.termsYesterday = normalizedTermsYesterday;
             this.termsProgression = new DashboardLocalViewModels.ProgressStat(normalizedTermsToday, normalizedTermsYesterday);
         }
 
-        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Object termsTodayCount, Object termsYesterdayCount) {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 

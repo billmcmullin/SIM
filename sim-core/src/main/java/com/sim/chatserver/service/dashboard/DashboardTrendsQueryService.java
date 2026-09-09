@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -174,10 +175,13 @@ public final class DashboardTrendsQueryService {
     }
 
     private void incrementDate(Map<LocalDate, Integer> counts, LocalDate date) {
-        Integer current = counts.get(date);
-        int value = 0;
-        if (current != null) {
-            value = current.intValue();
+        String valueText = Objects.toString(counts.get(date), "0");
+        int value;
+        try {
+            value = Integer.parseInt(valueText);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse trend count; using zero fallback", ex);
+            value = 0;
         }
         counts.put(date, Integer.valueOf(value + 1));
     }

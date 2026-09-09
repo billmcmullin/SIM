@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -240,7 +241,14 @@ public class DashboardTermService {
         boolean first = true;
         for (Map.Entry<String, Integer> entry : summary.getTermCounts().entrySet()) {
             String label = entry.getKey() == null ? "" : entry.getKey();
-            int count = entry.getValue() == null ? 0 : entry.getValue().intValue();
+            String countText = Objects.toString(entry.getValue(), "0");
+            int count;
+            try {
+                count = Integer.parseInt(countText);
+            } catch (NumberFormatException ex) {
+                LOG.log(Level.FINE, "Unable to parse term count; using zero fallback", ex);
+                count = 0;
+            }
             String escaped = escapeJson(label);
 
             if (!first) {

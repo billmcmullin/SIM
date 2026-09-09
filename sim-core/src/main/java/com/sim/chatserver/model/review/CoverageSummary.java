@@ -384,15 +384,26 @@ public final class CoverageSummary {
             return List.of();
         }
         Set<Integer> set = new LinkedHashSet<>();
-        for (Integer v : values) {
-            if (v != null) {
-                int value = v.intValue();
-                if (value > 0) {
-                    set.add(Integer.valueOf(value));
-                }
+        for (String text : toNumberTexts(values)) {
+            int value = Integer.parseInt(text);
+            if (value > 0) {
+                set.add(Integer.valueOf(value));
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(set));
+    }
+
+    private static List<String> toNumberTexts(List<? extends Number> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> texts = new ArrayList<>();
+        for (Number value : values) {
+            if (value != null) {
+                texts.add(value.toString());
+            }
+        }
+        return texts;
     }
 
     private static jakarta.json.JsonArray toJsonArray(List<String> values) {
@@ -409,12 +420,8 @@ public final class CoverageSummary {
 
     private static jakarta.json.JsonArray toJsonArrayInt(List<Integer> values) {
         JsonArrayBuilder b = Json.createArrayBuilder();
-        if (values != null) {
-            for (Integer v : values) {
-                if (v != null) {
-                    b.add(v.intValue());
-                }
-            }
+        for (String text : toNumberTexts(values)) {
+            b.add(Integer.parseInt(text));
         }
         return b.build();
     }

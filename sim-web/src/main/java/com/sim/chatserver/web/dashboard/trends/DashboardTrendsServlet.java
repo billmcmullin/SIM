@@ -145,7 +145,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         }
     }
 
-    private int safeIntegerValue(Integer value) {
+    private int safeIntegerValue(Object value) {
         if (value == null) {
             return 0;
         }

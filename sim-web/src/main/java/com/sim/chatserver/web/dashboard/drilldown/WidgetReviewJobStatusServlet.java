@@ -274,9 +274,9 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     private jakarta.json.JsonArray toJsonIntArray(List<Integer> values) {
         JsonArrayBuilder b = Json.createArrayBuilder();
         if (values != null) {
-            for (Integer v : values) {
+            for (Object v : values) {
                 if (v != null) {
-                    int intValue = v.intValue();
+                    int intValue = Integer.parseInt(v.toString());
                     b.add(intValue);
                 }
             }

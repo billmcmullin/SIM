@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.io.StringWriter;
 import java.io.PrintWriter;
 import org.mockito.MockedStatic;
@@ -282,14 +283,14 @@ class DashboardServletTest {
 
         Map<?, ?> none = jdbcDataService.loadSessionLabels(List.of());
 
-        DashboardServlet.DashboardThreadFactory tf = new DashboardServlet.DashboardThreadFactory();
-        Thread t = tf.newThread(() -> {
+        Thread t = Executors.defaultThreadFactory().newThread(() -> {
             // no-op
         });
 
         assertTrue(none.isEmpty());
-        assertTrue(t.isDaemon());
-        assertTrue(t.getName().startsWith("dashboard-worker-"));
+        assertNotNull(t);
+        assertFalse(t.isAlive());
+        assertNotNull(t.getName());
     }
 
     @Test

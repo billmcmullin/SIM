@@ -118,11 +118,7 @@ public final class ReviewJobStatus {
         this.failedBatchIndexes = immutableDistinctPositiveInts(b.failedBatchIndexes);
         this.warnings = immutableDistinctStringsKeepCase(b.warnings);
 
-        if (b.running == null) {
-            this.running = !this.done;
-        } else {
-            this.running = b.running.booleanValue();
-        }
+        this.running = b.runningSet ? b.running : !this.done;
         this.batchProgressPercent = b.batchProgressPercent >= 0
                 ? clampPercent(b.batchProgressPercent)
                 : deriveBatchProgressPercent(this.totalBatches, this.completedBatches, this.phase, this.done);
@@ -436,7 +432,8 @@ public final class ReviewJobStatus {
 
         String activity;
         int batchProgressPercent = -1;
-        Boolean running;
+        boolean running;
+        boolean runningSet;
 
         private Builder() {
         }
@@ -582,7 +579,8 @@ public final class ReviewJobStatus {
         }
 
         private Builder running(boolean running) {
-            this.running = running ? Boolean.TRUE : Boolean.FALSE;
+            this.running = running;
+            this.runningSet = true;
             return this;
         }
 
@@ -714,16 +712,26 @@ public final class ReviewJobStatus {
             return List.of();
         }
         Set<Integer> out = new LinkedHashSet<>();
-        for (Integer boxed : src) {
-            if (boxed == null) {
-                continue;
-            }
-            int value = boxed.intValue();
+        for (String text : toNumberTexts(src)) {
+            int value = Integer.parseInt(text);
             if (value > 0) {
                 out.add(Integer.valueOf(value));
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));
+    }
+
+    private static List<String> toNumberTexts(List<? extends Number> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> texts = new ArrayList<>();
+        for (Number value : values) {
+            if (value != null) {
+                texts.add(value.toString());
+            }
+        }
+        return texts;
     }
 
     private static jakarta.json.JsonArray toJsonArrayStrings(List<String> values) {
@@ -740,12 +748,8 @@ public final class ReviewJobStatus {
 
     private static jakarta.json.JsonArray toJsonArrayInts(List<Integer> values) {
         JsonArrayBuilder b = Json.createArrayBuilder();
-        if (values != null) {
-            for (Integer v : values) {
-                if (v != null) {
-                    b.add(v.intValue());
-                }
-            }
+        for (String text : toNumberTexts(values)) {
+            b.add(Integer.parseInt(text));
         }
         return b.build();
     }

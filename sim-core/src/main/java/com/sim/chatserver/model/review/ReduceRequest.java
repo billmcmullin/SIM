@@ -157,10 +157,8 @@ public final class ReduceRequest {
         }
 
         JsonArrayBuilder failedIdx = Json.createArrayBuilder();
-        for (Integer i : failedBatchIndexes) {
-            if (i != null) {
-                failedIdx.add(i.intValue());
-            }
+        for (String text : toNumberTexts(failedBatchIndexes)) {
+            failedIdx.add(Integer.parseInt(text));
         }
 
         JsonArrayBuilder failedReasons = Json.createArrayBuilder();
@@ -401,14 +399,25 @@ public final class ReduceRequest {
             return List.of();
         }
         Set<Integer> out = new LinkedHashSet<>();
-        for (Integer i : src) {
-            if (i != null) {
-                int value = i.intValue();
-                if (value > 0) {
-                    out.add(Integer.valueOf(value));
-                }
+        for (String text : toNumberTexts(src)) {
+            int value = Integer.parseInt(text);
+            if (value > 0) {
+                out.add(Integer.valueOf(value));
             }
         }
         return Collections.unmodifiableList(new ArrayList<>(out));
+    }
+
+    private static List<String> toNumberTexts(List<? extends Number> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> texts = new ArrayList<>();
+        for (Number value : values) {
+            if (value != null) {
+                texts.add(value.toString());
+            }
+        }
+        return texts;
     }
 }

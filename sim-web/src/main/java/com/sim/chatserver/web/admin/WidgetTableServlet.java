@@ -149,10 +149,11 @@ public class WidgetTableServlet extends HttpServlet {
                         .add("tableName", tableName)
                         .add("tableExists", result != null && result.exists)
                         .add("message", "");
-                if (result == null || result.count == null) {
+                Object resultCount = result == null ? null : result.count;
+                if (resultCount == null) {
                     statusBody.addNull("count");
                 } else {
-                    statusBody.add("count", result.count.longValue());
+                    statusBody.add("count", Long.parseLong(resultCount.toString()));
                 }
                 statuses.add(statusBody);
             }
@@ -281,7 +282,7 @@ public class WidgetTableServlet extends HttpServlet {
             String widgetId,
             String tableName,
             boolean exists,
-            Long count,
+            Object count,
             String message,
             boolean created) {
         JsonObjectBuilder body = Json.createObjectBuilder()
@@ -294,7 +295,7 @@ public class WidgetTableServlet extends HttpServlet {
         if (count == null) {
             body.addNull("count");
         } else {
-            body.add("count", count.longValue());
+            body.add("count", Long.parseLong(count.toString()));
         }
         writeJson(resp, status, body.build());
     }

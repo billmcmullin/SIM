@@ -403,12 +403,23 @@ public final class ReduceResult {
             return List.of();
         }
         Set<Integer> out = new LinkedHashSet<>();
-        for (Integer i : src) {
-            if (i != null) {
-                out.add(Integer.valueOf(i.intValue()));
-            }
+        for (String text : toNumberTexts(src)) {
+            out.add(Integer.valueOf(Integer.parseInt(text)));
         }
         return Collections.unmodifiableList(new ArrayList<>(out));
+    }
+
+    private static List<String> toNumberTexts(List<? extends Number> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> texts = new ArrayList<>();
+        for (Number value : values) {
+            if (value != null) {
+                texts.add(value.toString());
+            }
+        }
+        return texts;
     }
 
     private static List<String> immutableStringListDistinctLower(List<String> src) {
@@ -439,12 +450,8 @@ public final class ReduceResult {
 
     private static jakarta.json.JsonArray toJsonIntArray(List<Integer> values) {
         JsonArrayBuilder b = Json.createArrayBuilder();
-        if (values != null) {
-            for (Integer v : values) {
-                if (v != null) {
-                    b.add(v.intValue());
-                }
-            }
+        for (String text : toNumberTexts(values)) {
+            b.add(Integer.parseInt(text));
         }
         return b.build();
     }

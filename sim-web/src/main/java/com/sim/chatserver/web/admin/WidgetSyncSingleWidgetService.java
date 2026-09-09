@@ -98,8 +98,11 @@ final class WidgetSyncSingleWidgetService {
         List<JsonObject> filter(List<JsonObject> chats, Set<String> allowedIds);
     }
 
-    private static int safeInt(Integer value) {
-        return value == null ? 0 : value;
+    private static int safeInt(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        return Integer.parseInt(value.toString());
     }
 
     private static String defaultString(String value) {

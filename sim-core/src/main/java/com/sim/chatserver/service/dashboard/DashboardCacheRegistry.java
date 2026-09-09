@@ -346,10 +346,7 @@ public class DashboardCacheRegistry {
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
         submitRefreshTask(() -> {
-            Entry<SessionOverview> snapshot;
-            synchronized (sessionLock) {
-                snapshot = sessionOverviewCache.get(key);
-            }
+            Entry<SessionOverview> snapshot = currentSessionOverviewEntry(key);
 
             SessionOverview fallback = snapshot == null ? null : snapshot.value;
             SessionOverview fresh = safeLoad(loader, fallback);
@@ -375,6 +372,12 @@ public class DashboardCacheRegistry {
                 target.refreshing = false;
             }
         });
+    }
+
+    private Entry<SessionOverview> currentSessionOverviewEntry(String key) {
+        synchronized (sessionLock) {
+            return sessionOverviewCache.get(key);
+        }
     }
 
     private static void submitRefreshTask(Runnable task) {

@@ -81,9 +81,9 @@ public class CustomerProfileServlet extends HttpServlet {
             if (sessionId != null) {
                 CustomerIdentityService identityService = identityService();
                 identity = identityService.resolveOrCreateBySessionId(sessionId);
-                Long identityIdObject = identity == null ? null : identity.getIdentityId();
+                Object identityIdObject = identity == null ? null : identity.getIdentityId();
                 if (identityIdObject != null) {
-                    long identityId = identityIdObject.longValue();
+                    long identityId = Long.parseLong(identityIdObject.toString());
                     linkedSessions = identityService.listLinkedSessions(identityId);
                 }
             }
@@ -158,7 +158,7 @@ public class CustomerProfileServlet extends HttpServlet {
             String sid = nullToEmpty(link.getSessionId());
             String display = nullToEmpty(link.getDisplayNameSnapshot());
             String email = nullToEmpty(link.getContactEmailSnapshot());
-            String updated = link.getUpdatedAt() == null ? "Ã¢â‚¬â€" : formatOffsetDateTime(link.getUpdatedAt());
+            String updated = link.getUpdatedAt() == null ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : formatOffsetDateTime(link.getUpdatedAt());
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
@@ -172,11 +172,11 @@ public class CustomerProfileServlet extends HttpServlet {
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(display.isBlank() ? "Ã¢â‚¬â€" : display));
+            row.append(escapeHtml(display.isBlank() ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : display));
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(email.isBlank() ? "Ã¢â‚¬â€" : email));
+            row.append(escapeHtml(email.isBlank() ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : email));
             closeTag(row, "td");
 
             openTag(row, "td");
@@ -237,7 +237,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String nullToDash(String value) {
         String v = trimToNull(value);
-        return v == null ? "Ã¢â‚¬â€" : v;
+        return v == null ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : v;
     }
 
     private String firstNonBlank(String... values) {
@@ -277,7 +277,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String formatOffsetDateTime(OffsetDateTime value) {
         if (value == null) {
-            return "Ã¢â‚¬â€";
+            return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â";
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }

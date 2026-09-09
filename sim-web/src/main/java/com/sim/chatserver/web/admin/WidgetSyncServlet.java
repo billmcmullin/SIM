@@ -970,65 +970,77 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private void beginSyncProgress(String phase, String message) {
-        withSyncProgressLocked(() -> {
-            STATE.syncStartedAt = Instant.now();
-            STATE.syncFinishedAt = null;
-            STATE.syncPhase = defaultIfBlank(phase, "running");
-            STATE.syncStatusMessage = defaultIfBlank(message, "Sync running.");
-            STATE.syncTotalWidgets = 0;
-            syncCompletedWidgets.set(0);
-            syncSucceededWidgets.set(0);
-            syncFailedWidgets.set(0);
-            STATE.syncCurrentWidgetId = "";
-            STATE.syncCurrentWidgetTable = "";
-            STATE.syncCurrentWidgetIndex = 0;
-            STATE.syncProgressPercent = 2;
-        });
+        synchronized (syncProgressLock) {
+            beginSyncProgressLocked(phase, message);
+        }
+    }
+
+    private void beginSyncProgressLocked(String phase, String message) {
+        STATE.syncStartedAt = Instant.now();
+        STATE.syncFinishedAt = null;
+        STATE.syncPhase = defaultIfBlank(phase, "running");
+        STATE.syncStatusMessage = defaultIfBlank(message, "Sync running.");
+        STATE.syncTotalWidgets = 0;
+        syncCompletedWidgets.set(0);
+        syncSucceededWidgets.set(0);
+        syncFailedWidgets.set(0);
+        STATE.syncCurrentWidgetId = "";
+        STATE.syncCurrentWidgetTable = "";
+        STATE.syncCurrentWidgetIndex = 0;
+        STATE.syncProgressPercent = 2;
     }
 
     private void startWidgetSyncProgress(int totalWidgets) {
-        withSyncProgressLocked(() -> {
-            STATE.syncPhase = "syncing_widgets";
-            STATE.syncTotalWidgets = Math.max(0, totalWidgets);
-            syncCompletedWidgets.set(0);
-            syncSucceededWidgets.set(0);
-            syncFailedWidgets.set(0);
-            STATE.syncCurrentWidgetId = "";
-            STATE.syncCurrentWidgetTable = "";
-            STATE.syncCurrentWidgetIndex = 0;
+        synchronized (syncProgressLock) {
+            startWidgetSyncProgressLocked(totalWidgets);
+        }
+    }
 
-            if (STATE.syncTotalWidgets == 0) {
-                STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 90);
-                STATE.syncStatusMessage = "No widgets available to sync.";
-                return;
-            }
+    private void startWidgetSyncProgressLocked(int totalWidgets) {
+        STATE.syncPhase = "syncing_widgets";
+        STATE.syncTotalWidgets = Math.max(0, totalWidgets);
+        syncCompletedWidgets.set(0);
+        syncSucceededWidgets.set(0);
+        syncFailedWidgets.set(0);
+        STATE.syncCurrentWidgetId = "";
+        STATE.syncCurrentWidgetTable = "";
+        STATE.syncCurrentWidgetIndex = 0;
 
-            STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 5);
-            STATE.syncStatusMessage = "Syncing widget tables...";
-        });
+        if (STATE.syncTotalWidgets == 0) {
+            STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 90);
+            STATE.syncStatusMessage = "No widgets available to sync.";
+            return;
+        }
+
+        STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, 5);
+        STATE.syncStatusMessage = "Syncing widget tables...";
     }
 
     private void updateCurrentWidgetProgress(String widgetId, String tableName, int widgetIndex, int totalWidgets) {
-        withSyncProgressLocked(() -> {
-            STATE.syncCurrentWidgetId = defaultIfBlank(widgetId, "");
-            STATE.syncCurrentWidgetTable = defaultIfBlank(tableName, "");
-            STATE.syncCurrentWidgetIndex = Math.max(0, widgetIndex);
+        synchronized (syncProgressLock) {
+            updateCurrentWidgetProgressLocked(widgetId, tableName, widgetIndex, totalWidgets);
+        }
+    }
 
-            int safeTotal = Math.max(0, totalWidgets);
-            if (safeTotal > 0) {
-                int scaledPercent = scaledWidgetSyncProgress(Math.max(0, widgetIndex - 1), safeTotal);
-                STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
-            }
+    private void updateCurrentWidgetProgressLocked(String widgetId, String tableName, int widgetIndex, int totalWidgets) {
+        STATE.syncCurrentWidgetId = defaultIfBlank(widgetId, "");
+        STATE.syncCurrentWidgetTable = defaultIfBlank(tableName, "");
+        STATE.syncCurrentWidgetIndex = Math.max(0, widgetIndex);
 
-            if (!STATE.syncCurrentWidgetId.isBlank()) {
-                STATE.syncStatusMessage = "Syncing widget "
-                        + Math.max(1, widgetIndex)
-                        + '/'
-                        + Math.max(1, safeTotal)
-                        + ": "
-                        + STATE.syncCurrentWidgetId;
-            }
-        });
+        int safeTotal = Math.max(0, totalWidgets);
+        if (safeTotal > 0) {
+            int scaledPercent = scaledWidgetSyncProgress(Math.max(0, widgetIndex - 1), safeTotal);
+            STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, Math.min(90, scaledPercent));
+        }
+
+        if (!STATE.syncCurrentWidgetId.isBlank()) {
+            STATE.syncStatusMessage = "Syncing widget "
+                    + Math.max(1, widgetIndex)
+                    + '/'
+                    + Math.max(1, safeTotal)
+                    + ": "
+                    + STATE.syncCurrentWidgetId;
+        }
     }
 
     private void markWidgetSyncCompletion(String widgetId, boolean success) {
@@ -1039,7 +1051,7 @@ public class WidgetSyncServlet extends HttpServlet {
             syncFailedWidgets.incrementAndGet();
         }
 
-        withSyncProgressLocked(() -> {
+        synchronized (syncProgressLock) {
             int total = Math.max(0, STATE.syncTotalWidgets);
             if (total > 0) {
                 int scaledPercent = scaledWidgetSyncProgress(completed, total);
@@ -1056,11 +1068,11 @@ public class WidgetSyncServlet extends HttpServlet {
                     + syncFailedWidgets.get()
                     + " failed)."
                     + (widgetId == null || widgetId.isBlank() ? "" : " Last widget: " + widgetId + '.');
-        });
+        }
     }
 
     private void updateSyncProgress(String phase, String message, int minimumPercent) {
-        withSyncProgressLocked(() -> {
+        synchronized (syncProgressLock) {
             if (phase != null && !phase.isBlank()) {
                 STATE.syncPhase = phase;
             }
@@ -1068,28 +1080,23 @@ public class WidgetSyncServlet extends HttpServlet {
                 STATE.syncStatusMessage = message;
             }
             STATE.syncProgressPercent = Math.max(STATE.syncProgressPercent, clampPercent(minimumPercent));
-        });
+        }
     }
 
     private void finishSyncProgress(boolean success, String message) {
-        withSyncProgressLocked(() -> {
-            STATE.syncFinishedAt = Instant.now();
-            STATE.syncPhase = success ? "completed" : "failed";
-            STATE.syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
-            STATE.syncCurrentWidgetId = "";
-            STATE.syncCurrentWidgetTable = "";
-            STATE.syncCurrentWidgetIndex = 0;
-            STATE.syncProgressPercent = success ? 100 : Math.max(1, Math.min(99, STATE.syncProgressPercent));
-        });
+        synchronized (syncProgressLock) {
+            finishSyncProgressLocked(success, message);
+        }
     }
 
-    private void withSyncProgressLocked(Runnable action) {
-        if (action == null) {
-            return;
-        }
-        synchronized (syncProgressLock) {
-            action.run();
-        }
+    private void finishSyncProgressLocked(boolean success, String message) {
+        STATE.syncFinishedAt = Instant.now();
+        STATE.syncPhase = success ? "completed" : "failed";
+        STATE.syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
+        STATE.syncCurrentWidgetId = "";
+        STATE.syncCurrentWidgetTable = "";
+        STATE.syncCurrentWidgetIndex = 0;
+        STATE.syncProgressPercent = success ? 100 : Math.max(1, Math.min(99, STATE.syncProgressPercent));
     }
 
     private int scaledWidgetSyncProgress(int completedWidgets, int totalWidgets) {
@@ -1159,7 +1166,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (entries.isEmpty()) {
                 STATE.summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
-                        "No entries available for this day yet.", "â€”", "â€”", "â€”", 0, false, true);
+                        "No entries available for this day yet.", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", 0, false, true);
                 resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
                 return true;
             }
@@ -3923,11 +3930,11 @@ public class WidgetSyncServlet extends HttpServlet {
         counts.put(key, Integer.valueOf(next));
     }
 
-    private int safeInt(Integer value) {
+    private int safeInt(Object value) {
         if (value == null) {
             return 0;
         }
-        return value.intValue();
+        return Integer.parseInt(value.toString());
     }
 
     private boolean shouldRetryCompactDirectSummary(WorkspaceResponse response) {
@@ -4552,4 +4559,3 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
 }
-

@@ -486,7 +486,8 @@ final class WidgetReviewDataService {
         if ("all".equals(t) || "max".equals(t) || "unbounded".equals(t)) {
             return true;
         }
-        return parsed != null && parsed.intValue() <= 0;
+        Object parsedValue = parsed;
+        return parsedValue != null && Integer.parseInt(parsedValue.toString()) <= 0;
     }
 
     private Integer parseIntegerOrNull(String value) {
@@ -501,8 +502,11 @@ final class WidgetReviewDataService {
         }
     }
 
-    private int valueOrDefault(Integer value, int fallback) {
-        return value == null ? fallback : value.intValue();
+    private int valueOrDefault(Object value, int fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        return Integer.parseInt(value.toString());
     }
 
     private AppDataSourceHolder dataSourceHolder() {
@@ -750,4 +754,3 @@ final class WidgetReviewDataService {
         }
     }
 }
-

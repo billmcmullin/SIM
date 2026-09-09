@@ -15,7 +15,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -65,7 +64,7 @@ public class DashboardServlet extends HttpServlet {
 
     private static final ExecutorService DASHBOARD_EXECUTOR = Executors.newFixedThreadPool(
             Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors())),
-            new DashboardThreadFactory()
+            Executors.defaultThreadFactory()
     );
 
     private static final DashboardCacheRegistry cacheRegistry = new DashboardCacheRegistry();
@@ -459,7 +458,7 @@ public class DashboardServlet extends HttpServlet {
         for (Map.Entry<String, Integer> entry : summary.getTermCounts().entrySet()) {
             String label = entry.getKey() == null ? "" : entry.getKey();
             Integer boxedCount = entry.getValue();
-            int count = boxedCount == null ? 0 : boxedCount.intValue();
+            int count = normalizeNonNegativeInt(boxedCount);
 
             builder.add(Json.createObjectBuilder()
                     .add("label", label)
@@ -519,7 +518,7 @@ public class DashboardServlet extends HttpServlet {
         }
         int total = 0;
         for (Integer count : summary.getTermCounts().values()) {
-            total += normalizeNonNegativeInteger(count).intValue();
+            total += normalizeNonNegativeInt(count);
         }
         return total;
     }
@@ -531,7 +530,7 @@ public class DashboardServlet extends HttpServlet {
                 String k = e.getKey();
                 Integer safeValue = normalizeNonNegativeInteger(e.getValue());
                 if (k != null) {
-                    obj.add(k, safeValue.intValue());
+                    obj.add(k, normalizeNonNegativeInt(safeValue));
                 }
             }
         }
@@ -545,18 +544,23 @@ public class DashboardServlet extends HttpServlet {
                 String k = e.getKey();
                 Integer safeValue = normalizeNonNegativeInteger(e.getValue());
                 if (k != null) {
-                    obj.add(k, safeValue.intValue());
+                    obj.add(k, normalizeNonNegativeInt(safeValue));
                 }
             }
         }
         return obj.build().toString();
     }
 
-    private static Integer normalizeNonNegativeInteger(Integer value) {
+    private static Integer normalizeNonNegativeInteger(Object value) {
+        return Integer.valueOf(normalizeNonNegativeInt(value));
+    }
+
+    private static int normalizeNonNegativeInt(Object value) {
         if (value == null) {
-            return Integer.valueOf(0);
+            return 0;
         }
-        return value.compareTo(Integer.valueOf(0)) < 0 ? Integer.valueOf(0) : value;
+        int parsed = Integer.parseInt(value.toString());
+        return Math.max(0, parsed);
     }
 
     private String escapeForJs(String value) {
@@ -594,16 +598,4 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
-    static final class DashboardThreadFactory implements ThreadFactory {
-
-        private int idx = 1;
-
-        @Override
-        public synchronized Thread newThread(Runnable r) {
-            Thread t = new Thread(r);
-            t.setName("dashboard-worker-" + (idx++));
-            t.setDaemon(true);
-            return t;
-        }
-    }
 }

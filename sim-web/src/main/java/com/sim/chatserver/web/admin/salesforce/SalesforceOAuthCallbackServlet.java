@@ -233,7 +233,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         String expectedState = String.valueOf(stateObj);
         long ts;
         try {
-            ts = (tsObj instanceof Number) ? ((Number) tsObj).longValue() : Long.parseLong(String.valueOf(tsObj));
+            ts = Long.parseLong(String.valueOf(tsObj));
         } catch (NumberFormatException e) {
             log.log(Level.FINE, "Invalid OAuth state timestamp in session", e);
             return false;

@@ -169,10 +169,10 @@ final class DashboardNewUsersDrilldownQueryService {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    private int safeInt(Integer value) {
+    private int safeInt(Object value) {
         if (value == null) {
             return 0;
         }
-        return value.intValue();
+        return Integer.parseInt(value.toString());
     }
 }

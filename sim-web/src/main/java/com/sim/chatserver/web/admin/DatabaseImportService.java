@@ -568,16 +568,16 @@ final class DatabaseImportService {
                         continue;
                     }
                     String name = rawName.toLowerCase(Locale.ROOT);
-                    Integer typeValue = readMetadataInt(rs, "DATA_TYPE");
+                    Object typeValue = readMetadataInt(rs, "DATA_TYPE");
                     if (typeValue == null) {
                         continue;
                     }
-                    int type = sanitizeSqlType(typeValue.intValue());
+                    int type = sanitizeSqlType(Integer.parseInt(typeValue.toString()));
 
-                    Integer nullableValue = readMetadataInt(rs, "NULLABLE");
+                    Object nullableValue = readMetadataInt(rs, "NULLABLE");
                     boolean nullable = true;
                     if (nullableValue != null) {
-                        nullable = nullableValue.intValue() != ResultSetMetaData.columnNoNulls;
+                        nullable = Integer.parseInt(nullableValue.toString()) != ResultSetMetaData.columnNoNulls;
                     }
                     info.put(name, new ColumnInfo(type, nullable));
                 }
@@ -1153,10 +1153,10 @@ final class DatabaseImportService {
     private JsonObject toJsonObject(Map<String, Integer> m) {
         JsonObjectBuilder b = Json.createObjectBuilder();
         for (Map.Entry<String, Integer> e : m.entrySet()) {
-            Integer value = e.getValue();
+            Object value = e.getValue();
             int safeValue = 0;
             if (value != null) {
-                safeValue = value.intValue();
+                safeValue = Integer.parseInt(value.toString());
             }
             b.add(e.getKey(), safeValue);
         }
@@ -1214,4 +1214,3 @@ final class DatabaseImportService {
         }
     }
 }
-

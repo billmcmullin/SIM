@@ -260,10 +260,10 @@ public class TermsCsvServlet extends HttpServlet {
             }
 
             // Overwrite non-system entries using CSV columns (name, description, pattern, type)
-            Long existingId = existing.getId();
+            Object existingId = existing.getId();
             long existingIdValue = -1L;
             if (existingId != null) {
-                existingIdValue = existingId.longValue();
+                existingIdValue = Long.parseLong(existingId.toString());
             }
             if (existingIdValue <= 0L) {
                 throw new IllegalStateException("Failed to update term with invalid id");
@@ -283,7 +283,7 @@ public class TermsCsvServlet extends HttpServlet {
             // If you need to set system-flag on existing rows, add a TermsStore API to do so and call it here.
             return false; // existing updated
         } else {
-            // No existing term found ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â create new term using CSV columns.
+            // No existing term found ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â create new term using CSV columns.
             TermDefinition created;
             try {
                 created = termsStore().createTerm(name, description, matchPattern, matchType);

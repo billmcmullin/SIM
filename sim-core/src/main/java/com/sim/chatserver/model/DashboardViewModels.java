@@ -144,8 +144,8 @@ public final class DashboardViewModels {
 
     public static final class TermDayCount {
 
-        private int today;
-        private int yesterday;
+        private int today = 0;
+        private int yesterday = 0;
 
         public int getToday() {
             return today;

@@ -7,6 +7,7 @@ import java.sql.Timestamp;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -75,12 +76,15 @@ public final class DashboardSessionAggregationQueryService {
                             int total = rs.getInt("total");
                             acc.count += total;
 
-                            Integer existingCount = acc.widgetCounts.get(widgetId);
-                            int mergedCount = total;
-                            if (existingCount != null) {
-                                mergedCount += existingCount.intValue();
+                            String existingCountText = Objects.toString(acc.widgetCounts.get(widgetId), "0");
+                            int existingCount;
+                            try {
+                                existingCount = Integer.parseInt(existingCountText);
+                            } catch (NumberFormatException ex) {
+                                log.log(Level.FINE, "Unable to parse existing widget count; using zero fallback", ex);
+                                existingCount = 0;
                             }
-                            acc.widgetCounts.put(widgetId, Integer.valueOf(mergedCount));
+                            acc.widgetCounts.put(widgetId, Integer.valueOf(total + existingCount));
 
                             Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
                             if (lastEntry != null && (acc.lastEntry == null || lastEntry.after(acc.lastEntry))) {
