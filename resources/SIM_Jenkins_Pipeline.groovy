@@ -10,6 +10,7 @@ pipeline {
         BRANCH                 = 'release'
         // Parasoft Session Tag for running this build
         SESSION_TAG            = 'Jenkins Jtest'
+        SOA_SESSION_TAG        = 'Jenkins SOAtest'
         // Parasoft Test Configuration to run this build
         TEST_CONFIG            = 'jtest.dtp://StaticAndUnit'
         // Parasoft Security Compliance Test Configruation to run 2025 OWASP
@@ -80,7 +81,7 @@ pipeline {
                         echo "dtp.password=aCvxBC05GFbAjcw1TR0ZlA==" >> jtest_${JOB_NAME}_SOA.properties
                         echo "parasoft.eula.accepted=true" >> jtest_${JOB_NAME}_SOA.properties
                         echo "build.id=${BUILD_TAG}" >> jtest_${JOB_NAME}_SOA.properties
-                        echo "session.tag=${SESSION_TAG}" >> jtest_${JOB_NAME}_SOA.properties
+                        echo "session.tag=${SOA_SESSION_TAG}" >> jtest_${JOB_NAME}_SOA.properties
                         echo "scope.scontrol=true" >> jtest_${JOB_NAME}_SOA.properties
                         echo "scontrol.rep1.type=git" >> jtest_${JOB_NAME}_SOA.properties
                         echo "scontrol.rep1.git.url=${GIT_URL}" >> jtest_${JOB_NAME}_SOA.properties
