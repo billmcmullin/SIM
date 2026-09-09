@@ -1423,11 +1423,16 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                if (i != null) {
-                    int candidate = i.intValue();
-                    if (candidate > 0) {
-                        s.add(Integer.valueOf(candidate));
-                    }
+                String candidateText = Objects.toString(i, "0");
+                int candidate;
+                try {
+                    candidate = Integer.parseInt(candidateText);
+                } catch (NumberFormatException ex) {
+                    log.log(Level.FINE, "Skipping invalid integer value while deduplicating indexes", ex);
+                    continue;
+                }
+                if (candidate > 0) {
+                    s.add(Integer.valueOf(candidate));
                 }
             }
         }

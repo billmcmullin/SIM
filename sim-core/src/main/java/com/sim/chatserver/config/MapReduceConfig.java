@@ -320,13 +320,10 @@ public final class MapReduceConfig {
 
     private static int parseIntFromEnv(String key, int defaultValue) {
         String v = valueFromEnv(key);
-        if (v != null && !v.isBlank()) {
-            Integer parsed = parseInt(v);
-            if (parsed != null) {
-                return parsed.intValue();
-            }
+        if (v == null || v.isBlank()) {
+            return defaultValue;
         }
-        return defaultValue;
+        return parseIntOrDefault(v, defaultValue);
     }
 
     private static String valueFromEnv(String key) {
@@ -337,12 +334,12 @@ public final class MapReduceConfig {
         return null;
     }
 
-    private static Integer parseInt(String s) {
+    private static int parseIntOrDefault(String s, int defaultValue) {
         try {
             return Integer.parseInt(s.trim());
         } catch (NumberFormatException ignored) {
             log.log(Level.FINE, "Invalid integer environment value: {0}", s);
-            return null;
+            return defaultValue;
         }
     }
 

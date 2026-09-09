@@ -3,6 +3,7 @@ package com.sim.chatserver.service;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import com.sim.chatserver.model.CustomerIdentity;
 import com.sim.chatserver.model.CustomerIdentitySessionLink;
@@ -54,17 +55,26 @@ public class CustomerIdentityService {
             confidence = email != null ? "high" : "medium";
         }
 
+        long identityId = -1L;
         if (identity == null) {
-            long id = CustomerIdentityStore.insertIdentity(email, displayName, confidence);
+            long newIdentityId = CustomerIdentityStore.insertIdentity(email, displayName, confidence);
+            identityId = newIdentityId;
             identity = new CustomerIdentity();
-            identity.setIdentityId(id);
+            identity.setIdentityId(Long.valueOf(newIdentityId));
             identity.setCanonicalEmail(email);
             identity.setCanonicalName(displayName);
             identity.setConfidence(confidence);
+        } else {
+            String identityIdText = Objects.toString(identity.getIdentityId(), "");
+            if (!identityIdText.isBlank()) {
+                try {
+                    identityId = Long.parseLong(identityIdText);
+                } catch (NumberFormatException ex) {
+                    throw new SQLException("Unable to resolve identity id for session link", ex);
+                }
+            }
         }
 
-        Long identityIdValue = identity.getIdentityId();
-        long identityId = identityIdValue == null ? -1L : identityIdValue.longValue();
         if (identityId <= 0L) {
             throw new SQLException("Unable to resolve identity id for session link");
         }

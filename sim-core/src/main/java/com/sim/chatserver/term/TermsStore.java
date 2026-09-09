@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -211,7 +212,7 @@ public class TermsStore {
     }
 
     public TermDefinition updateTerm(Long id, String name, String description, String pattern, String type) throws SQLException {
-        long termId = id == null ? -1L : id.longValue();
+        long termId = parseIdOrDefault(id, -1L);
         if (termId <= 0L) {
             return null;
         }
@@ -263,7 +264,7 @@ public class TermsStore {
     }
 
     public boolean deleteTerm(Long id) throws SQLException {
-        long termId = id == null ? -1L : id.longValue();
+        long termId = parseIdOrDefault(id, -1L);
         if (termId <= 0L) {
             return false;
         }
@@ -274,6 +275,16 @@ public class TermsStore {
         try (Connection conn = dsHolder.getDataSource().getConnection(); PreparedStatement ps = conn.prepareStatement("DELETE FROM term_definition WHERE id = ?")) {
             ps.setLong(1, termId);
             return ps.executeUpdate() > 0;
+        }
+    }
+
+    private long parseIdOrDefault(Long id, long defaultValue) {
+        String valueText = Objects.toString(id, Long.toString(defaultValue));
+        try {
+            return Long.parseLong(valueText);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse term id; using default fallback", ex);
+            return defaultValue;
         }
     }
 

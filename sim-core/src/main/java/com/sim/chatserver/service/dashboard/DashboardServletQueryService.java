@@ -8,6 +8,7 @@ import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -106,10 +107,13 @@ public final class DashboardServletQueryService {
                                 continue;
                             }
 
-                            Integer existing = totalDaily.get(entryDate);
-                            int currentCount = 0;
-                            if (existing != null) {
-                                currentCount = existing.intValue();
+                            String existingText = Objects.toString(totalDaily.get(entryDate), "0");
+                            int currentCount;
+                            try {
+                                currentCount = Integer.parseInt(existingText);
+                            } catch (NumberFormatException ex) {
+                                log.log(Level.FINE, "Unable to parse existing daily count; using zero fallback", ex);
+                                currentCount = 0;
                             }
                             totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
                         }
@@ -124,10 +128,13 @@ public final class DashboardServletQueryService {
         JsonArrayBuilder values = Json.createArrayBuilder();
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
-            Integer dayCount = entry.getValue();
-            int safeCount = 0;
-            if (dayCount != null) {
-                safeCount = dayCount.intValue();
+            String dayCountText = Objects.toString(entry.getValue(), "0");
+            int safeCount;
+            try {
+                safeCount = Integer.parseInt(dayCountText);
+            } catch (NumberFormatException ex) {
+                log.log(Level.FINE, "Unable to parse daily chart count; using zero fallback", ex);
+                safeCount = 0;
             }
             values.add(safeCount);
         }

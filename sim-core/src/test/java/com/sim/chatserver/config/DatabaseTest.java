@@ -84,7 +84,7 @@ class DatabaseTest {
     private static ProbeResult runProbe(String scenario,
             boolean setValidDbEnv,
             boolean removeHostAfterSetup) throws Exception {
-        String javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java.exe").toString();
+        String javaExecutable = resolveJavaExecutable();
         String classPath = System.getProperty("java.class.path");
 
         ProcessBuilder pb = new ProcessBuilder(
@@ -121,6 +121,14 @@ class DatabaseTest {
         }
         int exitCode = process.waitFor();
         return new ProbeResult(exitCode, output);
+    }
+
+    private static String resolveJavaExecutable() {
+        Path javaFromHome = Path.of(System.getProperty("java.home"), "bin", "java");
+        if (javaFromHome.toFile().exists()) {
+            return javaFromHome.toString();
+        }
+        return "java";
     }
 
     private record ProbeResult(int exitCode, String output) {

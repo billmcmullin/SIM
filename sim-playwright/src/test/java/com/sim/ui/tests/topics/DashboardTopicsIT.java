@@ -169,6 +169,23 @@ public class DashboardTopicsIT extends BaseUiIT {
         assertTrue(body.contains("\"rangeEnd\":\""));
     }
 
+    @Test
+    @Order(8)
+    void topicsDataEndpoint_invalidRangeFallsBackWithoutError() {
+        login(adminUsername, adminPassword);
+
+        APIResponse response = page.request().get(
+                baseUrl + "/dashboard/topics/data?start=not-a-date&end=also-bad&includeOther=0"
+        );
+
+        assertEquals(200, response.status());
+        String body = response.text();
+        assertTrue(body.contains("\"status\":\"ok\""));
+        assertTrue(body.contains("\"includeOther\":false"));
+        assertTrue(body.contains("\"rangeStart\":\""));
+        assertTrue(body.contains("\"rangeEnd\":\""));
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

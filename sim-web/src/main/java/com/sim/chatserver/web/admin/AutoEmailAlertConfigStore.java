@@ -366,10 +366,10 @@ public final class AutoEmailAlertConfigStore {
 
     private int readNonNegativeInt(ResultSet rs, String column) {
         try {
-            Integer value = readSafeInteger(rs, column);
+            Object value = readSafeInteger(rs, column);
             int normalized = 0;
             if (value != null) {
-                normalized = value.intValue();
+                normalized = Integer.parseInt(value.toString());
             }
             return Math.max(0, normalized);
         } catch (SQLException e) {

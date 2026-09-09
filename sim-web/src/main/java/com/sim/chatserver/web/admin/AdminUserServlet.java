@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.util.JsonRequestParserUtil;
@@ -27,6 +28,7 @@ import jakarta.servlet.http.HttpSession;
 public class AdminUserServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final Pattern SAFE_LONG_VALUE = Pattern.compile("^\\d{1,18}$");
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
@@ -134,11 +136,19 @@ public class AdminUserServlet extends HttpServlet {
         if (user == null) {
             return -1L;
         }
-        Long id = user.getId();
-        if (id == null) {
+        Object idValue = user.getId();
+        if (idValue == null) {
             return -1L;
         }
-        return id.longValue();
+        String text = idValue.toString().trim();
+        if (!SAFE_LONG_VALUE.matcher(text).matches()) {
+            return -1L;
+        }
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException ex) {
+            return -1L;
+        }
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

@@ -76,19 +76,17 @@ public class DashboardMetricsService {
         private final int termsYesterday;
         private final ProgressStat termsProgression;
 
-        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, int termsTodayCount, int termsYesterdayCount) {
             this.chatsToday = chatsToday;
             this.chatsYesterday = chatsYesterday;
             this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
 
-            int normalizedTermsToday = termsTodayCount == null ? 0 : termsTodayCount.intValue();
-            int normalizedTermsYesterday = termsYesterdayCount == null ? 0 : termsYesterdayCount.intValue();
-            this.termsToday = normalizedTermsToday;
-            this.termsYesterday = normalizedTermsYesterday;
-            this.termsProgression = new ProgressStat(normalizedTermsToday, normalizedTermsYesterday);
+            this.termsToday = termsTodayCount;
+            this.termsYesterday = termsYesterdayCount;
+            this.termsProgression = new ProgressStat(termsTodayCount, termsYesterdayCount);
         }
 
-        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Integer termsTodayCount, Integer termsYesterdayCount) {
+        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, int termsTodayCount, int termsYesterdayCount) {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
@@ -224,18 +222,15 @@ public class DashboardMetricsService {
             // Enhancement: term counts use best-topic-per-chat semantics (same as topics data endpoint),
             // so dashboard termsToday/termsYesterday match "new entries categorized in terms".
             TermDayCount termCounts = countTermAssignmentsForDays(conn, widgets, today, yesterday, tableExistsCache);
-            int todayTermCount = 0;
-            int yesterdayTermCount = 0;
-            if (termCounts != null) {
-                todayTermCount = termCounts.getToday();
-                yesterdayTermCount = termCounts.getYesterday();
+            if (termCounts == null) {
+                return new DashboardProgressMetrics(chatsToday, chatsYesterday, 0, 0);
             }
 
             return new DashboardProgressMetrics(
                     chatsToday,
                     chatsYesterday,
-                    todayTermCount,
-                    yesterdayTermCount
+                    termCounts.getToday(),
+                    termCounts.getYesterday()
             );
         } catch (SQLException e) {
             LOG.log(Level.FINE, "buildDashboardProgressMetrics fallback to zeros", e);

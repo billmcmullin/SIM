@@ -136,6 +136,50 @@ public class SessionCatalogIT extends BaseUiIT {
         assertTrue(response.text().contains("No valid chat IDs provided."));
     }
 
+    @Test
+    @Order(9)
+    void chatsEndpoint_requiresAuth_whenSessionIdProvided() {
+        APIRequestContext req = playwright.request().newContext(
+                new APIRequest.NewContextOptions().setIgnoreHTTPSErrors(true)
+        );
+        try {
+            APIResponse response = req.get(baseUrl + "/dashboard/sessions/chats?sessionId=fake-session");
+            assertTrue(response.status() == 401 || isLoginForwardResponse(response.text()),
+                    "Expected unauthenticated chats endpoint to be blocked, got status=" + response.status());
+        } finally {
+            req.dispose();
+        }
+    }
+
+    @Test
+    @Order(10)
+    void selectEndpoint_requiresAuth_whenPayloadValid() {
+        APIRequestContext req = playwright.request().newContext(
+                new APIRequest.NewContextOptions().setIgnoreHTTPSErrors(true)
+        );
+        try {
+            APIResponse response = req.post(
+                    baseUrl + "/dashboard/sessions/select",
+                    RequestOptions.create()
+                            .setHeader("Content-Type", "application/json")
+                            .setData("{\"selectedChatIds\":[\"chat-1\"]}")
+            );
+            assertTrue(response.status() == 401 || isLoginForwardResponse(response.text()),
+                    "Expected unauthenticated select endpoint to be blocked, got status=" + response.status());
+        } finally {
+            req.dispose();
+        }
+    }
+
+    private boolean isLoginForwardResponse(String body) {
+        if (body == null) {
+            return false;
+        }
+        return body.contains("id=\"loginForm\"")
+                || body.contains("name=\"username\"")
+                || body.contains("Authentication required");
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

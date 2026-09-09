@@ -80,11 +80,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         for (Map.Entry<String, Integer> e : sortTopicMap(aggregation.globalCounts)) {
             String topic = e.getKey();
             Set<String> ids = aggregation.globalChatIdsByTopic.getOrDefault(topic, Set.of());
-            Integer globalMentions = e.getValue();
-            int mentions = 0;
-            if (globalMentions != null) {
-                mentions = globalMentions.intValue();
-            }
+            Object globalMentions = e.getValue();
+            int mentions = safeInt(globalMentions);
 
             JsonArrayBuilder idsArray = Json.createArrayBuilder();
             for (String id : ids) {
@@ -117,11 +114,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             for (Map.Entry<String, Integer> t : sorted) {
                 String topic = t.getKey();
                 Set<String> ids = topicChats.getOrDefault(topic, Set.of());
-                Integer widgetMentions = t.getValue();
-                int mentions = 0;
-                if (widgetMentions != null) {
-                    mentions = widgetMentions.intValue();
-                }
+                Object widgetMentions = t.getValue();
+                int mentions = safeInt(widgetMentions);
 
                 JsonArrayBuilder idsArray = Json.createArrayBuilder();
                 for (String id : ids) {
@@ -204,6 +198,21 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
         String v = raw.trim().toLowerCase(Locale.ROOT);
         return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
+    }
+
+    private int safeInt(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {

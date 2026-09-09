@@ -156,9 +156,11 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
-        Long idObj = null;
+        long idValue = -1L;
         try {
-            idObj = payload.getJsonNumber("id") == null ? null : Long.valueOf(payload.getJsonNumber("id").toString());
+            if (payload.getJsonNumber("id") != null) {
+                idValue = Long.parseLong(payload.getJsonNumber("id").toString());
+            }
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Invalid term id payload", ex);
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid id.");
@@ -169,13 +171,13 @@ public class AdminTermServlet extends HttpServlet {
         String pattern = payload.getString("matchPattern", "").trim();
         String type = payload.getString("matchType", "WILDCARD").trim();
 
-        if (idObj == null || name.isEmpty() || description.isEmpty()) {
+        if (idValue <= 0L || name.isEmpty() || description.isEmpty()) {
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "id, name, and description are required.");
             return;
         }
 
         try {
-            TermDefinition updated = termsStore().updateTerm(idObj, name, description, pattern, type);
+            TermDefinition updated = termsStore().updateTerm(Long.valueOf(idValue), name, description, pattern, type);
             if (updated == null) {
                 writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "System terms cannot be modified.");
                 return;
@@ -311,8 +313,19 @@ public class AdminTermServlet extends HttpServlet {
         }
     }
 
-    private static long safeLong(Long value, long fallback) {
-        return value == null ? fallback : value.longValue();
+    private long safeLong(Object value, long fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String text = value.toString().trim();
+        if (!SAFE_LONG_PARAM.matcher(text).matches()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
     }
 
     private TermsStore termsStore() {

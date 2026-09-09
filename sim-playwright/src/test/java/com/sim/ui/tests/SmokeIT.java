@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
+import com.microsoft.playwright.APIResponse;
+import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
 public class SmokeIT extends BaseUiIT {
@@ -27,4 +29,26 @@ public class SmokeIT extends BaseUiIT {
         String content = page.content();
         assertTrue(content.toLowerCase().contains("<html"), "Expected HTML content in response");
     }
+
+        @Test
+        void apiLoginRejectsInvalidCredentials() {
+        APIResponse response = page.request().post(
+            baseUrl + "/api/auth/login",
+            RequestOptions.create()
+                .setHeader("Content-Type", "application/json")
+                .setData("{\"username\":\"invalid-user\",\"password\":\"invalid-pass\"}")
+        );
+
+        assertTrue(response.status() >= 400,
+            "Expected invalid credentials to be rejected, got status=" + response.status());
+
+        boolean hasSessionCookie = context.cookies(baseUrl).stream()
+            .anyMatch(c -> c != null
+                && c.name != null
+                && c.name.toUpperCase().startsWith("JSESSIONID")
+                && c.value != null
+                && !c.value.isBlank());
+        assertFalse(hasSessionCookie,
+            "Invalid login should not create an authenticated session cookie.");
+        }
 }

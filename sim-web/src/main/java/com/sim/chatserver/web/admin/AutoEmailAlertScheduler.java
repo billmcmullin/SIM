@@ -463,10 +463,10 @@ public class AutoEmailAlertScheduler {
 
             for (Map.Entry<String, Integer> entry : counts.entrySet()) {
                 if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(target)) {
-                    Integer value = entry.getValue();
+                    Object value = entry.getValue();
                     int count = 0;
                     if (value != null) {
-                        count = value.intValue();
+                        count = Integer.parseInt(value.toString());
                     }
                     return Math.max(0L, count);
                 }

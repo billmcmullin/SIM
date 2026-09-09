@@ -445,7 +445,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
         return s == null ? "" : s;
     }
 
-    private static int safeIntegerValue(Integer value) {
+    private static int safeIntegerValue(Object value) {
         if (value == null) {
             return 0;
         }

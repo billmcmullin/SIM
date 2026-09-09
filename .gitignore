@@ -5,6 +5,7 @@ docs/static-analysis/
 .project
 .parasoft
 .settings/
+.github/
 sim-app/.project
 sim-app/.classpath
 sim-app/.settings/
@@ -21,4 +22,11 @@ sim-email/.project
 sim-email/.classpath
 sim-email/.settings/
 logs/
-SERVLET_CETS_progress.md
+
+#For SOAtest
+!resources/soatest/.project
+.metadata
+TestAssets/
+VirtualAssets/
+ProvisioningAssets/
+test_templates/

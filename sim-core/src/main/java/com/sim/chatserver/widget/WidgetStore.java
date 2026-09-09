@@ -158,15 +158,21 @@ public final class WidgetStore {
     public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        if (id == null) {
-            return create(widgetId, displayName);
-        }
-
-        int resolvedId = id.intValue();
+        int resolvedId = parseIntOrDefault(id, -1);
         if (resolvedId <= 0) {
             return create(widgetId, displayName);
         }
         return update(resolvedId, widgetId, displayName);
+    }
+
+    private static int parseIntOrDefault(Integer value, int defaultValue) {
+        String valueText = Objects.toString(value, Integer.toString(defaultValue));
+        try {
+            return Integer.parseInt(valueText);
+        } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Unable to parse widget id value; using default fallback", ex);
+            return defaultValue;
+        }
     }
 
     public static int deleteBulk(Collection<Integer> ids) throws SQLException {

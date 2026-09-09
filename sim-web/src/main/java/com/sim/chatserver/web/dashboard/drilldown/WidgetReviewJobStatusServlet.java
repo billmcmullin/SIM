@@ -274,14 +274,31 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     private jakarta.json.JsonArray toJsonIntArray(List<Integer> values) {
         JsonArrayBuilder b = Json.createArrayBuilder();
         if (values != null) {
-            for (Integer v : values) {
+            for (Object v : values) {
                 if (v != null) {
-                    int intValue = v.intValue();
-                    b.add(intValue);
+                    Integer intValue = safeParseInt(v);
+                    if (intValue != null) {
+                        b.add(intValue.intValue());
+                    }
                 }
             }
         }
         return b.build();
+    }
+
+    private Integer safeParseInt(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private List<String> normalizeIds(List<String> ids) {
