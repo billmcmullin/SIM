@@ -2154,14 +2154,14 @@ suite:
           serviceInfo:
             serviceDescriptor:
               $type: StandardServiceDescriptor
-              location: http://localhost/chat-server/assets/swagger/sim-api-soatest-openapi.yaml
+              location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
           schemaURL:
-            MessagingClient_SchemaLocation: "${URL}/assets/swagger/sim-api-soatest-openapi.yaml"
+            MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
             value:
               $type: ElementValue
