@@ -153,7 +153,12 @@ public class WidgetTableServlet extends HttpServlet {
                 if (resultCount == null) {
                     statusBody.addNull("count");
                 } else {
-                    statusBody.add("count", Long.parseLong(resultCount.toString()));
+                    Long parsedCount = parseNullableLong(resultCount);
+                    if (parsedCount == null) {
+                        statusBody.addNull("count");
+                    } else {
+                        statusBody.add("count", parsedCount.longValue());
+                    }
                 }
                 statuses.add(statusBody);
             }
@@ -295,9 +300,29 @@ public class WidgetTableServlet extends HttpServlet {
         if (count == null) {
             body.addNull("count");
         } else {
-            body.add("count", Long.parseLong(count.toString()));
+            Long parsedCount = parseNullableLong(count);
+            if (parsedCount == null) {
+                body.addNull("count");
+            } else {
+                body.add("count", parsedCount.longValue());
+            }
         }
         writeJson(resp, status, body.build());
+    }
+
+    private Long parseNullableLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
 }

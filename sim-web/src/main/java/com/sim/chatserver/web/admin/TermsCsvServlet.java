@@ -263,7 +263,11 @@ public class TermsCsvServlet extends HttpServlet {
             Object existingId = existing.getId();
             long existingIdValue = -1L;
             if (existingId != null) {
-                existingIdValue = Long.parseLong(existingId.toString());
+                try {
+                    existingIdValue = Long.parseLong(existingId.toString());
+                } catch (NumberFormatException ex) {
+                    throw new IllegalStateException("Failed to update term with invalid id", ex);
+                }
             }
             if (existingIdValue <= 0L) {
                 throw new IllegalStateException("Failed to update term with invalid id");

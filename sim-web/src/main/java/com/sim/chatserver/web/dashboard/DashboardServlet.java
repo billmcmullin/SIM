@@ -559,8 +559,16 @@ public class DashboardServlet extends HttpServlet {
         if (value == null) {
             return 0;
         }
-        int parsed = Integer.parseInt(value.toString());
-        return Math.max(0, parsed);
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        try {
+            int parsed = Integer.parseInt(text);
+            return Math.max(0, parsed);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
     }
 
     private String escapeForJs(String value) {

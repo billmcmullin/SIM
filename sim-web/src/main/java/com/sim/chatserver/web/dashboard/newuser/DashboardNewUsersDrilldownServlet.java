@@ -287,7 +287,11 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         if (value == null) {
             return 0;
         }
-        return Integer.parseInt(value.toString());
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
     }
 
     private static final class Row {

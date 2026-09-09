@@ -81,10 +81,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             String topic = e.getKey();
             Set<String> ids = aggregation.globalChatIdsByTopic.getOrDefault(topic, Set.of());
             Object globalMentions = e.getValue();
-            int mentions = 0;
-            if (globalMentions != null) {
-                mentions = Integer.parseInt(globalMentions.toString());
-            }
+            int mentions = safeInt(globalMentions);
 
             JsonArrayBuilder idsArray = Json.createArrayBuilder();
             for (String id : ids) {
@@ -118,10 +115,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 String topic = t.getKey();
                 Set<String> ids = topicChats.getOrDefault(topic, Set.of());
                 Object widgetMentions = t.getValue();
-                int mentions = 0;
-                if (widgetMentions != null) {
-                    mentions = Integer.parseInt(widgetMentions.toString());
-                }
+                int mentions = safeInt(widgetMentions);
 
                 JsonArrayBuilder idsArray = Json.createArrayBuilder();
                 for (String id : ids) {
@@ -204,6 +198,21 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
         String v = raw.trim().toLowerCase(Locale.ROOT);
         return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
+    }
+
+    private int safeInt(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {

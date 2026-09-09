@@ -144,7 +144,11 @@ public class AdminUserServlet extends HttpServlet {
         if (!SAFE_LONG_VALUE.matcher(text).matches()) {
             return -1L;
         }
-        return Long.parseLong(text);
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException ex) {
+            return -1L;
+        }
     }
 
     private void writeError(HttpServletResponse resp, int status, String message) {

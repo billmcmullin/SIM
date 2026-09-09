@@ -1,11 +1,22 @@
 ---
-parasoftVersion: 2026.1.0
-productVersion: 10.7.5
+parasoftVersion: 2026.2.0
+productVersion: 10.7.6
 schemaVersion: 03
 suite:
   $type: TestSuite
   name: Test Suite
   hasEnvironmentConfig: true
+  environmentConfig:
+    environments:
+    - variables:
+      - name: URL
+        value: http://chatserver:8080/chat-server
+      name: Test
+    - variables:
+      - name: URL
+        value: http://localhost/chat-server
+      name: Local
+      active: true
   lastModifiedBy: bmcmullin
   performance:
     groups:
@@ -249,8 +260,6 @@ suite:
           serviceDescriptor:
             $type: StandardServiceDescriptor
             location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-          serviceName: ""
-          versionName: ""
         jsonBuilder:
           hasValue: true
           value:
@@ -400,8 +409,7 @@ suite:
             value: http://localhost/chat-server
           fixedValue:
             $type: StringTestValue
-            value: http://localhost/chat-server
-          selectedIndex: 1
+            value: "${URL}"
   - $type: TestSuite
     name: SIM endpoints
     testID: 86
@@ -462,8 +470,6 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
@@ -605,8 +611,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/email/config
       testID: 91
@@ -649,14 +654,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -791,8 +793,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/terms
       testID: 104
@@ -835,14 +836,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -972,8 +970,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/users
       testID: 117
@@ -1016,14 +1013,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -1153,8 +1147,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/widget-health-config
       testID: 121
@@ -1197,14 +1190,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -1334,8 +1324,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/widgets
       testID: 124
@@ -1378,14 +1367,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -1515,8 +1501,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /admin/widgets/sync/timer
       testID: 131
@@ -1559,14 +1544,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -1706,8 +1688,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /dashboard/sessions/data
       testID: 142
@@ -1750,14 +1731,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -1859,6 +1837,66 @@ suite:
           mode: Literal
           literalQuery:
             isPropertiesRef: true
+          constrainedQuery:
+            parameters:
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                defaultValue: "false"
+                minOccurs: 0
+                localName: all
+                bodyType:
+                  $type: BooleanType
+              replacedColumn: ""
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                defaultValue: "false"
+                minOccurs: 0
+                localName: labeledOnly
+                bodyType:
+                  $type: BooleanType
+              replacedColumn: ""
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                minOccurs: 0
+                localName: search
+                bodyType:
+                  $type: StringType
+              replacedColumn: ""
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                minOccurs: 0
+                localName: activity
+                bodyType:
+                  $type: StringType
+              replacedColumn: ""
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                defaultValue: 10
+                minOccurs: 0
+                localName: limit
+                bodyType:
+                  $type: BigIntegerType
+              replacedColumn: ""
+            - $type: ElementValue
+              writeType: true
+              type:
+                $type: ElementType
+                defaultValue: 1
+                minOccurs: 0
+                localName: page
+                bodyType:
+                  $type: BigIntegerType
+              replacedColumn: ""
           literalPath:
             pathElements:
             - values:
@@ -1892,8 +1930,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /dashboard/sessions/select
       testID: 145
@@ -1936,14 +1973,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -2078,8 +2112,7 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"
     - $type: TestSuite
       name: /dashboard/topics/data
       testID: 148
@@ -2122,14 +2155,11 @@ suite:
             serviceDescriptor:
               $type: StandardServiceDescriptor
               location: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
-            serviceName: ""
-            versionName: ""
           jsonBuilder:
             hasValue: true
             value:
               $type: JSONObjectValue
               nameIsNull: true
-          xmlBuilder: false
           schemaURL:
             MessagingClient_SchemaLocation: file:///D:/Code_Workspace/project/SIM/docs/swagger/sim-api-soatest-openapi.yaml
           formInput:
@@ -2264,5 +2294,4 @@ suite:
               value: http://localhost/chat-server
             fixedValue:
               $type: StringTestValue
-              value: http://localhost/chat-server
-            selectedIndex: 1
+              value: "${URL}"

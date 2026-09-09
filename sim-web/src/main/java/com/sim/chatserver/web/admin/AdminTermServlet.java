@@ -321,7 +321,11 @@ public class AdminTermServlet extends HttpServlet {
         if (!SAFE_LONG_PARAM.matcher(text).matches()) {
             return fallback;
         }
-        return Long.parseLong(text);
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
     }
 
     private TermsStore termsStore() {

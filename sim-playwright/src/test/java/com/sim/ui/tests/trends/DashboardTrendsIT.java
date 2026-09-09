@@ -117,6 +117,22 @@ public class DashboardTrendsIT extends BaseUiIT {
         assertOnLoginScreen("Expected trends page to be blocked after logout,");
     }
 
+    @Test
+    @Order(5)
+    void trends_daysQueryParam_nonNumericInput_isNormalized() {
+        login(adminUsername, adminPassword);
+
+        navigateWithCommit("/dashboard/trends?days=not-a-number");
+        waitForPath("/chat-server/dashboard/trends");
+        page.waitForSelector("#trendDaysSelect");
+
+        String normalizedDays = page.inputValue("#trendDaysSelect").trim();
+        assertTrue(!"not-a-number".equals(normalizedDays),
+                "Expected non-numeric days value to be normalized, but was: " + normalizedDays);
+        assertTrue(normalizedDays.matches("10|30|90|120|180"),
+                "Expected normalized days to be one of supported values, but was: " + normalizedDays);
+    }
+
     private void login(String username, String password) {
         loginViaApi(username, password);
     }

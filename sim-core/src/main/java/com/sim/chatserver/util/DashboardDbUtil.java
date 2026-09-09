@@ -90,8 +90,9 @@ public final class DashboardDbUtil {
             requestCache = new LinkedHashMap<>();
         }
 
-        if (requestCache.containsKey(tableName)) {
-            return Boolean.TRUE.equals(requestCache.get(tableName));
+        Boolean cachedExists = requestCache.get(tableName);
+        if (cachedExists != null) {
+            return Boolean.TRUE.equals(cachedExists);
         }
 
         long now = Instant.now().toEpochMilli();
@@ -107,9 +108,9 @@ public final class DashboardDbUtil {
         synchronized (TABLE_CACHE_LOCK) {
             global = GLOBAL_TABLE_EXISTS_CACHE.get(key);
             if (global != null && !global.isExpired(now)) {
-                boolean cachedExists = Boolean.TRUE.equals(global.getValue());
-                requestCache.put(tableName, Boolean.valueOf(cachedExists));
-                return cachedExists;
+                boolean globalCachedExists = Boolean.TRUE.equals(global.getValue());
+                requestCache.put(tableName, Boolean.valueOf(globalCachedExists));
+                return globalCachedExists;
             }
         }
 

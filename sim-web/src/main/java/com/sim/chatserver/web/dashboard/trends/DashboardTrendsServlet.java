@@ -1,10 +1,10 @@
 package com.sim.chatserver.web.dashboard.trends;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -19,6 +19,7 @@ import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonWriter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -98,17 +99,22 @@ public class DashboardTrendsServlet extends HttpServlet {
                 .add("averagePostsPerDay", averagePostsPerDay)
                 .build();
 
+        String trendDataJson = toJsonText(trendData);
+        String currentUser = sessionUserText(session);
+
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
             .replace("${contextPath}", DashboardTemplateRenderer.escapeHtml(req.getContextPath() == null ? "" : req.getContextPath()))
-            .replace("${user}", DashboardTemplateRenderer.escapeHtml(String.valueOf(session.getAttribute("user"))))
+            .replace("${user}", DashboardTemplateRenderer.escapeHtml(currentUser))
                 .replace("${selectedDays}", String.valueOf(days))
-                .replace("${trendData}", escapeForJs(trendData.toString()));
+                .replace("${trendData}", escapeForJs(trendDataJson));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = resp.getWriter()) {
-            out.print(rendered);
+        byte[] renderedBytes = rendered.getBytes(StandardCharsets.UTF_8);
+        resp.setContentLength(renderedBytes.length);
+        try (var out = resp.getOutputStream()) {
+            out.write(renderedBytes);
         }
     
         } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
@@ -125,6 +131,27 @@ public class DashboardTrendsServlet extends HttpServlet {
             resp.sendError(status, message);
         } catch (IOException ioe) {
             log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+        }
+    }
+
+    private String sessionUserText(HttpSession session) {
+        if (session == null) {
+            return "";
+        }
+        Object user = session.getAttribute("user");
+        return user instanceof String ? (String) user : "";
+    }
+
+    private String toJsonText(JsonObject payload) {
+        if (payload == null) {
+            return "{}";
+        }
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream(); JsonWriter writer = Json.createWriter(out)) {
+            writer.writeObject(payload);
+            return out.toString(StandardCharsets.UTF_8);
+        } catch (IOException | IllegalArgumentException | IllegalStateException ex) {
+            log.log(Level.FINE, "Unable to serialize trend payload", ex);
+            return "{}";
         }
     }
 
