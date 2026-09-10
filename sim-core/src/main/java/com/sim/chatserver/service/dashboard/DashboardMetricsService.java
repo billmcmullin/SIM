@@ -58,7 +58,7 @@ public class DashboardMetricsService {
         this.topTopicLimit = topTopicLimit;
     }
 
-    static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
+    private static DashboardMetricsService create(AppDataSourceHolder dsHolder, TermsStore termsStore, int topTopicLimit) {
         return new DashboardMetricsService(dsHolder, termsStore, topTopicLimit);
     }
 
@@ -90,11 +90,11 @@ public class DashboardMetricsService {
             return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
         }
 
-        final int getChatsToday() {
+        private final int getChatsToday() {
             return chatsToday;
         }
 
-        final int getChatsYesterday() {
+        private final int getChatsYesterday() {
             return chatsYesterday;
         }
 
@@ -102,11 +102,11 @@ public class DashboardMetricsService {
             return chatsProgression;
         }
 
-        final int getTermsToday() {
+        private final int getTermsToday() {
             return termsToday;
         }
 
-        final int getTermsYesterday() {
+        private final int getTermsYesterday() {
             return termsYesterday;
         }
 
@@ -131,7 +131,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
+    private final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         List<WidgetStat> stats = new ArrayList<>();
         if (widgets == null || widgets.isEmpty()) {
             return stats;
@@ -180,7 +180,7 @@ public class DashboardMetricsService {
         return stats;
     }
 
-    final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+    private final ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -195,7 +195,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+    private final ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -209,7 +209,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
+    private final DashboardProgressMetrics buildDashboardProgressMetrics(List<WidgetEntry> widgets) {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         LocalDate yesterday = today.minusDays(1);
 
@@ -238,7 +238,7 @@ public class DashboardMetricsService {
         }
     }
 
-    final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
+    private final List<TopTopic> buildTopTopicsTodayVsYesterday(List<WidgetEntry> widgets) {
         if (widgets == null || widgets.isEmpty()) {
             return List.of();
         }
@@ -327,7 +327,7 @@ public class DashboardMetricsService {
                 .collect(Collectors.toList());
     }
 
-    final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
+    private final List<OtherParasoftEntry> buildLatestOtherParasoftEntries(List<WidgetEntry> widgets, int limit) {
         if (widgets == null || widgets.isEmpty() || limit <= 0) {
             return List.of();
         }

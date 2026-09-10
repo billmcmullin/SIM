@@ -31,7 +31,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getAccountId();
+        String result = underTest.accountId();
 
     }
 
@@ -48,7 +48,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getContactId();
+        String result = underTest.contactId();
 
     }
 
@@ -65,7 +65,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getDepartment();
+        String result = underTest.departmentValue();
 
     }
 
@@ -82,7 +82,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getEmail();
+        String result = underTest.emailValue();
 
     }
 
@@ -99,7 +99,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getName();
+        String result = underTest.fullName();
 
     }
 
@@ -116,7 +116,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getPhone();
+        String result = underTest.phoneValue();
 
     }
 
@@ -133,7 +133,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getRawJson();
+        String result = underTest.rawJsonValue();
 
     }
 
@@ -150,7 +150,7 @@ public class SalesforceCustomerMatchTest
         SalesforceCustomerMatch underTest = new SalesforceCustomerMatch();
 
         // When
-        String result = underTest.getTitle();
+        String result = underTest.titleValue();
 
     }
 

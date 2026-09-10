@@ -321,6 +321,7 @@ public class WidgetTableServlet extends HttpServlet {
         try {
             return Long.valueOf(text);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid count value", ex);
             return null;
         }
     }

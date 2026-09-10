@@ -21,7 +21,7 @@ public class SalesforceCustomerMatch {
         throw new java.io.NotSerializableException(getClass().getName());
     }
 
-    final String getContactId() {
+    private final String getContactId() {
         return contactId;
     }
 
@@ -33,7 +33,7 @@ public class SalesforceCustomerMatch {
         this.contactId = contactId;
     }
 
-    final String getAccountId() {
+    private final String getAccountId() {
         return accountId;
     }
 
@@ -45,7 +45,7 @@ public class SalesforceCustomerMatch {
         this.accountId = accountId;
     }
 
-    final String getName() {
+    private final String getName() {
         return name;
     }
 
@@ -57,7 +57,7 @@ public class SalesforceCustomerMatch {
         this.name = name;
     }
 
-    final String getEmail() {
+    private final String getEmail() {
         return email;
     }
 
@@ -69,7 +69,7 @@ public class SalesforceCustomerMatch {
         this.email = email;
     }
 
-    final String getPhone() {
+    private final String getPhone() {
         return phone;
     }
 
@@ -81,7 +81,7 @@ public class SalesforceCustomerMatch {
         this.phone = phone;
     }
 
-    final String getTitle() {
+    private final String getTitle() {
         return title;
     }
 
@@ -93,7 +93,7 @@ public class SalesforceCustomerMatch {
         this.title = title;
     }
 
-    final String getDepartment() {
+    private final String getDepartment() {
         return department;
     }
 
@@ -105,7 +105,7 @@ public class SalesforceCustomerMatch {
         this.department = department;
     }
 
-    final String getRawJson() {
+    private final String getRawJson() {
         return rawJson;
     }
 

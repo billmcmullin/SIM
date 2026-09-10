@@ -290,6 +290,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         try {
             return Integer.parseInt(value.toString());
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer value for new users drilldown", ex);
             return 0;
         }
     }

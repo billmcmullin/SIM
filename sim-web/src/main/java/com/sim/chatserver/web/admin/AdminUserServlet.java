@@ -147,6 +147,7 @@ public class AdminUserServlet extends HttpServlet {
         try {
             return Long.parseLong(text);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid user id value", ex);
             return -1L;
         }
     }

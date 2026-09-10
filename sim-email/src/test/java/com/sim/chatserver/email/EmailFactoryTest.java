@@ -29,7 +29,7 @@ class EmailFactoryTest {
     @Test
     @DisplayName("forProvider throws for null resolved config")
     void forProvider_nullResolved_throws() {
-        assertThrows(IllegalArgumentException.class, () -> EmailFactory.forProvider(null));
+        assertThrows(IllegalArgumentException.class, () -> EmailFactory.createForProvider(null));
     }
 
     @Test
@@ -45,7 +45,7 @@ class EmailFactoryTest {
             smtpConfig
         );
 
-        assertThrows(IllegalArgumentException.class, () -> EmailFactory.forProvider(resolved));
+        assertThrows(IllegalArgumentException.class, () -> EmailFactory.createForProvider(resolved));
     }
 
     @Test
@@ -59,7 +59,7 @@ class EmailFactoryTest {
                 "ok"
         );
 
-        EmailService service = EmailFactory.forProvider(resolved);
+        EmailService service = EmailFactory.createForProvider(resolved);
 
         assertInstanceOf(SmtpEmailService.class, service);
     }
@@ -73,7 +73,7 @@ class EmailFactoryTest {
         when(resolved.providerType()).thenReturn(null);
         when(resolved.config()).thenReturn(config);
 
-        EmailService service = EmailFactory.forProvider(resolved);
+        EmailService service = EmailFactory.createForProvider(resolved);
 
         assertInstanceOf(SmtpEmailService.class, service);
     }
@@ -90,7 +90,7 @@ class EmailFactoryTest {
                 null
         );
 
-        assertThrows(IllegalArgumentException.class, () -> EmailFactory.forProvider(resolved));
+        assertThrows(IllegalArgumentException.class, () -> EmailFactory.createForProvider(resolved));
     }
 
     @Test
@@ -105,7 +105,7 @@ class EmailFactoryTest {
                 "not-a-graph-config"
         );
 
-        assertThrows(IllegalArgumentException.class, () -> EmailFactory.forProvider(resolved));
+        assertThrows(IllegalArgumentException.class, () -> EmailFactory.createForProvider(resolved));
     }
 
     @Test
@@ -119,7 +119,7 @@ class EmailFactoryTest {
                 "ok"
         );
 
-        EmailService service = EmailFactory.forProvider(resolved);
+        EmailService service = EmailFactory.createForProvider(resolved);
 
         assertInstanceOf(GraphEmailService.class, service);
     }

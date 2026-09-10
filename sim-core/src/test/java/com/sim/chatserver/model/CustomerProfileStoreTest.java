@@ -86,7 +86,7 @@ public class CustomerProfileStoreTest
     public void upsert_nullProfile_throwsIllegalArgumentException() throws Throwable {
         CustomerProfileStore.setAppDataSourceHolder(createHolderForEnsureTableOnly());
 
-        assertThrows(IllegalArgumentException.class, () -> CustomerProfileStore.upsert(null));
+        assertThrows(IllegalArgumentException.class, () -> CustomerProfileStore.saveProfile(null));
     }
 
     @Test
@@ -95,7 +95,7 @@ public class CustomerProfileStoreTest
         CustomerProfile profile = new CustomerProfile();
         profile.setSessionId("   ");
 
-        assertThrows(IllegalArgumentException.class, () -> CustomerProfileStore.upsert(profile));
+        assertThrows(IllegalArgumentException.class, () -> CustomerProfileStore.saveProfile(profile));
     }
 
     @Test
