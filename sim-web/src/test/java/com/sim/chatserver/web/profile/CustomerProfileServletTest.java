@@ -113,9 +113,18 @@ public class CustomerProfileServletTest {
         when(link.getContactEmailSnapshot()).thenReturn("linked@example.com");
         when(link.getUpdatedAt()).thenReturn(null);
 
-        CustomerProfile profile = new CustomerProfile();
-        profile.setFriendlyName("Profile Name");
-        profile.setEmail("profile@example.com");
+        CustomerProfile profile = CustomerProfile.fromSalesforceSync(
+            "sid-123",
+            "Profile Name",
+            null,
+            null,
+            "profile@example.com",
+            null,
+            null,
+            null,
+            null,
+            null
+        );
 
         try (MockedConstruction<CustomerIdentityService> identityServices = Mockito.mockConstruction(
                 CustomerIdentityService.class,

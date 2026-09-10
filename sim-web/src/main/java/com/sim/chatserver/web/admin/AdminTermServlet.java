@@ -324,6 +324,7 @@ public class AdminTermServlet extends HttpServlet {
         try {
             return Long.parseLong(text);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid numeric value for term id", ex);
             return fallback;
         }
     }

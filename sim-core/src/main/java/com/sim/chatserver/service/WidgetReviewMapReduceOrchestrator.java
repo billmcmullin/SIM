@@ -134,7 +134,7 @@ public class WidgetReviewMapReduceOrchestrator {
     public static final ProgressListener NOOP_PROGRESS_LISTENER = new ProgressListener() {
     };
 
-        static WidgetReviewMapReduceOrchestrator createDefault(
+        private static WidgetReviewMapReduceOrchestrator createDefault(
             WorkspaceClient workspaceClient,
             ReviewContextBuilderService contextBuilderService,
             PromptTemplateService promptTemplateService

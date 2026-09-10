@@ -297,6 +297,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         try {
             return Integer.valueOf(text);
         } catch (NumberFormatException ex) {
+            java.util.logging.Logger.getLogger(WidgetReviewJobStatusServlet.class.getName())
+                    .log(java.util.logging.Level.FINE, "Invalid integer value", ex);
             return null;
         }
     }

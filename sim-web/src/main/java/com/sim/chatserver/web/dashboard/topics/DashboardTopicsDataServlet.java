@@ -211,6 +211,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         try {
             return Integer.parseInt(text);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer value for dashboard topics", ex);
             return 0;
         }
     }

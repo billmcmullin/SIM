@@ -13,7 +13,7 @@ public final class EmailConfigResolver {
         this(dbProvider, null);
     }
 
-    static EmailConfigResolver create(DbEmailConfigProvider dbProvider) {
+    private static EmailConfigResolver create(DbEmailConfigProvider dbProvider) {
         return new EmailConfigResolver(dbProvider);
     }
 
@@ -26,7 +26,7 @@ public final class EmailConfigResolver {
         this.graphDbProvider = graphDbProvider;
     }
 
-    final ResolvedEmailConfig resolve() {
+    private final ResolvedEmailConfig resolve() {
         // 1) SMTP from ENV
         EmailConfig env = EmailConfigLoader.loadEnvOnly();
         if (isUsableSmtp(env)) {

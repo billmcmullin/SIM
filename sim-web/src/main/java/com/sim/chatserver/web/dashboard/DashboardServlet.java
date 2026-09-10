@@ -567,6 +567,7 @@ public class DashboardServlet extends HttpServlet {
             int parsed = Integer.parseInt(text);
             return Math.max(0, parsed);
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid non-negative integer value", ex);
             return 0;
         }
     }

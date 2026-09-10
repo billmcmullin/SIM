@@ -117,7 +117,7 @@ public class DashboardViewModels_ProgressStatTest
         ProgressStat underTest = new ProgressStat(today, yesterday);
 
         // When
-        int result = underTest.getToday();
+        int result = underTest.todayValue();
 
         // Then - assertions for result of method getToday()
         assertEquals(1, result);
@@ -148,7 +148,7 @@ public class DashboardViewModels_ProgressStatTest
         ProgressStat underTest = new ProgressStat(today, yesterday);
 
         // When
-        int result = underTest.getYesterday();
+        int result = underTest.yesterdayValue();
 
         // Then - assertions for result of method getYesterday()
         assertEquals(-1, result);

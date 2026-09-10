@@ -37,7 +37,7 @@ public class CustomerProfile {
         return friendlyName;
     }
 
-    public void setFriendlyName(String friendlyName) {
+    final void setFriendlyName(String friendlyName) {
         this.friendlyName = friendlyName;
     }
 
@@ -61,7 +61,7 @@ public class CustomerProfile {
         return email;
     }
 
-    public void setEmail(String email) {
+    final void setEmail(String email) {
         this.email = email;
     }
 

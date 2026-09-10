@@ -150,7 +150,7 @@ public final class CustomerProfileStore {
         }
     }
 
-    static void upsert(CustomerProfile profile) throws SQLException {
+    private static void upsert(CustomerProfile profile) throws SQLException {
         ensureTable();
 
         if (profile == null || isBlank(profile.getSessionId())) {

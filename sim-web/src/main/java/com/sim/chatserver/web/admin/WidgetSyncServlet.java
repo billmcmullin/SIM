@@ -3937,6 +3937,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             return Integer.parseInt(value.toString());
         } catch (NumberFormatException ex) {
+            log.log(Level.FINE, "Invalid integer value", ex);
             return 0;
         }
     }

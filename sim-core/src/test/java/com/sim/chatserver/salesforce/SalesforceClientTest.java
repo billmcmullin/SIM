@@ -34,7 +34,7 @@ public class SalesforceClientTest
 
         // When
         String friendlyName = null; // UTA: configured value
-        SalesforceCustomerMatch result = underTest.findBestCustomerMatch(friendlyName);
+        SalesforceCustomerMatch result = underTest.lookupBestCustomerMatch(friendlyName);
 
     }
 
@@ -53,7 +53,7 @@ public class SalesforceClientTest
 
         // When
         String friendlyName = ""; // UTA: configured value
-        SalesforceCustomerMatch result = underTest.findBestCustomerMatch(friendlyName);
+        SalesforceCustomerMatch result = underTest.lookupBestCustomerMatch(friendlyName);
 
     }
 

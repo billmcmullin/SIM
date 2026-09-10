@@ -58,11 +58,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -83,11 +83,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -108,11 +108,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -133,11 +133,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -164,11 +164,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -198,11 +198,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -239,11 +239,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -262,13 +262,13 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -287,11 +287,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -318,11 +318,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -344,11 +344,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -370,11 +370,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -398,11 +398,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -428,11 +428,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -461,11 +461,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -496,11 +496,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -531,11 +531,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -564,11 +564,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildChatProgression(widgets);
+        ProgressStat result = underTest.collectChatProgression(widgets);
 
     }
 
@@ -589,11 +589,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -614,11 +614,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -639,11 +639,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -664,11 +664,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -691,11 +691,11 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -714,13 +714,13 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -739,11 +739,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        DashboardProgressMetrics result = underTest.buildDashboardProgressMetrics(widgets);
+        DashboardProgressMetrics result = underTest.collectDashboardProgressMetrics(widgets);
 
     }
 
@@ -760,12 +760,12 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
         int limit = 1; // UTA: default value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -782,12 +782,12 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         int limit = 1; // UTA: default value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -804,14 +804,14 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
         int limit = 0; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -834,12 +834,12 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -862,12 +862,12 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -892,12 +892,12 @@ public class DashboardMetricsServiceTest
         listAllResult.add(item);
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -920,14 +920,14 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -950,14 +950,14 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -980,7 +980,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -989,7 +989,7 @@ public class DashboardMetricsServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1012,7 +1012,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1021,7 +1021,7 @@ public class DashboardMetricsServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1050,7 +1050,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1063,7 +1063,7 @@ public class DashboardMetricsServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1096,7 +1096,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1109,7 +1109,7 @@ public class DashboardMetricsServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1148,7 +1148,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1161,7 +1161,7 @@ public class DashboardMetricsServiceTest
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1182,7 +1182,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1191,7 +1191,7 @@ public class DashboardMetricsServiceTest
         WidgetEntry item2 = mock(WidgetEntry.class);
         widgets.add(item2);
         int limit = 1; // UTA: configured value
-        List<OtherParasoftEntry> result = underTest.buildLatestOtherParasoftEntries(widgets, limit);
+        List<OtherParasoftEntry> result = underTest.collectLatestOtherParasoftEntries(widgets, limit);
 
     }
 
@@ -1212,11 +1212,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1237,11 +1237,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1262,11 +1262,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1287,11 +1287,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1310,13 +1310,13 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1335,11 +1335,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1361,11 +1361,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1387,11 +1387,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        ProgressStat result = underTest.buildNewUserProgression(widgets);
+        ProgressStat result = underTest.collectNewUserProgression(widgets);
 
     }
 
@@ -1408,11 +1408,11 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1429,11 +1429,11 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1452,13 +1452,13 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = null; // UTA: configured value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1477,13 +1477,13 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1504,13 +1504,13 @@ public class DashboardMetricsServiceTest
         listAllResult.add(item);
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item2 = mock(WidgetEntry.class);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1533,11 +1533,11 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1560,11 +1560,11 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1587,13 +1587,13 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1616,13 +1616,13 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1645,7 +1645,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1653,7 +1653,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1676,7 +1676,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1684,7 +1684,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1707,7 +1707,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1719,7 +1719,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = "getWidgetIdResult2"; // UTA: default value
         when(item2.getWidgetId()).thenReturn(getWidgetIdResult2);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1742,7 +1742,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1751,7 +1751,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1774,7 +1774,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1783,7 +1783,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1806,7 +1806,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1814,7 +1814,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = "getWidgetIdResult"; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1837,7 +1837,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1850,7 +1850,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult3 = "getWidgetIdResult3"; // UTA: default value
         when(item2.getWidgetId()).thenReturn(getWidgetIdResult3);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1879,7 +1879,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1888,7 +1888,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1917,7 +1917,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1930,7 +1930,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult3 = "getWidgetIdResult3"; // UTA: default value
         when(item2.getWidgetId()).thenReturn(getWidgetIdResult3);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -1966,7 +1966,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -1975,7 +1975,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2014,7 +2014,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2023,7 +2023,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2044,7 +2044,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2052,7 +2052,7 @@ public class DashboardMetricsServiceTest
         widgets.add(item);
         WidgetEntry item2 = mock(WidgetEntry.class);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2073,7 +2073,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2085,7 +2085,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = "getWidgetIdResult2"; // UTA: default value
         when(item2.getWidgetId()).thenReturn(getWidgetIdResult2);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2106,7 +2106,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2114,7 +2114,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = "getWidgetIdResult"; // UTA: default value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2135,7 +2135,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2148,7 +2148,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult3 = "getWidgetIdResult3"; // UTA: default value
         when(item2.getWidgetId()).thenReturn(getWidgetIdResult3);
         widgets.add(item2);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2177,7 +2177,7 @@ public class DashboardMetricsServiceTest
         List<TermDefinition> listAllResult = new ArrayList<TermDefinition>(); // UTA: default value
         doReturn(listAllResult).when(termsStore).listAll();
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2186,7 +2186,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<TopTopic> result = underTest.buildTopTopicsTodayVsYesterday(widgets);
+        List<TopTopic> result = underTest.collectTopTopicsTodayVsYesterday(widgets);
 
     }
 
@@ -2203,11 +2203,11 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = null; // UTA: configured value
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2224,11 +2224,11 @@ public class DashboardMetricsServiceTest
         AppDataSourceHolder dsHolder = mock(AppDataSourceHolder.class);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2249,11 +2249,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2274,11 +2274,11 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2299,13 +2299,13 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2326,13 +2326,13 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
         WidgetEntry item = mock(WidgetEntry.class);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2353,7 +2353,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2361,7 +2361,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2382,7 +2382,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2390,7 +2390,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2437,7 +2437,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2449,7 +2449,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2468,7 +2468,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2476,7 +2476,7 @@ public class DashboardMetricsServiceTest
         widgets.add(item);
         WidgetEntry item2 = mock(WidgetEntry.class);
         widgets.add(item2);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2503,7 +2503,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2515,7 +2515,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2547,7 +2547,7 @@ public class DashboardMetricsServiceTest
         when(dsHolder.getDataSource()).thenReturn(getDataSourceResult);
         TermsStore termsStore = mock(TermsStore.class);
         int topTopicLimit = 1; // UTA: default value
-        DashboardMetricsService underTest = DashboardMetricsService.create(dsHolder, termsStore, topTopicLimit);
+        DashboardMetricsService underTest = DashboardMetricsService.createForDashboard(dsHolder, termsStore, topTopicLimit);
 
         // When
         List<WidgetEntry> widgets = new ArrayList<WidgetEntry>(); // UTA: default value
@@ -2559,7 +2559,7 @@ public class DashboardMetricsServiceTest
         String getWidgetIdResult2 = null; // UTA: configured value
         when(item.getWidgetId()).thenReturn(getWidgetIdResult, getWidgetIdResult2);
         widgets.add(item);
-        List<WidgetStat> result = underTest.buildWidgetStats(widgets);
+        List<WidgetStat> result = underTest.collectWidgetStats(widgets);
 
     }
 
@@ -2599,13 +2599,13 @@ public class DashboardMetricsServiceTest
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(1, underTest.getChatsToday());
+            assertEquals(1, underTest.chatsToday());
         }, () -> {
-            assertEquals(-1, underTest.getChatsYesterday());
+            assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
-            assertEquals(1, underTest.getTermsToday());
+            assertEquals(1, underTest.termsToday());
         }, () -> {
-            assertEquals(-1, underTest.getTermsYesterday());
+            assertEquals(-1, underTest.termsYesterday());
         }, () -> {
             assertNotNull(underTest.getTermsProgression());
         }, () -> {
@@ -2635,14 +2635,14 @@ public class DashboardMetricsServiceTest
         DashboardProgressMetrics underTest = DashboardProgressMetrics.of(chatsToday, chatsYesterday, termsToday, termsYesterday);
 
         // When
-        int result = underTest.getChatsToday();
+        int result = underTest.chatsToday();
 
         // Then - assertions for result of method getChatsToday()
         assertEquals(1, result);
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(-1, underTest.getChatsYesterday());
+            assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
             assertNotNull(underTest.getChatsProgression());
         }, () -> {
@@ -2652,9 +2652,9 @@ public class DashboardMetricsServiceTest
         }, () -> {
             assertEquals("up", underTest.getChatsProgression().getDirection());
         }, () -> {
-            assertEquals(1, underTest.getTermsToday());
+            assertEquals(1, underTest.termsToday());
         }, () -> {
-            assertEquals(-1, underTest.getTermsYesterday());
+            assertEquals(-1, underTest.termsYesterday());
         }, () -> {
             assertNotNull(underTest.getTermsProgression());
         }, () -> {
@@ -2684,14 +2684,14 @@ public class DashboardMetricsServiceTest
         DashboardProgressMetrics underTest = DashboardProgressMetrics.of(chatsToday, chatsYesterday, termsToday, termsYesterday);
 
         // When
-        int result = underTest.getChatsYesterday();
+        int result = underTest.chatsYesterday();
 
         // Then - assertions for result of method getChatsYesterday()
         assertEquals(-1, result);
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(1, underTest.getChatsToday());
+            assertEquals(1, underTest.chatsToday());
         }, () -> {
             assertNotNull(underTest.getChatsProgression());
         }, () -> {
@@ -2701,9 +2701,9 @@ public class DashboardMetricsServiceTest
         }, () -> {
             assertEquals("up", underTest.getChatsProgression().getDirection());
         }, () -> {
-            assertEquals(1, underTest.getTermsToday());
+            assertEquals(1, underTest.termsToday());
         }, () -> {
-            assertEquals(-1, underTest.getTermsYesterday());
+            assertEquals(-1, underTest.termsYesterday());
         }, () -> {
             assertNotNull(underTest.getTermsProgression());
         }, () -> {
@@ -2748,9 +2748,9 @@ public class DashboardMetricsServiceTest
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(1, underTest.getChatsToday());
+            assertEquals(1, underTest.chatsToday());
         }, () -> {
-            assertEquals(-1, underTest.getChatsYesterday());
+            assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
             assertNotNull(underTest.getChatsProgression());
         }, () -> {
@@ -2760,9 +2760,9 @@ public class DashboardMetricsServiceTest
         }, () -> {
             assertEquals("up", underTest.getChatsProgression().getDirection());
         }, () -> {
-            assertEquals(1, underTest.getTermsToday());
+            assertEquals(1, underTest.termsToday());
         }, () -> {
-            assertEquals(-1, underTest.getTermsYesterday());
+            assertEquals(-1, underTest.termsYesterday());
         });
 
     }
@@ -2784,16 +2784,16 @@ public class DashboardMetricsServiceTest
         DashboardProgressMetrics underTest = DashboardProgressMetrics.of(chatsToday, chatsYesterday, termsToday, termsYesterday);
 
         // When
-        int result = underTest.getTermsToday();
+        int result = underTest.termsToday();
 
         // Then - assertions for result of method getTermsToday()
         assertEquals(1, result);
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(1, underTest.getChatsToday());
+            assertEquals(1, underTest.chatsToday());
         }, () -> {
-            assertEquals(-1, underTest.getChatsYesterday());
+            assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
             assertNotNull(underTest.getChatsProgression());
         }, () -> {
@@ -2803,7 +2803,7 @@ public class DashboardMetricsServiceTest
         }, () -> {
             assertEquals("up", underTest.getChatsProgression().getDirection());
         }, () -> {
-            assertEquals(-1, underTest.getTermsYesterday());
+            assertEquals(-1, underTest.termsYesterday());
         }, () -> {
             assertNotNull(underTest.getTermsProgression());
         }, () -> {
@@ -2833,16 +2833,16 @@ public class DashboardMetricsServiceTest
         DashboardProgressMetrics underTest = DashboardProgressMetrics.of(chatsToday, chatsYesterday, termsToday, termsYesterday);
 
         // When
-        int result = underTest.getTermsYesterday();
+        int result = underTest.termsYesterday();
 
         // Then - assertions for result of method getTermsYesterday()
         assertEquals(-1, result);
 
         // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
         assertAll(() -> {
-            assertEquals(1, underTest.getChatsToday());
+            assertEquals(1, underTest.chatsToday());
         }, () -> {
-            assertEquals(-1, underTest.getChatsYesterday());
+            assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
             assertNotNull(underTest.getChatsProgression());
         }, () -> {
@@ -2852,7 +2852,7 @@ public class DashboardMetricsServiceTest
         }, () -> {
             assertEquals("up", underTest.getChatsProgression().getDirection());
         }, () -> {
-            assertEquals(1, underTest.getTermsToday());
+            assertEquals(1, underTest.termsToday());
         }, () -> {
             assertNotNull(underTest.getTermsProgression());
         }, () -> {

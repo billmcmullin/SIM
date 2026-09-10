@@ -71,7 +71,7 @@ public class SalesforceClient {
     /**
      * Uses persisted Salesforce config and searches by friendly name.
      */
-    final SalesforceCustomerMatch findBestCustomerMatch(String friendlyName)
+    private final SalesforceCustomerMatch findBestCustomerMatch(String friendlyName)
             throws IOException, InterruptedException, SQLException, SalesforceClientException {
         return findBestCustomerMatch(friendlyName, null, null);
     }
@@ -341,7 +341,7 @@ public class SalesforceClient {
             this.statusCode = statusCode;
         }
 
-        final int getStatusCode() {
+        private final int getStatusCode() {
             return statusCode;
         }
 

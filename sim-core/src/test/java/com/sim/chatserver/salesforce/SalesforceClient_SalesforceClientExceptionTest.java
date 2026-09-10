@@ -31,7 +31,7 @@ public class SalesforceClient_SalesforceClientExceptionTest
         SalesforceClientException underTest = newSalesforceClientException(statusCode, message);
 
         // When
-        int result = underTest.getStatusCode();
+        int result = underTest.statusCode();
 
         // Then - assertions for result of method getStatusCode()
         assertEquals(1, result);

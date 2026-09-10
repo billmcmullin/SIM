@@ -113,11 +113,11 @@ public final class DashboardViewModels {
             }
         }
 
-        final int getToday() {
+        private final int getToday() {
             return today;
         }
 
-        final int getYesterday() {
+        private final int getYesterday() {
             return yesterday;
         }
 

@@ -36,7 +36,7 @@ public final class EmailFactory {
     /**
      * Provider-based factory entrypoint.
      */
-    static EmailService forProvider(ResolvedEmailConfig resolved) {
+    private static EmailService forProvider(ResolvedEmailConfig resolved) {
         if (resolved == null || !resolved.valid()) {
             throw new IllegalArgumentException("No valid email configuration resolved");
         }
