@@ -236,8 +236,8 @@ class WidgetReviewDataServiceTest {
         assertEquals(Integer.valueOf(12), invokeObject(service, "parseIntegerOrNull", new Class<?>[]{String.class}, "12"));
         assertEquals(null, invokeObject(service, "parseIntegerOrNull", new Class<?>[]{String.class}, "oops"));
 
-        assertEquals(9, invokeInt(service, "valueOrDefault", new Class<?>[]{Integer.class, int.class}, null, 9));
-        assertEquals(2, invokeInt(service, "valueOrDefault", new Class<?>[]{Integer.class, int.class}, Integer.valueOf(2), 9));
+        assertEquals(9, invokeInt(service, "valueOrDefault", new Class<?>[]{Object.class, int.class}, null, 9));
+        assertEquals(2, invokeInt(service, "valueOrDefault", new Class<?>[]{Object.class, int.class}, Integer.valueOf(2), 9));
 
         assertEquals(
             "selection_1",

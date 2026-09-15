@@ -1806,7 +1806,7 @@ class WidgetSyncServletTest {
                     invoke("incrementCount", new Class<?>[]{Map.class, String.class}, counts, "timeout");
                     invoke("incrementCount", new Class<?>[]{Map.class, String.class}, counts, " ");
                     assertEquals(2, counts.get("timeout"));
-                    assertEquals(0, invoke("safeInt", new Class<?>[]{Integer.class}, (Object) null));
+                    assertEquals(0, invoke("safeInt", new Class<?>[]{Object.class}, (Object) null));
 
                     JsonObject payload = Json.createObjectBuilder()
                         .add("type", "abort")

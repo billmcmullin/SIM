@@ -80,6 +80,16 @@ public class DashboardTermService {
         return buildTermSummaryForDashboard(conn, widgets, terms);
     }
 
+    public final TermSummary computeTermSummaryForDashboard(
+            Connection conn,
+            List<WidgetEntry> widgets,
+            List<TermDefinition> terms,
+            LocalDate rangeStartInclusive,
+            LocalDate rangeEndInclusive
+    ) throws SQLException {
+        return buildTermSummary(conn, widgets, terms, rangeStartInclusive, rangeEndInclusive);
+    }
+
     /**
      * New behavior: optional date range filter (inclusive start/end by day). If
      * either start or end is null, falls back to all-time behavior.

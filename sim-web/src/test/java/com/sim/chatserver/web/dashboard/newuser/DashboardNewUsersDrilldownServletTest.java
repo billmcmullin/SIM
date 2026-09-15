@@ -124,8 +124,8 @@ class DashboardNewUsersDrilldownServletTest {
 
         assertEquals("", invoke(servlet, "safeJsonText", new Class<?>[]{String.class}, new Object[]{null}));
         assertEquals("ok", invoke(servlet, "safeJsonText", new Class<?>[]{String.class}, "ok"));
-        assertEquals(0, invoke(servlet, "safeInt", new Class<?>[]{Integer.class}, new Object[]{null}));
-        assertEquals(9, invoke(servlet, "safeInt", new Class<?>[]{Integer.class}, Integer.valueOf(9)));
+        assertEquals(0, invoke(servlet, "safeInt", new Class<?>[]{Object.class}, new Object[]{null}));
+        assertEquals(9, invoke(servlet, "safeInt", new Class<?>[]{Object.class}, Integer.valueOf(9)));
         assertNotNull(invoke(servlet, "urlEncode", new Class<?>[]{String.class}, "a b"));
     }
 

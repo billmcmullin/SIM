@@ -135,8 +135,8 @@ class DashboardNewUsersServletTest {
 
     @Test
     void staticSafeIntegerValue_handlesNullAndInvalidIntegerText() throws Exception {
-        assertEquals(0, invokeStatic(DashboardNewUsersServlet.class, "safeIntegerValue", new Class<?>[]{Integer.class}, new Object[]{null}));
-        assertEquals(12, invokeStatic(DashboardNewUsersServlet.class, "safeIntegerValue", new Class<?>[]{Integer.class}, Integer.valueOf(12)));
+        assertEquals(0, invokeStatic(DashboardNewUsersServlet.class, "safeIntegerValue", new Class<?>[]{Object.class}, new Object[]{null}));
+        assertEquals(12, invokeStatic(DashboardNewUsersServlet.class, "safeIntegerValue", new Class<?>[]{Object.class}, Integer.valueOf(12)));
     }
 
     @Test
