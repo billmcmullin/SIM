@@ -268,8 +268,8 @@ import com.sim.chatserver.widget.WidgetEntry;
         assertEquals(60, sanitized.length());
 
         assertEquals("\"a\"\"b\"", invoke(service, "quoteIdentifier", new Class[]{String.class}, "a\"b"));
-        assertEquals(0, invoke(service, "safeInt", new Class[]{Integer.class}, new Object[]{null}));
-        assertEquals(3, invoke(service, "safeInt", new Class[]{Integer.class}, Integer.valueOf(3)));
+        assertEquals(0, invoke(service, "safeInt", new Class[]{Object.class}, new Object[]{null}));
+        assertEquals(3, invoke(service, "safeInt", new Class[]{Object.class}, Integer.valueOf(3)));
 
         Connection badConn = mock(Connection.class);
         when(badConn.getMetaData()).thenThrow(new SQLException("metadata failure"));

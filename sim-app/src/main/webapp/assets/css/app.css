@@ -293,6 +293,38 @@ html.page-boot-loading .page-boot-overlay {
     box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.1);
 }
 
+.widget-review-selection-region {
+    position: relative;
+}
+
+.detail-overlay-card {
+    position: absolute;
+    top: 56px;
+    right: 10px;
+    z-index: 24;
+    width: min(760px, calc(100% - 20px));
+    max-height: 70vh;
+    margin-top: 0;
+    overflow: auto;
+    border: 1px solid #dbe3ef;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.22);
+    background: #f8fafc;
+}
+
+.detail-overlay-card pre {
+    max-height: 180px;
+    overflow: auto;
+}
+
+@media (max-width: 1024px) {
+    .detail-overlay-card {
+        right: 6px;
+        top: 50px;
+        width: calc(100% - 12px);
+        max-height: 74vh;
+    }
+}
+
 .detail-card pre {
     background: #fff;
     padding: 16px;

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import com.microsoft.playwright.APIResponse;
+import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
 
@@ -224,6 +225,48 @@ public class WidgetReviewIT extends BaseUiIT {
         assertTrue(response.text().contains("Job not found."));
     }
 
+    @Test
+    @Order(15)
+    void reviewSelection_clickingRow_opensOverlayAndCloseHidesIt() {
+        login(adminUsername, adminPassword);
+
+        navigateToReviewPageWithLiveSelection();
+
+        page.waitForSelector("#widgetReviewBody tr[data-row-key] td.row-open-cell");
+        page.locator("#widgetReviewBody tr[data-row-key] td.row-open-cell").first().click();
+
+        page.waitForSelector("#detailCard", new Page.WaitForSelectorOptions().setState(com.microsoft.playwright.options.WaitForSelectorState.VISIBLE));
+        assertTrue(page.locator("#detailCard").isVisible(), "Expected detail overlay to be visible after row click");
+        assertEquals("absolute", page.evaluate("() => getComputedStyle(document.getElementById('detailCard')).position"));
+
+        page.click("#detailCardCloseBtn");
+        assertTrue(page.evaluate("() => document.getElementById('detailCard').style.display === 'none'").equals(Boolean.TRUE),
+            "Expected detail overlay to be hidden after Close Preview click");
+    }
+
+    @Test
+    @Order(16)
+    void reviewSelection_sendToTeammateReveal_togglesPanelVisibility() {
+        login(adminUsername, adminPassword);
+
+        navigateToReviewPageWithLiveSelection();
+
+        page.waitForSelector("#widgetReviewBody tr[data-row-key] td.row-open-cell");
+        page.locator("#widgetReviewBody tr[data-row-key] td.row-open-cell").first().click();
+
+        page.waitForSelector("#detailCard", new Page.WaitForSelectorOptions().setState(com.microsoft.playwright.options.WaitForSelectorState.VISIBLE));
+        assertTrue(page.evaluate("() => document.getElementById('shareChatPanel').hidden").equals(Boolean.TRUE),
+            "Expected teammate panel to be hidden by default");
+
+        page.click("#shareChatRevealBtn");
+        assertTrue(page.evaluate("() => !document.getElementById('shareChatPanel').hidden").equals(Boolean.TRUE),
+            "Expected teammate panel to open after button click");
+
+        page.click("#shareChatRevealBtn");
+        assertTrue(page.evaluate("() => document.getElementById('shareChatPanel').hidden").equals(Boolean.TRUE),
+            "Expected teammate panel to hide when toggled again");
+    }
+
     private APIResponse postJson(String path, String jsonBody) {
         return page.request().post(
                 baseUrl + path,
@@ -232,6 +275,24 @@ public class WidgetReviewIT extends BaseUiIT {
                         .setData(jsonBody)
         );
     }
+
+        private void navigateToReviewPageWithLiveSelection() {
+        String anySessionId = findAnySessionId();
+        assumeTrue(anySessionId != null && !anySessionId.isBlank(),
+            "Skipping: no available session IDs found in /dashboard/sessions/data.");
+
+        List<String> chatIds = findChatIdsForSession(anySessionId, 2);
+        assumeTrue(!chatIds.isEmpty(),
+            "Skipping: no chats found for sessionId=" + anySessionId);
+
+        String selectionId = createSelectionFromChatIds(chatIds);
+        assumeTrue(selectionId != null && !selectionId.isBlank(),
+            "Skipping: unable to create selection from discovered chat IDs.");
+
+        navigateWithCommit("/dashboard/widgets/drilldown/review?selectionId=" + urlEncode(selectionId));
+        waitForPath("/chat-server/dashboard/widgets/drilldown/review");
+        page.waitForSelector("#widgetReviewBody");
+        }
 
     private String findAnySessionId() {
         APIResponse response = page.request().get(baseUrl + "/dashboard/sessions/data?all=true");

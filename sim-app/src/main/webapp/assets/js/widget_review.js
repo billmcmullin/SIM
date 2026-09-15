@@ -75,6 +75,7 @@ const DEFAULTS = {
     jobStatusEndpoint: `${CONTEXT_PATH}/dashboard/drilldown/widget-review/job-status`,
     batchAnalyzeEndpoint: `${CONTEXT_PATH}/dashboard/drilldown/widget-review/batch-analyze`,
     translateEndpoint: CFG.translateEndpoint || `${CONTEXT_PATH}/dashboard/widgets/drilldown/review/translate`,
+    reviewEmailEndpoint: CFG.reviewEmailEndpoint || `${CONTEXT_PATH}/dashboard/widgets/drilldown/review/email`,
     exportEndpoint: `${CONTEXT_PATH}/dashboard/widgets/drilldown/export`,
     maxSelectedEntries: 5000,
     pageSize: 10,
@@ -82,6 +83,8 @@ const DEFAULTS = {
     pollMs: 1200,
     pollMaxMs: 1000 * 60 * 20
 };
+
+const SIMPLE_EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const state = {
     rows: [],
@@ -630,6 +633,11 @@ function wireDetailCardUi() {
     const promptBtn = byId("translatePromptBtn");
     const responseBtn = byId("translateResponseBtn");
     const langSel = byId("translateTargetLang");
+    const revealBtn = byId("shareChatRevealBtn");
+    const sharePanel = byId("shareChatPanel");
+    const shareBtn = byId("shareChatByEmailBtn");
+    const shareBusy = byId("shareChatEmailBusyHint");
+    const closeBtn = byId("detailCardCloseBtn");
 
     if (promptBtn) {
         promptBtn.addEventListener("click", async () => {
@@ -649,6 +657,40 @@ function wireDetailCardUi() {
             }
             await translateText(row.response || "", langSel?.value || "en", "responseTranslationMeta", "responseTranslationOutput", "Response");
         });
+    }
+
+    if (revealBtn && sharePanel) {
+        revealBtn.addEventListener("click", () => {
+            const opening = sharePanel.hidden || sharePanel.getAttribute("aria-hidden") === "true";
+            sharePanel.hidden = !opening;
+            sharePanel.setAttribute("aria-hidden", opening ? "false" : "true");
+            revealBtn.textContent = opening ? "Hide Email Form" : "Send To Teammate";
+            if (opening) {
+                const toInput = byId("shareEmailTo");
+                toInput?.focus();
+            }
+        });
+    }
+
+    if (shareBtn) {
+        shareBtn.addEventListener("click", async () => {
+            shareBtn.disabled = true;
+            if (shareBusy) {
+                shareBusy.textContent = "Sending...";
+            }
+            try {
+                await sendActiveChatByEmail();
+            } finally {
+                shareBtn.disabled = false;
+                if (shareBusy) {
+                    shareBusy.textContent = "";
+                }
+            }
+        });
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener("click", closeDetailCard);
     }
 }
 
@@ -1254,9 +1296,34 @@ function openDetailCard(row) {
     response.textContent = row.response || "(empty response)";
 
     clearTranslationUi();
+    const sharePanel = byId("shareChatPanel");
+    const revealBtn = byId("shareChatRevealBtn");
+    if (sharePanel) {
+        sharePanel.hidden = true;
+        sharePanel.setAttribute("aria-hidden", "true");
+    }
+    if (revealBtn) {
+        revealBtn.textContent = "Send To Teammate";
+    }
+    setTextById("shareChatEmailStatus", "");
+    setTextById("shareChatEmailBusyHint", "");
+    const customMessageInput = byId("shareCustomMessage");
+    if (customMessageInput) {
+        customMessageInput.value = "";
+    }
 
     card.style.display = "block";
-    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeDetailCard() {
+    const card = byId("detailCard");
+    if (!card) {
+        return;
+    }
+
+    state.activeDetailKey = "";
+    card.style.display = "none";
+    renderTable();
 }
 
 function getActiveDetailRow() {
@@ -1327,6 +1394,72 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
             meta.textContent = `Translation failed: ${e?.message || "Unknown error"}`;
         }
         if (out) { out.textContent = ""; out.style.display = "none"; }
+    }
+}
+
+async function sendActiveChatByEmail() {
+    const statusEl = byId("shareChatEmailStatus");
+    const toInput = byId("shareEmailTo");
+    const customMessageInput = byId("shareCustomMessage");
+    const translateCheckbox = byId("shareTranslateToEnglish");
+    const row = getActiveDetailRow();
+
+    if (!row) {
+        if (statusEl) {
+            statusEl.textContent = "Select a chat row first.";
+        }
+        return;
+    }
+
+    const recipient = String(toInput?.value || "").trim();
+    if (!recipient || !SIMPLE_EMAIL_RX.test(recipient)) {
+        if (statusEl) {
+            statusEl.textContent = "Enter a valid teammate email address.";
+        }
+        return;
+    }
+
+    const payload = {
+        to: recipient,
+        chatId: row.chatId || "",
+        createdAt: row.createdAt || "",
+        sessionId: row.sessionId || "",
+        prompt: row.prompt || "",
+        response: row.response || "",
+        customMessage: String(customMessageInput?.value || "").trim(),
+        subjectLabel: CFG.subjectLabel || "",
+        subjectType: CFG.subjectType || "",
+        translateToEnglish: Boolean(translateCheckbox?.checked ?? true)
+    };
+
+    try {
+        if (statusEl) {
+            statusEl.textContent = "Sending email...";
+        }
+
+        const result = await postJson(DEFAULTS.reviewEmailEndpoint, payload, {
+            headers: buildHeaders()
+        });
+
+        const translatedParts = [];
+        if (result?.translatedPrompt) {
+            translatedParts.push("prompt translated");
+        }
+        if (result?.translatedResponse) {
+            translatedParts.push("response translated");
+        }
+        const detail = translatedParts.length ? ` (${translatedParts.join(", ")})` : "";
+
+        if (statusEl) {
+            statusEl.textContent = `Email sent to ${recipient}${detail}.`;
+        }
+    } catch (e) {
+        warn("share by email failed", e);
+        const requestId = e?.requestId || e?.data?.requestId || "";
+        const msg = e?.data?.message || e?.message || "Failed to send email.";
+        if (statusEl) {
+            statusEl.textContent = `${msg}${requestId ? ` [${requestId}]` : ""}`;
+        }
     }
 }
 

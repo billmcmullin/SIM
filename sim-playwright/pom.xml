@@ -22,6 +22,7 @@
         <playwright.version>1.62.0</playwright.version>
         <failsafe.version>3.5.5</failsafe.version>
         <coverage.integration.version>1.0.0-SNAPSHOT</coverage.integration.version>
+        <log4j2.version>2.26.1</log4j2.version>
 
         <!-- Required for coverage-integration-junit5 to publish test lifecycle events -->
         <junit.jupiter.extensions.autodetection.enabled>true</junit.jupiter.extensions.autodetection.enabled>
@@ -67,6 +68,27 @@
             <groupId>com.parasoft</groupId>
             <artifactId>coverage-integration-playwright</artifactId>
             <version>${coverage.integration.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>${log4j2.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>${log4j2.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
+            <version>${log4j2.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

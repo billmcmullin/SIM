@@ -95,50 +95,14 @@ final class DashboardJdbcDataService {
             if (terms == null) {
                 terms = List.of();
             }
-            TermSummary allTimeSummary = termService.computeTermSummaryForDashboard(conn, widgets, terms);
-            return filterTermSummaryByRange(allTimeSummary, rangeStart, rangeEnd);
+            if (rangeStart != null && rangeEnd != null) {
+                return termService.computeTermSummaryForDashboard(conn, widgets, terms, rangeStart, rangeEnd);
+            }
+            return termService.computeTermSummaryForDashboard(conn, widgets, terms);
         } catch (SQLException | IllegalStateException ex) {
             log.log(Level.WARNING, "Unable to compute term summary", ex);
             return null;
         }
-    }
-
-    private TermSummary filterTermSummaryByRange(TermSummary allTimeSummary, LocalDate rangeStart, LocalDate rangeEnd) {
-        if (allTimeSummary == null) {
-            return null;
-        }
-        if (rangeStart == null || rangeEnd == null) {
-            return allTimeSummary;
-        }
-
-        TermSummary filtered = new TermSummary();
-        for (String term : allTimeSummary.getTermCounts().keySet()) {
-            filtered.ensureTerm(term);
-        }
-
-        for (Map.Entry<String, List<TermChatSnapshot>> entry : allTimeSummary.getTermSnapshots().entrySet()) {
-            String term = entry.getKey();
-            List<TermChatSnapshot> snapshots = entry.getValue();
-            if (term == null || snapshots == null || snapshots.isEmpty()) {
-                continue;
-            }
-            for (TermChatSnapshot snapshot : snapshots) {
-                if (snapshot == null || !isWithinDateRange(snapshot.getCreatedAt(), rangeStart, rangeEnd)) {
-                    continue;
-                }
-                filtered.recordMatch(term, snapshot);
-            }
-        }
-
-        return filtered;
-    }
-
-    private boolean isWithinDateRange(Timestamp createdAt, LocalDate rangeStart, LocalDate rangeEnd) {
-        if (createdAt == null || rangeStart == null || rangeEnd == null) {
-            return false;
-        }
-        LocalDate day = createdAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-        return !day.isBefore(rangeStart) && !day.isAfter(rangeEnd);
     }
 
     SessionOverview loadSessionOverview(

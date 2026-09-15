@@ -137,77 +137,105 @@
                 </div>
             </div>
 
-            <div class="pagination-wrapper">
-                <div class="pagination-controls">
-                    <button type="button" id="prevPageBtn">Previous</button>
-                    <button type="button" id="nextPageBtn">Next</button>
-                    <div class="page-info" id="pageInfo"></div>
-                </div>
-            </div>
-
-            <div class="widget-review-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="select-column">
-                                <input type="checkbox" id="reviewSelectAll" aria-label="Select all visible rows">
-                            </th>
-                            <th data-column="widget_chat_id">Chat ID</th>
-                            <th data-column="prompt">Prompt (summary)</th>
-                            <th data-column="created_at">Created At</th>
-                            <th data-column="session_id">Session ID</th>
-                        </tr>
-                    </thead>
-                    <tbody id="widgetReviewBody">
-                        <tr>
-                            <td colspan="5" class="empty-row">Loading selected chats...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="detail-card" id="detailCard" style="display:none;" aria-live="polite">
-                <div class="summary-label" id="detailTitle">Selected Chat Details</div>
-                <div class="helper-note" style="margin-bottom:8px;">
-                    Tip: selecting a checkbox should also open this panel.
+            <div class="widget-review-selection-region">
+                <div class="pagination-wrapper">
+                    <div class="pagination-controls">
+                        <button type="button" id="prevPageBtn">Previous</button>
+                        <button type="button" id="nextPageBtn">Next</button>
+                        <div class="page-info" id="pageInfo"></div>
+                    </div>
                 </div>
 
-                <div>
-                    <strong>Prompt</strong>
-                    <pre id="detailPrompt"></pre>
+                <div class="widget-review-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="select-column">
+                                    <input type="checkbox" id="reviewSelectAll" aria-label="Select all visible rows">
+                                </th>
+                                <th data-column="widget_chat_id">Chat ID</th>
+                                <th data-column="prompt">Prompt (summary)</th>
+                                <th data-column="created_at">Created At</th>
+                                <th data-column="session_id">Session ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="widgetReviewBody">
+                            <tr>
+                                <td colspan="5" class="empty-row">Loading selected chats...</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
 
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <label for="translateTargetLang" style="margin:0;">Translate To:</label>
-                    <select id="translateTargetLang" style="width:auto;">
-                        <option value="en" selected>English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="pt">Portuguese</option>
-                    </select>
-                </div>
+                <div class="detail-card detail-overlay-card" id="detailCard" style="display:none;" aria-live="polite">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <div class="summary-label" id="detailTitle" style="margin:0;">Selected Chat Details</div>
+                        <button type="button" id="detailCardCloseBtn" class="ghost-btn">Close Preview</button>
+                    </div>
+                    <div class="helper-note" style="margin-bottom:8px;">
+                        Tip: selecting a checkbox should also open this panel.
+                    </div>
 
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" id="translatePromptBtn" class="ghost-btn">Detect &amp; Translate
-                        Prompt</button>
-                    <span class="helper-inline" id="promptTranslationBusyHint"></span>
-                </div>
-                <div id="promptTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
-                <pre id="promptTranslationOutput" style="display:none; margin-top:8px;"></pre>
+                    <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" id="shareChatRevealBtn" class="primary">Send To Teammate</button>
+                        <span class="helper-inline" id="shareChatRevealHint">Share this prompt and response by email.</span>
+                    </div>
 
-                <div style="margin-top:12px;">
-                    <strong>Response</strong>
-                    <pre id="detailResponse"></pre>
-                </div>
+                    <div class="form-group" id="shareChatPanel" hidden aria-hidden="true" style="margin-top:0; margin-bottom:14px;">
+                        <label for="shareEmailTo">Teammate Email</label>
+                        <input type="email" id="shareEmailTo" placeholder="teammate@example.com" autocomplete="email">
 
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" id="translateResponseBtn" class="ghost-btn">Detect &amp; Translate
-                        Response</button>
-                    <span class="helper-inline" id="responseTranslationBusyHint"></span>
+                        <label for="shareCustomMessage" style="margin-top:8px;">Custom Message (optional)</label>
+                        <textarea id="shareCustomMessage" rows="5" placeholder="Add context for your teammate, such as what to capture for the enhancement article."></textarea>
+
+                        <label style="margin-top:8px; font-weight:500; display:flex; gap:8px; align-items:center;">
+                            <input type="checkbox" id="shareTranslateToEnglish" checked style="width:auto;">
+                            Translate prompt and response to English when needed
+                        </label>
+                        <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" id="shareChatByEmailBtn" class="primary">Send Email</button>
+                            <span class="helper-inline" id="shareChatEmailBusyHint"></span>
+                        </div>
+                        <div id="shareChatEmailStatus" class="helper-note" style="margin-top:8px;"></div>
+                    </div>
+
+                    <div>
+                        <strong>Prompt</strong>
+                        <pre id="detailPrompt"></pre>
+                    </div>
+
+                    <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <label for="translateTargetLang" style="margin:0;">Translate To:</label>
+                        <select id="translateTargetLang" style="width:auto;">
+                            <option value="en" selected>English</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="pt">Portuguese</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" id="translatePromptBtn" class="ghost-btn">Detect &amp; Translate
+                            Prompt</button>
+                        <span class="helper-inline" id="promptTranslationBusyHint"></span>
+                    </div>
+                    <div id="promptTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                    <pre id="promptTranslationOutput" style="display:none; margin-top:8px;"></pre>
+
+                    <div style="margin-top:12px;">
+                        <strong>Response</strong>
+                        <pre id="detailResponse"></pre>
+                    </div>
+
+                    <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" id="translateResponseBtn" class="ghost-btn">Detect &amp; Translate
+                            Response</button>
+                        <span class="helper-inline" id="responseTranslationBusyHint"></span>
+                    </div>
+                    <div id="responseTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
+                    <pre id="responseTranslationOutput" style="display:none; margin-top:8px;"></pre>
                 </div>
-                <div id="responseTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
-                <pre id="responseTranslationOutput" style="display:none; margin-top:8px;"></pre>
             </div>
         </section>
     </div>
@@ -221,6 +249,7 @@
             manualMessageEndpoint: '${contextPath}/dashboard/drilldown/widget-review/manual-message',
             jobStatusEndpoint: '${contextPath}/dashboard/drilldown/widget-review/job-status',
             translateEndpoint: '${contextPath}/dashboard/widgets/drilldown/review/translate',
+            reviewEmailEndpoint: '${contextPath}/dashboard/widgets/drilldown/review/email',
             exportEndpoint: '${contextPath}/dashboard/widgets/drilldown/export',
             defaultAnalyzePrompt: 'Analyze the selected chats and produce a manager-ready report with: Executive Chat Analysis, Key Metrics table, Risks and Opportunities, Recommendations, and Coverage and Methodology. Use concise evidence-based language and include coverage accounting.'
         };
