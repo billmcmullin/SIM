@@ -30,4 +30,4 @@ jobs:
         run: chmod +x mvnw
 
       - name: Build WAR
-        run: ./mvnw -B -ntp clean package -pl sim-core,sim-web,sim-app,sim-email -am -DskipTests -Ddependency-check.skip=true
+        run: ./mvnw -B -ntp clean package -pl sim-core,sim-web,sim-app,sim-email -am -Dmaven.test.failure.ignore=true -Dmaven.test.error.ignore=true -Ddependency-check.skip=true
