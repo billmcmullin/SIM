@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 import java.util.Set;
 
 import com.sim.chatserver.model.review.ReviewJobStatus;
@@ -276,9 +277,9 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         if (values != null) {
             for (Object v : values) {
                 if (v != null) {
-                    Integer intValue = safeParseInt(v);
-                    if (intValue != null) {
-                        b.add(intValue.intValue());
+                    OptionalInt intValue = safeParseInt(v);
+                    if (intValue.isPresent()) {
+                        b.add(intValue.getAsInt());
                     }
                 }
             }
@@ -286,20 +287,20 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         return b.build();
     }
 
-    private Integer safeParseInt(Object value) {
+    private OptionalInt safeParseInt(Object value) {
         if (value == null) {
-            return null;
+            return OptionalInt.empty();
         }
         String text = value.toString().trim();
         if (text.isEmpty()) {
-            return null;
+            return OptionalInt.empty();
         }
         try {
-            return Integer.valueOf(text);
+            return OptionalInt.of(Integer.parseInt(text));
         } catch (NumberFormatException ex) {
             java.util.logging.Logger.getLogger(WidgetReviewJobStatusServlet.class.getName())
                     .log(java.util.logging.Level.FINE, "Invalid integer value", ex);
-            return null;
+            return OptionalInt.empty();
         }
     }
 

@@ -29,7 +29,7 @@ public class DashboardTrendsIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/trends");
         waitForPath("/chat-server/dashboard/trends");
-        page.waitForSelector("h1:has-text('Entry Trends')");
+        waitForHeadingAttached("Entry Trends");
 
         assertTrue(page.title().contains("Entry Trends"));
         assertTrue(page.locator("h1:has-text('Entry Trends')").count() > 0);

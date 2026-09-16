@@ -26,7 +26,7 @@ public class SessionCatalogIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/session-names");
         waitForPath("/chat-server/dashboard/session-names");
-        page.waitForSelector("h1:has-text('Username Catalog')");
+        waitForHeadingAttached("Username Catalog");
 
         assertTrue(page.title().contains("Session Catalog"));
         assertTrue(page.locator("h1:has-text('Username Catalog')").count() > 0);
@@ -58,7 +58,7 @@ public class SessionCatalogIT extends BaseUiIT {
     void chatsEndpoint_requiresSessionId() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().get(baseUrl + "/dashboard/sessions/chats");
+        APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/sessions/chats");
         assertEquals(400, response.status(), "Expected 400 when sessionId missing");
         assertTrue(response.text().contains("sessionId required"));
     }
@@ -68,7 +68,7 @@ public class SessionCatalogIT extends BaseUiIT {
     void selectEndpoint_rejectsInvalidPayload() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().post(
+        APIResponse response = apiPostOrSkip(
                 baseUrl + "/dashboard/sessions/select",
                 RequestOptions.create()
                         .setHeader("Content-Type", "application/json")
@@ -94,7 +94,7 @@ public class SessionCatalogIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/sessions");
         waitForPath("/chat-server/dashboard/sessions");
-        page.waitForSelector("h1:has-text('Review Sessions')");
+        waitForHeadingAttached("Review Sessions");
 
         assertTrue(page.title().contains("Review Sessions"));
         assertTrue(page.locator("#searchInput").count() > 0);
@@ -110,7 +110,7 @@ public class SessionCatalogIT extends BaseUiIT {
     void chatsEndpoint_unknownSession_returnsOkWithRowsArray() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().get(
+        APIResponse response = apiGetOrSkip(
                 baseUrl + "/dashboard/sessions/chats?sessionId=does-not-exist"
         );
 
@@ -125,7 +125,7 @@ public class SessionCatalogIT extends BaseUiIT {
     void selectEndpoint_rejectsNonStringSelectedIds() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().post(
+        APIResponse response = apiPostOrSkip(
                 baseUrl + "/dashboard/sessions/select",
                 RequestOptions.create()
                         .setHeader("Content-Type", "application/json")

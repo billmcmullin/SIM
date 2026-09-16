@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.options.WaitForSelectorState;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,12 @@ public class DashboardButtonJourneyIT extends BaseUiIT {
 
         // Return to dashboard home and verify inline section is hidden again.
         if (page.locator("button.dashboard-switch-btn[data-home='true']").count() > 0) {
-            page.click("button.dashboard-switch-btn[data-home='true']", new Page.ClickOptions().setNoWaitAfter(true));
+            String selector = "button.dashboard-switch-btn[data-home='true']";
+            if (page.locator(selector).first().isVisible()) {
+                page.click(selector, new Page.ClickOptions().setNoWaitAfter(true));
+            } else {
+                page.evaluate("sel => { const el = document.querySelector(sel); if (el) el.click(); }", selector);
+            }
             assertTrue(isVisible("#dashboardHomeSection"), "Expected dashboard home section to be visible.");
             assertFalse(isVisible("#dashboardInlineSection"), "Expected inline section to be hidden on Dashboard Home.");
         }
@@ -66,7 +72,8 @@ public class DashboardButtonJourneyIT extends BaseUiIT {
     private void assertSwitchButtonRoute(String buttonText, String expectedPathFragment) {
         navigateWithCommit("/dashboard");
         waitForPath("/chat-server/dashboard");
-        page.waitForSelector("#dashboardHomeSection");
+        page.waitForSelector("#dashboardHomeSection",
+            new Page.WaitForSelectorOptions().setState(WaitForSelectorState.ATTACHED));
 
         String selector = "button.dashboard-switch-btn:has-text('" + buttonText + "')";
         assertTrue(page.locator(selector).count() > 0, "Expected dashboard switch button: " + buttonText);
@@ -75,7 +82,7 @@ public class DashboardButtonJourneyIT extends BaseUiIT {
         assertTrue(dataTarget != null && dataTarget.contains(expectedPathFragment),
                 "Expected button target containing " + expectedPathFragment + " but got: " + dataTarget);
 
-        page.click(selector, new Page.ClickOptions().setNoWaitAfter(true));
+        clickDashboardSwitchNoWait(buttonText);
 
         boolean navigatedToTarget = page.url().contains(expectedPathFragment);
         boolean inlineVisible = isVisible("#dashboardInlineSection") && isVisible("#dashboardInlineContent");

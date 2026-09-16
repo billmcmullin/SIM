@@ -58,6 +58,24 @@ public class ReviewMessageEmailServlet extends HttpServlet {
     private static final ZoneId DISPLAY_ZONE = ZoneOffset.UTC;
     private static final DateTimeFormatter DISPLAY_TS_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'", Locale.ROOT);
 
+    private static final ThreadLocal<DependencyOverrides> TEST_DEPENDENCY_OVERRIDES = new ThreadLocal<>();
+
+    static void setTestDependencyOverrides(
+            DbEmailConfigProvider dbProviderOverride,
+            ResolvedEmailConfig resolvedConfigOverride,
+            EmailService emailServiceOverride,
+            TranslationService translationServiceOverride) {
+        TEST_DEPENDENCY_OVERRIDES.set(new DependencyOverrides(
+                dbProviderOverride,
+                resolvedConfigOverride,
+                emailServiceOverride,
+                translationServiceOverride));
+    }
+
+    static void clearTestDependencyOverrides() {
+        TEST_DEPENDENCY_OVERRIDES.remove();
+    }
+
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         if (!setRequestEncoding(req, resp)) {
@@ -171,19 +189,35 @@ public class ReviewMessageEmailServlet extends HttpServlet {
         writeError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "POST required.");
     }
 
-    DbEmailConfigProvider resolveDbProvider() {
+    private final DbEmailConfigProvider resolveDbProvider() {
+        DependencyOverrides overrides = TEST_DEPENDENCY_OVERRIDES.get();
+        if (overrides != null && overrides.dbProviderOverride != null) {
+            return overrides.dbProviderOverride;
+        }
         return CDI.current().select(DbEmailConfigProvider.class).get();
     }
 
-    ResolvedEmailConfig resolveEmailConfig() {
+    private final ResolvedEmailConfig resolveEmailConfig() {
+        DependencyOverrides overrides = TEST_DEPENDENCY_OVERRIDES.get();
+        if (overrides != null && overrides.resolvedConfigOverride != null) {
+            return overrides.resolvedConfigOverride;
+        }
         return EmailConfigResolver.resolveEffectiveConfig(resolveDbProvider());
     }
 
-    EmailService resolveEmailService(ResolvedEmailConfig resolved) {
+    private final EmailService resolveEmailService(ResolvedEmailConfig resolved) {
+        DependencyOverrides overrides = TEST_DEPENDENCY_OVERRIDES.get();
+        if (overrides != null && overrides.emailServiceOverride != null) {
+            return overrides.emailServiceOverride;
+        }
         return EmailFactory.createForProvider(resolved);
     }
 
-    TranslationService resolveTranslationService() {
+    private final TranslationService resolveTranslationService() {
+        DependencyOverrides overrides = TEST_DEPENDENCY_OVERRIDES.get();
+        if (overrides != null && overrides.translationServiceOverride != null) {
+            return overrides.translationServiceOverride;
+        }
         return new DefaultTranslationService();
     }
 
@@ -432,6 +466,25 @@ public class ReviewMessageEmailServlet extends HttpServlet {
                         .add("status", "error")
                         .add("message", safe(message))
                         .build());
+    }
+
+    private static final class DependencyOverrides {
+
+        final DbEmailConfigProvider dbProviderOverride;
+        final ResolvedEmailConfig resolvedConfigOverride;
+        final EmailService emailServiceOverride;
+        final TranslationService translationServiceOverride;
+
+        private DependencyOverrides(
+                DbEmailConfigProvider dbProviderOverride,
+                ResolvedEmailConfig resolvedConfigOverride,
+                EmailService emailServiceOverride,
+                TranslationService translationServiceOverride) {
+            this.dbProviderOverride = dbProviderOverride;
+            this.resolvedConfigOverride = resolvedConfigOverride;
+            this.emailServiceOverride = emailServiceOverride;
+            this.translationServiceOverride = translationServiceOverride;
+        }
     }
 
     private static final class PreparedText {
