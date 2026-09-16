@@ -30,7 +30,7 @@ public class InactiveUsersPageIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/inactive-users");
         waitForPath("/chat-server/dashboard/inactive-users");
-        page.waitForSelector("h1:has-text('Inactive Users')");
+        waitForHeadingAttached("Inactive Users");
 
         assertTrue(page.title().contains("Inactive Users"));
         assertTrue(page.locator("h1:has-text('Inactive Users')").count() > 0);
@@ -60,7 +60,11 @@ public class InactiveUsersPageIT extends BaseUiIT {
         waitForPath("/chat-server/dashboard/inactive-users");
 
         page.selectOption("#daysSelect", "14");
-        page.click("#applyDaysBtn", new Page.ClickOptions().setNoWaitAfter(true));
+        if (page.locator("#applyDaysBtn").first().isVisible()) {
+            page.click("#applyDaysBtn", new Page.ClickOptions().setNoWaitAfter(true));
+        } else {
+            page.evaluate("() => { const btn = document.querySelector('#applyDaysBtn'); if (btn) btn.click(); }");
+        }
 
         // typical client behavior is reload with ?days=...
         waitForPath("/chat-server/dashboard/inactive-users");

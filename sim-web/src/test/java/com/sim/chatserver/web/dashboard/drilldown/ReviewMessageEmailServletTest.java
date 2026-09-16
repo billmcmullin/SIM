@@ -23,7 +23,6 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.email.EmailConfig;
 import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailConfigSource;
@@ -63,7 +62,7 @@ class ReviewMessageEmailServletTest {
     @Test
     void doPost_invalidRecipient_returns400() throws Exception {
         EmailService emailService = mock(EmailService.class);
-        ReviewMessageEmailServlet servlet = new TestableReviewMessageEmailServlet(validResolvedConfig(), emailService, null);
+        ReviewMessageEmailServlet servlet = new ReviewMessageEmailServlet();
 
         HttpServletRequest req = mock(HttpServletRequest.class);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -81,7 +80,12 @@ class ReviewMessageEmailServletTest {
         when(req.getReader()).thenReturn(new BufferedReader(new StringReader(payload)));
         when(resp.getOutputStream()).thenReturn(servletOutput(out));
 
-        servlet.doPost(req, resp);
+        ReviewMessageEmailServlet.setTestDependencyOverrides(null, validResolvedConfig(), emailService, null);
+        try {
+            servlet.doPost(req, resp);
+        } finally {
+            ReviewMessageEmailServlet.clearTestDependencyOverrides();
+        }
 
         JsonObject body = jsonBody(out);
         assertEquals("error", body.getString("status"));
@@ -93,7 +97,7 @@ class ReviewMessageEmailServletTest {
     void doPost_validPayload_sendsEmailAndReturnsOk() throws Exception {
         EmailService emailService = mock(EmailService.class);
         doNothing().when(emailService).send(any(EmailMessage.class));
-        ReviewMessageEmailServlet servlet = new TestableReviewMessageEmailServlet(validResolvedConfig(), emailService, null);
+        ReviewMessageEmailServlet servlet = new ReviewMessageEmailServlet();
 
         HttpServletRequest req = mock(HttpServletRequest.class);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -119,7 +123,12 @@ class ReviewMessageEmailServletTest {
         when(req.getReader()).thenReturn(new BufferedReader(new StringReader(payload)));
         when(resp.getOutputStream()).thenReturn(servletOutput(out));
 
-        servlet.doPost(req, resp);
+        ReviewMessageEmailServlet.setTestDependencyOverrides(null, validResolvedConfig(), emailService, null);
+        try {
+            servlet.doPost(req, resp);
+        } finally {
+            ReviewMessageEmailServlet.clearTestDependencyOverrides();
+        }
 
         JsonObject body = jsonBody(out);
         assertEquals("ok", body.getString("status"));
@@ -226,39 +235,4 @@ class ReviewMessageEmailServletTest {
         };
     }
 
-    private static final class TestableReviewMessageEmailServlet extends ReviewMessageEmailServlet {
-
-        private final ResolvedEmailConfig resolved;
-        private final EmailService emailService;
-        private final TranslationService translationService;
-
-        private TestableReviewMessageEmailServlet(
-                ResolvedEmailConfig resolved,
-                EmailService emailService,
-                TranslationService translationService) {
-            this.resolved = resolved;
-            this.emailService = emailService;
-            this.translationService = translationService;
-        }
-
-        @Override
-        DbEmailConfigProvider resolveDbProvider() {
-            return null;
-        }
-
-        @Override
-        ResolvedEmailConfig resolveEmailConfig() {
-            return resolved;
-        }
-
-        @Override
-        EmailService resolveEmailService(ResolvedEmailConfig ignored) {
-            return emailService;
-        }
-
-        @Override
-        TranslationService resolveTranslationService() {
-            return translationService;
-        }
-    }
 }

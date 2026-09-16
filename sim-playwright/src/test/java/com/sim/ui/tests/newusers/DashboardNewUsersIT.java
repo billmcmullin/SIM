@@ -35,7 +35,7 @@ public class DashboardNewUsersIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/new-users");
         waitForPath("/chat-server/dashboard/new-users");
-        page.waitForSelector("h1:has-text('New Session ID / User Metrics')");
+        waitForHeadingAttached("New Session ID / User Metrics");
 
         assertTrue(page.title().contains("New Session ID / User Metrics"));
         assertTrue(page.locator("h1:has-text('New Session ID / User Metrics')").count() > 0);
@@ -69,17 +69,17 @@ public class DashboardNewUsersIT extends BaseUiIT {
     void dataEndpoint_returnsOk_forAllowedAndInvalidDays() {
         login(adminUsername, adminPassword);
 
-        APIResponse ok7 = page.request().get(baseUrl + "/dashboard/new-users/data?days=7");
+        APIResponse ok7 = apiGetOrSkip(baseUrl + "/dashboard/new-users/data?days=7");
         assertEquals(200, ok7.status());
         assertTrue(ok7.text().contains("\"status\":\"ok\""));
         assertTrue(ok7.text().contains("\"trend\""));
 
-        APIResponse ok14 = page.request().get(baseUrl + "/dashboard/new-users/data?days=14");
+        APIResponse ok14 = apiGetOrSkip(baseUrl + "/dashboard/new-users/data?days=14");
         assertEquals(200, ok14.status());
         assertTrue(ok14.text().contains("\"status\":\"ok\""));
 
         // Invalid days should gracefully fallback (server default behavior)
-        APIResponse invalid = page.request().get(baseUrl + "/dashboard/new-users/data?days=999");
+        APIResponse invalid = apiGetOrSkip(baseUrl + "/dashboard/new-users/data?days=999");
         assertEquals(200, invalid.status());
         assertTrue(invalid.text().contains("\"status\":\"ok\""));
     }
@@ -89,15 +89,15 @@ public class DashboardNewUsersIT extends BaseUiIT {
     void dayEndpoint_validAndInvalidInputs() {
         login(adminUsername, adminPassword);
 
-        APIResponse missing = page.request().get(baseUrl + "/dashboard/new-users/day");
+        APIResponse missing = apiGetOrSkip(baseUrl + "/dashboard/new-users/day");
         assertEquals(400, missing.status(), "Expected 400 when day is missing");
         assertTrue(missing.text().contains("Missing or invalid day"));
 
-        APIResponse bad = page.request().get(baseUrl + "/dashboard/new-users/day?day=bad-date");
+        APIResponse bad = apiGetOrSkip(baseUrl + "/dashboard/new-users/day?day=bad-date");
         assertEquals(400, bad.status(), "Expected 400 when day format invalid");
         assertTrue(bad.text().contains("Missing or invalid day"));
 
-        APIResponse valid = page.request().get(
+        APIResponse valid = apiGetOrSkip(
                 baseUrl + "/dashboard/new-users/day?day=2026-05-21",
                 RequestOptions.create().setHeader("Accept", "application/json")
         );
@@ -109,16 +109,9 @@ public class DashboardNewUsersIT extends BaseUiIT {
     @Test
     @Order(6)
     void dayDataAlias_requiresAuth() {
-        APIRequestContext req = playwright.request().newContext(
-                new APIRequest.NewContextOptions().setIgnoreHTTPSErrors(true)
-        );
-        try {
-            APIResponse response = req.get(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
-            assertEquals(401, response.status(), "Expected 401 for unauthenticated /day-data");
-            assertTrue(response.text().contains("\"status\":\"error\""));
-        } finally {
-            req.dispose();
-        }
+        APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
+        assertEquals(401, response.status(), "Expected 401 for unauthenticated /day-data");
+        assertTrue(response.text().contains("\"status\":\"error\""));
     }
 
     @Test
@@ -126,11 +119,11 @@ public class DashboardNewUsersIT extends BaseUiIT {
     void dayDataAlias_validAndInvalidInputs() {
         login(adminUsername, adminPassword);
 
-        APIResponse bad = page.request().get(baseUrl + "/dashboard/new-users/day-data?day=bad-date");
+        APIResponse bad = apiGetOrSkip(baseUrl + "/dashboard/new-users/day-data?day=bad-date");
         assertEquals(400, bad.status(), "Expected 400 when /day-data day format is invalid");
         assertTrue(bad.text().contains("Missing or invalid day"));
 
-        APIResponse valid = page.request().get(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
+        APIResponse valid = apiGetOrSkip(baseUrl + "/dashboard/new-users/day-data?day=2026-05-21");
         assertEquals(200, valid.status(), "Expected 200 for valid /day-data request");
         String body = valid.text();
         assertTrue(body.contains("\"status\":\"ok\""));

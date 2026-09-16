@@ -92,7 +92,7 @@ public final class DashboardDbUtil {
 
         Boolean cachedExists = requestCache.get(tableName);
         if (cachedExists != null) {
-            return Boolean.TRUE.equals(cachedExists);
+            return cachedExists.booleanValue();
         }
 
         long now = Instant.now().toEpochMilli();
@@ -108,7 +108,8 @@ public final class DashboardDbUtil {
         synchronized (TABLE_CACHE_LOCK) {
             global = GLOBAL_TABLE_EXISTS_CACHE.get(key);
             if (global != null && !global.isExpired(now)) {
-                boolean globalCachedExists = Boolean.TRUE.equals(global.getValue());
+                Boolean globalValue = global.getValue();
+                boolean globalCachedExists = globalValue != null && globalValue.booleanValue();
                 requestCache.put(tableName, Boolean.valueOf(globalCachedExists));
                 return globalCachedExists;
             }

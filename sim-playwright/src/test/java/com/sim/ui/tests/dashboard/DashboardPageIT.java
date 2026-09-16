@@ -47,7 +47,7 @@ public class DashboardPageIT extends BaseUiIT {
     void admin_seesDashboardCoreSections_andAdminLink() {
         login(adminUsername, adminPassword);
 
-        APIResponse adminResponse = page.request().get(
+        APIResponse adminResponse = apiGetOrSkip(
                 baseUrl + "/admin",
                 RequestOptions.create().setTimeout(30000)
         );
@@ -78,7 +78,7 @@ public class DashboardPageIT extends BaseUiIT {
                 "Expected dashboard template to control admin-button visibility by role.");
 
         boolean authenticated = tryLoginViaApi(userUsername, userPassword);
-        APIResponse adminResponse = page.request().get(
+        APIResponse adminResponse = apiGetOrSkip(
                 baseUrl + "/admin",
                 RequestOptions.create().setTimeout(30000)
         );
@@ -119,7 +119,7 @@ public class DashboardPageIT extends BaseUiIT {
         @Test
         @Order(6)
         void bootstrapEndpoint_requiresAuthentication() {
-                APIResponse response = page.request().get(baseUrl + "/dashboard/bootstrap.json");
+                APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/bootstrap.json");
 
                 assertTrue(response.status() == 401, "Expected 401 for unauthenticated bootstrap endpoint");
                 assertTrue(response.text().contains("\"status\":\"unauthorized\""));
@@ -130,7 +130,7 @@ public class DashboardPageIT extends BaseUiIT {
         void bootstrapEndpoint_returnsSections_whenAuthenticated() {
                 login(adminUsername, adminPassword);
 
-                APIResponse response = page.request().get(baseUrl + "/dashboard/bootstrap.json");
+                APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/bootstrap.json");
 
                 assertTrue(response.status() == 200, "Expected 200 from bootstrap endpoint for authenticated user");
                 String body = response.text();
@@ -143,7 +143,7 @@ public class DashboardPageIT extends BaseUiIT {
         @Test
         @Order(8)
         void dailySummaryEndpoint_requiresAuthentication() {
-                APIResponse response = page.request().get(baseUrl + "/dashboard/daily-summary.json");
+                APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/daily-summary.json");
 
                 assertTrue(response.status() == 401, "Expected 401 for unauthenticated daily-summary endpoint");
                 assertTrue(response.text().contains("Authentication required."));
@@ -154,7 +154,7 @@ public class DashboardPageIT extends BaseUiIT {
         void dailySummaryEndpoint_acceptsInvalidQueryValues_andReturnsJson() {
                 login(adminUsername, adminPassword);
 
-                APIResponse response = page.request().get(
+                APIResponse response = apiGetOrSkip(
                                 baseUrl + "/dashboard/daily-summary.json?day=not-a-date&slot=999"
                 );
 

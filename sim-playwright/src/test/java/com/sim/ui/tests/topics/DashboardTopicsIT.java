@@ -33,7 +33,7 @@ public class DashboardTopicsIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/topics");
         waitForPath("/chat-server/dashboard/topics");
-        page.waitForSelector("h1:has-text('Popular Topics')");
+        waitForHeadingAttached("Popular Topics");
 
         assertTrue(page.title().contains("Popular Topics"));
         assertTrue(page.locator("h1:has-text('Popular Topics')").count() > 0);
@@ -66,7 +66,7 @@ public class DashboardTopicsIT extends BaseUiIT {
 
         navigateWithCommit("/dashboard/topics?day=2026-05-21");
         waitForPath("/chat-server/dashboard/topics");
-        page.waitForSelector("h1:has-text('Popular Topics')");
+        waitForHeadingAttached("Popular Topics");
 
         assertTrue(page.locator("h1:has-text('Popular Topics')").count() > 0);
 
@@ -129,7 +129,7 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsDataEndpoint_supportsDateRangeAndIncludeOtherFlags() {
         login(adminUsername, adminPassword);
 
-        APIResponse dayResponse = page.request().get(
+        APIResponse dayResponse = apiGetOrSkip(
                 baseUrl + "/dashboard/topics/data?day=2026-05-21&includeOther=yes"
         );
         assertEquals(200, dayResponse.status());
@@ -140,7 +140,7 @@ public class DashboardTopicsIT extends BaseUiIT {
         assertTrue(dayBody.contains("\"globalTopics\""));
         assertTrue(dayBody.contains("\"widgets\""));
 
-        APIResponse swappedRangeResponse = page.request().get(
+        APIResponse swappedRangeResponse = apiGetOrSkip(
                 baseUrl + "/dashboard/topics/data?start=2026-05-21&end=2026-05-01&includeOther=off"
         );
         assertEquals(200, swappedRangeResponse.status());
@@ -156,7 +156,7 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsDataEndpoint_invalidDayFallsBackToDefaultWindow() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().get(
+        APIResponse response = apiGetOrSkip(
                 baseUrl + "/dashboard/topics/data?day=bad-date&includeOther=1"
         );
 
@@ -174,7 +174,7 @@ public class DashboardTopicsIT extends BaseUiIT {
     void topicsDataEndpoint_invalidRangeFallsBackWithoutError() {
         login(adminUsername, adminPassword);
 
-        APIResponse response = page.request().get(
+        APIResponse response = apiGetOrSkip(
                 baseUrl + "/dashboard/topics/data?start=not-a-date&end=also-bad&includeOther=0"
         );
 

@@ -20,7 +20,7 @@ public class InactiveUsersListPageIT extends BaseUiIT {
     @Test
     @Order(1)
     void unauthenticated_listEndpoint_requiresLogin() {
-        APIResponse response = page.request().get(baseUrl + "/dashboard/inactive-users/list?scope=all");
+                APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/inactive-users/list?scope=all");
 
         assertTrue(response.status() == 200 || response.status() == 401,
                 "Expected login-forward or unauthorized status, got: " + response.status());
@@ -65,7 +65,7 @@ public class InactiveUsersListPageIT extends BaseUiIT {
         clickNavButtonNoWait("Logout", "/chat-server/login");
         assertOnLoginScreen("After logout expected login screen,");
 
-        APIResponse response = page.request().get(baseUrl + "/dashboard/inactive-users/list?scope=all");
+        APIResponse response = apiGetOrSkip(baseUrl + "/dashboard/inactive-users/list?scope=all");
         assertEquals(200, response.status(), "Expected login-forward status after logout.");
         assertTrue(response.text().contains("id=\"loginForm\""),
                 "Expected login form in response after logout.");

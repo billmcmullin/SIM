@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -153,11 +154,11 @@ public class WidgetTableServlet extends HttpServlet {
                 if (resultCount == null) {
                     statusBody.addNull("count");
                 } else {
-                    Long parsedCount = parseNullableLong(resultCount);
-                    if (parsedCount == null) {
+                    OptionalLong parsedCount = parseNullableLong(resultCount);
+                    if (parsedCount.isEmpty()) {
                         statusBody.addNull("count");
                     } else {
-                        statusBody.add("count", parsedCount.longValue());
+                        statusBody.add("count", parsedCount.getAsLong());
                     }
                 }
                 statuses.add(statusBody);
@@ -300,29 +301,29 @@ public class WidgetTableServlet extends HttpServlet {
         if (count == null) {
             body.addNull("count");
         } else {
-            Long parsedCount = parseNullableLong(count);
-            if (parsedCount == null) {
+            OptionalLong parsedCount = parseNullableLong(count);
+            if (parsedCount.isEmpty()) {
                 body.addNull("count");
             } else {
-                body.add("count", parsedCount.longValue());
+                body.add("count", parsedCount.getAsLong());
             }
         }
         writeJson(resp, status, body.build());
     }
 
-    private Long parseNullableLong(Object value) {
+    private OptionalLong parseNullableLong(Object value) {
         if (value == null) {
-            return null;
+            return OptionalLong.empty();
         }
         String text = value.toString().trim();
         if (text.isEmpty()) {
-            return null;
+            return OptionalLong.empty();
         }
         try {
-            return Long.valueOf(text);
+            return OptionalLong.of(Long.parseLong(text));
         } catch (NumberFormatException ex) {
             log.log(Level.FINE, "Invalid count value", ex);
-            return null;
+            return OptionalLong.empty();
         }
     }
 
