@@ -73,7 +73,7 @@ public final class ErrorResponseUtil {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+        return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
 
 }

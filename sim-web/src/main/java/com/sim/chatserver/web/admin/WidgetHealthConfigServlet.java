@@ -32,15 +32,18 @@ import java.util.logging.Logger;
  */
 public class WidgetHealthConfigServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetHealthConfigServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetHealthConfigServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
-    private static final String STORE_ATTRIBUTE_KEY = WidgetHealthConfigStore.class.getName();
+    private static final String STORE_ATTRIBUTE_KEY = WidgetHealthConfigStore.class.getCanonicalName();
 
     @Override
     public void init() throws ServletException {
         super.init();
         try {
-            ensureStoreInitialized();
+            WidgetHealthConfigStore initializedStore = ensureStoreInitialized();
+            if (initializedStore == null) {
+                throw new IllegalStateException("Widget health config store is unavailable");
+            }
         } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize widget health config store", e);
         }

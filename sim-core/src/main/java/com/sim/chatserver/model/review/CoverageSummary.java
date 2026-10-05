@@ -93,7 +93,9 @@ public final class CoverageSummary {
         Set<String> used = toOrderedSetLower(usedChatIds);
 
         Set<String> notUsed = new LinkedHashSet<>(all);
-        notUsed.removeAll(used);
+        for (String usedId : used) {
+            notUsed.remove(usedId);
+        }
 
         return CoverageSummary.builder()
                 .allSelectedChatIds(new ArrayList<>(all))
@@ -305,7 +307,9 @@ public final class CoverageSummary {
 
         if (!allSelectedChatIds.isEmpty()) {
             Set<String> expectedNotUsed = new LinkedHashSet<>(allSelectedChatIds);
-            expectedNotUsed.removeAll(usedChatIds);
+            for (String usedId : usedChatIds) {
+                expectedNotUsed.remove(usedId);
+            }
             if (!expectedNotUsed.containsAll(notUsedChatIds)) {
                 throw new IllegalArgumentException("notUsedChatIds must be subset of allSelectedChatIds - usedChatIds");
             }
@@ -349,7 +353,9 @@ public final class CoverageSummary {
     private static List<String> computeNotUsed(List<String> allSelected, List<String> used) {
         Set<String> all = new LinkedHashSet<>(allSelected == null ? List.of() : allSelected);
         Set<String> u = new LinkedHashSet<>(used == null ? List.of() : used);
-        all.removeAll(u);
+        for (String usedId : u) {
+            all.remove(usedId);
+        }
         return new ArrayList<>(all);
     }
 

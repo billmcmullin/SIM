@@ -51,7 +51,7 @@ import jakarta.servlet.http.HttpSession;
 
 final class AllSessionsService {
 
-    private static final Logger log = Logger.getLogger(AllSessionsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AllSessionsServlet.class.getCanonicalName());
     private static final int ACTIVE_DAYS = 7;
     private static final int MAX_SEARCH_LENGTH = 128;
     private static final int MAX_SESSION_ID_LENGTH = 128;
@@ -681,7 +681,7 @@ final class AllSessionsService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = safeSlice(normalized, 0, 60);
         }
         return normalized;
     }
@@ -815,10 +815,10 @@ final class AllSessionsService {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
             .replace('\u0000', ' ')
-            .replace("\r", "")
-            .replace("\n", "")
+            .replace(System.lineSeparator(), "")
+            .replace(System.lineSeparator(), "")
                 .trim();
-        return normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+        return normalized.length() > maxLen ? safeSlice(normalized, 0, maxLen) : normalized;
     }
 
     private String validateTaintedText(String value, int maxLen) {
@@ -894,9 +894,24 @@ final class AllSessionsService {
             return "";
         }
         if (trimmed.length() > maxLength) {
-            return trimmed.substring(0, maxLength);
+            return safeSlice(trimmed, 0, maxLength);
         }
         return trimmed;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String sanitizeActivity(String raw) {

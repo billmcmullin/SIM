@@ -36,7 +36,7 @@ import jakarta.json.JsonObject;
 
 public class WidgetReviewMapReduceOrchestrator {
 
-    private static final Logger log = Logger.getLogger(WidgetReviewMapReduceOrchestrator.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetReviewMapReduceOrchestrator.class.getCanonicalName());
 
     private static final Pattern CHAT_HEADING_PATTERN
             = Pattern.compile("(?im)^###\\s*chat\\s+([\\w\\-:.]+)\\s*$");
@@ -59,6 +59,8 @@ public class WidgetReviewMapReduceOrchestrator {
     private static final int DEFAULT_FINAL_REDUCE_MAX_SUMMARIES = 3;
     private static final int DEFAULT_FINAL_REDUCE_SUMMARY_MAX_CHARS = 900;
     private static final int DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS = 2;
+    private static final String LINE_SEPARATOR = System.lineSeparator();
+    private static final String DOUBLE_LINE_SEPARATOR = LINE_SEPARATOR + LINE_SEPARATOR;
 
     private final WorkspaceClient workspaceClient;
     private final ReviewContextBuilderService contextBuilderService;
@@ -91,11 +93,11 @@ public class WidgetReviewMapReduceOrchestrator {
     private final int finalReduceMaxAttempts;
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public interface ProgressListener {
@@ -454,7 +456,7 @@ public class WidgetReviewMapReduceOrchestrator {
                             roundAnySuccess = true;
                             usedByProcessing.addAll(expectedForReq);
                             if (r.outputText != null && !r.outputText.isBlank()) {
-                                mapOutputs.add("### Batch " + req.getBatchIndex() + '\n' + r.outputText);
+                                mapOutputs.add("### Batch " + req.getBatchIndex() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + r.outputText);
                             }
                         } else {
                             failedBatches.add(Integer.valueOf(req.getBatchIndex()));
@@ -517,7 +519,9 @@ public class WidgetReviewMapReduceOrchestrator {
             }
 
             remainingMissing = new LinkedHashSet<>(authoritativeAllIds);
-            remainingMissing.removeAll(usedByProcessing);
+            for (String usedId : usedByProcessing) {
+                remainingMissing.remove(usedId);
+            }
 
             listener.onMapRoundCompleted(requestId, round, maxRetryRounds, usedByProcessing.size(), remainingMissing.size());
 
@@ -656,7 +660,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     }
 
                     String summary = trimTo(chunkResult.reduceResult.getFinalReport(), reduceChunkSummaryMaxChars);
-                    nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + '\n' + summary);
+                    nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + summary);
                 }
 
                 if (anyChunkFailed) {
@@ -796,7 +800,10 @@ public class WidgetReviewMapReduceOrchestrator {
 
         List<String> expected = normalizeIds(req.batchChatIds());
         Set<String> missingByMarkers = new LinkedHashSet<>(expected);
-        missingByMarkers.removeAll(normalizeIds(primary.usedIdsDetected));
+        List<String> detectedPrimary = normalizeIds(primary.usedIdsDetected);
+        for (String detectedId : detectedPrimary) {
+            missingByMarkers.remove(detectedId);
+        }
 
         if (missingByMarkers.isEmpty()) {
             return primary;
@@ -831,12 +838,14 @@ public class WidgetReviewMapReduceOrchestrator {
         mergedMarkerUsed = normalizeIds(mergedMarkerUsed);
 
         Set<String> markerMissingAfterRecovery = new LinkedHashSet<>(expected);
-        markerMissingAfterRecovery.removeAll(mergedMarkerUsed);
+        for (String mergedId : mergedMarkerUsed) {
+            markerMissingAfterRecovery.remove(mergedId);
+        }
 
         boolean mergedSuccess = primary.result.isSuccess() || recovery.result.isSuccess();
 
         String mergedOutput = (primary.outputText == null ? "" : primary.outputText)
-                + ((recovery.outputText == null || recovery.outputText.isBlank()) ? "" : "\n\n" + recovery.outputText);
+            + ((recovery.outputText == null || recovery.outputText.isBlank()) ? "" : DOUBLE_LINE_SEPARATOR + recovery.outputText);
 
         String mergedErr = mergedSuccess ? "" : "Batch processing failed (primary+recovery).";
 
@@ -959,7 +968,7 @@ public class WidgetReviewMapReduceOrchestrator {
             List<String> markerDistinct = normalizeIds(mergedMarkers);
 
             boolean success = anySuccess;
-            String modelOutput = String.join("\n\n", mergedOutputs);
+            String modelOutput = String.join(DOUBLE_LINE_SEPARATOR, mergedOutputs);
             String err = success ? "" : (subErrors.isEmpty() ? "Adaptive sub-batches all failed." : String.join("; ", subErrors));
 
             MapBatchResult mergedResult = MapBatchResult.builder()
@@ -1020,9 +1029,9 @@ public class WidgetReviewMapReduceOrchestrator {
 
         List<String> expectedIds = normalizeIds(req.batchChatIds());
 
-        String mapPrompt = req.getControlledPrompt() + "\n\n" + deterministicHeader + "\nExpected chat IDs in this batch: " + expectedIds
-                + "\nBatch Task:\nProduce markdown analysis for this batch with aggregate insights and metrics.\n"
-                + "Do NOT produce per-chat sections unless explicitly requested.\n"
+        String mapPrompt = req.getControlledPrompt() + DOUBLE_LINE_SEPARATOR + deterministicHeader + LINE_SEPARATOR + "Expected chat IDs in this batch: " + expectedIds
+            + LINE_SEPARATOR + "Batch Task:" + LINE_SEPARATOR + "Produce markdown analysis for this batch with aggregate insights and metrics." + LINE_SEPARATOR
+            + "Do NOT produce per-chat sections unless explicitly requested." + LINE_SEPARATOR
                 + "Include covered_chat_ids: [..] contract line if possible.";
 
         String mapContext = contextBuilderService.buildMapBatchContext(
@@ -1182,9 +1191,9 @@ public class WidgetReviewMapReduceOrchestrator {
                     Integer.valueOf(missingIdsNorm.size())
                 );
 
-        String reducePrompt = controlledPrompt + "\n\n" + deterministicReduceHeader + "\nReduce Task:\n"
-                + "Synthesize a manager-ready final report.\n"
-                + "Do NOT include 'Per-Chat Analysis'.\n"
+        String reducePrompt = controlledPrompt + DOUBLE_LINE_SEPARATOR + deterministicReduceHeader + LINE_SEPARATOR + "Reduce Task:" + LINE_SEPARATOR
+            + "Synthesize a manager-ready final report." + LINE_SEPARATOR
+            + "Do NOT include 'Per-Chat Analysis'." + LINE_SEPARATOR
                 + "Provide overall executive analysis, metrics, risks/opportunities, recommendations, and coverage.";
 
         String reduceContext = contextBuilderService.buildReduceContext(
@@ -1441,7 +1450,10 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private List<String> subtract(List<String> all, List<String> remove) {
         Set<String> a = new LinkedHashSet<>(normalizeIds(all));
-        a.removeAll(new LinkedHashSet<>(normalizeIds(remove)));
+        Set<String> removeSet = new LinkedHashSet<>(normalizeIds(remove));
+        for (String removeId : removeSet) {
+            a.remove(removeId);
+        }
         return new ArrayList<>(a);
     }
 
@@ -1489,7 +1501,7 @@ public class WidgetReviewMapReduceOrchestrator {
             return trimTo(base, maxTotalChars);
         }
 
-        String suffix = "\n\nSelected chats context:\n" + context;
+        String suffix = DOUBLE_LINE_SEPARATOR + "Selected chats context:" + LINE_SEPARATOR + context;
         String combined = base + suffix;
         if (combined.length() <= maxTotalChars) {
             return combined;
@@ -1506,7 +1518,7 @@ public class WidgetReviewMapReduceOrchestrator {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+        return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
 
     static final class MapBatchExecutionResult {

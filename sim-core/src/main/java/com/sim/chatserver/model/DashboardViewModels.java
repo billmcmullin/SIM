@@ -236,6 +236,8 @@ public final class DashboardViewModels {
 // Replace your existing SessionOverview class with this version.
     public static final class SessionOverview {
 
+        private static final ProgressStat ZERO_PROGRESS = new ProgressStat(0, 0);
+
         private final List<SessionStat> topSessions;
         private final SessionTimeline timeline;
         private final int totalUsers;
@@ -266,9 +268,9 @@ public final class DashboardViewModels {
                     activeDays,
                     0,
                     0,
-                    new ProgressStat(0, 0),
+                    ZERO_PROGRESS,
                     0,
-                    new ProgressStat(0, 0)
+                    ZERO_PROGRESS
             );
         }
 
@@ -289,7 +291,7 @@ public final class DashboardViewModels {
                     newSessionsYesterday,
                     newSessionsProgression,
                     0,
-                    new ProgressStat(0, 0)
+                    ZERO_PROGRESS
             );
         }
 

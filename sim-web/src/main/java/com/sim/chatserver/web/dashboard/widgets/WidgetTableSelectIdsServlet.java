@@ -23,7 +23,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableSelectIdsServlet", urlPatterns = {"/dashboard/widgets/view/select-ids"})
 public class WidgetTableSelectIdsServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetTableSelectIdsServlet.class.getCanonicalName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final WidgetTableSelectIdsQueryService QUERY_SERVICE = new WidgetTableSelectIdsQueryService(log);
 

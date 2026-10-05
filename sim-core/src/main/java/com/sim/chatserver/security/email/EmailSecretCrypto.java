@@ -27,7 +27,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class EmailSecretCrypto {
 
-    private static final Logger log = Logger.getLogger(EmailSecretCrypto.class.getName());
+    private static final Logger log = Logger.getLogger(EmailSecretCrypto.class.getCanonicalName());
 
     private static final String ENV_KEY = "SIM_EMAIL_CRYPTO_KEY";
     private static final String ENV_TRANSFORM = "SIM_EMAIL_CRYPTO_TRANSFORMATION";
@@ -173,7 +173,7 @@ public final class EmailSecretCrypto {
                 .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
                 .trim();
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return new String(normalized.toCharArray(), 0, maxChars);
         }
         return normalized;
     }

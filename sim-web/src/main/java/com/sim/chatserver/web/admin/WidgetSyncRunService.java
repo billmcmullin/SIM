@@ -31,13 +31,13 @@ final class WidgetSyncRunService {
             Function<String, String> tableNameResolver,
             BiFunction<ServerConfig, String, T> widgetSyncFunction
     ) {
-        Objects.requireNonNull(serverConfigLoader, "serverConfigLoader");
-        Objects.requireNonNull(widgetLoader, "widgetLoader");
-        Objects.requireNonNull(startProgress, "startProgress");
-        Objects.requireNonNull(currentWidgetProgressUpdater, "currentWidgetProgressUpdater");
-        Objects.requireNonNull(clearCurrentWidgetProgress, "clearCurrentWidgetProgress");
-        Objects.requireNonNull(tableNameResolver, "tableNameResolver");
-        Objects.requireNonNull(widgetSyncFunction, "widgetSyncFunction");
+        serverConfigLoader = Objects.requireNonNull(serverConfigLoader, "serverConfigLoader");
+        widgetLoader = Objects.requireNonNull(widgetLoader, "widgetLoader");
+        startProgress = Objects.requireNonNull(startProgress, "startProgress");
+        currentWidgetProgressUpdater = Objects.requireNonNull(currentWidgetProgressUpdater, "currentWidgetProgressUpdater");
+        clearCurrentWidgetProgress = Objects.requireNonNull(clearCurrentWidgetProgress, "clearCurrentWidgetProgress");
+        tableNameResolver = Objects.requireNonNull(tableNameResolver, "tableNameResolver");
+        widgetSyncFunction = Objects.requireNonNull(widgetSyncFunction, "widgetSyncFunction");
 
         ServerConfig config = serverConfigLoader.get();
         if (config == null) {

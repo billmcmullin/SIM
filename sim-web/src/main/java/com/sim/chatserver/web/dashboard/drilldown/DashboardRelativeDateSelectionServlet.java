@@ -38,7 +38,7 @@ import jakarta.servlet.http.HttpSession;
  */
 @WebServlet(name = "DashboardRelativeDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review-relative"})
 public class DashboardRelativeDateSelectionServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getCanonicalName());
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;

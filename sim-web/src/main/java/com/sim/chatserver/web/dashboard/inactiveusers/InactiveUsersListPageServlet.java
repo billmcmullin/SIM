@@ -41,7 +41,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "InactiveUsersListPageServlet", urlPatterns = {"/dashboard/inactive-users/list"})
 public class InactiveUsersListPageServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(InactiveUsersListPageServlet.class.getName());
+    private static final Logger log = Logger.getLogger(InactiveUsersListPageServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/inactive_users_list.html";
     private static final int DEFAULT_DAYS = 7;
     private static final int DEFAULT_LIMIT = 10;
@@ -225,7 +225,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             return out;
         }
 
-        double score = 0.0;
+        int scorePoints = 0;
         String reason = "";
 
         String[] strong = {"frustrated", "angry", "annoyed", "furious", "ridiculous", "useless", "terrible"};
@@ -239,7 +239,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
             for (String k : strong) {
                 if (lower.contains(k)) {
-                    score += 0.30;
+                    scorePoints += 30;
                     if (reason.isEmpty()) {
                         reason = "keyword:" + k;
                     }
@@ -247,14 +247,14 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             }
             for (String k : misunderstood) {
                 if (lower.contains(k)) {
-                    score += 0.35;
+                    scorePoints += 35;
                     if (reason.isEmpty()) {
                         reason = "misunderstood:" + k;
                     }
                 }
             }
             if (lower.contains("!!!") || lower.contains("???")) {
-                score += 0.15;
+                scorePoints += 15;
                 if (reason.isEmpty()) {
                     reason = "punctuation";
                 }
@@ -265,18 +265,18 @@ public class InactiveUsersListPageServlet extends HttpServlet {
             if (!nonFrustrationContext
                     && InactiveUsersFrustrationTextUtil.hasExplicitFrustrationSignal(t)
                     && !consistentCapsStyle) {
-                score += 0.20;
+                scorePoints += 20;
                 if (reason.isEmpty()) {
                     reason = "frustration_phrase";
                 }
             }
         }
 
-        if (score > 1.0) {
-            score = 1.0;
+        if (scorePoints > 100) {
+            scorePoints = 100;
         }
-        out.score = score;
-        out.detected = score >= 0.40;
+        out.score = scorePoints / 100.0d;
+        out.detected = scorePoints >= 40;
         out.reason = reason;
         return out;
     }
@@ -322,9 +322,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (template == null) {
             return null;
         }
-        String normalized = template.replace("\u0000", "").replace("\r", "");
+        String normalized = template.replace("\u0000", "").replace(System.lineSeparator(), "");
         if (normalized.length() > 500_000) {
-            return normalized.substring(0, 500_000);
+            return safeSlice(normalized, 0, 500_000);
         }
         return normalized;
     }
@@ -357,8 +357,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (!(user instanceof String userText)) {
             return "";
         }
-        String normalized = userText.replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        String normalized = userText.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
+        return normalized.length() > 256 ? safeSlice(normalized, 0, 256) : normalized;
     }
 
     private String nvl(String s) {
@@ -382,9 +382,24 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
         String trimmed = raw.trim();
         if (trimmed.length() > MAX_SEARCH_LENGTH) {
-            return trimmed.substring(0, MAX_SEARCH_LENGTH);
+            return safeSlice(trimmed, 0, MAX_SEARCH_LENGTH);
         }
         return trimmed;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String formatTimestamp(Timestamp value) {
@@ -416,8 +431,8 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
         return value.replace("\\", "\\\\")
                 .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+                .replace(System.lineSeparator(), "\\n")
+                .replace(System.lineSeparator(), "\\r");
     }
 
 }

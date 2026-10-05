@@ -22,7 +22,7 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class TermsStore {
-    private static final Logger log = Logger.getLogger(TermsStore.class.getName());
+    private static final Logger log = Logger.getLogger(TermsStore.class.getCanonicalName());
 
     private static final String DEFAULT_OTHER = "Other Parasoft Match";
 
@@ -34,12 +34,12 @@ public class TermsStore {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @Inject
@@ -425,9 +425,9 @@ public class TermsStore {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", " ").trim();
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "").replace(System.lineSeparator(), " ").trim();
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return new String(normalized.toCharArray(), 0, maxChars);
         }
         return normalized;
     }

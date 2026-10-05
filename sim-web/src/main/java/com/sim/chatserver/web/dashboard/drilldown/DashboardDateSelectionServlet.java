@@ -26,7 +26,7 @@ import jakarta.servlet.http.HttpSession;
  */
 @WebServlet(name = "DashboardDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review"})
 public class DashboardDateSelectionServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardDateSelectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardDateSelectionServlet.class.getCanonicalName());
     private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 

@@ -18,14 +18,14 @@ import jakarta.mail.internet.MimeMultipart;
 
 public class SmtpEmailService implements EmailService {
 
-    private static final Logger LOG = Logger.getLogger(SmtpEmailService.class.getName());
+    private static final Logger LOG = Logger.getLogger(SmtpEmailService.class.getCanonicalName());
 
     private final EmailConfig config;
     private final MarkdownRenderer markdownRenderer;
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     SmtpEmailService(EmailConfig config, MarkdownRenderer markdownRenderer) {
@@ -106,19 +106,19 @@ public class SmtpEmailService implements EmailService {
 
     private Properties buildProperties() {
         Properties props = new Properties();
-        props.put("mail.smtp.host", config.host());
-        props.put("mail.smtp.port", String.valueOf(config.port()));
-        props.put("mail.smtp.auth", String.valueOf(config.auth()));
+        props.setProperty("mail.smtp.host", config.host());
+        props.setProperty("mail.smtp.port", String.valueOf(config.port()));
+        props.setProperty("mail.smtp.auth", String.valueOf(config.auth()));
 
         // Office 365 recommended for smtp.office365.com:587
-        props.put("mail.smtp.starttls.enable", String.valueOf(config.startTls()));
-        props.put("mail.smtp.starttls.required", String.valueOf(config.startTls()));
-        props.put("mail.smtp.ssl.enable", String.valueOf(config.ssl()));
+        props.setProperty("mail.smtp.starttls.enable", String.valueOf(config.startTls()));
+        props.setProperty("mail.smtp.starttls.required", String.valueOf(config.startTls()));
+        props.setProperty("mail.smtp.ssl.enable", String.valueOf(config.ssl()));
 
         // timeouts
-        props.put("mail.smtp.connectiontimeout", "10000");
-        props.put("mail.smtp.timeout", "10000");
-        props.put("mail.smtp.writetimeout", "10000");
+        props.setProperty("mail.smtp.connectiontimeout", "10000");
+        props.setProperty("mail.smtp.timeout", "10000");
+        props.setProperty("mail.smtp.writetimeout", "10000");
 
         return props;
     }

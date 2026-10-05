@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 
 @WebServlet(name = "AdminEmailConfigServlet", urlPatterns = {"/admin/email/config"})
 public class AdminEmailConfigServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 32 * 1024;
 
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");

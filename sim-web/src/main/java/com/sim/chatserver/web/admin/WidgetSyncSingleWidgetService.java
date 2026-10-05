@@ -2,6 +2,7 @@ package com.sim.chatserver.web.admin;
 
 import jakarta.json.JsonObject;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -37,14 +38,14 @@ final class WidgetSyncSingleWidgetService {
             Function<List<JsonObject>, Integer> chatUpserter,
             Consumer<List<String>> cacheRecorder
     ) {
-        Objects.requireNonNull(tableEnsurer, "tableEnsurer");
-        Objects.requireNonNull(progressUpdater, "progressUpdater");
-        Objects.requireNonNull(chatFetcher, "chatFetcher");
-        Objects.requireNonNull(chatIdCollector, "chatIdCollector");
-        Objects.requireNonNull(missingChatIdResolver, "missingChatIdResolver");
-        Objects.requireNonNull(chatFilter, "chatFilter");
-        Objects.requireNonNull(chatUpserter, "chatUpserter");
-        Objects.requireNonNull(cacheRecorder, "cacheRecorder");
+        tableEnsurer = Objects.requireNonNull(tableEnsurer, "tableEnsurer");
+        progressUpdater = Objects.requireNonNull(progressUpdater, "progressUpdater");
+        chatFetcher = Objects.requireNonNull(chatFetcher, "chatFetcher");
+        chatIdCollector = Objects.requireNonNull(chatIdCollector, "chatIdCollector");
+        missingChatIdResolver = Objects.requireNonNull(missingChatIdResolver, "missingChatIdResolver");
+        chatFilter = Objects.requireNonNull(chatFilter, "chatFilter");
+        chatUpserter = Objects.requireNonNull(chatUpserter, "chatUpserter");
+        cacheRecorder = Objects.requireNonNull(cacheRecorder, "cacheRecorder");
 
         tableEnsurer.run();
 
@@ -52,6 +53,9 @@ final class WidgetSyncSingleWidgetService {
 
         List<JsonObject> chats = chatFetcher.get();
         List<String> candidateChatIds = chatIdCollector.apply(chats);
+        if (candidateChatIds == null) {
+            candidateChatIds = Collections.emptyList();
+        }
         List<String> missingChatIds = candidateChatIds.isEmpty() ? null : missingChatIdResolver.apply(candidateChatIds);
 
         boolean skippedByRecentCache = false;

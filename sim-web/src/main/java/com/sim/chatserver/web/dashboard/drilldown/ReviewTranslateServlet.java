@@ -27,7 +27,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "ReviewTranslateServlet", urlPatterns = {"/dashboard/widgets/drilldown/review/translate"})
 public class ReviewTranslateServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(ReviewTranslateServlet.class.getName());
+    private static final Logger log = Logger.getLogger(ReviewTranslateServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 16 * 1024;
 
     private static final TranslationService TRANSLATION_SERVICE = new DefaultTranslationService();

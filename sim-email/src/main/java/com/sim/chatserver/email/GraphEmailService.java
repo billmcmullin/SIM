@@ -8,7 +8,7 @@ import java.util.logging.Logger;
  */
 public class GraphEmailService implements EmailService {
 
-    private static final Logger LOG = Logger.getLogger(GraphEmailService.class.getName());
+    private static final Logger LOG = Logger.getLogger(GraphEmailService.class.getCanonicalName());
 
     private final GraphEmailConfig config;
     private final GraphTokenClient tokenClient;
@@ -17,7 +17,7 @@ public class GraphEmailService implements EmailService {
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     GraphEmailService(

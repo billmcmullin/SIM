@@ -51,7 +51,7 @@ import jakarta.servlet.http.HttpSession;
  * table existence checks - cached widget display names
  */
 final class WidgetReviewDataService {
-    private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetReviewDataServlet.class.getCanonicalName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
@@ -67,8 +67,10 @@ final class WidgetReviewDataService {
     private static final int MAX_LIMIT = 20000;
     private static final int DEFAULT_PAGE = 1;
 
-    private static final Map<String, String> tableExistsCache = new ConcurrentHashMap<>();
-    private static final Map<String, String> widgetNameCache = new ConcurrentHashMap<>();    void handleGet(HttpServletRequest req, HttpServletResponse resp) {
+    private final Map<String, String> tableExistsCache = new ConcurrentHashMap<>();
+    private final Map<String, String> widgetNameCache = new ConcurrentHashMap<>();
+
+    void handleGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         final long t0 = System.nanoTime();
 
@@ -533,7 +535,7 @@ final class WidgetReviewDataService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = new String(normalized.toCharArray(), 0, 60);
         }
         return normalized;
     }

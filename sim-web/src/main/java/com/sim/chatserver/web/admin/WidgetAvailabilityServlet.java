@@ -31,7 +31,7 @@ import java.util.logging.Logger;
  */
 public class WidgetAvailabilityServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetAvailabilityServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetAvailabilityServlet.class.getCanonicalName());
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -155,8 +155,8 @@ public class WidgetAvailabilityServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
     private boolean isTruthy(String value) {

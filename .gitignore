@@ -21,6 +21,7 @@ sim-email/.project
 sim-email/.classpath
 sim-email/.settings/
 logs/
+jtest/
 
 #For SOAtest
 !resources/soatest/.project

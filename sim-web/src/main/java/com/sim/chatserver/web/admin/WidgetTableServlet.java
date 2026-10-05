@@ -28,7 +28,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableServlet", urlPatterns = {"/admin/widgets/table-check"})
 public class WidgetTableServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getCanonicalName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
@@ -230,7 +230,7 @@ public class WidgetTableServlet extends HttpServlet {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = new String(normalized.toCharArray(), 0, 60);
         }
         return normalized;
     }

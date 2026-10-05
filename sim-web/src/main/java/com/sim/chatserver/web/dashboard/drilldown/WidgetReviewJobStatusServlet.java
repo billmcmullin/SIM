@@ -298,7 +298,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         try {
             return OptionalInt.of(Integer.parseInt(text));
         } catch (NumberFormatException ex) {
-            java.util.logging.Logger.getLogger(WidgetReviewJobStatusServlet.class.getName())
+            java.util.logging.Logger.getLogger(WidgetReviewJobStatusServlet.class.getCanonicalName())
                     .log(java.util.logging.Level.FINE, "Invalid integer value", ex);
             return OptionalInt.empty();
         }
@@ -346,7 +346,9 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     private List<String> subtract(List<String> all, List<String> remove) {
         Set<String> a = new LinkedHashSet<>(normalizeIds(all));
         Set<String> r = new LinkedHashSet<>(normalizeIds(remove));
-        a.removeAll(r);
+        for (String removeId : r) {
+            a.remove(removeId);
+        }
         return new ArrayList<>(a);
     }
 

@@ -28,7 +28,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTrendsSelectServlet", urlPatterns = {"/dashboard/trends/select"})
 public class DashboardTrendsSelectServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTrendsSelectServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
     private static final DashboardTrendsQueryService QUERY_SERVICE = new DashboardTrendsQueryService(log);
@@ -154,7 +154,7 @@ public class DashboardTrendsSelectServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 }

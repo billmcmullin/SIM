@@ -25,12 +25,12 @@ import jakarta.enterprise.inject.spi.CDI;
 
 @ApplicationScoped
 public class DashboardTopicsQueryService {
-    private static final Logger log = Logger.getLogger(DashboardTopicsQueryService.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTopicsQueryService.class.getCanonicalName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
         private TopicCountResult collectTopicCounts(
@@ -145,7 +145,7 @@ public class DashboardTopicsQueryService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = new String(normalized.toCharArray(), 0, 60);
         }
         return normalized;
     }

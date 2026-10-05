@@ -30,7 +30,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "AdminTermServlet", urlPatterns = {"/admin/terms"})
 public class AdminTermServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(AdminTermServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminTermServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
 
@@ -275,7 +275,7 @@ public class AdminTermServlet extends HttpServlet {
         int limit = Math.min(normalizedInput.length(), MAX_JSON_PAYLOAD_BYTES);
         for (int i = 0; i < limit; i++) {
             char ch = normalizedInput.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);

@@ -41,7 +41,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardTermSelectionServlet", urlPatterns = {"/dashboard/term-review", "/dashboard/term-review/select"})
 public class DashboardTermSelectionServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(DashboardTermSelectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTermSelectionServlet.class.getCanonicalName());
 
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
     private static final String TERM_INCREASE_SNAPSHOT_SESSION_KEY = "termDistributionIncreaseSnapshots";
@@ -336,7 +336,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return false;
         }
         String p = path.trim();
-        if (p.isEmpty() || p.charAt(0) != '/' || p.contains("://") || p.contains("\r") || p.contains("\n")) {
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains("://") || p.contains(System.lineSeparator()) || p.contains(System.lineSeparator())) {
             return false;
         }
         if (SAFE_FORWARD_PATHS.contains(p)) {

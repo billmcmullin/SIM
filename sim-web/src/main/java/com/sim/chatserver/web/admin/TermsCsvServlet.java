@@ -40,9 +40,10 @@ import jakarta.servlet.http.Part;
         maxFileSize = 1024 * 1024 * 5, // 5MB
         maxRequestSize = 1024 * 1024 * 10) // 10MB
 public class TermsCsvServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(TermsCsvServlet.class.getName());
+    private static final Logger log = Logger.getLogger(TermsCsvServlet.class.getCanonicalName());
 
     private static final String[] CSV_HEADER = new String[]{"name", "description", "match_pattern", "match_type", "system_flag"};
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -67,7 +68,7 @@ public class TermsCsvServlet extends HttpServlet {
 
             try (OutputStream out = resp.getOutputStream()) {
                 // header
-                String headerLine = csvLine(CSV_HEADER) + '\n';
+                String headerLine = csvLine(CSV_HEADER) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
                 out.write(headerLine.getBytes(StandardCharsets.UTF_8));
 
                 for (TermDefinition t : terms) {
@@ -78,7 +79,7 @@ public class TermsCsvServlet extends HttpServlet {
                         t.getMatchType() == null ? "" : t.getMatchType(),
                         String.valueOf(t.isSystemFlag())
                     };
-                    String line = csvLine(cols) + '\n';
+                    String line = csvLine(cols) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
                     out.write(line.getBytes(StandardCharsets.UTF_8));
                 }
                 out.flush();
@@ -142,10 +143,11 @@ public class TermsCsvServlet extends HttpServlet {
     }
 
     private ImportCounters processCsvRows(BufferedReader reader, List<String> errors) {
-        ImportCounters counters = new ImportCounters();
         String line;
         boolean sawHeader = false;
         int lineNum = 0;
+        int created = 0;
+        int updated = 0;
 
         try {
             while ((line = reader.readLine()) != null) {
@@ -157,46 +159,58 @@ public class TermsCsvServlet extends HttpServlet {
 
                 if (!sawHeader) {
                     sawHeader = true;
-                    processFirstLine(normalizedLine, lineNum, counters, errors);
+                    String[] firstRow = parseCsvLine(normalizedLine);
+                    if (headerMatches(firstRow)) {
+                        continue;
+                    }
+                    Boolean createdNew = processDataLine(firstRow, lineNum, errors);
+                    if (createdNew == null) {
+                        continue;
+                    }
+                    if (createdNew.booleanValue()) {
+                        created++;
+                    } else {
+                        updated++;
+                    }
                     continue;
                 }
 
-                processDataLine(parseCsvLine(normalizedLine), lineNum, counters, errors);
+                Boolean createdNew = processDataLine(parseCsvLine(normalizedLine), lineNum, errors);
+                if (createdNew == null) {
+                    continue;
+                }
+                if (createdNew.booleanValue()) {
+                    created++;
+                } else {
+                    updated++;
+                }
             }
+            return new ImportCounters(created, updated);
         } catch (IOException e) {
             log.log(Level.WARNING, "Failed reading CSV rows", e);
             throw new IllegalStateException("Failed reading CSV rows", e);
         }
-
-        return counters;
     }
 
-    private void processFirstLine(String line, int lineNum, ImportCounters counters, List<String> errors) {
-        String[] firstRow = parseCsvLine(line);
-        if (headerMatches(firstRow)) {
-            return;
-        }
-        processDataLine(firstRow, lineNum, counters, errors);
-    }
-
-    private void processDataLine(String[] cols, int lineNum, ImportCounters counters, List<String> errors) {
+    private Boolean processDataLine(String[] cols, int lineNum, List<String> errors) {
         try {
-            boolean createdNew = processRow(cols);
-            if (createdNew) {
-                counters.created++;
-            } else {
-                counters.updated++;
-            }
+            return processRow(cols);
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.FINE, "Skipping invalid CSV data line", e);
             errors.add("line " + lineNum + ": " + e.getMessage());
+            return null;
         }
     }
 
     private static final class ImportCounters {
 
-        int created = 0;
-        int updated = 0;
+        final int created;
+        final int updated;
+
+        ImportCounters(int created, int updated) {
+            this.created = created;
+            this.updated = updated;
+        }
     }
 
     /**
@@ -319,7 +333,7 @@ public class TermsCsvServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
+        boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains(System.lineSeparator()) || s.contains(System.lineSeparator());
         String escaped = s.replace("\"", "\"\"");
         if (needsQuote) {
             return '"' + escaped + '"';
@@ -349,7 +363,7 @@ public class TermsCsvServlet extends HttpServlet {
     private static String[] parseCsvLine(String line) {
         List<String> out = new ArrayList<>();
         if (line == null || line.isEmpty()) {
-            return new String[0];
+            return EMPTY_STRING_ARRAY;
         }
         int len = line.length();
         StringBuilder cur = new StringBuilder();
@@ -380,7 +394,7 @@ public class TermsCsvServlet extends HttpServlet {
             }
         }
         out.add(cur.toString());
-        return out.toArray(new String[0]);
+        return out.toArray(EMPTY_STRING_ARRAY);
     }
 
     private static boolean headerMatches(String[] headerCols) {

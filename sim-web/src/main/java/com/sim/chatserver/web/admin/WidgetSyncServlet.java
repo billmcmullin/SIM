@@ -3,6 +3,8 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -95,13 +97,15 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync", "/admin/widgets/sync/timer", "/admin/widgets/summary/retry"})
 public class WidgetSyncServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .version(HttpClient.Version.HTTP_1_1)
             .build();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+        private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final long DEFAULT_INTERVAL_SECONDS = 300L;
     private static final long MIN_INTERVAL_SECONDS = 30L;
@@ -164,6 +168,10 @@ public class WidgetSyncServlet extends HttpServlet {
             0L,
             10_000L
     );
+        private static final Object[] SYNC_RUNTIME_CONFIG_LOG_ARGS = new Object[]{
+            Integer.valueOf(SYNC_PARALLELISM),
+            Long.valueOf(SYNC_MIN_REQUEST_GAP_MS)
+        };
     private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile("[^A-Za-z0-9_]");
     private static final Pattern SUMMARY_INCLUDED_COUNT_PATTERN = Pattern.compile("coverage:\\s*included=(\\d+)");
 
@@ -345,7 +353,8 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final RuntimeState STATE = new RuntimeState();
 
     private static final class RuntimeState {
-        private DashboardDailySummaryStore summaryStore;
+        private volatile DashboardDailySummaryStore summaryStore;
+        private final Object summaryStoreLock = new Object();
         private final WidgetSyncJdbcStore jdbcStore = new WidgetSyncJdbcStore(
             DEFAULT_SUMMARY_INTERVAL_SECONDS,
             DEFAULT_SUMMARY_AUTO_ENABLED,
@@ -399,10 +408,28 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final AtomicInteger syncSucceededWidgets = new AtomicInteger(0);
     private static final AtomicInteger syncFailedWidgets = new AtomicInteger(0);
 
-    private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getName() + ".termsStore.override";
+    private static final String TERMS_STORE_OVERRIDE_ATTR = WidgetSyncServlet.class.getCanonicalName() + ".termsStore.override";
 
     private static synchronized void ensureExecutorsRunning() {
         STATE.scheduler = WidgetSyncSchedulerManager.ensureSchedulerRunning(STATE.scheduler, log, "scheduler");
+    }
+
+    private DashboardDailySummaryStore ensureSummaryStore() {
+        DashboardDailySummaryStore existing = STATE.summaryStore;
+        if (existing != null) {
+            return existing;
+        }
+
+        synchronized (STATE.summaryStoreLock) {
+            existing = STATE.summaryStore;
+            if (existing == null) {
+                DashboardDailySummaryStore created = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
+                created.ensureTable();
+                STATE.summaryStore = created;
+                existing = created;
+            }
+        }
+        return existing;
     }
 
     private static boolean isSyncDisabled() {
@@ -419,7 +446,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         log.log(Level.INFO,
                 "Widget sync runtime config: parallelism={0}, minRequestGapMs={1}",
-                new Object[]{SYNC_PARALLELISM, SYNC_MIN_REQUEST_GAP_MS});
+            SYNC_RUNTIME_CONFIG_LOG_ARGS);
 
         try {
             STATE.mrConfig = MapReduceConfig.load();
@@ -465,8 +492,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         try {
-            STATE.summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
-            STATE.summaryStore.ensureTable();
+            ensureSummaryStore();
             loadSyncSettings();
         } catch (IllegalStateException e) {
             logWarningWithDiagnostics(
@@ -869,7 +895,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 errorRef,
                 "daily-summary-failed",
                 "context=" + context
-                        + "\nmessage=" + (failure == null ? "" : String.valueOf(failure.getMessage())),
+                + LS + "message=" + (failure == null ? "" : String.valueOf(failure.getMessage())),
                 failure
         );
     }
@@ -885,7 +911,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 errorRef,
                 defaultIfBlank(event, "error"),
                 "summary=" + defaultString(summary)
-                + (details == null || details.isBlank() ? "" : '\n' + details),
+                + (details == null || details.isBlank() ? "" : com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + details),
                 failure
         );
         return errorRef;
@@ -953,7 +979,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "sync-single-widget-failed",
                     "Failed to sync widget " + String.valueOf(widgetId),
-                    "widgetId=" + defaultString(widgetId) + "\ntableName=" + defaultString(tableName),
+                    "widgetId=" + defaultString(widgetId) + LS + "tableName=" + defaultString(tableName),
                     e
             );
             return new WidgetSyncStatus(widgetId, tableName, false, false, "Sync failed. Check server logs.");
@@ -1150,28 +1176,25 @@ public class WidgetSyncServlet extends HttpServlet {
         persistSyncSettings();
 
         try {
-            if (STATE.summaryStore == null) {
-                STATE.summaryStore = new DashboardDailySummaryStore(dataSourceHolder().getDataSource());
-                STATE.summaryStore.ensureTable();
-            }
+            DashboardDailySummaryStore summaryStore = ensureSummaryStore();
 
             String startMessage = manualTrigger
                     ? "Manual summary generation started..."
                     : "Preparing daily summary context...";
-            STATE.summaryStore.upsertProgress(day, slot, "running", 5, startMessage, 0, true, false);
+            summaryStore.upsertProgress(day, slot, "running", 5, startMessage, 0, true, false);
 
             int effectiveMaxRows = clampSummaryMaxRows(STATE.summaryMaxRows);
             List<SelectedEntry> entries = loadEntriesForDay(day, effectiveMaxRows);
             entryCount = entries.size();
 
             if (entries.isEmpty()) {
-                STATE.summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
+                summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
                         "No entries available for this day yet.", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", 0, false, true);
                 resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
                 return true;
             }
 
-            STATE.summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
+            summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
 
             SummaryRequestContext requestContext = prepareSummaryRequestContext(day, slot, entryCount);
             if (requestContext == null) {
@@ -1183,7 +1206,7 @@ public class WidgetSyncServlet extends HttpServlet {
             ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = requestContext.resolvedSummaryAuth;
             String resolvedSummaryPrompt = resolveSummaryPrompt();
 
-            STATE.summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
+            summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
 
             List<TermDefinition> termDefinitions = loadSummaryTerms();
             List<SelectedEntry> upstreamEntries = limitSummaryEntriesForUpstream(entries);
@@ -1199,13 +1222,13 @@ public class WidgetSyncServlet extends HttpServlet {
                     summaryRequestId,
                     "summary-request",
                     "targetUrl=" + canonicalTargetUrl
-                            + "\nentryCountTotal=" + entries.size()
-                            + "\nentryCountSent=" + entryCountSent
-                            + "\nmessageChars=" + singlePassMessage.length()
-                            + "\nrequestBytes=" + payloadPlan.requestBytes
-                            + "\nbudgetReduced=" + payloadPlan.budgetReduced
-                            + "\nauthSource=" + defaultString(resolvedSummaryAuth.source())
-                            + "\npreferredHeader=" + defaultString(resolvedSummaryAuth.preferredHeaderName())
+                        + LS + "entryCountTotal=" + entries.size()
+                        + LS + "entryCountSent=" + entryCountSent
+                        + LS + "messageChars=" + singlePassMessage.length()
+                        + LS + "requestBytes=" + payloadPlan.requestBytes
+                        + LS + "budgetReduced=" + payloadPlan.budgetReduced
+                        + LS + "authSource=" + defaultString(resolvedSummaryAuth.source())
+                        + LS + "preferredHeader=" + defaultString(resolvedSummaryAuth.preferredHeaderName())
             );
 
             if (payloadPlan.budgetReduced) {
@@ -1279,7 +1302,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "summary-single-pass-failed",
                     summary,
-                    "requestId=" + summaryRequestId + "\nentryCountSent=" + entryCountSent,
+                    "requestId=" + summaryRequestId + LS + "entryCountSent=" + entryCountSent,
                     ex
             );
             return null;
@@ -1291,8 +1314,8 @@ public class WidgetSyncServlet extends HttpServlet {
                     summaryRequestId,
                     "summary-response-single-pass",
                     "status=" + finalResp.statusCode()
-                            + "\ncontentType=" + defaultString(finalResp.contentType())
-                            + "\nbodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
+                        + LS + "contentType=" + defaultString(finalResp.contentType())
+                        + LS + "bodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
             );
         }
 
@@ -1331,8 +1354,8 @@ public class WidgetSyncServlet extends HttpServlet {
                         summaryRequestId,
                         "summary-response-direct-fallback",
                         "status=" + directFallback.statusCode()
-                                + "\ncontentType=" + defaultString(directFallback.contentType())
-                                + "\nbodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
+                        + LS + "contentType=" + defaultString(directFallback.contentType())
+                        + LS + "bodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
                 );
                 return directFallback;
             }
@@ -1340,7 +1363,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "summary-direct-fallback-failed",
                     "Direct summary fallback failed after single-pass upstream failure",
-                    "requestId=" + summaryRequestId + "\nstatusCode=" + statusCode,
+                    "requestId=" + summaryRequestId + LS + "statusCode=" + statusCode,
                     ex
             );
         }
@@ -1378,11 +1401,11 @@ public class WidgetSyncServlet extends HttpServlet {
     ) {
         int statusCode = finalResp.statusCode();
         String upstreamText = extractPrimaryText(finalResp.body());
-        if (upstreamText == null || upstreamText.isBlank()) {
+        if (upstreamText.isBlank()) {
             upstreamText = "Workspace returned HTTP " + statusCode + '.';
         }
 
-        String truncated = upstreamText.length() > 1200 ? upstreamText.substring(0, 1200) : upstreamText;
+        String truncated = upstreamText.length() > 1200 ? safeSlice(upstreamText, 0, 1200) : upstreamText;
         String friendlyFailure = buildUserFacingSummaryFailureMessage(
                 statusCode,
                 truncated,
@@ -1410,7 +1433,7 @@ public class WidgetSyncServlet extends HttpServlet {
             WorkspaceResponse finalResp
     ) {
         String raw = extractPrimaryText(finalResp.body());
-        if (raw == null || raw.isBlank()) {
+        if (raw.isBlank()) {
             String reason = "No summary message returned by upstream service.";
             if (shouldUseLocalSummaryFallback(finalResp.statusCode())) {
                 String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, finalResp.statusCode(), reason);
@@ -1428,7 +1451,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String usage = section(raw, "Usage");
 
         if (overall.isBlank()) {
-            overall = raw.length() > 1200 ? raw.substring(0, 1200) : raw;
+            overall = raw.length() > 1200 ? safeSlice(raw, 0, 1200) : raw;
         }
         if (quality.isBlank()) {
             quality = "No specific quality notes generated.";
@@ -1628,7 +1651,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "summary-load-day-entries-failed",
                     "Unable to load day entries for daily summary",
-                    "day=" + String.valueOf(day) + "\nmaxRows=" + maxRows,
+                    "day=" + String.valueOf(day) + LS + "maxRows=" + maxRows,
                     ex
             );
             return List.of();
@@ -1659,7 +1682,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         int from = start + needle.length();
         int next = markdown.indexOf("## ", from);
-        return (next < 0 ? markdown.substring(from) : markdown.substring(from, next)).trim();
+        return (next < 0 ? safeSlice(markdown, from) : safeSlice(markdown, from, next)).trim();
     }
 
     private boolean shouldUseLocalSummaryFallback(int statusCode) {
@@ -1736,7 +1759,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (trimmed.isBlank()) {
             return "";
         }
-        return " Reason: " + (trimmed.length() > 320 ? trimmed.substring(0, 320) : trimmed);
+        return " Reason: " + (trimmed.length() > 320 ? safeSlice(trimmed, 0, 320) : trimmed);
     }
 
     private void persistLocalFallbackSummary(
@@ -1772,8 +1795,8 @@ public class WidgetSyncServlet extends HttpServlet {
                 "daily-summary-local-fallback-" + day + "-slot-" + slot,
                 "summary-response-local-fallback",
                 "upstreamStatus=" + upstreamStatus
-                        + "\nupstreamReason=" + defaultString(upstreamReason)
-                        + "\nentryCount=" + (entries == null ? 0 : entries.size())
+                + LS + "upstreamReason=" + defaultString(upstreamReason)
+                + LS + "entryCount=" + (entries == null ? 0 : entries.size())
         );
 
         resumeAutomaticSummaryGeneration("Local fallback summary generated successfully.");
@@ -1852,8 +1875,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String frustrationLevel = deriveFrustrationLevel(total, frustratedChats, frustrationSignals);
         String topFrustrationPoint = topCategory(frustrationPointCounts);
         String otherFrustrationPoints = otherCategories(frustrationPointCounts, topFrustrationPoint, 2);
-        double avgPrompt = total == 0 ? 0.0 : ((double) totalPromptChars / (double) total);
-        double avgResponse = total == 0 ? 0.0 : ((double) totalResponseChars / (double) total);
+        double avgPrompt = ratio(totalPromptChars, total);
+        double avgResponse = ratio(totalResponseChars, total);
 
         double qualityScore = computeQualityScore(total, potentialQualityIssues, emptyResponses, frustratedChats, frustrationLevel);
         double responseScore = computeResponseScore(total, likelyAcceptedChats, potentialQualityIssues, frustratedChats);
@@ -1866,41 +1889,41 @@ public class WidgetSyncServlet extends HttpServlet {
                 : String.join("; ", articleSuggestions);
 
         StringBuilder md = new StringBuilder(1400);
-        md.append("## Overall\n")
-            .append("- Overall effectiveness score: ").append(overallScore).append("/100.\n")
+        md.append("## Overall").append(LS)
+            .append("- Overall effectiveness score: ").append(overallScore).append("/100.").append(LS)
             .append("- Section scores: Quality ").append(formatSectionScore(qualityScore))
             .append(", Response ").append(formatSectionScore(responseScore))
-            .append(", Usage ").append(formatSectionScore(usageScore)).append(".\n")
-                .append("- Chats used in summary: ").append(total).append('\n')
-                .append("- Distinct sessions: ").append(sessionCounts.size()).append('\n')
+            .append(", Usage ").append(formatSectionScore(usageScore)).append('.').append(LS)
+                .append("- Chats used in summary: ").append(total).append(System.lineSeparator())
+                .append("- Distinct sessions: ").append(sessionCounts.size()).append(System.lineSeparator())
                 .append("- Terms found from DB term list: ").append(matchedTermsUnique)
                 .append(" unique term(s), ").append(matchedTermMentions).append(" total mention(s), ")
-                .append(termMatchedChats).append(" chat(s) with at least one term match.\n")
-                .append("- Top matched terms: ").append(defaultIfBlank(topMatchedTerms, "none matched")).append(".\n\n");
+                .append(termMatchedChats).append(" chat(s) with at least one term match.").append(LS)
+                .append("- Top matched terms: ").append(defaultIfBlank(topMatchedTerms, "none matched")).append('.').append(LS).append(LS);
 
-        md.append("## Quality\n")
-            .append("- Score: ").append(formatSectionScore(qualityScore)).append(".\n")
-                .append("- Potential quality concern signals: ").append(potentialQualityIssues).append(" chat(s).\n")
-                .append("- Empty responses detected: ").append(emptyResponses).append(" chat(s).\n")
+        md.append("## Quality").append(LS)
+            .append("- Score: ").append(formatSectionScore(qualityScore)).append('.').append(LS)
+                .append("- Potential quality concern signals: ").append(potentialQualityIssues).append(" chat(s).").append(LS)
+                .append("- Empty responses detected: ").append(emptyResponses).append(" chat(s).").append(LS)
                 .append("- Frustration detected: ").append(frustratedChats > 0 ? "Yes" : "No")
-                .append(" (level: ").append(frustrationLevel).append(").\n")
-                .append("- Most frustrated point: ").append(defaultIfBlank(topFrustrationPoint, "none detected")).append(".\n")
-                .append("- Other frustration points: ").append(defaultIfBlank(otherFrustrationPoints, "none detected")).append(".\n")
-                .append("- Recommendation: review chats flagged for escalation language or missing direct answers.\n\n");
+                .append(" (level: ").append(frustrationLevel).append(").").append(LS)
+                .append("- Most frustrated point: ").append(defaultIfBlank(topFrustrationPoint, "none detected")).append('.').append(LS)
+                .append("- Other frustration points: ").append(defaultIfBlank(otherFrustrationPoints, "none detected")).append('.').append(LS)
+                .append("- Recommendation: review chats flagged for escalation language or missing direct answers.").append(LS).append(LS);
 
-        md.append("## Response\n")
-            .append("- Score: ").append(formatSectionScore(responseScore)).append(".\n")
-                .append("- Average prompt length: ").append(Math.round(avgPrompt)).append(" chars.\n")
-                .append("- Average response length: ").append(Math.round(avgResponse)).append(" chars.\n")
-                .append("- Likely accepted answers: ").append(likelyAcceptedChats).append('/').append(total).append(" chat(s).\n")
-                .append("- Frustration signal count: ").append(frustrationSignals).append(".\n")
-                .append("- Recommendation: keep first response concise and task-focused before escalation guidance.\n\n");
+        md.append("## Response").append(LS)
+            .append("- Score: ").append(formatSectionScore(responseScore)).append('.').append(LS)
+                .append("- Average prompt length: ").append(Math.round(avgPrompt)).append(" chars.").append(LS)
+                .append("- Average response length: ").append(Math.round(avgResponse)).append(" chars.").append(LS)
+                .append("- Likely accepted answers: ").append(likelyAcceptedChats).append('/').append(total).append(" chat(s).").append(LS)
+                .append("- Frustration signal count: ").append(frustrationSignals).append('.').append(LS)
+                .append("- Recommendation: keep first response concise and task-focused before escalation guidance.").append(LS).append(LS);
 
-        md.append("## Usage\n")
-            .append("- Score: ").append(formatSectionScore(usageScore)).append(".\n")
-                .append("- Top observed keywords: ").append(defaultIfBlank(topKeywords, "no strong repeated terms")).append(".\n")
-                .append("- Suggested article or content improvements: ").append(articleSuggestionText).append('\n')
-                .append("- Recommendation: monitor repeated question categories to improve default guidance coverage and response quality.\n");
+        md.append("## Usage").append(LS)
+            .append("- Score: ").append(formatSectionScore(usageScore)).append('.').append(LS)
+                .append("- Top observed keywords: ").append(defaultIfBlank(topKeywords, "no strong repeated terms")).append('.').append(LS)
+                .append("- Suggested article or content improvements: ").append(articleSuggestionText).append(System.lineSeparator())
+                .append("- Recommendation: monitor repeated question categories to improve default guidance coverage and response quality.").append(LS);
 
         return md.toString();
     }
@@ -1939,25 +1962,25 @@ public class WidgetSyncServlet extends HttpServlet {
     private String buildSummaryPromptWithTerms(String basePrompt, List<TermDefinition> terms) {
         String normalizedBase = normalizeSummaryPrompt(basePrompt);
         StringBuilder out = new StringBuilder(Math.min(MAX_SUMMARY_PROMPT_CHARS, normalizedBase.length() + 3000));
-        out.append(normalizedBase).append("\n\n")
-                .append("Additional required reporting details:\n")
-                .append("- Report chats used in summary as an explicit count.\n")
-            .append("- Report scores: Overall effectiveness as 0-100, plus section scores for Quality, Response, and Usage as 0.0-5.0.\n")
-                .append("- Report term coverage from the DB term list: unique terms matched and total mentions in chats used.\n")
-                .append("- Report frustration detection as Yes/No with overall level (none/low/medium/high).\n")
-                .append("- If frustration exists, report the most frustrated point and any other notable frustration points.\n")
-                .append("- Assess answer quality and whether users likely accepted the answer.\n")
-                .append("- Provide feedback suggestions, including at least one article topic to improve user experience.\n");
+        out.append(normalizedBase).append(LS).append(LS)
+                .append("Additional required reporting details:").append(LS)
+                .append("- Report chats used in summary as an explicit count.").append(LS)
+            .append("- Report scores: Overall effectiveness as 0-100, plus section scores for Quality, Response, and Usage as 0.0-5.0.").append(LS)
+                .append("- Report term coverage from the DB term list: unique terms matched and total mentions in chats used.").append(LS)
+                .append("- Report frustration detection as Yes/No with overall level (none/low/medium/high).").append(LS)
+                .append("- If frustration exists, report the most frustrated point and any other notable frustration points.").append(LS)
+                .append("- Assess answer quality and whether users likely accepted the answer.").append(LS)
+                .append("- Provide feedback suggestions, including at least one article topic to improve user experience.").append(LS);
 
         if (terms != null && !terms.isEmpty()) {
-            out.append("\nDB term catalog for matching in chats:\n");
+            out.append(LS).append("DB term catalog for matching in chats:").append(LS);
             int appended = 0;
             for (TermDefinition term : terms) {
                 if (term == null || term.isSystemFlag()) {
                     continue;
                 }
                 if (appended >= SUMMARY_MAX_TERMS_FOR_PROMPT) {
-                    out.append("- ... additional terms omitted for brevity\n");
+                    out.append("- ... additional terms omitted for brevity").append(LS);
                     break;
                 }
 
@@ -1971,14 +1994,14 @@ public class WidgetSyncServlet extends HttpServlet {
                 out.append("- ").append(name)
                         .append(" | type=").append(defaultIfBlank(type, "WILDCARD"))
                         .append(" | pattern=").append(defaultIfBlank(pattern, name))
-                    .append('\n');
+                    .append(System.lineSeparator());
                 appended++;
             }
         }
 
         String combined = out.toString();
         if (combined.length() > MAX_SUMMARY_PROMPT_CHARS) {
-            return combined.substring(0, MAX_SUMMARY_PROMPT_CHARS);
+            return safeSlice(combined, 0, MAX_SUMMARY_PROMPT_CHARS);
         }
         return combined;
     }
@@ -2083,25 +2106,25 @@ public class WidgetSyncServlet extends HttpServlet {
             return 1.0d;
         }
 
-        double issueRatio = ratio(potentialQualityIssues, totalChats);
-        double emptyRatio = ratio(emptyResponses, totalChats);
-        double frustratedRatio = ratio(frustratedChats, totalChats);
+        BigDecimal issueRatio = ratioDecimal(potentialQualityIssues, totalChats);
+        BigDecimal emptyRatio = ratioDecimal(emptyResponses, totalChats);
+        BigDecimal frustratedRatio = ratioDecimal(frustratedChats, totalChats);
 
-        double score = 5.0d;
-        score -= Math.min(1.8d, issueRatio * 3.0d);
-        score -= Math.min(1.2d, emptyRatio * 4.0d);
-        score -= Math.min(1.0d, frustratedRatio * 2.0d);
+        BigDecimal score = BigDecimal.valueOf(5L);
+        score = score.subtract(minDecimal(issueRatio.multiply(BigDecimal.valueOf(3L)), BigDecimal.valueOf(18L, 1)));
+        score = score.subtract(minDecimal(emptyRatio.multiply(BigDecimal.valueOf(4L)), BigDecimal.valueOf(12L, 1)));
+        score = score.subtract(minDecimal(frustratedRatio.multiply(BigDecimal.valueOf(2L)), BigDecimal.valueOf(10L, 1)));
 
         String level = defaultString(frustrationLevel).toLowerCase(Locale.ROOT);
         if ("high".equals(level)) {
-            score -= 0.8d;
+            score = score.subtract(BigDecimal.valueOf(8L, 1));
         } else if ("medium".equals(level)) {
-            score -= 0.5d;
+            score = score.subtract(BigDecimal.valueOf(5L, 1));
         } else if ("low".equals(level)) {
-            score -= 0.2d;
+            score = score.subtract(BigDecimal.valueOf(2L, 1));
         }
 
-        return clampSectionScore(score);
+        return clampSectionScore(score.doubleValue());
     }
 
     private double computeResponseScore(
@@ -2114,15 +2137,15 @@ public class WidgetSyncServlet extends HttpServlet {
             return 1.0d;
         }
 
-        double acceptedRatio = ratio(likelyAcceptedChats, totalChats);
-        double issueRatio = ratio(potentialQualityIssues, totalChats);
-        double frustratedRatio = ratio(frustratedChats, totalChats);
+        BigDecimal acceptedRatio = ratioDecimal(likelyAcceptedChats, totalChats);
+        BigDecimal issueRatio = ratioDecimal(potentialQualityIssues, totalChats);
+        BigDecimal frustratedRatio = ratioDecimal(frustratedChats, totalChats);
 
-        double score = 1.0d + (acceptedRatio * 4.0d);
-        score -= Math.min(1.0d, issueRatio * 1.8d);
-        score -= Math.min(0.8d, frustratedRatio * 1.5d);
+        BigDecimal score = BigDecimal.ONE.add(acceptedRatio.multiply(BigDecimal.valueOf(4L)));
+        score = score.subtract(minDecimal(issueRatio.multiply(BigDecimal.valueOf(18L, 1)), BigDecimal.ONE));
+        score = score.subtract(minDecimal(frustratedRatio.multiply(BigDecimal.valueOf(15L, 1)), BigDecimal.valueOf(8L, 1)));
 
-        return clampSectionScore(score);
+        return clampSectionScore(score.doubleValue());
     }
 
     private double computeUsageScore(
@@ -2172,7 +2195,19 @@ public class WidgetSyncServlet extends HttpServlet {
         if (denominator <= 0 || numerator <= 0) {
             return 0.0d;
         }
-        return (double) numerator / (double) denominator;
+        return ratioDecimal(numerator, denominator).doubleValue();
+    }
+
+    private BigDecimal ratioDecimal(int numerator, int denominator) {
+        if (denominator <= 0 || numerator <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(numerator)
+                .divide(BigDecimal.valueOf(denominator), 6, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal minDecimal(BigDecimal left, BigDecimal right) {
+        return left.compareTo(right) <= 0 ? left : right;
     }
 
     private int countFrustrationSignals(String combinedLower, Map<String, Integer> frustrationPointCounts) {
@@ -2216,7 +2251,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return "none";
         }
 
-        double ratio = (double) frustratedChats / (double) totalChats;
+        double ratio = ratio(frustratedChats, totalChats);
         if (ratio >= 0.60d || frustrationSignals >= Math.max(4, totalChats)) {
             return "high";
         }
@@ -2450,7 +2485,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 "widget-sync",
                 requestId,
                 "sync-request",
-            "method=GET\nurl=" + uri + "\nwidgetId=" + defaultString(widgetId)
+            "method=GET" + LS + "url=" + uri + LS + "widgetId=" + defaultString(widgetId)
         );
 
         String apiKey = config.getApiKey();
@@ -2475,9 +2510,9 @@ public class WidgetSyncServlet extends HttpServlet {
                         "widget-sync",
                         requestId,
                         "sync-response",
-                    "status=" + statusCode + "\ncontentType=" + contentType + "\nwidgetId=" + defaultString(widgetId)
-                            + "\nauthSource=" + defaultString(result.authSource)
-                            + "\nauthMode=" + (result.authMode == null ? "" : result.authMode.name())
+                    "status=" + statusCode + LS + "contentType=" + contentType + LS + "widgetId=" + defaultString(widgetId)
+                        + LS + "authSource=" + defaultString(result.authSource)
+                        + LS + "authMode=" + (result.authMode == null ? "" : result.authMode.name())
                 );
 
                 if (statusCode >= 500) {
@@ -2487,7 +2522,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         "widget-sync",
                         requestId,
                         "sync-response-body",
-                        "status=" + statusCode + "\nwidgetId=" + defaultString(widgetId) + "\nbody=" + upstreamBody
+                        "status=" + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + "body=" + upstreamBody
                     );
                     }
                     throw new IllegalStateException("Sync API transient server error " + statusCode
@@ -2500,7 +2535,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         "widget-sync",
                         requestId,
                         "sync-response-body",
-                        "status=" + statusCode + "\nwidgetId=" + defaultString(widgetId) + "\nbody=" + upstreamBody
+                        "status=" + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + "body=" + upstreamBody
                     );
                     }
                     throw new IllegalStateException("Sync API returned " + statusCode
@@ -2526,7 +2561,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     "widget-sync",
                     requestId,
                     "sync-error",
-                    "url=" + uri + "\nwidgetId=" + defaultString(widgetId) + "\nmessage=" + defaultString(e.getMessage()),
+                    "url=" + uri + LS + "widgetId=" + defaultString(widgetId) + LS + "message=" + defaultString(e.getMessage()),
                     e
             );
             throw e;
@@ -2538,7 +2573,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     "widget-sync",
                     requestId,
                     "sync-error",
-                    "url=" + uri + "\nwidgetId=" + defaultString(widgetId) + "\nmessage=" + defaultString(e.getMessage()),
+                    "url=" + uri + LS + "widgetId=" + defaultString(widgetId) + LS + "message=" + defaultString(e.getMessage()),
                     e
             );
             throw new IllegalStateException("Sync API communication failed", e);
@@ -2822,7 +2857,7 @@ public class WidgetSyncServlet extends HttpServlet {
             logWarningWithDiagnostics(
                     "persist-sync-settings-failed",
                     "Unable to persist sync settings",
-                    "intervalSeconds=" + STATE.syncIntervalSeconds + "\nlastSynced=" + String.valueOf(STATE.lastSynced),
+                    "intervalSeconds=" + STATE.syncIntervalSeconds + LS + "lastSynced=" + String.valueOf(STATE.lastSynced),
                     e
             );
         }
@@ -2945,7 +2980,7 @@ public class WidgetSyncServlet extends HttpServlet {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = safeSlice(normalized, 0, 60);
         }
         return normalized;
     }
@@ -3006,7 +3041,9 @@ public class WidgetSyncServlet extends HttpServlet {
         if (text == null) {
             return null;
         }
-        return text.replace("\\n", "\n").replace("\\r", "\r").trim();
+        String escapedLf = Character.toString('\\') + 'n';
+        String escapedCr = Character.toString('\\') + 'r';
+        return text.replace(escapedLf, System.lineSeparator()).replace(escapedCr, System.lineSeparator()).trim();
     }
 
     private Timestamp parseCreatedAt(JsonObject chat) {
@@ -3035,7 +3072,7 @@ public class WidgetSyncServlet extends HttpServlet {
             URI base = URI.create(baseUrl);
             String path = base.getPath() == null ? "" : base.getPath();
             if (path.endsWith("/")) {
-                path = path.substring(0, path.length() - 1);
+                path = safeSlice(path, 0, path.length() - 1);
             }
             if (!path.contains("/api")) {
                 path = path + "/api";
@@ -3156,7 +3193,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String text = new String(bytes, StandardCharsets.UTF_8);
             String sanitized = stripControlCharacters(text);
             if (sanitized.length() > 512) {
-                sanitized = sanitized.substring(0, 512) + "...";
+                sanitized = safeSlice(sanitized, 0, 512) + "...";
             }
             return sanitized;
         } catch (IOException e) {
@@ -3276,7 +3313,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         boolean hasPort = normalized.matches(".*:\\d+$");
         if (!hasPort && config.getServerPort() > 0) {
-            builder.append(':').append(config.getServerPort());
+            builder.append((char) 58).append(config.getServerPort());
         }
 
         return stripTrailingSlash(builder.toString());
@@ -3340,7 +3377,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 return "";
             }
                 String normalized = scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
-                return port > 0 ? normalized + ':' + port : normalized;
+                return port > 0 ? normalized + (char) 58 + port : normalized;
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL: {0}", s);
             return "";
@@ -3575,20 +3612,20 @@ public class WidgetSyncServlet extends HttpServlet {
         int safeGuidanceChars = Math.max(120, guidanceChars);
 
         StringBuilder message = new StringBuilder(safeMaxMessageChars);
-        message.append("Create a concise daily chat summary.\n")
-                .append("Return markdown with exactly these sections: ## Overall, ## Quality, ## Response, ## Usage.\n")
-            .append("Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, Usage (0.0-5.0).\n")
-                .append("Use only evidence in this request. If uncertain, say so briefly.\n");
+        message.append("Create a concise daily chat summary.").append(LS)
+                .append("Return markdown with exactly these sections: ## Overall, ## Quality, ## Response, ## Usage.").append(LS)
+            .append("Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, Usage (0.0-5.0).").append(LS)
+                .append("Use only evidence in this request. If uncertain, say so briefly.").append(LS);
 
         String safeGuide = normalizeSummarySnippet(promptGuide, safeGuidanceChars);
         if (!safeGuide.isBlank()) {
-            message.append("\nGuidance:\n").append(safeGuide).append('\n');
+            message.append(LS).append("Guidance:").append(LS).append(safeGuide).append(System.lineSeparator());
         }
 
         int total = Math.max(0, totalEntries);
         int sent = entries == null ? 0 : entries.size();
-        message.append("\nChat sample: ").append(sent).append(" of ").append(total).append(" newest chats.\n")
-                .append("Evidence:\n");
+        message.append(LS).append("Chat sample: ").append(sent).append(" of ").append(total).append(" newest chats.").append(LS)
+            .append("Evidence:").append(LS);
 
         if (entries != null) {
             int included = 0;
@@ -3601,7 +3638,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 String answer = sanitizeTinySummarySnippet(entry.getResponse(), safeResponseChars);
                 String line = "- q=" + defaultIfBlank(prompt, "(empty)")
                         + " | a=" + defaultIfBlank(answer, "(empty)")
-                    + '\n';
+                    + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
                 if (message.length() + line.length() > safeMaxMessageChars) {
                     break;
@@ -3615,7 +3652,7 @@ public class WidgetSyncServlet extends HttpServlet {
             message.append("coverage: included=").append(included)
                     .append(", omitted=").append(omitted)
                     .append(", totalSent=").append(sent)
-                    .append('\n');
+                    .append(System.lineSeparator());
         }
 
         return message.toString();
@@ -3709,9 +3746,9 @@ public class WidgetSyncServlet extends HttpServlet {
         List<String> batches = buildIncrementalSummaryBatches(entries);
         int sendCount = Math.min(batches.size(), SUMMARY_INCREMENTAL_MAX_BATCHES);
         for (int i = 0; i < sendCount; i++) {
-            String batchMessage = "Batch " + (i + 1) + " of " + sendCount + " for today's chats:\n"
+                String batchMessage = "Batch " + (i + 1) + " of " + sendCount + " for today's chats:" + LS
                     + batches.get(i)
-                    + "\nReply only: OK.";
+                    + LS + "Reply only: OK.";
 
                 WorkspaceResponse batchResp = sendChatHandled(
                     targetUrl,
@@ -3771,10 +3808,10 @@ public class WidgetSyncServlet extends HttpServlet {
             String line = "- id=" + id
                     + " | q=" + defaultIfBlank(prompt, "(empty)")
                     + " | a=" + defaultIfBlank(response, "(empty)")
-                    + '\n';
+                    + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
             if (line.length() > SUMMARY_INCREMENTAL_BATCH_MAX_CHARS) {
-                line = line.substring(0, SUMMARY_INCREMENTAL_BATCH_MAX_CHARS - 1) + '\n';
+                line = safeSlice(line, 0, SUMMARY_INCREMENTAL_BATCH_MAX_CHARS - 1) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
             }
 
             if (current.length() + line.length() > SUMMARY_INCREMENTAL_BATCH_MAX_CHARS) {
@@ -3797,12 +3834,12 @@ public class WidgetSyncServlet extends HttpServlet {
     private String buildTinyDirectSummaryMessage(List<SelectedEntry> entries) {
         StringBuilder message = new StringBuilder(SUMMARY_DIRECT_TINY_MAX_MESSAGE_CHARS);
 
-        message.append("Summarize today's chats using only provided evidence.\n")
-            .append("Return markdown sections exactly: ## Overall, ## Quality, ## Response, ## Usage.\n")
-            .append("In each section, explain what is working, what is failing, and how to improve it.\n")
-            .append("Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, and Usage (0.0-5.0).\n")
-            .append("Include concrete next-step asks users should provide next time.\n\n")
-                .append("Chats:\n");
+        message.append("Summarize today's chats using only provided evidence.").append(LS)
+            .append("Return markdown sections exactly: ## Overall, ## Quality, ## Response, ## Usage.").append(LS)
+            .append("In each section, explain what is working, what is failing, and how to improve it.").append(LS)
+            .append("Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, and Usage (0.0-5.0).").append(LS)
+            .append("Include concrete next-step asks users should provide next time.").append(LS).append(LS)
+                .append("Chats:").append(LS);
 
         int total = entries == null ? 0 : entries.size();
         int included = 0;
@@ -3824,7 +3861,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 String block = "- chat_id=" + chatId
                         + " | prompt=" + defaultIfBlank(prompt, "(empty)")
                         + " | response=" + defaultIfBlank(response, "(empty)")
-                    + '\n';
+                    + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
                 if (message.length() + block.length() > SUMMARY_DIRECT_TINY_MAX_MESSAGE_CHARS) {
                     break;
@@ -3839,7 +3876,7 @@ public class WidgetSyncServlet extends HttpServlet {
         message.append("included=").append(included)
                 .append(", omitted=").append(omitted)
                 .append(", total=").append(total)
-            .append('\n');
+            .append(System.lineSeparator());
 
         return message.toString();
     }
@@ -3868,9 +3905,9 @@ public class WidgetSyncServlet extends HttpServlet {
         StringBuilder message = new StringBuilder(Math.max(1024, Math.min(safeMaxMessageChars, 8192)));
 
         message.append(defaultIfBlank(summaryPrompt, DEFAULT_SUMMARY_PROMPT).trim())
-                .append("\n\nUse only the provided chats from today. Do not invent missing details.\n")
-            .append("Return evidence-based markdown with the required sections, including concrete improvement recommendations and scoring.\n\n")
-                .append("Today's chat evidence:\n");
+                .append(LS).append(LS).append("Use only the provided chats from today. Do not invent missing details.").append(LS)
+            .append("Return evidence-based markdown with the required sections, including concrete improvement recommendations and scoring.").append(LS).append(LS)
+                .append("Today's chat evidence:").append(LS);
 
         int included = 0;
         int total = entries == null ? 0 : entries.size();
@@ -3886,10 +3923,10 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         int omitted = Math.max(0, total - included);
-        message.append("\nCoverage notes:\n")
-            .append("- total_entries_collected_today: ").append(total).append('\n')
-            .append("- entries_included_in_request: ").append(included).append('\n')
-            .append("- entries_omitted_due_to_size: ").append(omitted).append('\n');
+        message.append(LS).append("Coverage notes:").append(LS)
+            .append("- total_entries_collected_today: ").append(total).append(System.lineSeparator())
+            .append("- entries_included_in_request: ").append(included).append(System.lineSeparator())
+            .append("- entries_omitted_due_to_size: ").append(omitted).append(System.lineSeparator());
 
         return message.toString();
     }
@@ -3913,12 +3950,12 @@ public class WidgetSyncServlet extends HttpServlet {
         String prompt = normalizeSummarySnippet(entry.getPrompt(), Math.max(120, promptChars));
         String response = normalizeSummarySnippet(entry.getResponse(), Math.max(220, responseChars));
 
-        return "\n### Chat " + index + '\n'
-                + "- chat_id: " + chatId + '\n'
-                + "- created_at: " + defaultIfBlank(createdAt, "unknown") + '\n'
-                + "- session_id: " + defaultIfBlank(sessionId, "unknown") + '\n'
-                + "- prompt: " + defaultIfBlank(prompt, "(empty)") + '\n'
-                + "- response: " + defaultIfBlank(response, "(empty)") + '\n';
+        return LS + "### Chat " + index + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- chat_id: " + chatId + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- created_at: " + defaultIfBlank(createdAt, "unknown") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- session_id: " + defaultIfBlank(sessionId, "unknown") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- prompt: " + defaultIfBlank(prompt, "(empty)") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- response: " + defaultIfBlank(response, "(empty)") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
     }
 
     private void incrementCount(Map<String, Integer> counts, String key) {
@@ -4008,7 +4045,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return normalized.substring(0, Math.max(0, maxChars));
+        return safeSlice(normalized, 0, Math.max(0, maxChars));
     }
 
     private String normalizeSummarySnippet(String value, int maxChars) {
@@ -4017,16 +4054,16 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         normalized = stripControlCharacters(normalized)
-                .replace("\r\n", "\n")
-                .replace('\r', '\n')
-                .replace('\n', ' ')
+                .replace(System.lineSeparator(), System.lineSeparator())
+                .replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED)
+                .replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ')
                 .replaceAll("\\s+", " ")
                 .trim();
 
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return normalized.substring(0, Math.max(0, maxChars));
+        return safeSlice(normalized, 0, Math.max(0, maxChars));
     }
 
     private boolean shouldAttemptDirectSummaryFallback(WorkspaceResponse response) {
@@ -4092,7 +4129,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (safeBody.length() <= SUMMARY_DIAGNOSTIC_BODY_CHARS) {
             return safeBody;
         }
-        return safeBody.substring(0, SUMMARY_DIAGNOSTIC_BODY_CHARS) + "...(truncated)";
+        return safeSlice(safeBody, 0, SUMMARY_DIAGNOSTIC_BODY_CHARS) + "...(truncated)";
     }
 
     private boolean isSummaryTargetFromConfiguredServer(String targetUrl, ServerConfig config) {
@@ -4171,7 +4208,7 @@ public class WidgetSyncServlet extends HttpServlet {
             StringBuilder canonical = new StringBuilder();
             canonical.append(schemeLower).append("://").append(hostLower);
             if (port >= 0) {
-                canonical.append(':').append(port);
+                canonical.append((char) 58).append(port);
             }
             canonical.append(path);
             if (query != null && !query.isBlank()) {
@@ -4263,7 +4300,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String normalizeSummaryPrompt(String prompt) {
-        String normalized = prompt == null ? "" : prompt.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalized = prompt == null ? "" : prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
         if (normalized.isBlank()) {
             normalized = DEFAULT_SUMMARY_PROMPT;
         }
@@ -4271,7 +4308,7 @@ public class WidgetSyncServlet extends HttpServlet {
             normalized = DEFAULT_SUMMARY_PROMPT;
         }
         if (normalized.length() > MAX_SUMMARY_PROMPT_CHARS) {
-            normalized = normalized.substring(0, MAX_SUMMARY_PROMPT_CHARS);
+            normalized = safeSlice(normalized, 0, MAX_SUMMARY_PROMPT_CHARS);
         }
         return normalized;
     }
@@ -4280,16 +4317,16 @@ public class WidgetSyncServlet extends HttpServlet {
         if (prompt == null || prompt.isBlank()) {
             return false;
         }
-        String normalizedPrompt = prompt.replace("\r\n", "\n").replace('\r', '\n').trim();
-        String normalizedLegacy = LEGACY_DEFAULT_SUMMARY_PROMPT.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalizedPrompt = prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalizedLegacy = LEGACY_DEFAULT_SUMMARY_PROMPT.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
         if (normalizedLegacy.equals(normalizedPrompt)) {
             return true;
         }
-        String normalizedPrevious = PREVIOUS_DEFAULT_SUMMARY_PROMPT.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalizedPrevious = PREVIOUS_DEFAULT_SUMMARY_PROMPT.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
         if (normalizedPrevious.equals(normalizedPrompt)) {
             return true;
         }
-        String normalizedPreviousV2 = PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalizedPreviousV2 = PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
         return normalizedPreviousV2.equals(normalizedPrompt);
     }
 
@@ -4307,11 +4344,11 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         String normalized = sanitizeConfigToken(value, Math.max(maxLen, MAX_SUMMARY_PROMPT_CHARS))
-                .replace("\r\n", "\n")
-                .replace('\r', '\n')
+                .replace(System.lineSeparator(), System.lineSeparator())
+                .replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED)
                 .trim();
         if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
+            return safeSlice(normalized, 0, maxLen);
         }
         return normalized;
     }
@@ -4356,8 +4393,8 @@ public class WidgetSyncServlet extends HttpServlet {
         if (trimmed == null) {
             return null;
         }
-        trimmed = trimmed.replace("\r", "").replace("\n", "").trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        trimmed = trimmed.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
+        return trimmed.length() > 256 ? safeSlice(trimmed, 0, 256) : trimmed;
     }
 
     private String firstParamAny(HttpServletRequest req, String... names) {
@@ -4470,7 +4507,7 @@ public class WidgetSyncServlet extends HttpServlet {
         StringBuilder sanitized = new StringBuilder(input.length());
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == '\n' || c == '\r' || c == '\t' || !Character.isISOControl(c)) {
+            if (c == System.lineSeparator().charAt(System.lineSeparator().length() - 1) || c == System.lineSeparator().charAt(0) || c == '\t' || !Character.isISOControl(c)) {
                 sanitized.append(c);
             }
         }
@@ -4498,7 +4535,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (envName == null || envName.isBlank()) {
             return null;
         }
-        String raw = System.getenv().get(envName);
+        String raw = ENV.get(envName);
         return sanitizeConfigToken(raw, maxLen);
     }
 
@@ -4510,13 +4547,13 @@ public class WidgetSyncServlet extends HttpServlet {
         StringBuilder sanitized = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char c = normalized.charAt(i);
-            if (c == '\n' || c == '\r' || c == '\t' || !Character.isISOControl(c)) {
+            if (c == System.lineSeparator().charAt(System.lineSeparator().length() - 1) || c == System.lineSeparator().charAt(0) || c == '\t' || !Character.isISOControl(c)) {
                 sanitized.append(c);
             }
         }
         String value = sanitized.toString().trim();
         if (maxLen > 0 && value.length() > maxLen) {
-            return value.substring(0, maxLen);
+            return safeSlice(value, 0, maxLen);
         }
         return value;
     }
@@ -4560,7 +4597,37 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String stripTrailingSlash(String value) {
-        return (value != null && value.endsWith("/")) ? value.substring(0, value.length() - 1) : value;
+        return (value != null && value.endsWith("/")) ? safeSlice(value, 0, value.length() - 1) : value;
+    }
+
+    private static String safeSlice(String value, int beginIndex) {
+        if (value == null) {
+            return null;
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = value.length();
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return null;
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
 }

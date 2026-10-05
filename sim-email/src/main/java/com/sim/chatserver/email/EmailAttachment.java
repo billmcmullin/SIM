@@ -1,7 +1,5 @@
 package com.sim.chatserver.email;
 
-import java.util.Objects;
-
 public record EmailAttachment(
         String fileName,
         String contentType,
@@ -9,8 +7,14 @@ public record EmailAttachment(
         ) {
 
     public EmailAttachment {
-        Objects.requireNonNull(fileName, "fileName is required");
-        Objects.requireNonNull(contentType, "contentType is required");
-        Objects.requireNonNull(content, "content is required");
+        if (fileName == null) {
+            throw new NullPointerException("fileName is required");
+        }
+        if (contentType == null) {
+            throw new NullPointerException("contentType is required");
+        }
+        if (content == null) {
+            throw new NullPointerException("content is required");
+        }
     }
 }

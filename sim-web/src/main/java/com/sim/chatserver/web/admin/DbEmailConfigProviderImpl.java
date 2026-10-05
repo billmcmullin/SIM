@@ -40,21 +40,22 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
-    private static final Logger log = Logger.getLogger(DbEmailConfigProviderImpl.class.getName());
+    private static final Logger log = Logger.getLogger(DbEmailConfigProviderImpl.class.getCanonicalName());
     private static final int SINGLE_ROW_ID = 1;
     private static final Pattern SAFE_DB_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,255}$");
     private static final Pattern SAFE_DB_PORT = Pattern.compile("^\\d{1,5}$");
     private static final Pattern SAFE_DB_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
     private static final Pattern SAFE_DB_USER = Pattern.compile("^[A-Za-z0-9_.@-]{1,128}$");
+    private static final java.util.Map<String, String> ENV = new ProcessBuilder().environment();
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @Override
@@ -209,7 +210,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         }
         String normalized = stripControls(v);
         if (normalized.length() > 1024) {
-            return normalized.substring(0, 1024);
+            return safeSlice(normalized, 0, 1024);
         }
         return normalized;
     }
@@ -219,15 +220,15 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
             return "";
         }
         return value.replace("\u0000", "")
-                .replace("\r", "")
-                .replace("\n", "");
+                .replace(System.lineSeparator(), "")
+                .replace(System.lineSeparator(), "");
     }
 
     private String readEnv(String key) {
         if (key == null || key.isBlank()) {
             return null;
         }
-        return new ProcessBuilder().environment().get(key);
+        return ENV.get(key);
     }
 
     private void bindCommonForUpdate(PreparedStatement ps, EmailConfig c, String encPassword, String updatedBy, Timestamp now)
@@ -310,5 +311,19 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
     private String nullToEmpty(String s) {
         return s == null ? "" : s;
+    }
+
+    private String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
     }
 }

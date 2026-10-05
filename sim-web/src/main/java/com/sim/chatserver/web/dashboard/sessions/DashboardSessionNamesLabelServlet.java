@@ -25,7 +25,7 @@ import jakarta.servlet.http.Part;
 @MultipartConfig
 public class DashboardSessionNamesLabelServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(DashboardSessionNamesLabelServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardSessionNamesLabelServlet.class.getCanonicalName());
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {

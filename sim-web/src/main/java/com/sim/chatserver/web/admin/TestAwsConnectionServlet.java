@@ -32,7 +32,7 @@ import software.amazon.awssdk.services.ec2.model.Instance;
 @WebServlet(name = "TestAwsConnectionServlet", urlPatterns = {"/admin/test-aws-connection"})
 public class TestAwsConnectionServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(TestAwsConnectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(TestAwsConnectionServlet.class.getCanonicalName());
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -170,13 +170,13 @@ public class TestAwsConnectionServlet extends HttpServlet {
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, payload);
             }
         } catch (IOException e) {
-            Logger.getLogger(getClass().getName())
+            Logger.getLogger(getClass().getCanonicalName())
                     .log(Level.WARNING, "I/O exception in doPost", e);
             if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (IOException ioe) {
-                    Logger.getLogger(getClass().getName())
+                    Logger.getLogger(getClass().getCanonicalName())
                             .log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }

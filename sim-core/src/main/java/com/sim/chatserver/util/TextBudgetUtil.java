@@ -40,7 +40,7 @@ public final class TextBudgetUtil {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+        return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
 
     /**
@@ -62,7 +62,7 @@ public final class TextBudgetUtil {
         if (maxChars == 1) {
             return "â€¦";
         }
-        return normalized.substring(0, maxChars - 1) + "â€¦";
+        return new String(normalized.toCharArray(), 0, maxChars - 1) + "â€¦";
     }
 
     /**

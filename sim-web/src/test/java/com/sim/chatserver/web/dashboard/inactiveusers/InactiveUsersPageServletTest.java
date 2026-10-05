@@ -238,7 +238,7 @@ public class InactiveUsersPageServletTest
             assertEquals(3, (Integer) invoke(servlet, "parseInt", new Class[]{String.class, int.class}, "   ", 3));
     
             assertNull(invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, null, 10));
-            assertEquals("ab cd", invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, "ab\n\u0000cd", 10));
+            assertEquals("ab cd", invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, "ab" + System.lineSeparator() + "\u0000cd", 10));
             assertEquals("abcd", invoke(servlet, "safeDbText", new Class[]{String.class, int.class}, "abcdef", 4));
     
             ResultSet rs = mock(ResultSet.class);

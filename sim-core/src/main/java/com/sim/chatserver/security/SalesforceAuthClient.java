@@ -31,23 +31,24 @@ import jakarta.json.JsonReader;
 
 public class SalesforceAuthClient {
 
-    private static final Logger log = Logger.getLogger(SalesforceAuthClient.class.getName());
+    private static final Logger log = Logger.getLogger(SalesforceAuthClient.class.getCanonicalName());
     private static final Pattern XML_TAG_PATTERN = Pattern.compile("<(?:\\w+:)?%s>(.*?)</(?:\\w+:)?%s>", Pattern.DOTALL);
     private static final String SOAP_ENV_NS = "http://schemas.xmlsoap.org/soap/envelope/";
     private static final String SOAP_PARTNER_NS = "urn:partner.soap.sforce.com";
     private static final String XML_SCHEMA_NS = "http://www.w3.org/2001/XMLSchema";
     private static final String XML_SCHEMA_INSTANCE_NS = "http://www.w3.org/2001/XMLSchema-instance";
+    private static final String LS = System.lineSeparator();
 
     private final HttpClient httpClient;
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public SalesforceAuthClient() {
@@ -136,7 +137,7 @@ public class SalesforceAuthClient {
             "salesforce-auth-client",
             requestId,
             "token-request",
-            "method=POST\nurl=" + tokenUrl
+            "method=POST" + LS + "url=" + tokenUrl
         );
 
         HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -146,7 +147,7 @@ public class SalesforceAuthClient {
             "salesforce-auth-client",
             requestId,
             "token-response",
-            "status=" + res.statusCode() + "\nbody=" + redactOauthPayload(responseBody)
+            "status=" + res.statusCode() + LS + "body=" + redactOauthPayload(responseBody)
         );
 
         if (res.statusCode() < 200 || res.statusCode() >= 300) {
@@ -265,7 +266,7 @@ public class SalesforceAuthClient {
             boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
                     || ("https".equalsIgnoreCase(scheme) && port == 443);
             if (port > 0 && !defaultPort) {
-                return scheme + "://" + host + ':' + port;
+                return scheme + "://" + host + (char) 58 + port;
             }
             return scheme + "://" + host;
         } catch (IllegalArgumentException ex) {
@@ -283,7 +284,9 @@ public class SalesforceAuthClient {
         if (!matcher.find()) {
             return null;
         }
-        return matcher.group(1);
+        int start = matcher.start(1);
+        int end = matcher.end(1);
+        return safeSlice(xml, start, end);
     }
 
     private String buildSoapLoginBody(String username, String combinedPassword) {
@@ -337,7 +340,22 @@ public class SalesforceAuthClient {
         String text = payload == null ? "" : payload;
         text = text.replaceAll("\"access_token\"\\s*:\\s*\"[^\"]*\"", "\"access_token\":\"[REDACTED]\"");
         text = text.replaceAll("\"refresh_token\"\\s*:\\s*\"[^\"]*\"", "\"refresh_token\":\"[REDACTED]\"");
-        return text.length() > 1024 ? text.substring(0, 1024) + "..." : text;
+        return text.length() > 1024 ? safeSlice(text, 0, 1024) + "..." : text;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String trimToNull(String v) {

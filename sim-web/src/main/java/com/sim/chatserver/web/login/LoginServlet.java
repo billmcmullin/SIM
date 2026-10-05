@@ -20,14 +20,17 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "LoginServlet", urlPatterns = {"", "/login"})
 public class LoginServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(LoginServlet.class.getName());
+    private static final Logger log = Logger.getLogger(LoginServlet.class.getCanonicalName());
     private static final String VIEW = "/WEB-INF/views/login.html";
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9._@-]{1,128}$");
 
     @Override
     public void init() throws ServletException {
         super.init();
-        resolveUserService();
+        UserService userService = resolveUserService();
+        if (userService == null) {
+            throw new ServletException("User service is unavailable");
+        }
     }
 
     @Override

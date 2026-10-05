@@ -28,11 +28,12 @@ import com.sim.chatserver.util.TextIoSanitizerUtil;
  */
 public class WidgetHealthConfigStore {
 
-    private static final Logger log = Logger.getLogger(WidgetHealthConfigStore.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetHealthConfigStore.class.getCanonicalName());
     private static final String DEFAULT_HEALTHCHECK_URL = "http://anythingllm:3001/api/v1/system";
     private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
     private static final Instant MIN_ALLOWED_INSTANT = Instant.parse("1970-01-01T00:00:00Z");
     private static final Instant MAX_ALLOWED_INSTANT = Instant.parse("3000-12-31T23:59:59Z");
+    private static final byte[] EMPTY_BYTES = new byte[0];
 
     public static final int SINGLETON_ID = 1;
 
@@ -43,11 +44,11 @@ public class WidgetHealthConfigStore {
     }
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public void ensureTable() throws java.sql.SQLException {
@@ -498,7 +499,7 @@ public class WidgetHealthConfigStore {
 
     private byte[] validateTaintedDbBytes(byte[] value, int maxBytes) {
         if (value == null) {
-            return new byte[0];
+            return EMPTY_BYTES;
         }
         if (maxBytes <= 0 || value.length <= maxBytes) {
             return value;
@@ -561,11 +562,11 @@ public class WidgetHealthConfigStore {
         }
 
         private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-            throw new java.io.NotSerializableException(getClass().getName());
+            throw new java.io.NotSerializableException(getClass().getCanonicalName());
         }
 
         private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-            throw new java.io.NotSerializableException(getClass().getName());
+            throw new java.io.NotSerializableException(getClass().getCanonicalName());
         }
 
         public String getHealthcheckUrl() {

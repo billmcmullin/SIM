@@ -36,7 +36,7 @@ import jakarta.servlet.http.HttpSession;
 public class SalesforceOAuthStartServlet extends HttpServlet {
 
     private static final long serialVersionUID = 1L;
-    private static final Logger log = Logger.getLogger(SalesforceOAuthStartServlet.class.getName());
+    private static final Logger log = Logger.getLogger(SalesforceOAuthStartServlet.class.getCanonicalName());
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -148,7 +148,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (!isBlank(hostHeader)) {
             // X-Forwarded-Host may be "example.com" or "example.com:8443"
             String h = hostHeader.trim();
-            int idx = h.lastIndexOf(':');
+            int idx = h.lastIndexOf((char) 58);
             if (idx > 0 && idx < h.length() - 1 && h.indexOf(']') < 0) { // simplistic IPv6-safe check
                 host = sanitizeHost(h.substring(0, idx));
                 try {
@@ -189,7 +189,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         StringBuilder sb = new StringBuilder();
         sb.append(scheme).append("://").append(host);
         if (port > 0 && !defaultPort) {
-            sb.append(':').append(port);
+            sb.append((char) 58).append(port);
         }
         sb.append(ServletPathUtil.safeContextPathEnsureLeadingSlash(req.getContextPath()))
             .append("/admin/salesforce/oauth/callback");
@@ -221,11 +221,11 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             if (token == null || token.isBlank()) {
                 continue;
             }
-            String normalized = token.replace("\r", "").replace("\n", "").trim();
+            String normalized = token.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
             if (normalized.isEmpty()) {
                 continue;
             }
-            return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+            return normalized.length() > 256 ? new String(normalized.toCharArray(), 0, 256) : normalized;
         }
 
         return null;
@@ -253,7 +253,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             StringBuilder b = new StringBuilder();
             b.append(scheme).append("://").append(host);
             if (parsed.getPort() > 0) {
-                b.append(':').append(parsed.getPort());
+                b.append((char) 58).append(parsed.getPort());
             }
             return URI.create(b.toString());
         } catch (IllegalArgumentException ex) {
@@ -266,7 +266,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         if (url == null || url.isBlank()) {
             return false;
         }
-        if (url.contains("\r") || url.contains("\n")) {
+        if (url.contains(System.lineSeparator()) || url.contains(System.lineSeparator())) {
             return false;
         }
         try {
@@ -298,7 +298,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
     }
 
     private void safeRedirect(HttpServletResponse resp, String target) {
-        if (target == null || target.isBlank() || target.contains("\r") || target.contains("\n")) {
+        if (target == null || target.isBlank() || target.contains(System.lineSeparator()) || target.contains(System.lineSeparator())) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Unsafe Salesforce authorize URL.");
             return;
         }

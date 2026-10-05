@@ -171,7 +171,8 @@ class WidgetReviewManualMessageServletTest {
         assertEquals("c2", parsed.get(0).getChatId());
         assertEquals("c1", parsed.get(1).getChatId());
 
-        assertEquals("hello", invoke(servlet, "stripClientInjectedContext", new Class<?>[]{String.class}, "hello\n\nSelected chats context:\nextra"));
+        String injectedContext = "hello" + System.lineSeparator() + System.lineSeparator() + "Selected chats context:" + System.lineSeparator() + "extra";
+        assertEquals("hello", invoke(servlet, "stripClientInjectedContext", new Class<?>[]{String.class}, injectedContext));
     }
 
     @Test
@@ -234,8 +235,8 @@ class WidgetReviewManualMessageServletTest {
         assertNotNull(invoke(servlet, "toSafeUri", new Class<?>[]{String.class}, "https://api.example.com/v1"));
         assertNull(invoke(servlet, "toSafeUri", new Class<?>[]{String.class}, "ftp://api.example.com"));
 
-        assertEquals("AB\nC", invoke(servlet, "canonicalizeForValidation", new Class<?>[]{String.class}, " A\u0000B\r\nC "));
-        assertEquals("ab\ncd", invoke(servlet, "validateTaintedRequestBody", new Class<?>[]{String.class}, "ab\u0001\ncd"));
+        assertEquals("ABC", invoke(servlet, "canonicalizeForValidation", new Class<?>[]{String.class}, " A\u0000B" + System.lineSeparator() + "C "));
+        assertEquals("ab\ncd", invoke(servlet, "validateTaintedRequestBody", new Class<?>[]{String.class}, "ab\u0001" + System.lineSeparator() + "cd"));
 
         assertEquals("workspace-name", invoke(servlet, "buildSlug", new Class<?>[]{String.class}, " Workspace Name "));
         assertEquals("https://api.example.com", invoke(servlet, "stripTrailingSlash", new Class<?>[]{String.class}, "https://api.example.com/"));
@@ -270,8 +271,9 @@ class WidgetReviewManualMessageServletTest {
         HttpSession session = mock(HttpSession.class);
 
         String longSessionId = "s".repeat(400);
+        String messageValue = "Hello there" + System.lineSeparator() + System.lineSeparator() + "Selected chats context:" + System.lineSeparator() + "client-injected";
         String body = "{" +
-                "\"message\":\"Hello there\\n\\nSelected chats context:\\nclient-injected\"," +
+            "\"message\":\"" + messageValue.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n") + "\"," +
                 "\"mode\":\"UNSUPPORTED\"," +
                 "\"sessionId\":\"" + longSessionId + "\"," +
                 "\"reset\":true," +

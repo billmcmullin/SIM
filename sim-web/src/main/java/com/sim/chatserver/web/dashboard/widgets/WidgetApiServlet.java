@@ -29,7 +29,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetApiServlet", urlPatterns = {"/dashboard/widgets"})
 public class WidgetApiServlet extends HttpServlet {
 
-    private static final Logger LOG = Logger.getLogger(WidgetApiServlet.class.getName());
+    private static final Logger LOG = Logger.getLogger(WidgetApiServlet.class.getCanonicalName());
     private static final String APPLICATION_JSON = "application/json; charset=UTF-8";
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
@@ -111,7 +111,7 @@ public class WidgetApiServlet extends HttpServlet {
         }
 
         try {
-            WidgetEntry saved = WidgetStore.save(id, widgetId, displayName);
+            WidgetEntry saved = WidgetStore.upsert(id, widgetId, displayName);
             JsonObject payload = Json.createObjectBuilder()
                     .add("status", "ok")
                     .add("widget", widgetToJson(saved))
@@ -275,7 +275,7 @@ public class WidgetApiServlet extends HttpServlet {
         if (trimmed.isEmpty()) {
             return null;
         }
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        return trimmed.length() > 256 ? new String(trimmed.toCharArray(), 0, 256) : trimmed;
     }
 
 }

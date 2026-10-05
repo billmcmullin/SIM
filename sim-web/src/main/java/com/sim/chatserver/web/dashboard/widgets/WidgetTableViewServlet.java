@@ -31,7 +31,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetTableViewServlet", urlPatterns = {"/dashboard/widgets/view"})
 public class WidgetTableViewServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetTableViewServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetTableViewServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/widget_table_view.html";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final Pattern WIDGET_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
@@ -145,7 +145,7 @@ public class WidgetTableViewServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -171,8 +171,8 @@ public class WidgetTableViewServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
 }

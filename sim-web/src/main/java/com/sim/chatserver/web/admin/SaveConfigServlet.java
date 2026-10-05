@@ -21,7 +21,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet(name = "SaveConfigServlet", urlPatterns = {"/admin/save-config"})
 public class SaveConfigServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(SaveConfigServlet.class.getName());
+    private static final Logger log = Logger.getLogger(SaveConfigServlet.class.getCanonicalName());
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {

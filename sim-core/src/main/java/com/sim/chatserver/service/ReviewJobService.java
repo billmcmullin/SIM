@@ -32,7 +32,7 @@ import com.sim.chatserver.model.review.ReviewJobStatus;
  */
 public class ReviewJobService {
 
-    private static final Logger log = Logger.getLogger(ReviewJobService.class.getName());
+    private static final Logger log = Logger.getLogger(ReviewJobService.class.getCanonicalName());
 
     @FunctionalInterface
     public interface JobTask {
@@ -46,12 +46,12 @@ public class ReviewJobService {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private ReviewJobService() {
@@ -692,7 +692,10 @@ public class ReviewJobService {
 
         if (!allNorm.isEmpty()) {
             Set<String> computed = new LinkedHashSet<>(allNorm);
-            computed.removeAll(new LinkedHashSet<>(usedNorm));
+            Set<String> usedSet = new LinkedHashSet<>(usedNorm);
+            for (String usedId : usedSet) {
+                computed.remove(usedId);
+            }
             return new ArrayList<>(computed);
         }
 

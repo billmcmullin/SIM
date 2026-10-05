@@ -127,7 +127,7 @@ public final class SessionLabelStore {
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
             return trimmed;
         }
-        return trimmed.substring(0, maxChars);
+        return new String(trimmed.toCharArray(), 0, maxChars);
     }
 
     public static String resolveDisplayLabel(String sessionId, SessionLabel label) {

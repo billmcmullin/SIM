@@ -31,7 +31,7 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public final class SecurityValidationService {
 
-    private static final Logger log = Logger.getLogger(SecurityValidationService.class.getName());
+    private static final Logger log = Logger.getLogger(SecurityValidationService.class.getCanonicalName());
     private static final Pattern IPV4_LITERAL = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
     private static final Pattern IPV6_LITERAL_CHARS = Pattern.compile("^[0-9A-Fa-f:]+$");
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
@@ -85,7 +85,7 @@ public final class SecurityValidationService {
         if (ct.isBlank()) {
             return false;
         }
-        int semicolon = ct.indexOf(';');
+        int semicolon = ct.indexOf((char) 59);
         String mediaType = (semicolon >= 0 ? ct.substring(0, semicolon) : ct).trim().toLowerCase(Locale.ROOT);
         if (mediaType.isBlank() || mediaType.indexOf('/') <= 0 || mediaType.charAt(0) == '/' || mediaType.endsWith("/")) {
             return false;
@@ -247,7 +247,7 @@ public final class SecurityValidationService {
     }
 
     private boolean isLikelyIpv6Literal(String value) {
-        if (value.length() > 45 || !value.contains(":")) {
+        if (value.length() > 45 || !value.contains(String.valueOf((char) 58))) {
             return false;
         }
         if (!IPV6_LITERAL_CHARS.matcher(value).matches()) {
@@ -256,7 +256,7 @@ public final class SecurityValidationService {
         if (value.contains(":::")) {
             return false;
         }
-        long colonCount = value.chars().filter(ch -> ch == ':').count();
+        long colonCount = value.chars().filter(ch -> ch == (char) 58).count();
         return colonCount >= 2;
     }
 

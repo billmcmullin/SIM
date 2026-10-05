@@ -21,7 +21,7 @@ import java.util.logging.Logger;
  */
 public final class TrustedUrlValidator {
 
-    private static final Logger LOG = Logger.getLogger(TrustedUrlValidator.class.getName());
+    private static final Logger LOG = Logger.getLogger(TrustedUrlValidator.class.getCanonicalName());
 
     private final Set<String> allowedHosts;     // exact lowercase hosts
     private final Set<String> allowedSuffixes;  // lowercase suffixes, e.g. ".example.com"

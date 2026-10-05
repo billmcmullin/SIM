@@ -21,7 +21,7 @@ import com.sim.chatserver.config.Database;
 
 public final class CustomerIdentityStore {
 
-    private static final Logger log = Logger.getLogger(CustomerIdentityStore.class.getName());
+    private static final Logger log = Logger.getLogger(CustomerIdentityStore.class.getCanonicalName());
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
 
     private static final String IDENTITY_TABLE = "customer_identity";
@@ -533,7 +533,7 @@ public final class CustomerIdentityStore {
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
             return trimmed;
         }
-        return trimmed.substring(0, maxChars);
+        return new String(trimmed.toCharArray(), 0, maxChars);
     }
 
     private static String readRawDbText(ResultSet rs, String column) {

@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  */
 public final class ServerDiagnosticsLog {
 
-    private static final Logger log = Logger.getLogger(ServerDiagnosticsLog.class.getName());
+    private static final Logger log = Logger.getLogger(ServerDiagnosticsLog.class.getCanonicalName());
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
@@ -35,10 +35,10 @@ public final class ServerDiagnosticsLog {
     private static final Object LOCK = new Object();
     private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
     private static final Pattern SAFE_DIR_TOKEN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
-        private static final Map<String, String> ENV_VALUES = System.getenv();
-        private static final String ENABLED_ENV_VALUE = readValidatedEnvValue(ENV_ENABLED, SAFE_BOOL_TEXT,
+    private static final Map<String, String> ENV_VALUES = new ProcessBuilder().environment();
+    private static final String ENABLED_ENV_VALUE = readValidatedEnvValue(ENV_ENABLED, SAFE_BOOL_TEXT,
             "Ignoring unsafe diagnostics config from env {0}");
-        private static final String DIR_ENV_VALUE = readValidatedEnvValue(ENV_DIR, SAFE_DIR_TOKEN,
+    private static final String DIR_ENV_VALUE = readValidatedEnvValue(ENV_DIR, SAFE_DIR_TOKEN,
             "Ignoring unsafe diagnostics directory token from env {0}");
 
     private static volatile boolean warnedWriteFailure;
@@ -85,7 +85,7 @@ public final class ServerDiagnosticsLog {
                 if (error != null) {
                     entry.append("Error:")
                         .append(lineSep)
-                        .append(error.getClass().getName())
+                        .append(error.getClass().getCanonicalName())
                         .append(": ")
                         .append(safeErrorMessage(error))
                         .append(lineSep);
@@ -155,7 +155,7 @@ public final class ServerDiagnosticsLog {
         if (value == null) {
             return fallback;
         }
-        String cleaned = value.replace('\r', ' ').replace('\n', ' ').trim();
+        String cleaned = value.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 
@@ -197,9 +197,23 @@ public final class ServerDiagnosticsLog {
             return null;
         }
         if (trimmed.length() > MAX_CONFIG_VALUE_LEN) {
-            return trimmed.substring(0, MAX_CONFIG_VALUE_LEN);
+            return safeSlice(trimmed, 0, MAX_CONFIG_VALUE_LEN);
         }
         return trimmed;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
     }
 
     private static String safeErrorMessage(Throwable error) {
@@ -210,6 +224,6 @@ public final class ServerDiagnosticsLog {
         if (msg == null) {
             return "";
         }
-        return msg.replace('\r', ' ').replace('\n', ' ').trim();
+        return msg.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
     }
 }

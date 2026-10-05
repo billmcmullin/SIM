@@ -55,13 +55,15 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetExportServlet", urlPatterns = {"/dashboard/widgets/drilldown/export"})
 public class WidgetExportServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getCanonicalName());
 
     private static final String DEFAULT_FORMAT = "csv";
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
+    private static final float[] PDF_ROWS_TABLE_WIDTHS = new float[]{1.2f, 1.4f, 3.2f, 3.2f};
     private static final ThreadLocal<Supplier<AppDataSourceHolder>> dataSourceHolderOverride = new ThreadLocal<>();
+    private static final String LS = System.lineSeparator();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
@@ -102,7 +104,7 @@ public class WidgetExportServlet extends HttpServlet {
         try {
             List<TermChatSnapshot> exportRows = resolveExportRows(selection, selectedChatIds);
 
-            String filename = "chats-export-" + Instant.now().toString().replace(":", "-") + '.' + extensionFor(format);
+            String filename = "chats-export-" + Instant.now().toString().replace(String.valueOf((char) 58), "-") + '.' + extensionFor(format);
             String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
             String disposition = "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encoded;
 
@@ -267,7 +269,7 @@ public class WidgetExportServlet extends HttpServlet {
         resp.setContentType("text/csv; charset=UTF-8");
         OutputStream out = openOutputStreamSafe(resp, "csv");
         try (out) {
-            out.write("sessionId,sessionIdDisplay,createdAt,prompt,response\n".getBytes(StandardCharsets.UTF_8));
+            out.write(("sessionId,sessionIdDisplay,createdAt,prompt,response" + LS).getBytes(StandardCharsets.UTF_8));
             for (TermChatSnapshot row : exportRows) {
                 String sessionId = safe(row.getSessionId());
                 String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
@@ -275,7 +277,7 @@ public class WidgetExportServlet extends HttpServlet {
                 out.write(csvLine(new String[]{
                     sessionId, sessionDisplay, createdAt, safe(row.getPrompt()), safe(row.getResponse())
                 }).getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+                out.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
             }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write CSV export", e);
@@ -311,14 +313,14 @@ public class WidgetExportServlet extends HttpServlet {
                 String sessionDisplay = SessionIdFormatter.formatForDisplay(sessionId);
                 String createdAt = row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString();
                 out.write(("Session: " + sessionId + " (" + sessionDisplay + ')').getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+                out.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
                 out.write(("Created At: " + createdAt).getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
-                out.write(("Prompt:\n" + safe(row.getPrompt()) + "\n\n").getBytes(StandardCharsets.UTF_8));
-                out.write(("Response:\n" + safe(row.getResponse())).getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+                out.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
+                out.write(("Prompt:" + LS + safe(row.getPrompt()) + LS + LS).getBytes(StandardCharsets.UTF_8));
+                out.write(("Response:" + LS + safe(row.getResponse())).getBytes(StandardCharsets.UTF_8));
+                out.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
                 out.write(("----------------------------------------").getBytes(StandardCharsets.UTF_8));
-                out.write('\n');
+                out.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
             }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write text export", e);
@@ -360,13 +362,13 @@ public class WidgetExportServlet extends HttpServlet {
             PdfWriter.getInstance(doc, baos);
             doc.open();
 
-            Font title = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
-            Font h2 = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
-            Font normal = FontFactory.getFont(FontFactory.HELVETICA, 10);
-            Font small = FontFactory.getFont(FontFactory.HELVETICA, 9);
+            Font title = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18f);
+            Font h2 = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13f);
+            Font normal = FontFactory.getFont(FontFactory.HELVETICA, 10f);
+            Font small = FontFactory.getFont(FontFactory.HELVETICA, 9f);
 
             Paragraph pTitle = new Paragraph("Chat Analysis Evidence Report", title);
-            pTitle.setSpacingAfter(8);
+            pTitle.setSpacingAfter(8f);
             addDocumentElement(doc, pTitle);
 
             addDocumentElement(doc, new Paragraph("Selection ID: " + safe(selectionId), small));
@@ -397,19 +399,19 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void addSection(Document doc, Font h2, Font normal, String heading, String body) {
         Paragraph head = new Paragraph(heading, h2);
-        head.setSpacingBefore(6);
-        head.setSpacingAfter(4);
+        head.setSpacingBefore(6f);
+        head.setSpacingAfter(4f);
         addDocumentElement(doc, head);
 
         Paragraph content = new Paragraph(safe(body), normal);
-        content.setSpacingAfter(8);
+        content.setSpacingAfter(8f);
         addDocumentElement(doc, content);
     }
 
     private void addBulletSection(Document doc, Font h2, Font normal, String heading, String sectionMd) {
         Paragraph head = new Paragraph(heading, h2);
-        head.setSpacingBefore(6);
-        head.setSpacingAfter(4);
+        head.setSpacingBefore(6f);
+        head.setSpacingAfter(4f);
         addDocumentElement(doc, head);
 
         String body = cleanSectionBody(sectionMd);
@@ -418,22 +420,22 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
-        String[] lines = body.split("\\r?\\n");
+        String[] lines = body.split("\\R");
         for (String line : lines) {
             String t = line.trim();
             if (t.startsWith("### ")) {
-                Paragraph sub = new Paragraph(t.substring(4).trim(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11));
-                sub.setSpacingBefore(4);
-                sub.setSpacingAfter(2);
+                Paragraph sub = new Paragraph(t.substring(4).trim(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11f));
+                sub.setSpacingBefore(4f);
+                sub.setSpacingAfter(2f);
                 addDocumentElement(doc, sub);
             } else if (t.startsWith("- ")) {
                 Paragraph bullet = new Paragraph("- " + t.substring(2).trim(), normal);
                 bullet.setIndentationLeft(14f);
-                bullet.setSpacingAfter(2);
+                bullet.setSpacingAfter(2f);
                 addDocumentElement(doc, bullet);
             } else if (!t.isBlank()) {
                 Paragraph para = new Paragraph(t, normal);
-                para.setSpacingAfter(3);
+                para.setSpacingAfter(3f);
                 addDocumentElement(doc, para);
             }
         }
@@ -441,13 +443,13 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void addMetricsTable(Document doc, Font h2, Font normal, String sectionMd) {
         Paragraph head = new Paragraph("Key Metrics", h2);
-        head.setSpacingBefore(6);
-        head.setSpacingAfter(4);
+        head.setSpacingBefore(6f);
+        head.setSpacingAfter(4f);
         addDocumentElement(doc, head);
 
         String body = cleanSectionBody(sectionMd);
         List<String> tableLines = new ArrayList<>();
-        for (String l : body.split("\\r?\\n")) {
+        for (String l : body.split("\\R")) {
             if (l.contains("|")) {
                 String t = l.trim();
                 if (!isMarkdownTableSeparatorRow(t)) {
@@ -468,7 +470,7 @@ public class WidgetExportServlet extends HttpServlet {
         table.setSpacingAfter(8f);
 
         for (String h : header) {
-            PdfPCell c = new PdfPCell(new Phrase(h, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+            PdfPCell c = new PdfPCell(new Phrase(h, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10f)));
             c.setHorizontalAlignment(Element.ALIGN_LEFT);
             c.setVerticalAlignment(Element.ALIGN_MIDDLE);
             c.setBackgroundColor(TABLE_HEADER_BG);
@@ -505,7 +507,7 @@ public class WidgetExportServlet extends HttpServlet {
         table.setSpacingBefore(4f);
         table.setSpacingAfter(8f);
         try {
-            table.setWidths(new float[]{1.2f, 1.4f, 3.2f, 3.2f});
+            table.setWidths(PDF_ROWS_TABLE_WIDTHS.clone());
         } catch (DocumentException ex) {
             throw new IllegalStateException("Unable to configure PDF table widths", ex);
         }
@@ -540,7 +542,7 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private void addHeaderCell(PdfPTable table, String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10f)));
         c.setBackgroundColor(TABLE_HEADER_BG);
         c.setPadding(6f);
         c.setVerticalAlignment(Element.ALIGN_MIDDLE);
@@ -549,8 +551,8 @@ public class WidgetExportServlet extends HttpServlet {
 
     private String buildFallbackText(List<TermChatSnapshot> rows, String selectionId) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Chat Export Report\n");
-        sb.append("Selection: ").append(safe(selectionId)).append("\n\n");
+        sb.append("Chat Export Report").append(LS);
+        sb.append("Selection: ").append(safe(selectionId)).append(LS).append(LS);
 
         List<TermChatSnapshot> safeRows = rows == null ? List.of() : rows;
 
@@ -560,11 +562,11 @@ public class WidgetExportServlet extends HttpServlet {
             if (r == null) {
                 continue;
             }
-            sb.append("Chat ID: ").append(safe(r.getChatId())).append('\n');
-            sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append('\n');
-            sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append('\n');
-            sb.append("Response: ").append(trimForCell(safe(r.getResponse()), 180)).append('\n');
-            sb.append("--------------------------------------------------").append('\n');
+            sb.append("Chat ID: ").append(safe(r.getChatId())).append(System.lineSeparator());
+            sb.append("Created: ").append(r.getCreatedAt() == null ? "" : r.getCreatedAt().toInstant()).append(System.lineSeparator());
+            sb.append("Prompt: ").append(trimForCell(safe(r.getPrompt()), 180)).append(System.lineSeparator());
+            sb.append("Response: ").append(trimForCell(safe(r.getResponse()), 180)).append(System.lineSeparator());
+            sb.append("--------------------------------------------------").append(System.lineSeparator());
         }
         return sb.toString();
     }
@@ -574,7 +576,7 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
 
-        String[] lines = md.split("\\r?\\n", -1);
+        String[] lines = md.split("\\R", -1);
         int startLine = -1;
 
         for (int i = 0; i < lines.length; i++) {
@@ -599,7 +601,7 @@ public class WidgetExportServlet extends HttpServlet {
             }
             sb.append(lines[i]);
             if (i < lines.length - 1) {
-                sb.append('\n');
+                sb.append(System.lineSeparator());
             }
         }
 
@@ -610,7 +612,7 @@ public class WidgetExportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.replaceFirst("(?is)^##\\s+[^\\n]+\\s*", "").trim();
+        return s.replaceFirst("(?is)^##\\s+.*?(?:\\R|$)\\s*", "").trim();
     }
 
     private List<String> splitPipeRow(String row) {
@@ -634,7 +636,7 @@ public class WidgetExportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.length() <= max ? s : s.substring(0, max) + "...";
+        return s.length() <= max ? s : new String(s.toCharArray(), 0, max) + "...";
     }
 
     private String safe(String s) {
@@ -656,7 +658,7 @@ public class WidgetExportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
+        boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains(System.lineSeparator()) || s.contains(System.lineSeparator());
         String escaped = s.replace("\"", "\"\"");
         return needsQuote ? '"' + escaped + '"' : escaped;
     }
@@ -688,7 +690,7 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
         String normalized = ServletRequestParamUtil.normalizeValue(raw, 32, true, false);
-        return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
+        return normalized.length() > 32 ? new String(normalized.toCharArray(), 0, 32) : normalized;
     }
 
     private OutputStream openOutputStreamSafe(HttpServletResponse resp, String context) {

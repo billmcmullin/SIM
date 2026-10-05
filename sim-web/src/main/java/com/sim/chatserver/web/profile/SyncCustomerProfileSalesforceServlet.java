@@ -184,7 +184,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
     }
 
     private void logFailure(String message, Throwable error) {
-        java.util.logging.Logger.getLogger(SyncCustomerProfileSalesforceServlet.class.getName())
+        java.util.logging.Logger.getLogger(SyncCustomerProfileSalesforceServlet.class.getCanonicalName())
                 .log(java.util.logging.Level.FINE, message, error);
     }
 

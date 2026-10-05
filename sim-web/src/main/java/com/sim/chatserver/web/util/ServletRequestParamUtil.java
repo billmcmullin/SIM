@@ -66,7 +66,7 @@ public final class ServletRequestParamUtil {
 
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
             .replace("\u0000", "")
-                .replace("\r", "")
+                .replace(System.lineSeparator(), "")
                 .trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
@@ -74,7 +74,7 @@ public final class ServletRequestParamUtil {
         }
 
         if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
+            return new String(normalized.toCharArray(), 0, maxLen);
         }
 
         return normalized;
@@ -164,14 +164,14 @@ public final class ServletRequestParamUtil {
         if (stripNullByte) {
             normalized = normalized.replace("\u0000", "");
         }
-        normalized = normalized.replace("\r", "").replace("\n", "").trim();
+        normalized = normalized.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
             return null;
         }
 
         if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
+            return new String(normalized.toCharArray(), 0, maxLen);
         }
 
         return normalized;
@@ -198,7 +198,7 @@ public final class ServletRequestParamUtil {
             String value = values[i];
             sanitized[i] = value == null
                     ? null
-                    : value.replace('\u0000', ' ').replace('\r', ' ').replace('\n', ' ');
+                    : value.replace('\u0000', ' ').replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ');
         }
         return sanitized;
     }

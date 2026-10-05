@@ -31,10 +31,11 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetReviewStartServlet", urlPatterns = {"/dashboard/widgets/review/start"})
 public class WidgetReviewStartServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(WidgetReviewStartServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetReviewStartServlet.class.getCanonicalName());
     private static final String SESSION_KEY = "widgetReviewSelections";
     private static final int MAX_SELECTIONS_PER_SESSION = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
+    private static final SearchTerms EMPTY_SEARCH_TERMS = new SearchTerms("", "", "");
 
     public static final class Selection {
 
@@ -69,7 +70,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
                     null,
                     new ArrayList<>(chatIds),
                     null,
-                    searchTerms == null ? new SearchTerms("", "", "") : searchTerms,
+                    searchTerms == null ? EMPTY_SEARCH_TERMS : searchTerms,
                     normalizeDate(date)
             );
         }
@@ -92,7 +93,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
                     safe(backUrl),
                     chatIds,
                     new ArrayList<>(snapshots),
-                    new SearchTerms("", "", ""),
+                    EMPTY_SEARCH_TERMS,
                     null
             );
         }

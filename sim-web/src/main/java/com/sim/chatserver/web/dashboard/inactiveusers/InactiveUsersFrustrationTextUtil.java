@@ -1,5 +1,7 @@
 package com.sim.chatserver.web.dashboard.inactiveusers;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -65,7 +67,9 @@ final class InactiveUsersFrustrationTextUtil {
             return false;
         }
 
-        return ((double) capsCount / (double) nonCodeCount) >= 0.60d;
+        return BigDecimal.valueOf(capsCount)
+                .divide(BigDecimal.valueOf(nonCodeCount), 6, RoundingMode.HALF_UP)
+                .compareTo(BigDecimal.valueOf(6L, 1)) >= 0;
     }
 
     private static boolean looksLikeCodeText(String text) {
@@ -91,7 +95,7 @@ final class InactiveUsersFrustrationTextUtil {
             }
         }
 
-        if (value.contains("{") || value.contains("}") || value.contains(";") || value.contains("=>") || value.contains("::")) {
+        if (value.contains("{") || value.contains("}") || value.contains(String.valueOf((char) 59)) || value.contains("=>") || value.contains("::")) {
             codeHints++;
         }
 
@@ -103,7 +107,11 @@ final class InactiveUsersFrustrationTextUtil {
             }
         }
 
-        double symbolRatio = value.isEmpty() ? 0.0d : ((double) symbolCount / (double) value.length());
+        double symbolRatio = value.isEmpty()
+                ? 0.0d
+                : BigDecimal.valueOf(symbolCount)
+                        .divide(BigDecimal.valueOf(value.length()), 6, RoundingMode.HALF_UP)
+                        .doubleValue();
         if (symbolRatio > 0.08d) {
             codeHints++;
         }

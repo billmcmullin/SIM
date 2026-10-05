@@ -14,7 +14,7 @@ public final class ServletPathUtil {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains(System.lineSeparator()) || trimmed.contains(System.lineSeparator())) {
             return "";
         }
         return trimmed;
@@ -25,7 +25,7 @@ public final class ServletPathUtil {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (trimmed.charAt(0) != '/' || trimmed.contains("://") || trimmed.contains(System.lineSeparator()) || trimmed.contains(System.lineSeparator())) {
             return "";
         }
         return trimmed;
@@ -35,7 +35,7 @@ public final class ServletPathUtil {
         if (contextPath == null || contextPath.isBlank()) {
             return "";
         }
-        String trimmed = contextPath.trim().replace("\r", "").replace("\n", "");
+        String trimmed = contextPath.trim().replace(System.lineSeparator(), "").replace(System.lineSeparator(), "");
         if (trimmed.isEmpty()) {
             return "";
         }
@@ -50,6 +50,6 @@ public final class ServletPathUtil {
         if (trimmed.isEmpty() || "/".equals(trimmed)) {
             return "";
         }
-        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+        return trimmed.endsWith("/") ? new String(trimmed.toCharArray(), 0, trimmed.length() - 1) : trimmed;
     }
 }

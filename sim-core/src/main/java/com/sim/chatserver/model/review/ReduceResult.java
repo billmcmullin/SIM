@@ -71,7 +71,9 @@ public final class ReduceResult {
 
         // strict deterministic: always derive missing from all-used
         Set<String> missing = new LinkedHashSet<>(this.allSelectedChatIds);
-        missing.removeAll(this.usedChatIds);
+        for (String usedId : this.usedChatIds) {
+            missing.remove(usedId);
+        }
         this.missingChatIds = Collections.unmodifiableList(new ArrayList<>(missing));
 
         this.coverageComplete = this.missingChatIds.isEmpty();
@@ -91,7 +93,9 @@ public final class ReduceResult {
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
-        expectedMissing.removeAll(usedChatIds);
+        for (String usedId : usedChatIds) {
+            expectedMissing.remove(usedId);
+        }
         if (!expectedMissing.equals(new LinkedHashSet<>(missingChatIds))) {
             throw new IllegalArgumentException("missingChatIds must exactly equal allSelectedChatIds - usedChatIds");
         }

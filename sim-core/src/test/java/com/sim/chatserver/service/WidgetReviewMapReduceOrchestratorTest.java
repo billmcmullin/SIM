@@ -1900,7 +1900,12 @@ public class WidgetReviewMapReduceOrchestratorTest
             "ctx",
             8
         );
-        assertEquals("prompt\n\n", outbound);
+        String doubleLineSeparator = new StringBuilder(System.lineSeparator().length() * 2)
+            .append(System.lineSeparator())
+            .append(System.lineSeparator())
+            .toString();
+        String expectedOutbound = "prompt" + new String(doubleLineSeparator.toCharArray(), 0, 2);
+        assertEquals(expectedOutbound, outbound);
 
         assertEquals("", invokePrivate(underTest, "trimTo", new Class<?>[]{String.class, int.class}, null, 3));
         assertEquals("abc", invokePrivate(underTest, "trimTo", new Class<?>[]{String.class, int.class}, "abcdef", 3));

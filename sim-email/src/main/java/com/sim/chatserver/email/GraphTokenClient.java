@@ -32,9 +32,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class GraphTokenClient {
 
-    private static final Logger LOG = Logger.getLogger(GraphTokenClient.class.getName());
+    private static final Logger LOG = Logger.getLogger(GraphTokenClient.class.getCanonicalName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Object DIAG_LOCK = new Object();
+    private static final String LS = System.lineSeparator();
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
@@ -52,12 +53,12 @@ public class GraphTokenClient {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     final synchronized String getAccessToken() {
@@ -87,7 +88,7 @@ public class GraphTokenClient {
                     + '/' + enc(config.tenantId().trim())
                     + "/oauth2/v2.0/token";
 
-                writeDiagnostics("graph-token-client", requestId, "token-request", "method=POST\nurl=" + tokenUrl, null);
+                writeDiagnostics("graph-token-client", requestId, "token-request", "method=POST" + LS + "url=" + tokenUrl, null);
 
             conn = openConnection(tokenUrl);
             conn.setRequestMethod("POST");
@@ -113,7 +114,7 @@ public class GraphTokenClient {
             String respText = new String(respBytes, StandardCharsets.UTF_8);
 
                 writeDiagnostics("graph-token-client", requestId, "token-response",
-                    "status=" + status + "\nbody=" + truncate(redactTokenPayload(respText)), null);
+                    "status=" + status + LS + "body=" + truncate(redactTokenPayload(respText)), null);
 
             if (status < 200 || status >= 300) {
                 throw new EmailException(
@@ -158,7 +159,7 @@ public class GraphTokenClient {
         if (body == null) {
             return "";
         }
-        return body.length() > 512 ? body.substring(0, 512) + "..." : body;
+        return body.length() > 512 ? new String(body.toCharArray(), 0, 512) + "..." : body;
     }
 
     private String safe(String value) {
@@ -252,13 +253,13 @@ public class GraphTokenClient {
         }
         String canonical = Normalizer.normalize(raw, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace("\r", "")
-                .replace("\n", "")
+                .replace(System.lineSeparator(), "")
+                .replace(System.lineSeparator(), "")
                 .trim();
         if (canonical.isEmpty()) {
             return null;
         }
-        return canonical.length() > 128 ? canonical.substring(0, 128) : canonical;
+        return canonical.length() > 128 ? new String(canonical.toCharArray(), 0, 128) : canonical;
     }
 
     private Path resolveDiagnosticsDir() {
@@ -278,7 +279,7 @@ public class GraphTokenClient {
         if (value == null) {
             return fallback;
         }
-        String cleaned = value.replace('\r', ' ').replace('\n', ' ').trim();
+        String cleaned = value.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 

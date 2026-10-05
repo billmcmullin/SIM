@@ -34,12 +34,13 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "CustomerProfileServlet", urlPatterns = {"/customer-profile"})
 public class CustomerProfileServlet extends HttpServlet {
 
-    private static final Logger LOGGER = Logger.getLogger(CustomerProfileServlet.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(CustomerProfileServlet.class.getCanonicalName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/customer_profile.html";
     private static final String LOGIN_PATH = "/login";
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
+    private static final CustomerIdentityService IDENTITY_SERVICE = new CustomerIdentityService();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -213,7 +214,7 @@ public class CustomerProfileServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -283,6 +284,6 @@ public class CustomerProfileServlet extends HttpServlet {
     }
 
     private CustomerIdentityService identityService() {
-        return new CustomerIdentityService();
+        return IDENTITY_SERVICE;
     }
 }

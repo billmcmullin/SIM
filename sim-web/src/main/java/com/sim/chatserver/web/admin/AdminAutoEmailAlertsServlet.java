@@ -35,12 +35,12 @@ import java.util.logging.Logger;
  */
 public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(AdminAutoEmailAlertsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminAutoEmailAlertsServlet.class.getCanonicalName());
 
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Object INIT_LOCK = new Object();
-    private static final String STORE_ATTR = AdminAutoEmailAlertsServlet.class.getName() + ".store";
-    private static final String SCHEDULER_ATTR = AdminAutoEmailAlertsServlet.class.getName() + ".scheduler";
+    private static final String STORE_ATTR = AdminAutoEmailAlertsServlet.class.getCanonicalName() + ".store";
+    private static final String SCHEDULER_ATTR = AdminAutoEmailAlertsServlet.class.getCanonicalName() + ".scheduler";
 
     @Override
     public void init() throws ServletException {
@@ -295,14 +295,14 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         StringBuilder safe = new StringBuilder(normalizedInput.length());
         for (int i = 0; i < normalizedInput.length(); i++) {
             char ch = normalizedInput.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         String normalized = safe.toString();
         return normalized.length() > MAX_JSON_PAYLOAD_BYTES
-                ? normalized.substring(0, MAX_JSON_PAYLOAD_BYTES)
+                ? new String(normalized.toCharArray(), 0, MAX_JSON_PAYLOAD_BYTES)
                 : normalized;
     }
 
@@ -407,7 +407,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").trim();
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "").trim();
         return normalized.isEmpty() ? null : normalized;
     }
 

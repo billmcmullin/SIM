@@ -13,7 +13,7 @@ import java.util.logging.Logger;
  */
 public final class HashUtil {
 
-    private static final Logger LOG = Logger.getLogger(HashUtil.class.getName());
+    private static final Logger LOG = Logger.getLogger(HashUtil.class.getCanonicalName());
 
     private HashUtil() {
         // util

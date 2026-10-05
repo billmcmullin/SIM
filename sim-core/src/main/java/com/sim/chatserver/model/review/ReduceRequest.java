@@ -61,7 +61,9 @@ public final class ReduceRequest {
 
         // Always recompute missing as all - used for deterministic consistency.
         Set<String> missing = new LinkedHashSet<>(this.allSelectedChatIds);
-        missing.removeAll(this.usedChatIds);
+        for (String usedId : this.usedChatIds) {
+            missing.remove(usedId);
+        }
         this.missingChatIds = Collections.unmodifiableList(new ArrayList<>(missing));
 
         // Always compute coverageComplete from missing list (ignore override for strict deterministic behavior)
@@ -166,6 +168,8 @@ public final class ReduceRequest {
             failedReasons.add(r == null ? "" : r);
         }
 
+        int failedBatchCount = failedBatchIndexes == null ? 0 : failedBatchIndexes.size();
+
         JsonArrayBuilder allIds = Json.createArrayBuilder();
         for (String id : allSelectedChatIds) {
             allIds.add(id);
@@ -191,7 +195,7 @@ public final class ReduceRequest {
                 .add("totalSelected", totalSelected)
                 .add("totalBatches", totalBatches)
                 .add("mapOutputsCount", mapOutputs.size())
-                .add("failedBatchCount", failedBatchIndexes.size())
+                .add("failedBatchCount", failedBatchCount)
                 .add("mapOutputs", outputs)
                 .add("failedBatchIndexes", failedIdx)
                 .add("failedBatchReasons", failedReasons)
@@ -331,7 +335,9 @@ public final class ReduceRequest {
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
-        expectedMissing.removeAll(usedChatIds);
+        for (String usedId : usedChatIds) {
+            expectedMissing.remove(usedId);
+        }
 
         if (!expectedMissing.equals(new LinkedHashSet<>(missingChatIds))) {
             throw new IllegalArgumentException("missingChatIds must exactly equal allSelectedChatIds - usedChatIds");

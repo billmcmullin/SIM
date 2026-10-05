@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 
 public final class SqlTimeUtil {
 
-    private static final Logger LOG = Logger.getLogger(SqlTimeUtil.class.getName());
+    private static final Logger LOG = Logger.getLogger(SqlTimeUtil.class.getCanonicalName());
     private static final int MAX_TIMESTAMP_TEXT_LENGTH = 96;
     private static final Pattern SAFE_TIMESTAMP_TEXT = Pattern.compile("^[0-9TtZz:\\-+\\. ]{1,96}$");
 
@@ -134,7 +134,7 @@ public final class SqlTimeUtil {
         StringBuilder safe = new StringBuilder(canonical.length());
         for (int i = 0; i < canonical.length(); i++) {
             char ch = canonical.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\r' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != System.lineSeparator().charAt(0) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
@@ -152,7 +152,7 @@ public final class SqlTimeUtil {
             return "";
         }
         if (trimmed.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
-            trimmed = trimmed.substring(0, MAX_TIMESTAMP_TEXT_LENGTH);
+            trimmed = new String(trimmed.toCharArray(), 0, MAX_TIMESTAMP_TEXT_LENGTH);
         }
         if (!SAFE_TIMESTAMP_TEXT.matcher(trimmed).matches()) {
             return "";

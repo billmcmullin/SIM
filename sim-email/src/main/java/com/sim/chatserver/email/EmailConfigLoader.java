@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  */
 public final class EmailConfigLoader {
 
-    private static final Logger log = Logger.getLogger(EmailConfigLoader.class.getName());
+    private static final Logger log = Logger.getLogger(EmailConfigLoader.class.getCanonicalName());
 
     // Env keys
     private static final String ENV_HOST = "MAIL_HOST";
@@ -52,6 +52,16 @@ public final class EmailConfigLoader {
     private static final Pattern SAFE_PORT_TEXT = Pattern.compile("^\\d{1,5}$");
     private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
     private static final Pattern SAFE_EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+        private static final EmailConfig DEFAULT_EMAIL_CONFIG = new EmailConfig(
+            "localhost",
+            25,
+            false,
+            false,
+            false,
+            "",
+            "",
+            ""
+        );
 
     @FunctionalInterface
     interface EnvAccessor {
@@ -93,16 +103,7 @@ public final class EmailConfigLoader {
         }
 
         log.warning("No valid SMTP config found in ENV or properties. Falling back to localhost:25.");
-        return new EmailConfig(
-                "localhost",
-                25,
-                false,
-                false,
-                false,
-                "",
-                "",
-                ""
-        );
+        return DEFAULT_EMAIL_CONFIG;
     }
 
     /**
@@ -327,6 +328,6 @@ public final class EmailConfigLoader {
         if (trimmed.length() <= effectiveMaxLength) {
             return trimmed;
         }
-        return trimmed.substring(0, effectiveMaxLength);
+        return new String(trimmed.toCharArray(), 0, effectiveMaxLength);
     }
 }

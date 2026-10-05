@@ -45,7 +45,8 @@ import java.util.logging.Logger;
 @WebServlet(name = "ReviewMessageEmailServlet", urlPatterns = {"/dashboard/widgets/drilldown/review/email"})
 public class ReviewMessageEmailServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(ReviewMessageEmailServlet.class.getName());
+    private static final Logger log = Logger.getLogger(ReviewMessageEmailServlet.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private static final int MAX_JSON_PAYLOAD_BYTES = 96 * 1024;
@@ -54,6 +55,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
     private static final int MAX_LABEL_LENGTH = 140;
     private static final int MAX_TEXT_LENGTH = 12_000;
     private static final int MAX_CUSTOM_MESSAGE_LENGTH = 4_000;
+    private static final TranslationService DEFAULT_TRANSLATION_SERVICE = new DefaultTranslationService();
 
     private static final ZoneId DISPLAY_ZONE = ZoneOffset.UTC;
     private static final DateTimeFormatter DISPLAY_TS_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'", Locale.ROOT);
@@ -218,7 +220,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
         if (overrides != null && overrides.translationServiceOverride != null) {
             return overrides.translationServiceOverride;
         }
-        return new DefaultTranslationService();
+        return DEFAULT_TRANSLATION_SERVICE;
     }
 
     private PreparedText prepareText(String input, boolean translateToEnglish, TranslationService translationService) {
@@ -263,34 +265,34 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             PreparedText response) {
 
         StringBuilder sb = new StringBuilder(2048);
-        sb.append("SIM Chat Review Share").append('\n').append('\n');
-        sb.append("Shared By: ").append(safe(sharedBy)).append('\n');
+        sb.append("SIM Chat Review Share").append(System.lineSeparator()).append(System.lineSeparator());
+        sb.append("Shared By: ").append(safe(sharedBy)).append(System.lineSeparator());
         if (chatId != null && !chatId.isBlank()) {
-            sb.append("Chat ID: ").append(chatId).append('\n');
+            sb.append("Chat ID: ").append(chatId).append(System.lineSeparator());
         }
         if (createdAtRaw != null && !createdAtRaw.isBlank()) {
             String chatTs = toHumanReadableTimestamp(createdAtRaw);
             if (!chatTs.isBlank()) {
-                sb.append("Chat Timestamp: ").append(chatTs).append('\n');
+                sb.append("Chat Timestamp: ").append(chatTs).append(System.lineSeparator());
             }
         }
         if (sessionId != null && !sessionId.isBlank()) {
-            sb.append("Session ID: ").append(sessionId).append('\n');
+            sb.append("Session ID: ").append(sessionId).append(System.lineSeparator());
         }
         if (subjectLabel != null && !subjectLabel.isBlank()) {
             sb.append("Reviewed ")
                     .append(subjectType == null || subjectType.isBlank() ? "Context" : subjectType)
                     .append(": ")
                     .append(subjectLabel)
-                    .append('\n');
+                    .append(System.lineSeparator());
         }
-        sb.append("Shared At: ").append(formatDisplayInstant(Instant.now())).append('\n');
-        sb.append("Translation To English: ").append(translateToEnglish ? "Enabled" : "Disabled").append('\n');
+        sb.append("Shared At: ").append(formatDisplayInstant(Instant.now())).append(System.lineSeparator());
+        sb.append("Translation To English: ").append(translateToEnglish ? "Enabled" : "Disabled").append(System.lineSeparator());
 
         if (customMessage != null && !customMessage.isBlank()) {
-            sb.append('\n').append("Custom Note from Reviewer").append('\n');
-            sb.append("-------------------------").append('\n');
-            sb.append(customMessage).append('\n');
+            sb.append(System.lineSeparator()).append("Custom Note from Reviewer").append(System.lineSeparator());
+            sb.append("-------------------------").append(System.lineSeparator());
+            sb.append(customMessage).append(System.lineSeparator());
         }
 
         appendSection(sb, "Prompt", prompt, translateToEnglish);
@@ -304,33 +306,33 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             return;
         }
 
-        sb.append('\n').append(label).append(" (Original)").append('\n');
-        sb.append("----------------").append('\n');
-        sb.append(text.original).append('\n');
+        sb.append(System.lineSeparator()).append(label).append(" (Original)").append(System.lineSeparator());
+        sb.append("----------------").append(System.lineSeparator());
+        sb.append(text.original).append(System.lineSeparator());
 
         if (!translateToEnglish) {
             return;
         }
 
         if (text.wasTranslated) {
-            sb.append('\n').append(label).append(" (English Translation from ")
+            sb.append(System.lineSeparator()).append(label).append(" (English Translation from ")
                     .append(text.sourceLang)
                     .append(')')
-                    .append('\n');
-            sb.append("----------------").append('\n');
-            sb.append(text.english).append('\n');
+                    .append(System.lineSeparator());
+            sb.append("----------------").append(System.lineSeparator());
+            sb.append(text.english).append(System.lineSeparator());
             return;
         }
 
         if (text.translationIssue != null && !text.translationIssue.isBlank()) {
-            sb.append("\nNote: ").append(label).append(" translation could not be completed. Original text was included.")
-                    .append('\n');
+            sb.append(LS).append("Note: ").append(label).append(" translation could not be completed. Original text was included.")
+                    .append(System.lineSeparator());
             return;
         }
 
         if (text.sourceLang != null && text.sourceLang.startsWith("en")) {
-            sb.append("\nNote: ").append(label).append(" detected as English; no translation needed.")
-                    .append('\n');
+            sb.append(LS).append("Note: ").append(label).append(" detected as English; no translation needed.")
+                    .append(System.lineSeparator());
         }
     }
 
@@ -344,7 +346,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             sb.append(" (Chat ").append(chatId).append(')');
         }
         String raw = sb.toString();
-        return raw.length() > MAX_SUBJECT_LENGTH ? raw.substring(0, MAX_SUBJECT_LENGTH) : raw;
+        return raw.length() > MAX_SUBJECT_LENGTH ? new String(raw.toCharArray(), 0, MAX_SUBJECT_LENGTH) : raw;
     }
 
     private boolean parseBoolean(JsonObject payload, String key, boolean defaultValue) {
@@ -378,7 +380,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             return "";
         }
         String normalized = language.trim().toLowerCase(Locale.ROOT);
-        return normalized.length() > 24 ? normalized.substring(0, 24) : normalized;
+        return normalized.length() > 24 ? new String(normalized.toCharArray(), 0, 24) : normalized;
     }
 
     private String toHumanReadableTimestamp(String rawTimestamp) {
@@ -428,7 +430,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.replace('\r', ' ').replace('\n', ' ');
+        return value.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ');
     }
 
     private void logTimestampParseFailure(String parser, String value, DateTimeParseException ex) {

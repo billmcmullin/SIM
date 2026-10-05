@@ -23,7 +23,7 @@ import jakarta.json.JsonValue;
  */
 public final class JsonRequestParserUtil {
 
-    private static final Logger log = Logger.getLogger(JsonRequestParserUtil.class.getName());
+    private static final Logger log = Logger.getLogger(JsonRequestParserUtil.class.getCanonicalName());
 
     /**
      * Default max request body to parse (1 MiB).
@@ -241,7 +241,7 @@ public final class JsonRequestParserUtil {
             return "";
         }
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return safeSlice(normalized, 0, maxChars);
         }
         return normalized;
     }
@@ -260,7 +260,22 @@ public final class JsonRequestParserUtil {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+        return value.length() <= maxChars ? value : safeSlice(value, 0, maxChars);
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     @SuppressWarnings("serial")

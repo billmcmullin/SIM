@@ -21,7 +21,7 @@ import jakarta.ws.rs.core.Response;
 @Path("/auth")
 public class AuthResource implements AuthApiEndpoint {
 
-    private static final Logger log = Logger.getLogger(AuthResource.class.getName());
+    private static final Logger log = Logger.getLogger(AuthResource.class.getCanonicalName());
 
     private static final String KEY_USERNAME = "username";
     private static final String KEY_PASSWORD = "password";
@@ -36,12 +36,12 @@ public class AuthResource implements AuthApiEndpoint {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @POST

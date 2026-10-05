@@ -41,11 +41,11 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardBootstrapServlet", urlPatterns = {"/dashboard/bootstrap.json"})
 public class DashboardBootstrapServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(DashboardBootstrapServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardBootstrapServlet.class.getCanonicalName());
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int ACTIVE_DAYS = 7;
     private static final int SESSION_LIMIT = 10;
-    private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getName() + ".summaryStore";
+    private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getCanonicalName() + ".summaryStore";
         private static final DashboardSessionAggregationQueryService SESSION_QUERY_SERVICE =
             new DashboardSessionAggregationQueryService(log);
 
@@ -53,7 +53,10 @@ public class DashboardBootstrapServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         try {
-            ensureSummaryStoreInitialized();
+            DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
+            if (initializedStore == null) {
+                throw new IllegalStateException("Summary store is unavailable");
+            }
         } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize daily summary store", e);
         }

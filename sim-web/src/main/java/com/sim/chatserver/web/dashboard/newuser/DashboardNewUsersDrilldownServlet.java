@@ -41,7 +41,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardNewUsersDrilldownServlet", urlPatterns = {"/dashboard/new-users/drilldown"})
 public class DashboardNewUsersDrilldownServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardNewUsersDrilldownServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardNewUsersDrilldownServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users_drilldown.html";
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -223,7 +223,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -275,8 +275,8 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
     private String safeJsonText(String value) {

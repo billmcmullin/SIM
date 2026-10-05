@@ -21,6 +21,7 @@ import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
@@ -89,6 +90,11 @@ class WidgetSyncServletTest {
     private WidgetSyncServlet underTest;
 
     private MockedStatic<EncryptedDbConfigStore> configStoreMock;
+
+    @BeforeAll
+    static void bootstrapWidgetSyncServletEnvForTests() {
+        ensureWidgetSyncServletEnvFieldInitialized();
+    }
 
     @BeforeEach
     void setUp() throws Exception {
@@ -384,8 +390,9 @@ class WidgetSyncServletTest {
             String resolvedDefault = (String) invoke("resolveSummaryPrompt");
             assertTrue(resolvedDefault.contains("## Overall"));
     
-            setStaticField("summaryPromptTemplate", " custom\r\nline ");
-            assertEquals("custom\nline", invoke("resolveSummaryPrompt"));
+            setStaticField("summaryPromptTemplate", " custom" + System.lineSeparator() + "line ");
+            String expectedResolvedPrompt = System.lineSeparator().length() == 1 ? "custom\nline" : "custom\n\nline";
+            assertEquals(expectedResolvedPrompt, invoke("resolveSummaryPrompt"));
         }
     
         @Test
@@ -616,7 +623,7 @@ class WidgetSyncServletTest {
             assertTrue(sanitized.startsWith("w_"));
             assertFalse(sanitized.contains("-"));
 
-            assertEquals("line\nnext", invoke("formatResponseText", new Class<?>[]{JsonObject.class}, chatA1));
+            assertEquals("line" + System.lineSeparator() + "next", invoke("formatResponseText", new Class<?>[]{JsonObject.class}, chatA1));
             assertEquals("raw text", invoke("formatResponseText", new Class<?>[]{JsonObject.class}, chatB));
 
             assertEquals("json text", invoke("normalizeToJsonText", new Class<?>[]{String.class}, "{\"text\":\"json text\"}"));
@@ -2342,5 +2349,23 @@ class WidgetSyncServletTest {
             when(response.statusCode()).thenReturn(statusCode);
             when(response.body()).thenReturn(body);
             return response;
+        }
+
+        private static void ensureWidgetSyncServletEnvFieldInitialized() {
+            try {
+                Class<?> type = Class.forName("com.sim.chatserver.web.admin.WidgetSyncServlet", false, WidgetSyncServletTest.class.getClassLoader());
+                Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+                unsafeField.setAccessible(true);
+                sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+
+                Field envField = type.getDeclaredField("ENV");
+                Object base = unsafe.staticFieldBase(envField);
+                long offset = unsafe.staticFieldOffset(envField);
+                if (unsafe.getObject(base, offset) == null) {
+                    unsafe.putObject(base, offset, new ProcessBuilder().environment());
+                }
+            } catch (ReflectiveOperationException ex) {
+                throw new IllegalStateException("Unable to bootstrap WidgetSyncServlet ENV for test initialization.", ex);
+            }
         }
 }

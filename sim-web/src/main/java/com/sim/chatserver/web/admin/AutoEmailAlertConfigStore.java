@@ -20,7 +20,7 @@ import java.util.logging.Logger;
  */
 public final class AutoEmailAlertConfigStore {
 
-    private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getName());
+    private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getCanonicalName());
 
     static final int SINGLETON_ID = 1;
 
@@ -31,12 +31,12 @@ public final class AutoEmailAlertConfigStore {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     AutoEmailAlertConfigStore(DataSource dataSource) {
@@ -507,13 +507,13 @@ public final class AutoEmailAlertConfigStore {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace("\r", "")
+                .replace(System.lineSeparator(), "")
                 .trim();
         if (normalized.isEmpty()) {
             return null;
         }
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return new String(normalized.toCharArray(), 0, maxChars);
         }
         return normalized;
     }

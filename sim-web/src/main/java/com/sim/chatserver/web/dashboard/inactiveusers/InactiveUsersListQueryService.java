@@ -399,15 +399,15 @@ final class InactiveUsersListQueryService {
         StringBuilder safe = new StringBuilder(canonical.length());
         for (int i = 0; i < canonical.length(); i++) {
             char ch = canonical.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
 
-        String normalized = safe.toString().replace("\n", " ").trim();
+        String normalized = safe.toString().replace(System.lineSeparator(), " ").trim();
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return safeSlice(normalized, 0, maxChars);
         }
         return normalized;
     }
@@ -418,7 +418,7 @@ final class InactiveUsersListQueryService {
         }
         return Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace("\r", "");
+                .replace(System.lineSeparator(), "");
     }
 
     private String safeColumnName(String column) {
@@ -461,9 +461,24 @@ final class InactiveUsersListQueryService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = safeSlice(normalized, 0, 60);
         }
         return normalized;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String quoteIdentifier(String identifier) {

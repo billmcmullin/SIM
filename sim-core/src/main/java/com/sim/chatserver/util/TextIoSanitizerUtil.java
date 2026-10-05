@@ -30,19 +30,19 @@ public final class TextIoSanitizerUtil {
         }
         String normalized = Normalizer.normalize(input, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace("\r", "")
+                .replace(System.lineSeparator(), "")
                 .trim();
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char ch = normalized.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         String result = safe.toString();
         if (maxLen > 0 && result.length() > maxLen) {
-            return result.substring(0, maxLen);
+            return new String(result.toCharArray(), 0, maxLen);
         }
         return result;
     }
@@ -75,8 +75,8 @@ public final class TextIoSanitizerUtil {
         }
 
         return input.codePoints()
-                .filter(codePoint -> codePoint == '\n'
-                        || codePoint == '\r'
+                .filter(codePoint -> codePoint == System.lineSeparator().charAt(System.lineSeparator().length() - 1)
+                        || codePoint == System.lineSeparator().charAt(0)
                         || codePoint == '\t'
                         || !Character.isISOControl(codePoint))
                 .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)

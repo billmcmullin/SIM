@@ -54,7 +54,7 @@ final class WidgetSyncSchedulerManager {
         if (executor == null) {
             return false;
         }
-        String typeName = executor.getClass().getName();
+        String typeName = executor.getClass().getCanonicalName();
         return typeName.contains("ManagedExecutorService")
                 || typeName.contains("ManagedScheduledExecutorService")
                 || typeName.contains("jboss.as.ee.concurrent.adapter");

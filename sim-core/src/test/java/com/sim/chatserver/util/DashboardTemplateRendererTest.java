@@ -111,6 +111,7 @@ public class DashboardTemplateRendererTest
     public void testLoadTemplateCached() throws Throwable
     {
         // When
+        DashboardTemplateRenderer.clearTemplateCache();
         ServletContext context = mock(ServletContext.class);
         InputStream getResourceAsStreamResult = null; // UTA: configured value
         when(context.getResourceAsStream(nullable(String.class))).thenReturn(getResourceAsStreamResult);
@@ -118,6 +119,7 @@ public class DashboardTemplateRendererTest
         assertThrows(IOException.class, () -> {
             DashboardTemplateRenderer.loadTemplateCached(context, path);
         });
+        DashboardTemplateRenderer.clearTemplateCache();
 
     }
 
@@ -131,6 +133,7 @@ public class DashboardTemplateRendererTest
     public void testLoadTemplateCached2() throws Throwable
     {
         // When
+        DashboardTemplateRenderer.clearTemplateCache();
         ServletContext context = mock(ServletContext.class);
         InputStream getResourceAsStreamResult = mock(InputStream.class);
         doThrow(IOException.class).when(getResourceAsStreamResult).close();
@@ -139,6 +142,7 @@ public class DashboardTemplateRendererTest
         assertThrows(IOException.class, () -> {
             DashboardTemplateRenderer.loadTemplateCached(context, path);
         });
+        DashboardTemplateRenderer.clearTemplateCache();
 
     }
 
@@ -301,7 +305,8 @@ public class DashboardTemplateRendererTest
             when(firstContext.getResourceAsStream(anyString())).thenReturn(stream);
     
             String loaded = DashboardTemplateRenderer.loadTemplateCached(firstContext, "/dashboard.html");
-            assertEquals("line1\nline2\n", loaded);
+            String ls = System.lineSeparator();
+            assertEquals("line1" + ls + "line2" + ls, loaded);
     
             ServletContext secondContext = mock(ServletContext.class);
             when(secondContext.getResourceAsStream(anyString())).thenReturn(null);

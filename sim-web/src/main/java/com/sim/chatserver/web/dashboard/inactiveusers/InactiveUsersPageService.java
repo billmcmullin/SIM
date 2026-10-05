@@ -46,7 +46,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 final class InactiveUsersPageService {
-    private static final Logger log = Logger.getLogger(InactiveUsersPageServlet.class.getName());
+    private static final Logger log = Logger.getLogger(InactiveUsersPageServlet.class.getCanonicalName());
     private static final int DEFAULT_DAYS = 7;
     private static final int TOP_N = 5;
     private static final int MAX_SESSION_ID_LENGTH = 128;
@@ -370,7 +370,7 @@ final class InactiveUsersPageService {
             return out;
         }
 
-        double score = 0.0;
+        int scorePoints = 0;
         String reason = "";
 
         String[] strong = {"frustrated", "angry", "annoyed", "furious", "ridiculous", "useless", "terrible"};
@@ -384,7 +384,7 @@ final class InactiveUsersPageService {
 
             for (String k : strong) {
                 if (lower.contains(k)) {
-                    score += 0.30;
+                    scorePoints += 30;
                     if (reason.isEmpty()) {
                         reason = "keyword:" + k;
                     }
@@ -392,14 +392,14 @@ final class InactiveUsersPageService {
             }
             for (String k : misunderstood) {
                 if (lower.contains(k)) {
-                    score += 0.35;
+                    scorePoints += 35;
                     if (reason.isEmpty()) {
                         reason = "misunderstood:" + k;
                     }
                 }
             }
             if (lower.contains("!!!") || lower.contains("???")) {
-                score += 0.15;
+                scorePoints += 15;
                 if (reason.isEmpty()) {
                     reason = "punctuation";
                 }
@@ -410,18 +410,18 @@ final class InactiveUsersPageService {
             if (!nonFrustrationContext
                     && InactiveUsersFrustrationTextUtil.hasExplicitFrustrationSignal(t)
                     && !consistentCapsStyle) {
-                score += 0.20;
+                scorePoints += 20;
                 if (reason.isEmpty()) {
                     reason = "frustration_phrase";
                 }
             }
         }
 
-        if (score > 1.0) {
-            score = 1.0;
+        if (scorePoints > 100) {
+            scorePoints = 100;
         }
-        out.score = score;
-        out.detected = score >= 0.40;
+        out.score = scorePoints / 100.0d;
+        out.detected = scorePoints >= 40;
         out.reason = reason;
         return out;
     }
@@ -502,7 +502,7 @@ final class InactiveUsersPageService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = safeSlice(normalized, 0, 60);
         }
         return normalized;
     }
@@ -549,9 +549,9 @@ final class InactiveUsersPageService {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
         if (normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
+            return safeSlice(normalized, 0, maxLen);
         }
         return normalized;
     }
@@ -569,7 +569,7 @@ final class InactiveUsersPageService {
                 StringBuilder b = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    b.append(line).append('\n');
+                    b.append(line).append(System.lineSeparator());
                 }
                 return b.toString();
             }
@@ -623,7 +623,22 @@ final class InactiveUsersPageService {
             return "";
         }
         String trimmed = user.trim();
-        return trimmed.length() > 256 ? trimmed.substring(0, 256) : trimmed;
+        return trimmed.length() > 256 ? safeSlice(trimmed, 0, 256) : trimmed;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String sanitizeSessionId(String sessionId) {

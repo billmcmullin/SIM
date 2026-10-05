@@ -227,6 +227,156 @@
         </section>
 
         <section class="section">
+            <h2>Forum Database Explorer</h2>
+            <p>Dedicated admin-only forum message browser. Connect once and the app loads all available rows/columns from the detected forum message table, then lets you review human-readable messages with pagination.</p>
+
+            <form id="forumDbExplorerForm" onsubmit="return false;">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="forumDbType">Database Type</label>
+                        <select id="forumDbType">
+                            <option value="postgresql" selected>PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="forumDbHost">Host</label>
+                        <input type="text" id="forumDbHost" placeholder="localhost" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="forumDbPort">Port</label>
+                        <input type="number" id="forumDbPort" min="1" max="65535" placeholder="5432">
+                    </div>
+                    <div class="form-group">
+                        <label for="forumDbName">Database Name</label>
+                        <input type="text" id="forumDbName" placeholder="forum_db" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="forumDbUser">Username</label>
+                        <input type="text" id="forumDbUser" placeholder="forum_reader" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="forumDbPassword">Password</label>
+                        <input type="password" id="forumDbPassword" placeholder="Enter database password" autocomplete="new-password">
+                        <div class="small-note">
+                            <span id="forumDbPasswordStoredNote" style="display:none;">A database password is stored. Leave password blank when saving to keep it unchanged.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <input type="hidden" id="forumDbEntity" value="messages">
+
+                <div class="actions">
+                    <button type="button" id="forumDbConnectBtn">Connect &amp; Load</button>
+                    <button type="button" id="forumDbLoadBtn">Reload From Database</button>
+                    <button type="button" id="forumDbSaveConfigBtn">Save Configuration</button>
+                    <button type="button" id="forumDbClearBtn">Clear Results</button>
+                </div>
+                <div id="forumDbResultMessage" class="widget-message"></div>
+            </form>
+
+            <div class="forum-human-review-wrap">
+                <h3>Human Message Review</h3>
+                <p class="small-note">Review human-written message text only. Click a row to open the full message text.</p>
+
+                <div class="forum-human-controls">
+                    <button type="button" id="forumDbExportThreadsBtn">Export Messages + Replies CSV</button>
+                    <label class="small-note" for="forumDbExportScope" style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;">
+                        Export scope
+                        <select id="forumDbExportScope" style="min-width:200px;">
+                            <option value="all" selected>All chat posts</option>
+                            <option value="confirmed">Confirmed chat posts only</option>
+                        </select>
+                    </label>
+                    <label class="small-note" for="forumDbConfirmedOnly" style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;">
+                        <input type="checkbox" id="forumDbConfirmedOnly">
+                        Show confirmed discussions only
+                    </label>
+                </div>
+
+                <div class="search-row">
+                    <input type="text" id="forumDbHumanSearch" placeholder="Filter human messages by text, user, session, or time">
+                    <div id="forumDbHumanSummary" class="small-note forum-human-summary">No data loaded yet.</div>
+                </div>
+
+                <div class="forum-human-pagination" aria-label="Human messages pagination">
+                    <button type="button" id="forumDbHumanPrevBtn">Previous</button>
+                    <span id="forumDbHumanPageInfo" class="small-note">Page 1 of 1</span>
+                    <button type="button" id="forumDbHumanNextBtn">Next</button>
+                    <label for="forumDbHumanPageJumpInput" class="small-note">Jump to page</label>
+                    <input type="number" id="forumDbHumanPageJumpInput" min="1" value="1" style="width:88px; margin:0;">
+                    <button type="button" id="forumDbHumanPageJumpBtn">Go</button>
+                </div>
+
+                <div id="forumDbShareMessage" class="widget-message"></div>
+
+                <div class="forum-human-table-wrap widget-review-selection-region">
+                    <div style="overflow-x:auto; margin-top:8px;">
+                        <table class="widget-table" id="forumDbHumanTable">
+                            <thead>
+                                <tr>
+                                    <th>Created</th>
+                                    <th>Conversation / Session</th>
+                                    <th>User</th>
+                                    <th>Confirmed</th>
+                                    <th>Human Message Text</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forumDbHumanBody">
+                                <tr>
+                                    <td class="empty-row" colspan="5">No human messages loaded yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <aside id="forumDbHumanOverlay" class="detail-overlay-card forum-human-overlay" style="display:none;" role="dialog" aria-modal="false" aria-label="Selected human message">
+                        <div class="forum-human-overlay-header">
+                            <h4 class="forum-human-overlay-title">Selected Human Message</h4>
+                            <div class="forum-human-overlay-actions">
+                                <button type="button" id="forumDbOverlayEmailBtn">Email</button>
+                                <button type="button" id="forumDbOverlayCloseBtn">Close</button>
+                            </div>
+                        </div>
+
+                        <div class="forum-human-share-grid">
+                            <div class="form-group">
+                                <label for="forumDbOverlayShareTo">Share To (comma, semicolon, or newline separated emails)</label>
+                                <textarea id="forumDbOverlayShareTo" rows="2" placeholder="team@example.com, qa@example.com"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="forumDbOverlayShareSubject">Email Subject</label>
+                                <input type="text" id="forumDbOverlayShareSubject" value="Cleaned Forum Human Message" placeholder="Cleaned Forum Human Message">
+                            </div>
+                        </div>
+
+                        <div class="forum-human-translate-row">
+                            <label for="forumDbOverlayTranslateLang">Translate To</label>
+                            <select id="forumDbOverlayTranslateLang">
+                                <option value="en" selected>English</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="it">Italian</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="ko">Korean</option>
+                                <option value="zh">Chinese</option>
+                            </select>
+                            <button type="button" id="forumDbOverlayTranslateBtn">Translate Message</button>
+                        </div>
+                        <div id="forumDbOverlayTranslateMeta" class="small-note forum-human-translate-meta"></div>
+                        <pre id="forumDbOverlayTranslateOutput" class="forum-human-translation-output" style="display:none;"></pre>
+
+                        <div id="forumDbHumanDetail" class="forum-human-detail">
+                            <div class="small-note">Select a human message row to view full text.</div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
             <h2>Server Configuration</h2>
             <form id="serverConfigForm">
                 <div class="form-group">
@@ -852,6 +1002,7 @@
     <script defer src="${contextPath}/assets/js/admin_utils/db_import.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/email.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/auto_email_alerts.js"></script>
+    <script defer src="${contextPath}/assets/js/admin_utils/forum_db_explorer.js"></script>
     <script defer src="${contextPath}/assets/js/admin_page.js"></script>
 </body>
 

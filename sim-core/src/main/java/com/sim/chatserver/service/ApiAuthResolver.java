@@ -19,7 +19,7 @@ import jakarta.enterprise.inject.spi.CDI;
  */
 public final class ApiAuthResolver {
 
-    private static final Logger log = Logger.getLogger(ApiAuthResolver.class.getName());
+    private static final Logger log = Logger.getLogger(ApiAuthResolver.class.getCanonicalName());
 
     private ApiAuthResolver() {
     }
