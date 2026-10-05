@@ -26,7 +26,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "WidgetTableSelectionServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/select-ids"})
 public class WidgetTableSelectionServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getCanonicalName());
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
     private static final WidgetTableSelectionQueryService QUERY_SERVICE = new WidgetTableSelectionQueryService(log);
 

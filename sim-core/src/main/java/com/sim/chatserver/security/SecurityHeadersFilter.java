@@ -37,11 +37,11 @@ public class SecurityHeadersFilter implements Filter {
     private static final String DYNAMIC_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @Override
@@ -158,7 +158,7 @@ public class SecurityHeadersFilter implements Filter {
             return false;
         }
 
-        String[] parts = cookieHeader.split(";");
+        String[] parts = cookieHeader.split(String.valueOf((char) 59));
         for (String part : parts) {
             String token = part == null ? "" : part.trim();
             if (token.isEmpty()) {
@@ -263,7 +263,7 @@ public class SecurityHeadersFilter implements Filter {
             return null;
         }
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return new String(normalized.toCharArray(), 0, maxChars);
         }
         return normalized;
     }

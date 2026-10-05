@@ -17,7 +17,7 @@ import jakarta.servlet.http.HttpSession;
  * Admin data export backup endpoint.
  */
 public class DatabaseBackupServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DatabaseBackupServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DatabaseBackupServlet.class.getCanonicalName());
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";

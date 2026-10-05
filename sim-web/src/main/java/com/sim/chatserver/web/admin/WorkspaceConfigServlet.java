@@ -20,7 +20,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WorkspaceConfigServlet", urlPatterns = {"/admin/workspace"})
 public class WorkspaceConfigServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WorkspaceConfigServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WorkspaceConfigServlet.class.getCanonicalName());
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {

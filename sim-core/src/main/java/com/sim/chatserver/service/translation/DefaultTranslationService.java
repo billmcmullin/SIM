@@ -37,7 +37,7 @@ import jakarta.json.JsonReader;
  */
 public class DefaultTranslationService implements TranslationService {
 
-    private static final Logger log = Logger.getLogger(DefaultTranslationService.class.getName());
+    private static final Logger log = Logger.getLogger(DefaultTranslationService.class.getCanonicalName());
 
     private static final Set<String> SPANISH_HINTS = Set.of(
             "hola", "gracias", "por favor", "necesito", "ayuda", "error", "respuesta", "pregunta", "no funciona"
@@ -58,6 +58,7 @@ public class DefaultTranslationService implements TranslationService {
 
     private static final String DEFAULT_TRANSLATE_URL = "http://localhost:5000/translate";
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
+    private static final String LINE_SEPARATOR = System.lineSeparator();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
@@ -69,12 +70,12 @@ public class DefaultTranslationService implements TranslationService {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public DefaultTranslationService() {
@@ -100,8 +101,8 @@ public class DefaultTranslationService implements TranslationService {
                     requestId,
                     "translation-start",
                     "targetLang=" + target
-                        + "\ntextChars=" + safeText.length()
-                        + "\ntext=" + safeText
+                        + LINE_SEPARATOR + "textChars=" + safeText.length()
+                        + LINE_SEPARATOR + "text=" + safeText
                 );
 
             // Heuristic fallback
@@ -125,9 +126,9 @@ public class DefaultTranslationService implements TranslationService {
                     requestId,
                     "translation-success",
                     "sourceLang=" + source
-                            + "\ntargetLang=" + target
-                            + "\ntranslatedChars=" + translated.length()
-                            + "\ntranslated=" + translated
+                        + LINE_SEPARATOR + "targetLang=" + target
+                        + LINE_SEPARATOR + "translatedChars=" + translated.length()
+                        + LINE_SEPARATOR + "translated=" + translated
             );
             return TranslationResult.ok(source, target, translated);
         } catch (InterruptedException ex) {
@@ -233,8 +234,8 @@ public class DefaultTranslationService implements TranslationService {
                     "translation-service",
                     requestId,
                     "detect-request",
-                    "method=POST\nurl=" + detectUrl
-                        + "\nbody=" + redactApiKey(form.toString())
+                    "method=POST" + LINE_SEPARATOR + "url=" + detectUrl
+                        + LINE_SEPARATOR + "body=" + redactApiKey(form.toString())
             );
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -252,7 +253,7 @@ public class DefaultTranslationService implements TranslationService {
                     requestId,
                     "detect-response",
                     "status=" + response.statusCode()
-                            + "\nbody=" + responseBody
+                        + LINE_SEPARATOR + "body=" + responseBody
             );
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.fine(() -> "Provider detect returned HTTP " + response.statusCode());
@@ -318,10 +319,10 @@ public class DefaultTranslationService implements TranslationService {
             "translation-service",
             requestId,
             "translate-request",
-            "method=POST\nurl=" + translateUrl
-                + "\nsource=" + source
-                + "\ntarget=" + safeTargetLang
-                + "\nbody=" + redactApiKey(form.toString())
+            "method=POST" + LINE_SEPARATOR + "url=" + translateUrl
+                + LINE_SEPARATOR + "source=" + source
+                + LINE_SEPARATOR + "target=" + safeTargetLang
+                + LINE_SEPARATOR + "body=" + redactApiKey(form.toString())
         );
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -341,7 +342,7 @@ public class DefaultTranslationService implements TranslationService {
             requestId,
             "translate-response",
             "status=" + status
-                + "\nbody=" + body
+                + LINE_SEPARATOR + "body=" + body
         );
 
         if (status < 200 || status >= 300) {
@@ -420,7 +421,7 @@ public class DefaultTranslationService implements TranslationService {
                 .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
                 .trim();
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return normalized.substring(0, maxChars);
+            return new String(normalized.toCharArray(), 0, maxChars);
         }
         return normalized;
     }
@@ -432,7 +433,7 @@ public class DefaultTranslationService implements TranslationService {
         String t = translateEndpoint.trim();
         // replace trailing /translate with /detect
         if (t.endsWith("/translate")) {
-            return t.substring(0, t.length() - "/translate".length()) + "/detect";
+            return new String(t.toCharArray(), 0, t.length() - "/translate".length()) + "/detect";
         }
         // fallback append
         if (t.endsWith("/")) {

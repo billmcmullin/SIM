@@ -23,23 +23,22 @@ import jakarta.transaction.Transactional;
 @ApplicationScoped
 public class UserService {
 
-    private static final Logger log = Logger.getLogger(UserService.class.getName());
+    private static final Logger log = Logger.getLogger(UserService.class.getCanonicalName());
 
     @PersistenceContext(unitName = "ChatsPU-Local")
     EntityManager em;
 
     // Legacy test seam retained for generated tests that assign this field.
-    @Deprecated
     AppDataSourceHolder dsHolder;
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     /**
@@ -57,7 +56,7 @@ public class UserService {
     private EntityManager requireEntityManager() {
         if (em == null) {
             // Keep legacy test seam functional when CDI/JPA container is absent.
-            AppDataSourceHolder legacyHolder = dsHolder;
+            AppDataSourceHolder legacyHolder = legacyDsHolder();
             if (legacyHolder != null) {
                 EntityManagerFactory emf = legacyHolder.getEmf();
                 EntityManager legacyEntityManager = emf.createEntityManager();
@@ -68,6 +67,10 @@ public class UserService {
             throw new IllegalStateException("Container-managed EntityManager is not initialized in UserService");
         }
         return em;
+    }
+
+    private AppDataSourceHolder legacyDsHolder() {
+        return dsHolder;
     }
 
     /**
@@ -244,8 +247,8 @@ public class UserService {
                     + "COALESCE((SELECT MAX(id) FROM user_account), 1), "
                     + "true)"
             );
-            q.getResultStream().findFirst().orElse(null);
-            log.fine("syncUserAccountIdSequence: sequence synchronized");
+            Object sequenceResult = q.getResultStream().findFirst().orElse(null);
+            log.log(Level.FINE, "syncUserAccountIdSequence: sequence synchronized result={0}", sequenceResult);
         } catch (PersistenceException | IllegalArgumentException | IllegalStateException e) {
             // Keep this non-fatal for portability (H2/tests/non-Postgres)
             log.log(Level.FINE, "syncUserAccountIdSequence: skipped/failed (non-fatal): " + e.getMessage(), e);

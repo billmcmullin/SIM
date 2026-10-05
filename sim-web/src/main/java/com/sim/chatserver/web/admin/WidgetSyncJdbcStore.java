@@ -36,7 +36,7 @@ import jakarta.json.JsonObject;
 
 final class WidgetSyncJdbcStore {
 
-    private static final Logger log = Logger.getLogger(WidgetSyncJdbcStore.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetSyncJdbcStore.class.getCanonicalName());
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
     private final long defaultSummaryIntervalSeconds;
@@ -373,7 +373,7 @@ final class WidgetSyncJdbcStore {
 
         String idxName = (tableName + "_widget_chat_id_uidx");
         if (idxName.length() > 63) {
-            idxName = idxName.substring(0, 63);
+            idxName = safeSlice(idxName, 0, 63);
         }
         String quotedIdx = quoteIdentifier(idxName);
 
@@ -391,7 +391,7 @@ final class WidgetSyncJdbcStore {
 
         String createdAtIdxName = (tableName + "_created_at_idx");
         if (createdAtIdxName.length() > 63) {
-            createdAtIdxName = createdAtIdxName.substring(0, 63);
+            createdAtIdxName = safeSlice(createdAtIdxName, 0, 63);
         }
         String quotedCreatedAtIdx = quoteIdentifier(createdAtIdxName);
 
@@ -614,7 +614,7 @@ final class WidgetSyncJdbcStore {
             text = text.replace('\u0000', ' ');
         }
         if (maxLen > 0 && text.length() > maxLen) {
-            return text.substring(0, maxLen);
+            return safeSlice(text, 0, maxLen);
         }
         return text;
     }
@@ -673,7 +673,7 @@ final class WidgetSyncJdbcStore {
         }
         String sanitized = TextIoSanitizerUtil.stripControlCharacters(value);
         if (maxLen > 0 && sanitized.length() > maxLen) {
-            return sanitized.substring(0, maxLen);
+            return safeSlice(sanitized, 0, maxLen);
         }
         return sanitized;
     }
@@ -713,11 +713,25 @@ final class WidgetSyncJdbcStore {
 
 
     private String normalizeSummaryPrompt(String prompt) {
-        String normalized = prompt == null ? "" : prompt.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalized = prompt == null ? "" : prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
         if (maxSummaryPromptChars > 0 && normalized.length() > maxSummaryPromptChars) {
-            normalized = normalized.substring(0, maxSummaryPromptChars);
+            normalized = safeSlice(normalized, 0, maxSummaryPromptChars);
         }
         return normalized;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
     }
 
     static final class ChatUpsertRow {

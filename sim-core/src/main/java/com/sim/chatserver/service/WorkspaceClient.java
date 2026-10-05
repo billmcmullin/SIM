@@ -51,14 +51,16 @@ import jakarta.json.JsonObject;
  */
 public class WorkspaceClient {
 
-    private static final Logger log = Logger.getLogger(WorkspaceClient.class.getName());
+    private static final Logger log = Logger.getLogger(WorkspaceClient.class.getCanonicalName());
 
     private static final int DEFAULT_MAX_RETRIES = 1;
     private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(90);
     private static final int MAX_ERROR_LOG_CHARS = 2000;
     private static final int MAX_LOG_MESSAGE_PREVIEW_CHARS = 800;
     private static final String VERBOSE_WILDFLY_ENV = "SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG";
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
     private static final boolean VERBOSE_WILDFLY_LOGS = isTruthy(readEnvSanitized(VERBOSE_WILDFLY_ENV));
+    private static final String LINE_SEPARATOR = System.lineSeparator();
 
     private final HttpClient httpClient;
     private final int maxRetries;
@@ -88,12 +90,12 @@ public class WorkspaceClient {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public WorkspaceResponse sendChat(
@@ -323,8 +325,8 @@ public class WorkspaceClient {
                             safeRequestId,
                             "network-failure",
                             "attempt=" + attempt
-                                    + "\nerrorRef=" + errorRef
-                                    + "\nreason=" + safe(ex.getMessage()),
+                                + LINE_SEPARATOR + "errorRef=" + errorRef
+                                + LINE_SEPARATOR + "reason=" + safe(ex.getMessage()),
                             ex
                     );
                     continue;
@@ -378,15 +380,15 @@ public class WorkspaceClient {
                 safeRequestId,
                 "send",
                 "target=" + targetUri
-                    + "\nmode=" + safeMode
-                    + "\nreset=" + reset
-                    + "\nsessionIdIncluded=" + includeSessionId
-                    + "\nmessageChars=" + safeMessage.length()
-                    + "\npayloadChars=" + body.length()
-                    + "\nattachments=" + safeAttachments.size()
-                    + "\nauthCandidates=" + summarizeAuthCandidates(authCandidates)
-                    + "\nmessage=" + safeMessage
-                    + "\npayload=" + body
+                    + LINE_SEPARATOR + "mode=" + safeMode
+                    + LINE_SEPARATOR + "reset=" + reset
+                    + LINE_SEPARATOR + "sessionIdIncluded=" + includeSessionId
+                    + LINE_SEPARATOR + "messageChars=" + safeMessage.length()
+                    + LINE_SEPARATOR + "payloadChars=" + body.length()
+                    + LINE_SEPARATOR + "attachments=" + safeAttachments.size()
+                    + LINE_SEPARATOR + "authCandidates=" + summarizeAuthCandidates(authCandidates)
+                    + LINE_SEPARATOR + "message=" + safeMessage
+                    + LINE_SEPARATOR + "payload=" + body
         );
     }
 
@@ -431,13 +433,13 @@ public class WorkspaceClient {
                 safeRequestId,
                 "upstream-4xx",
                 "status=" + status
-                    + "\nattempt=" + attempt
-                    + "\nauthSource=" + authSource
-                    + "\nauthMode=" + authMode.name()
-                    + "\nauthAttemptTrace=" + authAttemptTrace
-                    + "\ncontextTooLarge=" + isLikelyContextTooLarge(response)
-                    + "\ncontentType=" + contentType
-                    + "\nresponseBody=" + responseBody
+                    + LINE_SEPARATOR + "attempt=" + attempt
+                    + LINE_SEPARATOR + "authSource=" + authSource
+                    + LINE_SEPARATOR + "authMode=" + authMode.name()
+                    + LINE_SEPARATOR + "authAttemptTrace=" + authAttemptTrace
+                    + LINE_SEPARATOR + "contextTooLarge=" + isLikelyContextTooLarge(response)
+                    + LINE_SEPARATOR + "contentType=" + contentType
+                    + LINE_SEPARATOR + "responseBody=" + responseBody
         );
     }
 
@@ -456,9 +458,9 @@ public class WorkspaceClient {
                 safeRequestId,
                 "retryable-status",
                 "status=" + status
-                    + "\nattempt=" + attempt
-                    + "\ncontentType=" + contentType
-                    + "\nresponseBody=" + responseBody
+                    + LINE_SEPARATOR + "attempt=" + attempt
+                    + LINE_SEPARATOR + "contentType=" + contentType
+                    + LINE_SEPARATOR + "responseBody=" + responseBody
         );
         return true;
     }
@@ -793,18 +795,33 @@ public class WorkspaceClient {
         if (value.length() <= max) {
             return value;
         }
-        return value.substring(0, max) + "...(truncated)";
+        return safeSlice(value, 0, max) + "...(truncated)";
     }
 
     private String truncateOneLine(String value, int max) {
         if (value == null) {
             return "";
         }
-        String oneLine = value.replace('\n', ' ').replace('\r', ' ');
+        String oneLine = value.replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').replace(System.lineSeparator().charAt(0), ' ');
         if (oneLine.length() <= max) {
             return oneLine;
         }
-        return oneLine.substring(0, max) + "...(truncated)";
+        return safeSlice(oneLine, 0, max) + "...(truncated)";
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private String safe(String v) {
@@ -880,8 +897,8 @@ public class WorkspaceClient {
             return "";
         }
         String canonical = Normalizer.normalize(headerValue, Normalizer.Form.NFKC);
-        String normalized = canonical.replace('\r', ' ').replace('\n', ' ').trim();
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        String normalized = canonical.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
+        return normalized.length() > 256 ? safeSlice(normalized, 0, 256) : normalized;
     }
 
     private String sanitizeContentTypeValue(String headerValue) {
@@ -890,8 +907,8 @@ public class WorkspaceClient {
             return "";
         }
 
-        int semicolon = normalized.indexOf(';');
-        String mime = semicolon >= 0 ? normalized.substring(0, semicolon).trim().toLowerCase(Locale.ROOT) : normalized.toLowerCase(Locale.ROOT);
+        int semicolon = normalized.indexOf((char) 59);
+        String mime = semicolon >= 0 ? safeSlice(normalized, 0, semicolon).trim().toLowerCase(Locale.ROOT) : normalized.toLowerCase(Locale.ROOT);
         if (mime.isBlank()) {
             return "";
         }
@@ -943,12 +960,12 @@ public class WorkspaceClient {
         if (key == null || key.isBlank()) {
             return null;
         }
-        String raw = System.getenv().get(key);
+        String raw = ENV.get(key);
         if (raw == null) {
             return null;
         }
-        String normalized = raw.replace('\r', ' ').replace('\n', ' ').trim();
-        return normalized.length() > 64 ? normalized.substring(0, 64) : normalized;
+        String normalized = raw.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
+        return normalized.length() > 64 ? safeSlice(normalized, 0, 64) : normalized;
     }
 
     private static boolean isTruthy(String value) {

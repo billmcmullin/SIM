@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  */
 public class ReviewOutputValidator {
 
-    private static final Logger LOGGER = Logger.getLogger(ReviewOutputValidator.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(ReviewOutputValidator.class.getCanonicalName());
 
     private static final int DEFAULT_MAX_TEXT_CHARS = 120_000;
 
@@ -78,11 +78,11 @@ public class ReviewOutputValidator {
     );
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     final ValidationResult validateMapOutput(String output) {
@@ -178,10 +178,14 @@ public class ReviewOutputValidator {
         }
 
         Set<String> missingSet = new LinkedHashSet<>(expected);
-        missingSet.removeAll(found);
+        for (String foundId : found) {
+            missingSet.remove(foundId);
+        }
 
         Set<String> unexpectedSet = new LinkedHashSet<>(found);
-        unexpectedSet.removeAll(expected);
+        for (String expectedId : expected) {
+            unexpectedSet.remove(expectedId);
+        }
 
         List<String> missing = new ArrayList<>(missingSet);
         List<String> unexpected = new ArrayList<>(unexpectedSet);
@@ -295,10 +299,14 @@ public class ReviewOutputValidator {
         List<String> found = normalizeIds(base.getFoundChatIds());
 
         Set<String> missingSet = new LinkedHashSet<>(expected);
-        missingSet.removeAll(found);
+        for (String foundId : found) {
+            missingSet.remove(foundId);
+        }
 
         Set<String> unexpectedSet = new LinkedHashSet<>(found);
-        unexpectedSet.removeAll(expected);
+        for (String expectedId : expected) {
+            unexpectedSet.remove(expectedId);
+        }
 
         List<String> missing = new ArrayList<>(missingSet);
         List<String> unexpected = new ArrayList<>(unexpectedSet);
@@ -347,7 +355,9 @@ public class ReviewOutputValidator {
         // In hierarchical mode, chat headings are optional and non-authoritative.
         if (!found.isEmpty()) {
             Set<String> unexpectedSet = new LinkedHashSet<>(found);
-            unexpectedSet.removeAll(expected);
+            for (String expectedId : expected) {
+                unexpectedSet.remove(expectedId);
+            }
             if (!unexpectedSet.isEmpty()) {
                 warnings.add("Final report contains chat headings not in expected set: " + new ArrayList<>(unexpectedSet));
             }

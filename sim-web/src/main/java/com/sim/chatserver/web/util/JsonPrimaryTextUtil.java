@@ -10,6 +10,8 @@ import jakarta.json.JsonObject;
 
 public final class JsonPrimaryTextUtil {
 
+    private static final String[] PRIMARY_TEXT_KEYS = new String[]{"textResponse", "response", "message", "answer", "output"};
+
     private JsonPrimaryTextUtil() {
     }
 
@@ -19,7 +21,7 @@ public final class JsonPrimaryTextUtil {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject object = reader.readObject();
-            for (String key : new String[]{"textResponse", "response", "message", "answer", "output"}) {
+            for (String key : PRIMARY_TEXT_KEYS) {
                 String value = object.getString(key, "");
                 if (!value.isBlank()) {
                     return value;

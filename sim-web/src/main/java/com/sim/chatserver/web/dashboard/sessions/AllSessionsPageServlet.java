@@ -24,7 +24,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "AllSessionsPageServlet", urlPatterns = {"/dashboard/sessions"})
 public class AllSessionsPageServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(AllSessionsPageServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AllSessionsPageServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/all_sessions.html";
 
     @Override
@@ -93,7 +93,7 @@ public class AllSessionsPageServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -133,8 +133,8 @@ public class AllSessionsPageServlet extends HttpServlet {
             switch (ch) {
                 case '\\' -> escaped.append("\\\\");
                 case '"' -> escaped.append("\\\"");
-                case '\r' -> escaped.append("\\r");
-                case '\n' -> escaped.append("\\n");
+                case com.sim.chatserver.util.LineSeparatorUtil.CARRIAGE_RETURN -> escaped.append("\\r");
+                case com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED -> escaped.append("\\n");
                 default -> escaped.append(ch);
             }
         }

@@ -20,7 +20,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardSessionSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/session-review"})
 public class DashboardSessionSelectionServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardSessionSelectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardSessionSelectionServlet.class.getCanonicalName());
     private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 

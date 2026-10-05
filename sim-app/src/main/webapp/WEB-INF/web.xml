@@ -78,6 +78,15 @@
     </servlet-mapping>
 
     <servlet>
+        <servlet-name>ForumDatabaseExplorerServlet</servlet-name>
+        <servlet-class>com.sim.chatserver.web.admin.ForumDatabaseExplorerServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>ForumDatabaseExplorerServlet</servlet-name>
+        <url-pattern>/admin/forum-db/explorer</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
         <servlet-name>WidgetAvailabilityServlet</servlet-name>
         <servlet-class>com.sim.chatserver.web.admin.WidgetAvailabilityServlet</servlet-class>
     </servlet>

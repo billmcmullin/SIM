@@ -30,7 +30,8 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "TestSalesforceConnectionServlet", urlPatterns = {"/admin/test-salesforce-connection"})
 public class TestSalesforceConnectionServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(TestSalesforceConnectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(TestSalesforceConnectionServlet.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -142,7 +143,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-request",
-                "method=GET\nurl=" + endpoint
+                "method=GET" + LS + "url=" + endpoint
             );
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -158,7 +159,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-response",
-                "status=" + response.statusCode() + "\nbody=" + truncate(response.body())
+                "status=" + response.statusCode() + LS + "body=" + truncate(response.body())
             );
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
@@ -180,7 +181,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-error",
-                "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
                 e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
@@ -192,7 +193,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                     "test-salesforce-connection-servlet",
                     requestId,
                     "http-error",
-                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
@@ -253,7 +254,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.length() > 512 ? value.substring(0, 512) + "..." : value;
+        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + "..." : value;
     }
 
     private String safe(String value) {

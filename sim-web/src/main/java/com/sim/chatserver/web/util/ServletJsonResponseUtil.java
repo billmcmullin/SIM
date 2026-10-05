@@ -17,7 +17,7 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public final class ServletJsonResponseUtil {
 
-    private static final Logger LOG = Logger.getLogger(ServletJsonResponseUtil.class.getName());
+    private static final Logger LOG = Logger.getLogger(ServletJsonResponseUtil.class.getCanonicalName());
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
     private ServletJsonResponseUtil() {

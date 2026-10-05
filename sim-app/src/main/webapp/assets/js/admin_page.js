@@ -101,28 +101,8 @@
             byTitle.set(entry.title, entry.section);
         });
 
-        const groupedSpecs = [
-            {
-                key: 'database-import-export',
-                label: 'Database',
-                titles: ['Database Data Export', 'Database Data Import']
-            },
-            {
-                key: 'server-workspace',
-                label: 'Server & Workspace',
-                titles: ['Server Configuration', 'Workspace Management']
-            },
-            {
-                key: 'widget-registry-explorer',
-                label: 'Widgets',
-                titles: ['Widget Registry', 'Widget Table Explorer']
-            },
-            {
-                key: 'create-user-term-definitions',
-                label: 'Users & Terms',
-                titles: ['Create User', 'Term Definitions']
-            }
-        ];
+        // Keep one top-menu button per admin section title.
+        const groupedSpecs = [];
 
         const groupedByTitle = new Map();
         groupedSpecs.forEach((spec) => {
@@ -298,6 +278,7 @@
         safeInit('Salesforce', () => window.AdminPage.Salesforce?.init(window.AdminPage.Config));
         safeInit('Aws', () => window.AdminPage.Aws?.init(window.AdminPage.Config));
         safeInit('DbImport', () => window.AdminPage.DbImport?.init({ contextPath }));
+        safeInit('ForumDbExplorer', () => window.AdminPage.ForumDbExplorer?.init({ contextPath }));
         safeInit('Email', () => window.AdminPage.Email?.init(contextPath));
 
         // Page actions

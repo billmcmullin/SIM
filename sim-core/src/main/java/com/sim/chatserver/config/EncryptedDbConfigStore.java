@@ -28,7 +28,7 @@ import jakarta.enterprise.inject.spi.CDI;
 
 public final class EncryptedDbConfigStore {
 
-    private static final Logger log = Logger.getLogger(EncryptedDbConfigStore.class.getName());
+    private static final Logger log = Logger.getLogger(EncryptedDbConfigStore.class.getCanonicalName());
 
     private static final String TABLE_NAME = "server_config";
     private static final String CREATE_TABLE_SQL
@@ -98,7 +98,7 @@ public final class EncryptedDbConfigStore {
         }
         configuredDataSource = resolvedDataSource;
         log.log(Level.INFO, "setAppDataSourceHolder called. dataSource={0}",
-            resolvedDataSource == null ? "null" : resolvedDataSource.getClass().getName());
+            resolvedDataSource == null ? "null" : resolvedDataSource.getClass().getCanonicalName());
     }
 
     public static void ensureTable() throws SQLException {
@@ -355,7 +355,7 @@ public final class EncryptedDbConfigStore {
 
             String ivB64 = Base64.getEncoder().encodeToString(iv);
             String encB64 = Base64.getEncoder().encodeToString(encrypted);
-            return ENC_PREFIX + ivB64 + ':' + encB64;
+            return ENC_PREFIX + ivB64 + (char) 58 + encB64;
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "encryptIfPresent: encryption key resolution failed", e);
             throw new SQLException("Unable to encrypt configuration value", e);
@@ -375,7 +375,7 @@ public final class EncryptedDbConfigStore {
 
         try {
             String payload = storedValue.substring(ENC_PREFIX.length());
-            String[] parts = payload.split(":", 2);
+            String[] parts = payload.split(String.valueOf((char) 58), 2);
             if (parts.length != 2) {
                 throw new SQLException("Invalid encrypted configuration format");
             }

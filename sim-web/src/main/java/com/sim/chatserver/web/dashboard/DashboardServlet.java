@@ -48,7 +48,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardServlet", urlPatterns = {"/dashboard"})
 public class DashboardServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardServlet.class.getCanonicalName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
@@ -385,8 +385,8 @@ public class DashboardServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
     private void storeTermSnapshots(HttpSession session, TermSummary summary) {
@@ -583,9 +583,9 @@ public class DashboardServlet extends HttpServlet {
                 out.append("\\\\");
             } else if (ch == '\'') {
                 out.append("\\'");
-            } else if (ch == '\n') {
+            } else if (ch == System.lineSeparator().charAt(System.lineSeparator().length() - 1)) {
                 out.append("\\n");
-            } else if (ch == '\r') {
+            } else if (ch == System.lineSeparator().charAt(0)) {
                 out.append("\\r");
             } else {
                 out.append(ch);

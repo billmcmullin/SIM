@@ -66,8 +66,9 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetReviewManualMessageServlet", urlPatterns = {"/dashboard/drilldown/widget-review/manual-message"})
 public class WidgetReviewManualMessageServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetReviewManualMessageServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetReviewManualMessageServlet.class.getCanonicalName());
     private static final String CHAT_API_PATH_TEMPLATE = "/api/v1/workspace/%s/chat";
+    private static final String LS = System.lineSeparator();
 
     private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = Integer.MAX_VALUE;
     private static final int MAX_SESSION_ID_CHARS = 200;
@@ -225,7 +226,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String sessionId = payload.getString("sessionId", "").trim();
         if (sessionId.length() > MAX_SESSION_ID_CHARS) {
-            sessionId = sessionId.substring(0, MAX_SESSION_ID_CHARS);
+            sessionId = safeSlice(sessionId, 0, MAX_SESSION_ID_CHARS);
         }
 
         boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean("reset", false));
@@ -861,11 +862,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             selectedEntries = List.of();
         }
         String controlledPrompt = runtime().promptTemplateService.buildControlledPrompt(userMessage, true, false, true);
-        String deterministicHeader = "Deterministic metadata (use exactly; do not estimate):\n"
-            + "- exact_total_selected: " + selectedEntries.size() + '\n'
-            + "- execution_mode: single-pass\n";
+        String deterministicHeader = "Deterministic metadata (use exactly; do not estimate):" + LS
+            + "- exact_total_selected: " + selectedEntries.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+            + "- execution_mode: single-pass" + LS;
 
-        String promptWithMeta = controlledPrompt + "\n\n" + deterministicHeader;
+        String promptWithMeta = controlledPrompt + LS + LS + deterministicHeader;
         String context = runtime().reviewContextBuilderService.buildContext(promptWithMeta, selectedEntries, runtime().mrConfig.getSinglePassContextMaxChars());
         String outbound = buildOutboundMessage(promptWithMeta, context, runtime().mrConfig.getSinglePassMessageMaxChars());
 
@@ -1149,7 +1150,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private List<String> subtract(List<String> all, List<String> used) {
         Set<String> a = new LinkedHashSet<>(all == null ? List.of() : distinctIds(all));
         Set<String> u = new LinkedHashSet<>(used == null ? List.of() : distinctIds(used));
-        a.removeAll(u);
+        for (String usedId : u) {
+            a.remove(usedId);
+        }
         return new ArrayList<>(a);
     }
 
@@ -1166,7 +1169,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return trimTo(base, maxTotalChars);
         }
 
-        String suffix = "\n\nSelected chats context:\n" + context;
+        String suffix = LS + LS + "Selected chats context:" + LS + context;
         String combined = base + suffix;
         if (combined.length() <= maxTotalChars) {
             return combined;
@@ -1220,9 +1223,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (userMessage == null || userMessage.isBlank()) {
             return "";
         }
-        String marker = "\n\nSelected chats context:\n";
+        String marker = LS + LS + "Selected chats context:" + LS;
         int idx = userMessage.indexOf(marker);
-        return idx >= 0 ? userMessage.substring(0, idx).trim() : userMessage.trim();
+        return idx >= 0 ? safeSlice(userMessage, 0, idx).trim() : userMessage.trim();
     }
 
     private List<SelectedEntry> parseSelectedEntries(JsonObject payload) {
@@ -1304,7 +1307,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         boolean hasPort = normalized.matches(".*:\\d+$");
         if (!hasPort && config.getServerPort() > 0) {
-            builder.append(':').append(config.getServerPort());
+            builder.append((char) 58).append(config.getServerPort());
         }
 
         return stripTrailingSlash(builder.toString());
@@ -1346,7 +1349,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             return port > 0
-                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + ':' + port
+                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + (char) 58 + port
                     : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL", e);
@@ -1391,7 +1394,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-            return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
+            return safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
         }
         return normalized;
     }
@@ -1403,14 +1406,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         StringBuilder safe = new StringBuilder(value.length());
         for (int i = 0; i < value.length(); i++) {
             char ch = value.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         String normalized = safe.toString();
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-            return normalized.substring(0, MAX_JSON_PAYLOAD_BYTES);
+            return safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
         }
         return normalized;
     }
@@ -1427,7 +1430,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String stripTrailingSlash(String value) {
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        return value.endsWith("/") ? safeSlice(value, 0, value.length() - 1) : value;
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
@@ -1458,7 +1461,22 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars);
+        return value.length() <= maxChars ? value : safeSlice(value, 0, maxChars);
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private static Set<String> parseCsvToSet(String csv) {

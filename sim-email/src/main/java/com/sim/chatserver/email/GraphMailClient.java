@@ -31,19 +31,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class GraphMailClient {
 
-    private static final Logger LOG = Logger.getLogger(GraphMailClient.class.getName());
+    private static final Logger LOG = Logger.getLogger(GraphMailClient.class.getCanonicalName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Object DIAG_LOCK = new Object();
+    private static final String LS = System.lineSeparator();
 
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String DEFAULT_DIR_NAME = "sim-diagnostics";
     private static final String PROP_ENABLED = "sim.server.diagnostic.log.enabled";
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static volatile boolean warnedDiagFailure;
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     final void sendMail(String accessToken, GraphEmailConfig config, EmailMessage message, MarkdownRenderer markdownRenderer) {
@@ -83,11 +85,11 @@ public class GraphMailClient {
             payload.put("saveToSentItems", Boolean.TRUE);
 
                     writeDiagnostics("graph-mail-client", requestId, "send-request",
-                        "method=POST\nurl=" + endpoint
-                            + "\ntoCount=" + size(message.to())
-                            + "\nccCount=" + size(message.cc())
-                            + "\nbccCount=" + size(message.bcc())
-                            + "\nsubject=" + nvl(message.subject()), null);
+                        "method=POST" + LS + "url=" + endpoint
+                            + LS + "toCount=" + size(message.to())
+                            + LS + "ccCount=" + size(message.cc())
+                            + LS + "bccCount=" + size(message.bcc())
+                            + LS + "subject=" + nvl(message.subject()), null);
 
             byte[] json = MAPPER.writeValueAsBytes(payload);
             try (OutputStream os = conn.getOutputStream()) {
@@ -100,7 +102,7 @@ public class GraphMailClient {
                     : new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
 
                     writeDiagnostics("graph-mail-client", requestId, "send-response",
-                        "status=" + status + "\nerrorBody=" + truncate(err), null);
+                        "status=" + status + LS + "errorBody=" + truncate(err), null);
 
             // Graph sendMail commonly returns 202 Accepted
             if (status != 202 && (status < 200 || status >= 300)) {
@@ -167,7 +169,7 @@ public class GraphMailClient {
         if (body == null) {
             return "";
         }
-        return body.length() > 512 ? body.substring(0, 512) + "..." : body;
+        return body.length() > 512 ? safeSlice(body, 0, 512) + "..." : body;
     }
 
     private String safe(String value) {
@@ -239,7 +241,7 @@ public class GraphMailClient {
     }
 
     private boolean diagnosticsEnabled() {
-        String enabledRaw = trimToNull(System.getenv(ENV_ENABLED));
+        String enabledRaw = trimToNull(ENV.get(ENV_ENABLED));
         return isTruthy(enabledRaw);
     }
 
@@ -260,7 +262,7 @@ public class GraphMailClient {
         if (value == null) {
             return fallback;
         }
-        String cleaned = value.replace('\r', ' ').replace('\n', ' ').trim();
+        String cleaned = value.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 
@@ -277,6 +279,20 @@ public class GraphMailClient {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
     }
 
 }

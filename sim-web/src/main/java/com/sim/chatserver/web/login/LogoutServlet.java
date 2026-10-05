@@ -13,7 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebServlet(name = "LogoutServlet", urlPatterns = {"/logout"})
 public class LogoutServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(LogoutServlet.class.getName());
+    private static final Logger log = Logger.getLogger(LogoutServlet.class.getCanonicalName());
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {

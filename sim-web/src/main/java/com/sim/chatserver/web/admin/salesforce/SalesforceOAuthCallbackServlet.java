@@ -44,7 +44,8 @@ import jakarta.servlet.http.HttpSession;
 //@WebServlet(name = "SalesforceOAuthCallbackServlet", urlPatterns = {"/admin/salesforce/oauth/callback"})
 public class SalesforceOAuthCallbackServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
-    private static final Logger log = Logger.getLogger(SalesforceOAuthCallbackServlet.class.getName());
+    private static final Logger log = Logger.getLogger(SalesforceOAuthCallbackServlet.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
 
     private static final String SESSION_USER = "user";
     private static final String SESSION_ROLE = "role";
@@ -135,7 +136,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 "salesforce-oauth-callback",
                 requestId,
                 "token-request",
-                "method=POST\nurl=" + tokenUrl
+                "method=POST" + LS + "url=" + tokenUrl
             );
 
             HttpResponse<String> tokenRes = HTTP_CLIENT.send(tokenReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -146,7 +147,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 "salesforce-oauth-callback",
                 requestId,
                 "token-response",
-                "status=" + statusCode + "\nbody=" + redactOauthPayload(body)
+                "status=" + statusCode + LS + "body=" + redactOauthPayload(body)
             );
 
             if (statusCode < 200 || statusCode >= 300) {
@@ -179,7 +180,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                     "salesforce-oauth-callback",
                     requestId,
                     "token-error",
-                    "url=" + tokenUrl + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + tokenUrl + LS + "message=" + safe(e.getMessage()),
                     e
             );
             redirectWithMessage(resp, req, false, "Salesforce OAuth connection failed.");
@@ -189,7 +190,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                     "salesforce-oauth-callback",
                     requestId,
                     "token-error",
-                    "url=" + tokenUrl + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + tokenUrl + LS + "message=" + safe(e.getMessage()),
                     e
             );
             redirectWithMessage(resp, req, false, "Salesforce OAuth callback failed.");
@@ -326,7 +327,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
 
         if (!isBlank(hostHeader)) {
             String h = hostHeader.trim();
-            int idx = h.lastIndexOf(':');
+            int idx = h.lastIndexOf((char) 58);
             if (idx > 0 && idx < h.length() - 1 && h.indexOf(']') < 0) {
                 host = sanitizeHost(h.substring(0, idx));
                 port = parsePort(h.substring(idx + 1));
@@ -359,7 +360,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         StringBuilder sb = new StringBuilder();
         sb.append(scheme).append("://").append(host);
         if (port > 0 && !defaultPort) {
-            sb.append(':').append(port);
+            sb.append((char) 58).append(port);
         }
         sb.append(safeContextPath(req.getServletContext().getContextPath())).append("/admin/salesforce/oauth/callback");
         return sb.toString();
@@ -387,8 +388,8 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (token == null || token.isBlank()) {
             return null;
         }
-        String normalized = token.replace("\r", "").replace("\n", "").trim();
-        return normalized.length() > 256 ? normalized.substring(0, 256) : normalized;
+        String normalized = token.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
+        return normalized.length() > 256 ? new String(normalized.toCharArray(), 0, 256) : normalized;
     }
 
     private String normalizeBaseUrl(String url) {
@@ -443,7 +444,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!SAFE_CONTEXT_PATH.matcher(trimmed).matches() || trimmed.contains("://") || trimmed.contains("\r") || trimmed.contains("\n")) {
+        if (!SAFE_CONTEXT_PATH.matcher(trimmed).matches() || trimmed.contains("://") || trimmed.contains(System.lineSeparator()) || trimmed.contains(System.lineSeparator())) {
             return "";
         }
         return trimmed;
@@ -457,7 +458,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         String text = payload == null ? "" : payload;
         text = text.replaceAll("\"access_token\"\\s*:\\s*\"[^\"]*\"", "\"access_token\":\"[REDACTED]\"");
         text = text.replaceAll("\"refresh_token\"\\s*:\\s*\"[^\"]*\"", "\"refresh_token\":\"[REDACTED]\"");
-        return text.length() > 1024 ? text.substring(0, 1024) + "..." : text;
+        return text.length() > 1024 ? new String(text.toCharArray(), 0, 1024) + "..." : text;
     }
 
     private String trimToNull(String v) {
@@ -483,7 +484,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.replace("\r", " ").replace("\n", " ");
+        return s.replace(System.lineSeparator(), " ").replace(System.lineSeparator(), " ");
     }
 
     private boolean isBlank(String s) {

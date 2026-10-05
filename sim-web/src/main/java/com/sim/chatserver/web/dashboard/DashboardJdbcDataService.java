@@ -47,7 +47,7 @@ import jakarta.json.JsonArrayBuilder;
 
 final class DashboardJdbcDataService {
 
-    private static final Logger log = Logger.getLogger(DashboardJdbcDataService.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardJdbcDataService.class.getCanonicalName());
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

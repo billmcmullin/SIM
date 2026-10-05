@@ -24,15 +24,18 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardDailySummaryServlet", urlPatterns = {"/dashboard/daily-summary.json"})
 public class DashboardDailySummaryServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getCanonicalName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryStore.class.getName();
+    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryStore.class.getCanonicalName();
 
     @Override
     public void init() throws ServletException {
         super.init();
         try {
-            ensureSummaryStoreInitialized();
+            DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
+            if (initializedStore == null) {
+                throw new IllegalStateException("Summary store is unavailable");
+            }
         } catch (IllegalStateException e) {
             throw new ServletException("Failed to initialize daily summary store", e);
         }

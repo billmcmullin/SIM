@@ -29,7 +29,7 @@ import jakarta.json.JsonObject;
  * payload.
  */
 public class DashboardDailySummaryStore {
-    private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getCanonicalName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String PG_UNIQUE_VIOLATION = "23505";
     private static final LocalDate MIN_ALLOWED_DAY = LocalDate.of(1970, 1, 1);
@@ -60,12 +60,12 @@ public class DashboardDailySummaryStore {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public DashboardDailySummaryStore(DataSource dataSource) {
@@ -539,7 +539,7 @@ public class DashboardDailySummaryStore {
         }
         String normalized = validateCanonicalizedDbText(value, maxLen > 0 ? maxLen : 0);
         if (maxLen > 0 && normalized.length() > maxLen) {
-            return normalized.substring(0, maxLen);
+            return new String(normalized.toCharArray(), 0, maxLen);
         }
         return normalized;
     }
@@ -606,7 +606,7 @@ public class DashboardDailySummaryStore {
 
         String dateText = text.trim();
         if (dateText.length() > 10) {
-            dateText = dateText.substring(0, 10);
+            dateText = new String(dateText.toCharArray(), 0, 10);
         }
 
         try {
@@ -644,7 +644,7 @@ public class DashboardDailySummaryStore {
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char ch = normalized.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);

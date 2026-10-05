@@ -2,7 +2,6 @@
 package com.sim.chatserver.service;
 
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * Builds safe, consistent prompt templates for workspace analysis.
@@ -14,17 +13,16 @@ import java.util.regex.Pattern;
  */
 public class PromptTemplateService {
 
-    private static final Pattern CONTROL_CHARS
-            = Pattern.compile("[\\p{Cntrl}&&[^\r\n\t]]");
+    private static final String LS = System.lineSeparator();
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     final String addReportRubricIfMissing(String message) {
@@ -37,7 +35,7 @@ public class PromptTemplateService {
             return m;
         }
 
-        return baseRubric() + "\n\nUser request:\n" + m;
+        return baseRubric() + LS + LS + "User request:" + LS + m;
     }
 
     final String withPromptInjectionGuardrails(String message) {
@@ -47,7 +45,7 @@ public class PromptTemplateService {
         if (m.isBlank()) {
             return guardrails;
         }
-        return guardrails + "\n\nTask:\n" + m;
+        return guardrails + LS + LS + "Task:" + LS + m;
     }
 
     final String buildControlledPrompt(String userMessage, boolean enforceRubric) {
@@ -78,19 +76,19 @@ public class PromptTemplateService {
         }
 
         String rubric = compactRubric ? compactRubric() : baseRubric();
-        return rubric + "\n\nUser request:\n" + m;
+        return rubric + LS + LS + "User request:" + LS + m;
     }
 
     private String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
         String m = safe(message);
         String guardrails = enforceMarkdownOnly
                 ? defaultGuardrails()
-                : defaultGuardrails().replace("- Output in Markdown only using the requested section headings.\n", "");
+            : defaultGuardrails().replace("- Output in Markdown only using the requested section headings." + LS, "");
 
         if (m.isBlank()) {
             return guardrails.trim();
         }
-        return guardrails + "\n\nTask:\n" + m;
+        return guardrails + LS + LS + "Task:" + LS + m;
     }
 
     private boolean looksStructuredAlready(String message) {
@@ -250,6 +248,14 @@ public class PromptTemplateService {
             return "";
         }
         String trimmed = value.trim();
-        return CONTROL_CHARS.matcher(trimmed).replaceAll("");
+        StringBuilder cleaned = new StringBuilder(trimmed.length());
+        for (int i = 0; i < trimmed.length(); i++) {
+            char ch = trimmed.charAt(i);
+            if (Character.isISOControl(ch) && ch != 0x09 && ch != 0x0A && ch != 0x0D) {
+                continue;
+            }
+            cleaned.append(ch);
+        }
+        return cleaned.toString();
     }
 }

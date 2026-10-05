@@ -26,7 +26,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "ProfileServlet", urlPatterns = {"/profile"})
 public class ProfileServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(ProfileServlet.class.getName());
+    private static final Logger log = Logger.getLogger(ProfileServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
     private static final String LOGIN_PATH = "/login";
 
@@ -134,7 +134,7 @@ public class ProfileServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }

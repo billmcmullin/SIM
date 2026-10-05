@@ -30,7 +30,7 @@ import com.sim.chatserver.web.dashboard.DashboardMetricsService.DashboardProgres
  */
 final class DashboardCacheRegistry {
 
-    private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getCanonicalName());
     private static final AtomicInteger REFRESH_THREAD_INDEX = new AtomicInteger(1);
     private static final ExecutorService CACHE_REFRESH_EXECUTOR = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "dashboard-cache-refresh-" + REFRESH_THREAD_INDEX.getAndIncrement());
@@ -40,12 +40,12 @@ final class DashboardCacheRegistry {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     // TTLs (shorter for day-sensitive metrics)

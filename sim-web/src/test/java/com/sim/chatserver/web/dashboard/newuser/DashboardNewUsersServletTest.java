@@ -116,7 +116,7 @@ class DashboardNewUsersServletTest {
         DashboardNewUsersServlet servlet = new DashboardNewUsersServlet();
 
         assertEquals("&lt;a&gt;&amp;&#39;&quot;", invoke(servlet, "escapeHtml", new Class<?>[]{String.class}, "<a>&'\""));
-        assertEquals("a\\\\b\\'c\\n", invoke(servlet, "escapeForJs", new Class<?>[]{String.class}, "a\\b'c\n"));
+        assertEquals("a\\\\b\\'c\\n", invoke(servlet, "escapeForJs", new Class<?>[]{String.class}, "a\\b'c" + System.lineSeparator()));
         assertEquals("", invoke(servlet, "safe", new Class<?>[]{String.class}, new Object[]{null}));
         assertEquals("x", invoke(servlet, "safe", new Class<?>[]{String.class}, "x"));
         assertEquals("/dashboard/new-users", invoke(servlet, "normalizeServletPath", new Class<?>[]{String.class}, "/unknown"));

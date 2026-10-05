@@ -20,7 +20,7 @@ import jakarta.json.JsonObjectBuilder;
  */
 public final class SelectedEntry {
 
-    private static final Logger LOGGER = Logger.getLogger(SelectedEntry.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(SelectedEntry.class.getCanonicalName());
 
     private final String chatId;
     private final String prompt;

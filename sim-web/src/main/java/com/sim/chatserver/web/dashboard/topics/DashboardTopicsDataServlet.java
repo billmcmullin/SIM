@@ -35,7 +35,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsDataServlet", urlPatterns = {"/dashboard/topics/data"})
 public class DashboardTopicsDataServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getCanonicalName());
     private static final String OTHER_LABEL = "Other Parasoft Match";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DashboardTopicsDataQueryService QUERY_SERVICE = new DashboardTopicsDataQueryService(log);

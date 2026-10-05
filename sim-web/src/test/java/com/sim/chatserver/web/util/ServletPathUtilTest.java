@@ -11,7 +11,7 @@ class ServletPathUtilTest {
         assertEquals("", ServletPathUtil.safeContextPathStrict(null));
         assertEquals("", ServletPathUtil.safeContextPathStrict("app"));
         assertEquals("", ServletPathUtil.safeContextPathStrict("http://example"));
-        assertEquals("", ServletPathUtil.safeContextPathStrict("/bad\npath"));
+        assertEquals("", ServletPathUtil.safeContextPathStrict("/bad" + System.lineSeparator() + "path"));
         assertEquals("/chat-server", ServletPathUtil.safeContextPathStrict(" /chat-server "));
     }
 
@@ -26,7 +26,7 @@ class ServletPathUtilTest {
     @Test
     void safeContextPathEnsureLeadingSlash_normalizesInput() {
         assertEquals("", ServletPathUtil.safeContextPathEnsureLeadingSlash(null));
-        assertEquals("", ServletPathUtil.safeContextPathEnsureLeadingSlash("   \n\r   "));
+        assertEquals("", ServletPathUtil.safeContextPathEnsureLeadingSlash("   " + System.lineSeparator() + "   "));
         assertEquals("/ctx", ServletPathUtil.safeContextPathEnsureLeadingSlash("ctx"));
         assertEquals("/ctx", ServletPathUtil.safeContextPathEnsureLeadingSlash("/ctx"));
     }

@@ -15,7 +15,6 @@ import java.sql.SQLException;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -23,7 +22,7 @@ import com.sim.chatserver.model.CustomerIdentity;
 import com.sim.chatserver.model.CustomerIdentitySessionLink;
 import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
-import com.sim.chatserver.service.CustomerIdentityService;
+import com.sim.chatserver.model.CustomerIdentityStore;
 
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -126,13 +125,10 @@ public class CustomerProfileServletTest {
             null
         );
 
-        try (MockedConstruction<CustomerIdentityService> identityServices = Mockito.mockConstruction(
-                CustomerIdentityService.class,
-                (mockService, ignored) -> {
-                    when(mockService.resolveOrCreateBySessionId("sid-123")).thenReturn(identity);
-                    when(mockService.listLinkedSessions(7L)).thenReturn(List.of(link));
-                });
+        try (MockedStatic<CustomerIdentityStore> identityStore = Mockito.mockStatic(CustomerIdentityStore.class);
                 MockedStatic<CustomerProfileStore> profileStore = Mockito.mockStatic(CustomerProfileStore.class)) {
+            identityStore.when(() -> CustomerIdentityStore.findBySessionId("sid-123")).thenReturn(identity);
+            identityStore.when(() -> CustomerIdentityStore.listSessionLinks(7L)).thenReturn(List.of(link));
             profileStore.when(() -> CustomerProfileStore.loadBySessionId("sid-123")).thenReturn(profile);
 
             servlet.doGet(req, resp);
@@ -161,10 +157,9 @@ public class CustomerProfileServletTest {
         when(req.getParameterValues("friendlyName")).thenReturn(null);
         when(resp.isCommitted()).thenReturn(false);
 
-        try (MockedConstruction<CustomerIdentityService> identityServices = Mockito.mockConstruction(
-                CustomerIdentityService.class,
-                (mockService, ignored) -> when(mockService.resolveOrCreateBySessionId("sid-123"))
-                        .thenThrow(new SQLException("db down")))) {
+        try (MockedStatic<CustomerIdentityStore> identityStore = Mockito.mockStatic(CustomerIdentityStore.class)) {
+            identityStore.when(() -> CustomerIdentityStore.findBySessionId("sid-123"))
+                .thenThrow(new SQLException("db down"));
             servlet.doGet(req, resp);
         }
 

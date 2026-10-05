@@ -4,7 +4,7 @@ import java.util.logging.Logger;
 
 public final class EmailConfigResolver {
 
-    private static final Logger log = Logger.getLogger(EmailConfigResolver.class.getName());
+    private static final Logger log = Logger.getLogger(EmailConfigResolver.class.getCanonicalName());
 
     private final DbEmailConfigProvider dbProvider;
     private final DbGraphEmailConfigProvider graphDbProvider; // optional, can be null

@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 @WebServlet(name = "AdminEmailServlet", urlPatterns = {"/admin/email/send"})
 public class AdminEmailServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(AdminEmailServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminEmailServlet.class.getCanonicalName());
 
     // Simple email format check (good enough for admin validation)
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");

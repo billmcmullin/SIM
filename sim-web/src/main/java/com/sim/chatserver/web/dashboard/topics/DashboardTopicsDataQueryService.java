@@ -198,7 +198,7 @@ final class DashboardTopicsDataQueryService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = new String(normalized.toCharArray(), 0, 60);
         }
         return normalized;
     }

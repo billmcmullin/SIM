@@ -19,7 +19,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsServlet", urlPatterns = {"/dashboard/topics"})
 public class DashboardTopicsServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardTopicsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTopicsServlet.class.getCanonicalName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_topics.html";
 

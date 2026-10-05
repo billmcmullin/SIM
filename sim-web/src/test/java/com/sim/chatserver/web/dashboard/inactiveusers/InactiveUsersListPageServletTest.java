@@ -82,7 +82,7 @@ class InactiveUsersListPageServletTest {
         String escaped = (String) invoke(servlet, "escapeHtml", new Class<?>[]{String.class}, "<x>&'\"");
         assertEquals("&lt;x&gt;&amp;&#39;&quot;", escaped);
 
-        String js = (String) invoke(servlet, "escapeForJs", new Class<?>[]{String.class}, "a\\b'c\n");
+        String js = (String) invoke(servlet, "escapeForJs", new Class<?>[]{String.class}, "a\\b'c" + System.lineSeparator());
         assertEquals("a\\\\b\\'c\\n", js);
 
         assertEquals("", invoke(servlet, "formatTimestamp", new Class<?>[]{Timestamp.class}, new Object[]{null}));
@@ -99,11 +99,11 @@ class InactiveUsersListPageServletTest {
         assertEquals("", invoke(servlet, "safeSessionUser", new Class<?>[]{HttpSession.class}, nonStringUser));
 
         HttpSession textUser = mock(HttpSession.class);
-        when(textUser.getAttribute("user")).thenReturn(" user\r\nname ");
+        when(textUser.getAttribute("user")).thenReturn(" user" + System.lineSeparator() + "name ");
         assertEquals("username", invoke(servlet, "safeSessionUser", new Class<?>[]{HttpSession.class}, textUser));
 
         assertEquals(null, invoke(servlet, "sanitizeTemplate", new Class<?>[]{String.class}, new Object[]{null}));
-        assertEquals("ab", invoke(servlet, "sanitizeTemplate", new Class<?>[]{String.class}, "a\u0000b\r"));
+        assertEquals("ab", invoke(servlet, "sanitizeTemplate", new Class<?>[]{String.class}, "a\u0000b" + System.lineSeparator()));
 
         ServletContext context = mock(ServletContext.class);
         when(context.getResourceAsStream("/missing")).thenReturn(null);

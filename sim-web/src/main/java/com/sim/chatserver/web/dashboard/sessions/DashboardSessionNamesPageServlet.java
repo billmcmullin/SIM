@@ -23,7 +23,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardSessionNamesPageServlet", urlPatterns = {"/dashboard/session-names"})
 public class DashboardSessionNamesPageServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(DashboardSessionNamesPageServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardSessionNamesPageServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/session-names.html";
 
     @Override
@@ -88,7 +88,7 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }

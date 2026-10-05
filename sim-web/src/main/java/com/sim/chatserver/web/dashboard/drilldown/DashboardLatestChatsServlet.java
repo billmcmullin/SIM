@@ -21,7 +21,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardLatestChatsServlet", urlPatterns = {"/dashboard/latest-chats"})
 public class DashboardLatestChatsServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardLatestChatsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardLatestChatsServlet.class.getCanonicalName());
     private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 

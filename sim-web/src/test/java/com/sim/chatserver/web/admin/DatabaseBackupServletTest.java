@@ -374,7 +374,7 @@ public class DatabaseBackupServletTest
     
             assertNull(invoke(service, "sanitizeCellText", new Class[]{String.class}, (Object) null));
             assertEquals("a b", invoke(service, "sanitizeCellText", new Class[]{String.class}, "a\u0000b"));
-            assertEquals("hello", invoke(service, "sanitizeCellText", new Class[]{String.class}, "hello\r"));
+            assertEquals("hello", invoke(service, "sanitizeCellText", new Class[]{String.class}, "hello" + System.lineSeparator()));
     
             byte[] shortBytes = new byte[]{1, 2, 3};
             assertArrayEquals(shortBytes, (byte[]) invoke(service, "sanitizeBinary", new Class[]{byte[].class}, (Object) shortBytes));

@@ -64,7 +64,8 @@ import jakarta.servlet.http.Part;
 
 final class DatabaseImportService {
 
-    private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_:-]{1,80}$");
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,253}$");
@@ -282,7 +283,7 @@ final class DatabaseImportService {
                 "database-import-servlet",
                 requestId,
                 "post-import-sync-request",
-                "method=POST\nurl=" + endpointUri
+                "method=POST" + LS + "url=" + endpointUri
             );
 
             HttpRequest httpReq = HttpRequest.newBuilder(endpointUri)
@@ -299,7 +300,7 @@ final class DatabaseImportService {
                 "database-import-servlet",
                 requestId,
                 "post-import-sync-response",
-                "status=" + code + "\nbody=" + truncate(response.body())
+                "status=" + code + LS + "body=" + truncate(response.body())
             );
 
             if (!ok) {
@@ -316,7 +317,7 @@ final class DatabaseImportService {
                     "database-import-servlet",
                     requestId,
                     "post-import-sync-error",
-                    "url=" + endpointUri + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + endpointUri + LS + "message=" + safe(e.getMessage()),
                     e
             );
             return new PostImportSyncResult(true, false, 0, "Widget sync trigger failed.");
@@ -327,7 +328,7 @@ final class DatabaseImportService {
                     "database-import-servlet",
                     requestId,
                     "post-import-sync-error",
-                    "url=" + endpointUri + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + endpointUri + LS + "message=" + safe(e.getMessage()),
                     e
             );
             return new PostImportSyncResult(true, false, 0, "Widget sync trigger interrupted.");
@@ -357,7 +358,7 @@ final class DatabaseImportService {
         if (s == null) {
             return "";
         }
-        return s.length() > 512 ? s.substring(0, 512) + "..." : s;
+        return s.length() > 512 ? safeSlice(s, 0, 512) + "..." : s;
     }
 
     private Map<String, CsvTableData> readZipTables(InputStream input) {
@@ -370,7 +371,7 @@ final class DatabaseImportService {
                     continue;
                 }
 
-                String table = name.substring("tables/".length(), name.length() - 4);
+                String table = safeSlice(name, "tables/".length(), name.length() - 4);
 
                 byte[] csvBytes = zis.readAllBytes();
                 CsvTableData data = readCsv(new ByteArrayInputStream(csvBytes));
@@ -387,7 +388,7 @@ final class DatabaseImportService {
                 .setHeader()
                 .setSkipHeaderRecord(true)
                 .setQuote('"')
-                .build();
+            .get();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
             CSVParser parser = parseCsvSafe(format, br)) {
@@ -766,7 +767,7 @@ final class DatabaseImportService {
 
         if (v.length() >= 10) {
             try {
-                return LocalDate.parse(v.substring(0, 10));
+                return LocalDate.parse(safeSlice(v, 0, 10));
             } catch (DateTimeParseException | IllegalArgumentException ignore) {
             }
         }
@@ -875,7 +876,7 @@ final class DatabaseImportService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = safeSlice(normalized, 0, 60);
         }
         return normalized;
     }
@@ -980,7 +981,7 @@ final class DatabaseImportService {
         if (trimmed.isEmpty()) {
             return "";
         }
-        return trimmed.length() > 128 ? trimmed.substring(0, 128) : trimmed;
+        return trimmed.length() > 128 ? safeSlice(trimmed, 0, 128) : trimmed;
     }
 
     private static String readEnv(String name) {
@@ -991,9 +992,9 @@ final class DatabaseImportService {
         if (value == null || value.isBlank()) {
             return "";
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim();
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
         normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC);
-        String bounded = normalized.length() > 512 ? normalized.substring(0, 512) : normalized;
+        String bounded = normalized.length() > 512 ? safeSlice(normalized, 0, 512) : normalized;
         return sanitizeSyncUrlValue(bounded);
     }
 
@@ -1013,8 +1014,8 @@ final class DatabaseImportService {
             return "";
         }
         return value.replace("\u0000", "")
-                .replace("\r", "")
-                .replace("\n", "");
+                .replace(System.lineSeparator(), "")
+                .replace(System.lineSeparator(), "");
     }
 
     private String readMetadataIdentifier(ResultSet rs, String columnName) {
@@ -1040,7 +1041,7 @@ final class DatabaseImportService {
         if (normalized.isEmpty()) {
             return null;
         }
-        String bounded = normalized.length() > maxLen ? normalized.substring(0, maxLen) : normalized;
+        String bounded = normalized.length() > maxLen ? safeSlice(normalized, 0, maxLen) : normalized;
         return SAFE_DB_TEXT.matcher(bounded).matches() ? bounded : null;
     }
 
@@ -1082,9 +1083,23 @@ final class DatabaseImportService {
             return null;
         }
         if (trimmed.length() > 80) {
-            trimmed = trimmed.substring(0, 80);
+            trimmed = safeSlice(trimmed, 0, 80);
         }
         return SAFE_WIDGET_ID.matcher(trimmed).matches() ? trimmed : null;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
     }
 
     private boolean isSafeSyncEndpoint(URI uri) {

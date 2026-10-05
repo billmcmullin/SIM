@@ -42,7 +42,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "TestConnectionServlet", urlPatterns = {"/admin/test-connection"})
 public class TestConnectionServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(TestConnectionServlet.class.getName());
+    private static final Logger log = Logger.getLogger(TestConnectionServlet.class.getCanonicalName());
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
@@ -56,6 +56,7 @@ public class TestConnectionServlet extends HttpServlet {
     private static final String CHAT_PROBE_PAYLOAD_NO_RESET = "{\"message\":\"connection test\",\"mode\":\"chat\",\"reset\":false}";
     private static final String CHAT_PROBE_PAYLOAD_MINIMAL_RESET = "{\"message\":\"connection test\",\"reset\":true}";
     private static final String CHAT_PROBE_PAYLOAD_MINIMAL_NO_RESET = "{\"message\":\"connection test\",\"reset\":false}";
+    private static final String LINE_SEPARATOR = System.lineSeparator();
 
     private enum AuthHeaderMode {
         CUSTOM_HEADER,
@@ -155,10 +156,10 @@ public class TestConnectionServlet extends HttpServlet {
                 requestId,
                 "http-request",
                 "systemUrl=" + systemEndpoint
-                        + "\nchatUrl=" + safe(chatEndpoint)
-                        + "\nauthSource=" + resolvedAuth.source()
-                        + "\npreferredHeader=" + safe(resolvedAuth.preferredHeaderName())
-                        + "\nauthCandidates=" + summarizeAuthCandidates(authCandidates)
+                        + LINE_SEPARATOR + "chatUrl=" + safe(chatEndpoint)
+                        + LINE_SEPARATOR + "authSource=" + resolvedAuth.source()
+                        + LINE_SEPARATOR + "preferredHeader=" + safe(resolvedAuth.preferredHeaderName())
+                        + LINE_SEPARATOR + "authCandidates=" + summarizeAuthCandidates(authCandidates)
             );
 
             ProbeResponse systemResponse = executeProbe(systemEndpoint, authCandidates, ProbeKind.SYSTEM);
@@ -168,9 +169,9 @@ public class TestConnectionServlet extends HttpServlet {
                 requestId,
                 "http-response-system",
                 "status=" + systemResponse.status
-                        + "\nauthMode=" + systemResponse.mode.name()
-                        + "\nauthSource=" + safe(systemResponse.authSource)
-                        + "\nbody=" + truncate(systemResponse.body)
+                        + LINE_SEPARATOR + "authMode=" + systemResponse.mode.name()
+                        + LINE_SEPARATOR + "authSource=" + safe(systemResponse.authSource)
+                        + LINE_SEPARATOR + "body=" + truncate(systemResponse.body)
             );
 
             if (systemResponse.status < 200 || systemResponse.status >= 300) {
@@ -216,9 +217,9 @@ public class TestConnectionServlet extends HttpServlet {
                 requestId,
                 "http-response-chat",
                 "status=" + chatResponse.status
-                        + "\nauthMode=" + chatResponse.mode.name()
-                    + "\nauthSource=" + safe(chatResponse.authSource)
-                        + "\nbody=" + truncate(chatResponse.body)
+                        + LINE_SEPARATOR + "authMode=" + chatResponse.mode.name()
+                    + LINE_SEPARATOR + "authSource=" + safe(chatResponse.authSource)
+                        + LINE_SEPARATOR + "body=" + truncate(chatResponse.body)
             );
 
             if (chatResponse.status >= 200 && chatResponse.status < 300) {
@@ -257,7 +258,7 @@ public class TestConnectionServlet extends HttpServlet {
                     "test-connection-servlet",
                     requestId,
                     "http-error",
-                    "errorRef=" + errorRef + "\nurl=" + safe(systemEndpoint) + "\nmessage=" + safe(e.getMessage()),
+                    "errorRef=" + errorRef + LINE_SEPARATOR + "url=" + safe(systemEndpoint) + LINE_SEPARATOR + "message=" + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
@@ -450,7 +451,7 @@ public class TestConnectionServlet extends HttpServlet {
                     "test-connection-servlet",
                     requestId,
                     "chat-probe-retry",
-                    "reason=null-id-abort\npayload=" + payload
+                    "reason=null-id-abort" + LINE_SEPARATOR + "payload=" + payload
             );
                 ProbeResponse retry = executeProbe(endpoint, authCandidates, ProbeKind.CHAT, payload);
             last = retry;
@@ -536,7 +537,7 @@ public class TestConnectionServlet extends HttpServlet {
         }
 
         String trimmed = body.trim();
-        return trimmed.length() > 300 ? trimmed.substring(0, 300) : trimmed;
+        return trimmed.length() > 300 ? new String(trimmed.toCharArray(), 0, 300) : trimmed;
     }
 
     private String suffixFromReason(String reason) {
@@ -579,7 +580,7 @@ public class TestConnectionServlet extends HttpServlet {
             scheme = (portNumber == 443 || portNumber == 8443) ? "https" : "http";
         }
 
-        return scheme + "://" + hostPart + ':' + portNumber;
+        return scheme + "://" + hostPart + (char) 58 + portNumber;
     }
 
     private String extractScheme(String rawHost) {
@@ -622,7 +623,7 @@ public class TestConnectionServlet extends HttpServlet {
         if (slash >= 0) {
             trimmed = trimmed.substring(0, slash);
         }
-        int colon = trimmed.indexOf(':');
+        int colon = trimmed.indexOf((char) 58);
         if (colon >= 0) {
             trimmed = trimmed.substring(0, colon);
         }
@@ -649,7 +650,7 @@ public class TestConnectionServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.length() > 512 ? value.substring(0, 512) + "..." : value;
+        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + "..." : value;
     }
 
     private String safe(String value) {

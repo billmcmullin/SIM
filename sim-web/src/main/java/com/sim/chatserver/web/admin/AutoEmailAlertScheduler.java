@@ -62,11 +62,18 @@ import software.amazon.awssdk.core.exception.SdkException;
  */
 public class AutoEmailAlertScheduler {
 
-    private static final Logger log = Logger.getLogger(AutoEmailAlertScheduler.class.getName());
+    private static final Logger log = Logger.getLogger(AutoEmailAlertScheduler.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
 
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final int TICK_SECONDS = 30;
     private static final long MAX_HEALTH_ATTACHMENT_BYTES = 5L * 1024L * 1024L;
+        private static final TestEmailResult TEST_EMAIL_RESULT_NO_CONFIG =
+            new TestEmailResult(false, "Health test email was not sent: no configuration provided.");
+        private static final TestEmailResult TEST_EMAIL_RESULT_NO_RECIPIENTS =
+            new TestEmailResult(false, "Health test email was not sent: no valid recipients configured.");
+        private static final TestEmailResult TEST_EMAIL_RESULT_SEND_FAILED =
+            new TestEmailResult(false, "Health test email failed to send. Verify email configuration and check server logs.");
 
     @FunctionalInterface
     interface AwsConfigLoader {
@@ -88,12 +95,12 @@ public class AutoEmailAlertScheduler {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -194,12 +201,12 @@ public class AutoEmailAlertScheduler {
 
     final TestEmailResult sendHealthTestEmail(AutoEmailAlertConfig cfg) {
         if (cfg == null) {
-            return new TestEmailResult(false, "Health test email was not sent: no configuration provided.");
+            return TEST_EMAIL_RESULT_NO_CONFIG;
         }
 
         List<String> recipients = parseRecipients(cfg.getHealthRecipients());
         if (recipients.isEmpty()) {
-            return new TestEmailResult(false, "Health test email was not sent: no valid recipients configured.");
+            return TEST_EMAIL_RESULT_NO_RECIPIENTS;
         }
 
         Instant now = Instant.now();
@@ -212,7 +219,7 @@ public class AutoEmailAlertScheduler {
 
         String subject = defaultIfBlank(cfg.getHealthSubject(), "SIM Test Alert: Widget Healthcheck Offline");
         String textBody = buildHealthBody(cfg, result, now, now)
-                + "\n\n[TEST EMAIL] This is a manual healthcheck alert preview.";
+            + LS + LS + "[TEST EMAIL] This is a manual healthcheck alert preview.";
         String htmlBody = buildHealthHtmlBody(
             cfg,
             result,
@@ -224,7 +231,7 @@ public class AutoEmailAlertScheduler {
 
         boolean sent = sendEmail(recipients, subject, textBody, htmlBody, attachments);
         if (!sent) {
-            return new TestEmailResult(false, "Health test email failed to send. Verify email configuration and check server logs.");
+            return TEST_EMAIL_RESULT_SEND_FAILED;
         }
 
         return new TestEmailResult(true, "Health test email sent to " + recipients.size() + " recipient(s).");
@@ -388,7 +395,11 @@ public class AutoEmailAlertScheduler {
         }
 
         try {
-            rebootEc2InstanceForHealthcheck(region, accessKeyId, secretAccessKey, instanceId);
+            boolean restartSubmitted = rebootEc2InstanceForHealthcheck(region, accessKeyId, secretAccessKey, instanceId);
+            if (!restartSubmitted) {
+                log.warning("Automatic healthcheck restart skipped: reboot request was not submitted.");
+                return false;
+            }
             log.log(
                     Level.INFO,
                     "Automatic healthcheck restart submitted. region={0}, instanceId={1}, offlineSince={2}, attemptedAt={3}, checkerStatus={4}",
@@ -514,42 +525,42 @@ public class AutoEmailAlertScheduler {
 
     private String buildHealthBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
         StringBuilder sb = new StringBuilder();
-        sb.append("SIM healthcheck alert\n\n");
-        sb.append("Status: OFFLINE\n");
-        sb.append("Detected at: ").append(formatInstant(now)).append('\n');
+        sb.append("SIM healthcheck alert").append(LS).append(LS);
+        sb.append("Status: OFFLINE").append(LS);
+        sb.append("Detected at: ").append(formatInstant(now)).append(System.lineSeparator());
         if (offlineSince != null) {
-            sb.append("Offline since: ").append(formatInstant(offlineSince)).append('\n');
+            sb.append("Offline since: ").append(formatInstant(offlineSince)).append(System.lineSeparator());
         }
         if (result != null) {
-            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "DOWN")).append('\n');
-            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append('\n');
-            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append('\n');
+            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "DOWN")).append(System.lineSeparator());
+            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append(System.lineSeparator());
+            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append(System.lineSeparator());
             if (hasText(result.details())) {
-                sb.append("Details: ").append(result.details()).append('\n');
+                sb.append("Details: ").append(result.details()).append(System.lineSeparator());
             }
         }
 
         if (cfg.getHealthLastRestartAttemptAt() != null) {
             sb.append("Automatic EC2 restart attempted at: ")
                     .append(formatInstant(cfg.getHealthLastRestartAttemptAt()))
-                    .append('\n');
+                    .append(System.lineSeparator());
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append('\n').append(cfg.getHealthMessage()).append('\n');
+            sb.append(System.lineSeparator()).append(cfg.getHealthMessage()).append(System.lineSeparator());
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("\nRunbook URL: ").append(runbookUrl).append('\n');
+            sb.append(LS).append("Runbook URL: ").append(runbookUrl).append(System.lineSeparator());
         }
 
         String runbookAttachmentPath = cfg.getHealthRunbookAttachmentPath();
         if (hasText(runbookAttachmentPath)) {
-            sb.append("Runbook attachment path: ").append(runbookAttachmentPath).append('\n');
+            sb.append("Runbook attachment path: ").append(runbookAttachmentPath).append(System.lineSeparator());
         }
 
-        sb.append("\nThis alert will resend based on the configured resend timer until healthcheck succeeds.");
+        sb.append(LS).append("This alert will resend based on the configured resend timer until healthcheck succeeds.");
         return sb.toString();
     }
 
@@ -563,29 +574,29 @@ public class AutoEmailAlertScheduler {
 
     private String buildHealthRecoveryBody(AutoEmailAlertConfig cfg, WidgetAvailabilityResult result, Instant now, Instant offlineSince) {
         StringBuilder sb = new StringBuilder();
-        sb.append("SIM healthcheck recovery notification\n\n");
-        sb.append("Status: ONLINE\n");
-        sb.append("Recovered at: ").append(formatInstant(now)).append('\n');
+        sb.append("SIM healthcheck recovery notification").append(LS).append(LS);
+        sb.append("Status: ONLINE").append(LS);
+        sb.append("Recovered at: ").append(formatInstant(now)).append(System.lineSeparator());
         if (offlineSince != null) {
-            sb.append("Offline since: ").append(formatInstant(offlineSince)).append('\n');
-            sb.append("Estimated outage duration: ").append(formatDuration(now, offlineSince)).append('\n');
+            sb.append("Offline since: ").append(formatInstant(offlineSince)).append(System.lineSeparator());
+            sb.append("Estimated outage duration: ").append(formatDuration(now, offlineSince)).append(System.lineSeparator());
         }
         if (result != null) {
-            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "UP")).append('\n');
-            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append('\n');
-            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append('\n');
+            sb.append("Checker status: ").append(defaultIfBlank(result.status(), "UP")).append(System.lineSeparator());
+            sb.append("Checker timestamp: ").append(defaultIfBlank(result.checkedAtIso(), formatInstant(now))).append(System.lineSeparator());
+            sb.append("Latency ms: ").append(Math.max(0L, result.latencyMs())).append(System.lineSeparator());
             if (hasText(result.details())) {
-                sb.append("Details: ").append(result.details()).append('\n');
+                sb.append("Details: ").append(result.details()).append(System.lineSeparator());
             }
         }
 
         if (hasText(cfg.getHealthMessage())) {
-            sb.append('\n').append(cfg.getHealthMessage()).append('\n');
+            sb.append(System.lineSeparator()).append(cfg.getHealthMessage()).append(System.lineSeparator());
         }
 
         String runbookUrl = normalizeRunbookUrl(cfg.getHealthRunbookUrl());
         if (hasText(runbookUrl)) {
-            sb.append("\nRunbook URL: ").append(runbookUrl).append('\n');
+            sb.append(LS).append("Runbook URL: ").append(runbookUrl).append(System.lineSeparator());
         }
 
         return sb.toString();
@@ -728,15 +739,15 @@ public class AutoEmailAlertScheduler {
 
     private String buildTermBody(AutoEmailAlertConfig cfg, Instant now, long previousCount, long currentCount, long delta) {
         StringBuilder sb = new StringBuilder();
-        sb.append("SIM term activity alert\n\n");
-        sb.append("Term: ").append(defaultIfBlank(cfg.getTermName(), "(not set)")).append('\n');
-        sb.append("Detected at: ").append(formatInstant(now)).append('\n');
-        sb.append("Previous count: ").append(previousCount).append('\n');
-        sb.append("Current count: ").append(currentCount).append('\n');
-        sb.append("Increase: ").append(delta).append('\n');
+        sb.append("SIM term activity alert").append(LS).append(LS);
+        sb.append("Term: ").append(defaultIfBlank(cfg.getTermName(), "(not set)")).append(System.lineSeparator());
+        sb.append("Detected at: ").append(formatInstant(now)).append(System.lineSeparator());
+        sb.append("Previous count: ").append(previousCount).append(System.lineSeparator());
+        sb.append("Current count: ").append(currentCount).append(System.lineSeparator());
+        sb.append("Increase: ").append(delta).append(System.lineSeparator());
 
         if (hasText(cfg.getTermMessage())) {
-            sb.append('\n').append(cfg.getTermMessage()).append('\n');
+            sb.append(System.lineSeparator()).append(cfg.getTermMessage()).append(System.lineSeparator());
         }
 
         return sb.toString();
@@ -751,7 +762,7 @@ public class AutoEmailAlertScheduler {
             return List.of();
         }
 
-        String[] raw = csv.split("[,;\\n\\r]+");
+        String[] raw = csv.split("(?:[,;]|\\R)+");
         Set<String> deduped = new LinkedHashSet<>();
         for (String token : raw) {
             if (token == null) {
@@ -891,7 +902,7 @@ public class AutoEmailAlertScheduler {
             try {
                 writer.writeStartElement("p");
                 writer.writeStartElement("strong");
-                writer.writeCharacters((label == null ? "" : label) + ':');
+                writer.writeCharacters((label == null ? "" : label) + (char) 58);
                 writer.writeEndElement();
                 writer.writeCharacters(' ' + (value == null ? "" : value));
                 writer.writeEndElement();
@@ -904,7 +915,7 @@ public class AutoEmailAlertScheduler {
             try {
                 writer.writeStartElement("p");
                 writer.writeStartElement("strong");
-                writer.writeCharacters((label == null ? "" : label) + ':');
+                writer.writeCharacters((label == null ? "" : label) + (char) 58);
                 writer.writeEndElement();
                 writer.writeCharacters(String.valueOf(' '));
                 writer.writeStartElement("a");

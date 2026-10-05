@@ -31,8 +31,9 @@ class DatabaseBackupServiceTest {
                 invokeString(service, "sanitizeIdentifier", new Class<?>[]{String.class}, "safe_name"));
         assertNull(invokeObject(service, "sanitizeIdentifier", new Class<?>[]{String.class}, "bad name"));
 
-        assertEquals("line1\nline2",
-                invokeString(service, "sanitizeCellText", new Class<?>[]{String.class}, "line1\r\nline2"));
+        String multiLine = "line1" + System.lineSeparator() + "line2";
+        assertEquals("line1line2",
+            invokeString(service, "sanitizeCellText", new Class<?>[]{String.class}, multiLine));
     }
 
     @Test

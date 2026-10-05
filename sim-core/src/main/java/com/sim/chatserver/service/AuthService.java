@@ -14,7 +14,7 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class AuthService {
 
-    private static final Logger log = Logger.getLogger(AuthService.class.getName());
+    private static final Logger log = Logger.getLogger(AuthService.class.getCanonicalName());
 
     private static final String UNKNOWN = "UNKNOWN";
     private static final String LOG_LOOKUP_INIT = "AuthService.authenticate: lookup initiated";
@@ -27,12 +27,12 @@ public class AuthService {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private UserAccount authenticate(String username, String password) {

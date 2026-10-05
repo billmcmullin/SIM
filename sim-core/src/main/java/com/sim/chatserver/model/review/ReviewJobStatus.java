@@ -1,6 +1,8 @@
 // src/main/java/com/sim/chatserver/model/review/ReviewJobStatus.java
 package com.sim.chatserver.model.review;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -89,7 +91,9 @@ public final class ReviewJobStatus {
         // missing is deterministic: explicit if provided, else all - used
         if (b.missingChatIds == null || b.missingChatIds.isEmpty()) {
             Set<String> missing = new LinkedHashSet<>(this.allSelectedChatIds);
-            missing.removeAll(this.usedChatIds);
+            for (String usedId : this.usedChatIds) {
+                missing.remove(usedId);
+            }
             this.missingChatIds = Collections.unmodifiableList(new ArrayList<>(missing));
         } else {
             this.missingChatIds = immutableDistinctStringsLower(b.missingChatIds);
@@ -138,7 +142,9 @@ public final class ReviewJobStatus {
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
-        expectedMissing.removeAll(usedChatIds);
+        for (String usedId : usedChatIds) {
+            expectedMissing.remove(usedId);
+        }
 
         Set<String> providedMissing = new LinkedHashSet<>(missingChatIds);
         if (!allSelectedChatIds.isEmpty() && !expectedMissing.equals(providedMissing)) {
@@ -318,7 +324,12 @@ public final class ReviewJobStatus {
                 if (totalBatches <= 0) {
                     yield 20;
                 }
-                double ratio = Math.min(1.0, completedBatches / (double) totalBatches);
+                double ratio = Math.min(
+                        1.0d,
+                        BigDecimal.valueOf(completedBatches)
+                                .divide(BigDecimal.valueOf(totalBatches), 6, RoundingMode.HALF_UP)
+                                .doubleValue()
+                );
                 int mapPercent = safeRoundedPercent(ratio * 75.0);
                 if (mapPercent >= 95) {
                     yield 100;
@@ -758,8 +769,8 @@ public final class ReviewJobStatus {
         if (body == null || body.isBlank()) {
             return "";
         }
-        String normalized = body.replace("\u0000", "").replace("\r", "").trim();
+        String normalized = body.replace("\u0000", "").replace(System.lineSeparator(), "").trim();
         int max = 512;
-        return normalized.length() > max ? normalized.substring(0, max) : normalized;
+        return normalized.length() > max ? new String(normalized.toCharArray(), 0, max) : normalized;
     }
 }

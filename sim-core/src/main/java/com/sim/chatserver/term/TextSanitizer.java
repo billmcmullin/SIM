@@ -17,7 +17,7 @@ import java.util.logging.Logger;
  */
 public final class TextSanitizer {
 
-    private static final Logger LOG = Logger.getLogger(TextSanitizer.class.getName());
+    private static final Logger LOG = Logger.getLogger(TextSanitizer.class.getCanonicalName());
 
     private static final Pattern XML_HEADER = Pattern.compile("^\\s*<\\?xml[^>]*\\?>", Pattern.CASE_INSENSITIVE);
     private static final Pattern TAGS = Pattern.compile("<[^>]+>");

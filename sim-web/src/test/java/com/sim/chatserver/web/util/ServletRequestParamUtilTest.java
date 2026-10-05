@@ -22,12 +22,12 @@ import jakarta.servlet.http.HttpServletRequest;
         assertNull(ServletRequestParamUtil.firstParamFromValues(null, "name", 10, false, false));
 
         HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getParameterValues("name")).thenReturn(new String[]{" \u0000abc\r\n "});
+        when(request.getParameterValues("name")).thenReturn(new String[]{" \u0000abc" + System.lineSeparator() + " "});
 
         assertEquals("abc", ServletRequestParamUtil.firstParam(request, "name", 10, true, true));
         assertEquals("abc", ServletRequestParamUtil.firstParamFromValues(request, "name", 10, true, true));
 
-        when(request.getParameterValues("fallback")).thenReturn(new String[]{null, "\n next\r "});
+        when(request.getParameterValues("fallback")).thenReturn(new String[]{null, System.lineSeparator() + " next" + System.lineSeparator() + " "});
         assertEquals("next", ServletRequestParamUtil.firstParamFromValues(request, "fallback", 10, true, true));
 
         when(request.getParameterValues("trunc")).thenReturn(new String[]{" 1234567890 "});
@@ -37,8 +37,8 @@ import jakarta.servlet.http.HttpServletRequest;
     @Test
     void normalizeBodyTextAndContentLength_coverNullEmptyAndTruncation() {
         assertNull(ServletRequestParamUtil.normalizeBodyText(null, 20, false));
-        assertNull(ServletRequestParamUtil.normalizeBodyText("\r\n", 20, true));
-        assertEquals("abc", ServletRequestParamUtil.normalizeBodyText("\u0000abc\r", 20, false));
+        assertNull(ServletRequestParamUtil.normalizeBodyText(System.lineSeparator(), 20, true));
+        assertEquals("abc", ServletRequestParamUtil.normalizeBodyText("\u0000abc" + System.lineSeparator(), 20, false));
         assertEquals("abcd", ServletRequestParamUtil.normalizeBodyText("abcdef", 4, false));
 
         HttpServletRequest request = mock(HttpServletRequest.class);
@@ -53,8 +53,8 @@ import jakarta.servlet.http.HttpServletRequest;
         assertEquals("", ServletRequestParamUtil.readNormalizedBodyText(null, 10));
         assertEquals("", ServletRequestParamUtil.readNormalizedBodyTextOrEmptyOnLimit(null, 10));
 
-        StringReader clean = new StringReader("  line1\r\nline2  ");
-        assertEquals("line1\nline2", ServletRequestParamUtil.readNormalizedBodyText(clean, 100));
+        StringReader clean = new StringReader("  line1" + System.lineSeparator() + "line2  ");
+        assertEquals("line1line2", ServletRequestParamUtil.readNormalizedBodyText(clean, 100));
 
         StringReader limited = new StringReader("123456789");
         assertThrows(IllegalStateException.class, () -> ServletRequestParamUtil.readNormalizedBodyText(limited, 4, 2));
@@ -66,16 +66,17 @@ import jakarta.servlet.http.HttpServletRequest;
     @Test
     void normalizeValueAndReadParameterValues_coverPrivateSanitizationPath() {
         HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getParameterValues("raw")).thenReturn(new String[]{"a\u0000b\r\nc", null});
+        when(request.getParameterValues("raw")).thenReturn(new String[]{"a\u0000b" + System.lineSeparator() + "c", null});
 
-        assertEquals("a b  c", ServletRequestParamUtil.firstParamFromValues(request, "raw", 20, false, false));
+        String expectedRaw = System.lineSeparator().length() == 1 ? "a b c" : "a b  c";
+        assertEquals(expectedRaw, ServletRequestParamUtil.firstParamFromValues(request, "raw", 20, false, false));
 
         HttpServletRequest emptyRequest = mock(HttpServletRequest.class);
-        when(emptyRequest.getParameterValues("raw")).thenReturn(new String[]{"\u0000\r\n"});
+        when(emptyRequest.getParameterValues("raw")).thenReturn(new String[]{"\u0000" + System.lineSeparator()});
         assertNull(ServletRequestParamUtil.firstParamFromValues(emptyRequest, "raw", 20, true, true));
 
-        assertEquals("value", ServletRequestParamUtil.normalizeValue("\r\n value \n", 20, false, true));
-        assertNull(ServletRequestParamUtil.normalizeValue("\r\n", 20, false, true));
+        assertEquals("value", ServletRequestParamUtil.normalizeValue(System.lineSeparator() + " value " + System.lineSeparator(), 20, false, true));
+        assertNull(ServletRequestParamUtil.normalizeValue(System.lineSeparator(), 20, false, true));
     }
 }
 

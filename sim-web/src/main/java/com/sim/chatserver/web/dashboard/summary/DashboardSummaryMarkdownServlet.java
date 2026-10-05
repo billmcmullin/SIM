@@ -26,9 +26,10 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardSummaryMarkdownServlet", urlPatterns = {"/dashboard/summary-markdown"})
 public class DashboardSummaryMarkdownServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardSummaryMarkdownServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardSummaryMarkdownServlet.class.getCanonicalName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryStore.class.getName();
+    private static final String SUMMARY_STORE_KEY = DashboardDailySummaryStore.class.getCanonicalName();
+    private static final String LS = System.lineSeparator();
 
     // renamed file path
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_summary_markdown.html";
@@ -37,7 +38,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         try {
-            summaryStore();
+            DashboardDailySummaryStore initializedStore = summaryStore();
+            if (initializedStore == null) {
+                throw new IllegalStateException("Summary store is unavailable");
+            }
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
             throw new ServletException("Failed to initialize dashboard summary markdown servlet", e);
@@ -185,24 +189,24 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         String nextAction = suggestNextAction(payload);
 
         StringBuilder md = new StringBuilder(1200);
-        md.append("# Daily Dashboard Summary\n\n");
-        md.append("- **Day:** ").append(blankDash(day)).append('\n');
-        md.append("- **Slot:** ").append(slot).append('\n');
-        md.append("- **Status:** ").append(blankDash(statusText)).append('\n');
-        md.append("- **Progress:** ").append(progressPct).append("%\n");
-        md.append("- **Entries analyzed:** ").append(Math.max(0, entryCount)).append('\n');
-        md.append("- **Generated at:** ").append(blankDash(generatedAt)).append('\n');
-        md.append("- **Started at:** ").append(blankDash(startedAt)).append('\n');
-        md.append("- **Updated at:** ").append(blankDash(updatedAt)).append('\n');
+        md.append("# Daily Dashboard Summary").append(LS).append(LS);
+        md.append("- **Day:** ").append(blankDash(day)).append(System.lineSeparator());
+        md.append("- **Slot:** ").append(slot).append(System.lineSeparator());
+        md.append("- **Status:** ").append(blankDash(statusText)).append(System.lineSeparator());
+        md.append("- **Progress:** ").append(progressPct).append('%').append(System.lineSeparator());
+        md.append("- **Entries analyzed:** ").append(Math.max(0, entryCount)).append(System.lineSeparator());
+        md.append("- **Generated at:** ").append(blankDash(generatedAt)).append(System.lineSeparator());
+        md.append("- **Started at:** ").append(blankDash(startedAt)).append(System.lineSeparator());
+        md.append("- **Updated at:** ").append(blankDash(updatedAt)).append(System.lineSeparator());
         if (!message.isBlank()) {
-            md.append("- **Message:** ").append(message).append('\n');
+            md.append("- **Message:** ").append(message).append(System.lineSeparator());
         }
 
-        md.append("\n## Overall\n").append(safeBlock(overall)).append('\n');
-        md.append("\n## Quality\n").append(safeBlock(quality)).append('\n');
-        md.append("\n## Response\n").append(safeBlock(response)).append('\n');
-        md.append("\n## Usage\n").append(safeBlock(usage)).append('\n');
-        md.append("\n## Suggested Next Action\n").append(safeBlock(nextAction)).append('\n');
+        md.append(LS).append("## Overall").append(LS).append(safeBlock(overall)).append(System.lineSeparator());
+        md.append(LS).append("## Quality").append(LS).append(safeBlock(quality)).append(System.lineSeparator());
+        md.append(LS).append("## Response").append(LS).append(safeBlock(response)).append(System.lineSeparator());
+        md.append(LS).append("## Usage").append(LS).append(safeBlock(usage)).append(System.lineSeparator());
+        md.append(LS).append("## Suggested Next Action").append(LS).append(safeBlock(nextAction)).append(System.lineSeparator());
 
         return md.toString();
     }
@@ -338,8 +342,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
     private DashboardDailySummaryStore summaryStore() {

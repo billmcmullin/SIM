@@ -26,7 +26,7 @@ import com.sim.chatserver.util.SessionLabelStore;
 public final class DashboardRowsRenderer {
 
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final Logger LOG = Logger.getLogger(DashboardRowsRenderer.class.getName());
+    private static final Logger LOG = Logger.getLogger(DashboardRowsRenderer.class.getCanonicalName());
 
     private DashboardRowsRenderer() {
     }

@@ -99,19 +99,19 @@ public final class EmailMessage {
                 .markdownBody(markdownBody);
 
         if (from != null) {
-            builder.from(from);
+            builder = builder.from(from);
         }
         if (to != null) {
-            builder.to(to);
+            builder = builder.to(to);
         }
         if (cc != null) {
-            builder.cc(cc);
+            builder = builder.cc(cc);
         }
         if (bcc != null) {
-            builder.bcc(bcc);
+            builder = builder.bcc(bcc);
         }
         if (attachments != null) {
-            builder.attachments(attachments);
+            builder = builder.attachments(attachments);
         }
 
         return builder.build();
@@ -211,7 +211,7 @@ public final class EmailMessage {
         }
 
         private EmailMessage build() {
-            Objects.requireNonNull(subject, "subject is required");
+            subject = Objects.requireNonNull(subject, "subject is required");
             if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
                 throw new IllegalArgumentException("At least one recipient is required");
             }

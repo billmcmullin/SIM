@@ -35,7 +35,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardSessionNamesJsonServlet", urlPatterns = {"/dashboard/session-names.json"})
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getCanonicalName());
     private static final int DEFAULT_LIMIT = 10;
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
     private static final DashboardSessionAggregationQueryService QUERY_SERVICE =

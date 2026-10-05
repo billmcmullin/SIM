@@ -24,7 +24,7 @@ import com.sim.chatserver.config.Database;
 
 public final class WidgetStore {
 
-    private static final Logger log = Logger.getLogger(WidgetStore.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetStore.class.getCanonicalName());
 
     private static final String SQL_STATE_UNDEFINED_TABLE = "42P01";
     private static final String SQL_STATE_UNIQUE_VIOLATION = "23505";
@@ -150,12 +150,7 @@ public final class WidgetStore {
         }
     }
 
-    /**
-     * Compatibility shim for existing callers still using save(id,...). Migrate
-     * callers to create(...) / update(...), then remove this method.
-     */
-    @Deprecated(forRemoval = true)
-    public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
+    public static WidgetEntry upsert(Integer id, String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
         int resolvedId = parseIntOrDefault(id, -1);
@@ -163,6 +158,15 @@ public final class WidgetStore {
             return create(widgetId, displayName);
         }
         return update(resolvedId, widgetId, displayName);
+    }
+
+    /**
+     * Compatibility shim for existing callers still using save(id,...). Migrate
+     * callers to create(...) / update(...), then remove this method.
+     */
+    @Deprecated(forRemoval = true)
+    public static WidgetEntry save(Integer id, String widgetId, String displayName) throws SQLException {
+        return upsert(id, widgetId, displayName);
     }
 
     private static int parseIntOrDefault(Integer value, int defaultValue) {

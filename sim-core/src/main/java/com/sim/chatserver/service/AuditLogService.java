@@ -17,16 +17,19 @@ public class AuditLogService {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     AuditLogService(Class<?> owner) {
-        this.ownerLogger = Logger.getLogger(owner == null ? AuditLogService.class.getName() : owner.getName());
+        String ownerName = owner == null
+                ? AuditLogService.class.getCanonicalName()
+                : (owner.getCanonicalName() != null ? owner.getCanonicalName() : owner.getTypeName());
+        this.ownerLogger = Logger.getLogger(ownerName);
     }
 
     final void logManualMessageRequest(ManualMessageAuditEvent event) {
@@ -114,12 +117,23 @@ public class AuditLogService {
         if (value == null) {
             return "";
         }
-        return value
-                .replace("\r", " ")
-                .replace("\n", " ")
-                .replace("\t", " ")
-                .replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ")
-                .trim();
+        StringBuilder out = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == 0x0D) {
+                out.append(' ');
+                if (i + 1 < value.length() && value.charAt(i + 1) == 0x0A) {
+                    i++;
+                }
+                continue;
+            }
+            if (ch == 0x0A || ch == 0x09 || Character.isISOControl(ch)) {
+                out.append(' ');
+                continue;
+            }
+            out.append(ch);
+        }
+        return out.toString().trim();
     }
 
     private String truncate(String value, int maxChars) {
@@ -128,7 +142,7 @@ public class AuditLogService {
         }
         return value.length() <= maxChars
                 ? value
-                : value.substring(0, Math.max(0, maxChars - 1)) + "Ã¢â‚¬Â¦";
+                : new String(value.toCharArray(), 0, Math.max(0, maxChars - 1)) + "Ã¢â‚¬Â¦";
     }
 
     public record ManualMessageAuditEvent(

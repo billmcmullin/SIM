@@ -39,7 +39,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTopicsSelectServlet", urlPatterns = {"/dashboard/topics/select"})
 public class DashboardTopicsSelectServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardTopicsSelectServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTopicsSelectServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final String JSON_UTF8 = "application/json; charset=UTF-8";
 
@@ -183,7 +183,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         if (raw == null || raw.isBlank()) {
             return false;
         }
-        int semicolon = raw.indexOf(';');
+        int semicolon = raw.indexOf((char) 59);
         String mediaType = (semicolon >= 0 ? raw.substring(0, semicolon) : raw).trim().toLowerCase(java.util.Locale.ROOT);
         if (mediaType.isBlank()) {
             return false;
@@ -199,14 +199,14 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         StringBuilder safe = new StringBuilder(canonical.length());
         for (int i = 0; i < canonical.length(); i++) {
             char ch = canonical.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         String normalized = safe.toString();
         return normalized.length() > MAX_JSON_PAYLOAD_BYTES
-                ? normalized.substring(0, MAX_JSON_PAYLOAD_BYTES)
+                ? new String(normalized.toCharArray(), 0, MAX_JSON_PAYLOAD_BYTES)
                 : normalized;
     }
 

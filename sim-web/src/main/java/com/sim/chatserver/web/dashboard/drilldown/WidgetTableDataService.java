@@ -40,7 +40,7 @@ import jakarta.servlet.http.HttpSession;
 
 final class WidgetTableDataService {
 
-    private static final Logger log = Logger.getLogger(WidgetTableDataServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetTableDataServlet.class.getCanonicalName());
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private static final String[] COLUMNS = {
@@ -385,7 +385,7 @@ final class WidgetTableDataService {
             normalized = "w_" + normalized;
         }
         if (normalized.length() > 60) {
-            normalized = normalized.substring(0, 60);
+            normalized = new String(normalized.toCharArray(), 0, 60);
         }
         return normalized;
     }

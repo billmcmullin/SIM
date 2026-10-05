@@ -26,7 +26,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "AdminUserServlet", urlPatterns = {"/admin/users"})
 public class AdminUserServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(AdminUserServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminUserServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_VALUE = Pattern.compile("^\\d{1,18}$");
 

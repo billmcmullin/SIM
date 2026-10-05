@@ -23,7 +23,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "WidgetReviewServlet", urlPatterns = {"/dashboard/widgets/drilldown/review"})
 public class WidgetReviewServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(WidgetReviewServlet.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetReviewServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/widget_review.html";
 
     @Override
@@ -164,9 +164,9 @@ public class WidgetReviewServlet extends HttpServlet {
                     sb.append("\\'");
                 case '"' ->
                     sb.append("\\\"");
-                case '\n' ->
+                case com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED ->
                     sb.append("\\n");
-                case '\r' ->
+                case com.sim.chatserver.util.LineSeparatorUtil.CARRIAGE_RETURN ->
                     sb.append("\\r");
                 case '\t' ->
                     sb.append("\\t");
@@ -199,14 +199,14 @@ public class WidgetReviewServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace('\r', '_').replace('\n', '_');
-        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
+        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 
     private boolean isValidSelectionId(String value) {
         try {
-            UUID.fromString(value);
-            return true;
+            UUID parsed = UUID.fromString(value);
+            return parsed != null;
         } catch (IllegalArgumentException ex) {
             java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             return false;

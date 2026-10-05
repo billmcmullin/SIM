@@ -52,7 +52,7 @@ import jakarta.servlet.http.HttpSession;
         }
 )
 public class DashboardNewUsersServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardNewUsersServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardNewUsersServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users.html";
     static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -390,7 +390,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                 StringBuilder b = new StringBuilder();
                 String line;
                 while ((line = r.readLine()) != null) {
-                    b.append(line).append('\n');
+                    b.append(line).append(System.lineSeparator());
                 }
                 return b.toString();
             }
@@ -437,8 +437,8 @@ public class DashboardNewUsersServlet extends HttpServlet {
         }
         return value.replace("\\", "\\\\")
                 .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+                .replace(System.lineSeparator(), "\\n")
+                .replace(System.lineSeparator(), "\\r");
     }
 
     private String safe(String s) {

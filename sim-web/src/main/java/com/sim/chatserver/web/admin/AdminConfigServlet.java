@@ -30,7 +30,7 @@ import jakarta.servlet.http.HttpSession;
 
 public class AdminConfigServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
-    private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getCanonicalName());
 
     @Override
     public void init() throws ServletException {
@@ -251,7 +251,7 @@ public class AdminConfigServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -287,8 +287,8 @@ public class AdminConfigServlet extends HttpServlet {
         }
         return value.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+                .replace(System.lineSeparator(), "\\n")
+                .replace(System.lineSeparator(), "");
     }
 
     private static String escapeJs(String value) {
@@ -298,8 +298,8 @@ public class AdminConfigServlet extends HttpServlet {
         return value.replace("\\", "\\\\")
                 .replace("'", "\\'")
                 .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+                .replace(System.lineSeparator(), "\\n")
+                .replace(System.lineSeparator(), "");
     }
 
     private String escapeHtml(String input) {

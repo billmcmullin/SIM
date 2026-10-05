@@ -27,7 +27,7 @@ import jakarta.persistence.EntityManagerFactory;
 @ApplicationScoped
 public class AppDataSourceHolder {
 
-    private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getName());
+    private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getCanonicalName());
     private static final String DEFAULT_DATASOURCE_JNDI = "java:jboss/datasources/ExampleDS";
 
     private DataSource managedDataSource;
@@ -40,12 +40,12 @@ public class AppDataSourceHolder {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @PostConstruct

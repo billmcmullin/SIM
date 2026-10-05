@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  */
 public final class MapReduceConfig {
 
-    private static final Logger log = Logger.getLogger(MapReduceConfig.class.getName());
+    private static final Logger log = Logger.getLogger(MapReduceConfig.class.getCanonicalName());
 
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 

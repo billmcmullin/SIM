@@ -33,7 +33,7 @@ import jakarta.enterprise.inject.spi.CDI;
 
 public final class CustomerProfileStore {
 
-    private static final Logger LOG = Logger.getLogger(CustomerProfileStore.class.getName());
+    private static final Logger LOG = Logger.getLogger(CustomerProfileStore.class.getCanonicalName());
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final String TABLE_NAME = "customer_profile_cache";
@@ -218,7 +218,7 @@ public final class CustomerProfileStore {
 
             return ENC_PREFIX
                     + Base64.getEncoder().encodeToString(iv)
-                    + ':'
+                    + (char) 58
                     + Base64.getEncoder().encodeToString(encrypted);
         } catch (GeneralSecurityException e) {
             throw new SQLException("Unable to encrypt customer profile value", e);
@@ -235,7 +235,7 @@ public final class CustomerProfileStore {
 
         try {
             String payload = storedValue.substring(ENC_PREFIX.length());
-            String[] parts = payload.split(":", 2);
+            String[] parts = payload.split(String.valueOf((char) 58), 2);
             if (parts.length != 2) {
                 throw new SQLException("Invalid encrypted value format");
             }
@@ -353,7 +353,7 @@ public final class CustomerProfileStore {
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return normalized.substring(0, maxChars);
+        return new String(normalized.toCharArray(), 0, maxChars);
     }
 
     private static Timestamp readDbTimestamp(ResultSet rs, String column) throws SQLException {

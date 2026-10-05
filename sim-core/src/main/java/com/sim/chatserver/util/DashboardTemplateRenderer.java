@@ -82,8 +82,8 @@ public final class DashboardTemplateRenderer {
         }
         return value.replace("\\", "\\\\")
                 .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+                .replace(System.lineSeparator(), "\\n")
+                .replace(System.lineSeparator(), "\\r");
     }
 
     private static String loadTemplate(ServletContext context, String path) throws IOException {
@@ -95,7 +95,7 @@ public final class DashboardTemplateRenderer {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }

@@ -39,7 +39,7 @@ import jakarta.json.JsonValue;
  */
 public class UpstreamRequestService {
 
-    private static final Logger LOG = Logger.getLogger(UpstreamRequestService.class.getName());
+    private static final Logger LOG = Logger.getLogger(UpstreamRequestService.class.getCanonicalName());
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(90);
@@ -49,6 +49,7 @@ public class UpstreamRequestService {
     private static final String FIXED_PATH_TEMPLATE = "/api/v1/workspace/%s/chat"; // canonical /chat
     private static final int MAX_URL_CHARS = 2048;
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final String LINE_SEPARATOR = System.lineSeparator();
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
@@ -56,12 +57,12 @@ public class UpstreamRequestService {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     /**
@@ -198,7 +199,7 @@ public class UpstreamRequestService {
             return null;
         }
         if (endpointUrl.endsWith(STREAM_CHAT_SUFFIX)) {
-            return endpointUrl.substring(0, endpointUrl.length() - STREAM_CHAT_SUFFIX.length()) + CHAT_SUFFIX;
+            return safeSlice(endpointUrl, 0, endpointUrl.length() - STREAM_CHAT_SUFFIX.length()) + CHAT_SUFFIX;
         }
         return endpointUrl;
     }
@@ -219,7 +220,7 @@ public class UpstreamRequestService {
                     .append("://")
                     .append(host.toLowerCase(Locale.ROOT));
             if (port > 0) {
-                b.append(':').append(port);
+                b.append((char) 58).append(port);
             }
 
             return b.toString();
@@ -270,9 +271,24 @@ public class UpstreamRequestService {
     private String stripTrailingSlash(String s) {
         String out = s;
         while (out.endsWith("/")) {
-            out = out.substring(0, out.length() - 1);
+            out = safeSlice(out, 0, out.length() - 1);
         }
         return out;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private JsonObject buildStrictPayload(
@@ -342,9 +358,9 @@ public class UpstreamRequestService {
                 requestId,
                 "http-request",
                 "method=POST"
-                    + "\nurl=" + safeUrl
-                    + "\nbodyChars=" + (jsonBody == null ? 0 : jsonBody.length())
-                    + "\nbody=" + (jsonBody == null ? "" : jsonBody)
+                    + LINE_SEPARATOR + "url=" + safeUrl
+                    + LINE_SEPARATOR + "bodyChars=" + (jsonBody == null ? 0 : jsonBody.length())
+                    + LINE_SEPARATOR + "body=" + (jsonBody == null ? "" : jsonBody)
             );
 
             HttpRequest req = HttpRequest.newBuilder()
@@ -364,10 +380,10 @@ public class UpstreamRequestService {
                     requestId,
                     "http-response",
                     "method=POST"
-                        + "\nurl=" + safeUrl
-                        + "\nstatus=" + rsp.statusCode()
-                        + "\ncontentType=" + contentTypeOrDefault(rsp.headers())
-                        + "\nresponseBody=" + responseBody
+                        + LINE_SEPARATOR + "url=" + safeUrl
+                        + LINE_SEPARATOR + "status=" + rsp.statusCode()
+                        + LINE_SEPARATOR + "contentType=" + contentTypeOrDefault(rsp.headers())
+                        + LINE_SEPARATOR + "responseBody=" + responseBody
                 );
 
             return new UpstreamResponse(
@@ -378,37 +394,37 @@ public class UpstreamRequestService {
 
         } catch (HttpConnectTimeoutException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_TIMEOUT\nmessage=Timed out connecting to upstream\nurl=" + safe(url), e);
+                    "code=UPSTREAM_TIMEOUT" + LINE_SEPARATOR + "message=Timed out connecting to upstream" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new UpstreamConnectivityException("UPSTREAM_TIMEOUT", "Timed out connecting to upstream", e);
         } catch (HttpTimeoutException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_TIMEOUT\nmessage=Timed out calling upstream\nurl=" + safe(url), e);
+                    "code=UPSTREAM_TIMEOUT" + LINE_SEPARATOR + "message=Timed out calling upstream" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new UpstreamConnectivityException("UPSTREAM_TIMEOUT", "Timed out calling upstream", e);
         } catch (ConnectException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_CONNECT_FAILED\nmessage=TCP connect failed\nurl=" + safe(url), e);
+                    "code=UPSTREAM_CONNECT_FAILED" + LINE_SEPARATOR + "message=TCP connect failed" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new UpstreamConnectivityException("UPSTREAM_CONNECT_FAILED", "TCP connect failed", e);
         } catch (UnknownHostException | UnresolvedAddressException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_DNS_FAILED\nmessage=DNS/host resolution failed\nurl=" + safe(url), e);
+                    "code=UPSTREAM_DNS_FAILED" + LINE_SEPARATOR + "message=DNS/host resolution failed" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new UpstreamConnectivityException("UPSTREAM_DNS_FAILED", "DNS/host resolution failed", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_INTERRUPTED\nmessage=Interrupted while calling upstream\nurl=" + safe(url), e);
+                    "code=UPSTREAM_INTERRUPTED" + LINE_SEPARATOR + "message=Interrupted while calling upstream" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new IOException("Interrupted while calling upstream", e);
         } catch (IllegalArgumentException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_URL_INVALID\nmessage=Upstream URL invalid\nurl=" + safe(url), e);
+                    "code=UPSTREAM_URL_INVALID" + LINE_SEPARATOR + "message=Upstream URL invalid" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new UpstreamConnectivityException("UPSTREAM_URL_INVALID", "Upstream URL invalid", e);
         } catch (UpstreamConnectivityException e) {
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=" + safe(e.code()) + "\nmessage=" + safe(e.getMessage()) + "\nurl=" + safe(url), e);
+                    "code=" + safe(e.code()) + LINE_SEPARATOR + "message=" + safe(e.getMessage()) + LINE_SEPARATOR + "url=" + safe(url), e);
             throw e;
         } catch (SecurityException | IllegalStateException e) {
             LOG.log(Level.WARNING, "[upstream][" + requestId + "] unexpected client exception", e);
                 ServerDiagnosticsLog.write("upstream-request-service", requestId, "http-error",
-                    "code=UPSTREAM_RUNTIME\nmessage=Unexpected upstream HTTP client failure\nurl=" + safe(url), e);
+                    "code=UPSTREAM_RUNTIME" + LINE_SEPARATOR + "message=Unexpected upstream HTTP client failure" + LINE_SEPARATOR + "url=" + safe(url), e);
             throw new IOException("Unexpected upstream HTTP client failure", e);
         }
     }
@@ -422,10 +438,10 @@ public class UpstreamRequestService {
             return null;
         }
         if (url.endsWith(STREAM_CHAT_SUFFIX)) {
-            return url.substring(0, url.length() - STREAM_CHAT_SUFFIX.length()) + CHAT_SUFFIX;
+            return safeSlice(url, 0, url.length() - STREAM_CHAT_SUFFIX.length()) + CHAT_SUFFIX;
         }
         if (url.endsWith(CHAT_SUFFIX)) {
-            return url.substring(0, url.length() - CHAT_SUFFIX.length()) + STREAM_CHAT_SUFFIX;
+            return safeSlice(url, 0, url.length() - CHAT_SUFFIX.length()) + STREAM_CHAT_SUFFIX;
         }
         return null;
     }

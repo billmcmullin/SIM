@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -29,7 +31,7 @@ import jakarta.servlet.http.HttpSession;
 
 @WebServlet(name = "DashboardTrendsServlet", urlPatterns = {"/dashboard/trends"})
 public class DashboardTrendsServlet extends HttpServlet {
-    private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getName());
+    private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_trends.html";
     private static final DashboardTrendsQueryService QUERY_SERVICE = new DashboardTrendsQueryService(log);
 
@@ -74,7 +76,11 @@ public class DashboardTrendsServlet extends HttpServlet {
                 widgetTotal += count;
             }
 
-            double widgetAverage = days > 0 ? (double) widgetTotal / days : 0.0;
+                double widgetAverage = days > 0
+                    ? BigDecimal.valueOf(widgetTotal)
+                        .divide(BigDecimal.valueOf(days), 6, RoundingMode.HALF_UP)
+                        .doubleValue()
+                    : 0.0d;
 
             widgetSeries.add(Json.createObjectBuilder()
                     .add("name", widgetName)
@@ -88,7 +94,11 @@ public class DashboardTrendsServlet extends HttpServlet {
         for (Integer value : totalDaily.values()) {
             grandTotal += safeIntegerValue(value);
         }
-        double averagePostsPerDay = days > 0 ? (double) grandTotal / days : 0.0;
+        double averagePostsPerDay = days > 0
+            ? BigDecimal.valueOf(grandTotal)
+                .divide(BigDecimal.valueOf(days), 6, RoundingMode.HALF_UP)
+                .doubleValue()
+            : 0.0d;
 
         JsonObject trendData = Json.createObjectBuilder()
                 .add("labels", labels)
@@ -194,7 +204,7 @@ public class DashboardTrendsServlet extends HttpServlet {
                 StringBuilder builder = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    builder.append(line).append('\n');
+                    builder.append(line).append(System.lineSeparator());
                 }
                 return builder.toString();
             }
@@ -209,7 +219,7 @@ public class DashboardTrendsServlet extends HttpServlet {
             return "";
         }
         return value.replace("\\", "\\\\").replace("'", "\\'")
-                .replace("\n", "\\n").replace("\r", "\\r");
+                .replace(System.lineSeparator(), "\\n").replace(System.lineSeparator(), "\\r");
     }
 
 }

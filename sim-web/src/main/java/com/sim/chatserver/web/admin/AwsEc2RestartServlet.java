@@ -31,7 +31,7 @@ import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
 @WebServlet(name = "AwsEc2RestartServlet", urlPatterns = {"/admin/aws/restart-ec2"})
 public class AwsEc2RestartServlet extends HttpServlet {
 
-    private static final Logger log = Logger.getLogger(AwsEc2RestartServlet.class.getName());
+    private static final Logger log = Logger.getLogger(AwsEc2RestartServlet.class.getCanonicalName());
     private static final int MAX_IP_LENGTH = 64;
 
     @Override
@@ -144,15 +144,35 @@ public class AwsEc2RestartServlet extends HttpServlet {
                     HttpServletResponse.SC_BAD_GATEWAY,
                     "AWS EC2 reboot request failed.", Level.WARNING);
                 writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
+            } catch (Ec2RebootFailureException ex) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof AwsServiceException awsEx) {
+                    log.log(Level.WARNING, "AWS EC2 reboot failed", awsEx);
+                    String message = awsEx.awsErrorDetails() != null
+                            ? awsEx.awsErrorDetails().errorMessage()
+                            : "AWS EC2 reboot request failed.";
+                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                        HttpServletResponse.SC_BAD_GATEWAY,
+                        message, Level.WARNING);
+                    writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
+                } else if (cause instanceof SdkClientException sdkEx) {
+                    log.log(Level.WARNING, "AWS EC2 reboot failed", sdkEx);
+                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                        HttpServletResponse.SC_BAD_GATEWAY,
+                        "AWS EC2 reboot request failed.", Level.WARNING);
+                    writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
+                } else {
+                    throw new IllegalStateException("Unexpected reboot failure.", ex);
+                }
             }
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            Logger.getLogger(getClass().getName())
+            Logger.getLogger(getClass().getCanonicalName())
                     .log(Level.WARNING, "Unhandled exception in doPost", e);
             if (!resp.isCommitted()) {
                 try {
                     resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
                 } catch (IOException ioe) {
-                    Logger.getLogger(getClass().getName())
+                    Logger.getLogger(getClass().getCanonicalName())
                             .log(Level.FINE, "Failed sending fallback server error.", ioe);
                 }
             }
@@ -173,8 +193,17 @@ public class AwsEc2RestartServlet extends HttpServlet {
             try {
                 ec2.rebootInstances(RebootInstancesRequest.builder().instanceIds(instanceId).build());
             } catch (AwsServiceException | SdkClientException ex) {
-                throw ex;
+                throw new Ec2RebootFailureException(ex);
             }
+        }
+    }
+
+    private static final class Ec2RebootFailureException extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        private Ec2RebootFailureException(Throwable cause) {
+            super(cause);
         }
     }
 
@@ -253,8 +282,8 @@ public class AwsEc2RestartServlet extends HttpServlet {
             return "";
         }
         return value
-                .replace("\r", " ")
-                .replace("\n", " ")
+                .replace(System.lineSeparator(), " ")
+                .replace(System.lineSeparator(), " ")
                 .replace("\t", " ")
                 .replaceAll("[\\p{Cntrl}]", " ")
                 .trim();

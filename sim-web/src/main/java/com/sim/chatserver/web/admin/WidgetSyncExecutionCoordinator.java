@@ -69,17 +69,17 @@ final class WidgetSyncExecutionCoordinator {
             Supplier<String> nextSummaryRunAtSupplier,
             Logger log
     ) {
-        Objects.requireNonNull(mode, "mode");
-        Objects.requireNonNull(syncRunner, "syncRunner");
-        Objects.requireNonNull(lastSyncedUpdater, "lastSyncedUpdater");
-        Objects.requireNonNull(progressUpdater, "progressUpdater");
-        Objects.requireNonNull(summaryRunner, "summaryRunner");
-        Objects.requireNonNull(summaryPausedSupplier, "summaryPausedSupplier");
-        Objects.requireNonNull(summaryPausedReasonSupplier, "summaryPausedReasonSupplier");
-        Objects.requireNonNull(summaryAutoEnabledSupplier, "summaryAutoEnabledSupplier");
-        Objects.requireNonNull(summaryDueSupplier, "summaryDueSupplier");
-        Objects.requireNonNull(nextSummaryRunAtSupplier, "nextSummaryRunAtSupplier");
-        Objects.requireNonNull(log, "log");
+        mode = Objects.requireNonNull(mode, "mode");
+        syncRunner = Objects.requireNonNull(syncRunner, "syncRunner");
+        lastSyncedUpdater = Objects.requireNonNull(lastSyncedUpdater, "lastSyncedUpdater");
+        progressUpdater = Objects.requireNonNull(progressUpdater, "progressUpdater");
+        summaryRunner = Objects.requireNonNull(summaryRunner, "summaryRunner");
+        summaryPausedSupplier = Objects.requireNonNull(summaryPausedSupplier, "summaryPausedSupplier");
+        summaryPausedReasonSupplier = Objects.requireNonNull(summaryPausedReasonSupplier, "summaryPausedReasonSupplier");
+        summaryAutoEnabledSupplier = Objects.requireNonNull(summaryAutoEnabledSupplier, "summaryAutoEnabledSupplier");
+        summaryDueSupplier = Objects.requireNonNull(summaryDueSupplier, "summaryDueSupplier");
+        nextSummaryRunAtSupplier = Objects.requireNonNull(nextSummaryRunAtSupplier, "nextSummaryRunAtSupplier");
+        log = Objects.requireNonNull(log, "log");
 
         List<T> statuses = syncRunner.run(requestedWidgetId);
         if (statuses == null) {

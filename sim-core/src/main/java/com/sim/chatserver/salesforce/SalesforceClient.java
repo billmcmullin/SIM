@@ -35,21 +35,22 @@ import jakarta.json.JsonValue;
  */
 public class SalesforceClient {
 
-    private static final Logger log = Logger.getLogger(SalesforceClient.class.getName());
+    private static final Logger log = Logger.getLogger(SalesforceClient.class.getCanonicalName());
     private static final String API_VERSION = "v61.0";
     private static final int MAX_ERROR_BODY_LEN = 512;
+    private static final String LS = System.lineSeparator();
 
     private final HttpClient httpClient;
     private final SalesforceAuthClient authClient;
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private SalesforceClient() {
@@ -137,7 +138,7 @@ public class SalesforceClient {
                 "salesforce-client",
                 requestId,
                 "query-request",
-                "method=GET\nurl=" + endpoint + "\nsoql=" + soql
+            "method=GET" + LS + "url=" + endpoint + LS + "soql=" + soql
         );
 
         HttpRequest req = HttpRequest.newBuilder()
@@ -154,7 +155,7 @@ public class SalesforceClient {
                     "salesforce-client",
                     requestId,
                     "query-response",
-                    "status=" + response.statusCode() + "\nbody=" + safeErrorBody(response.body())
+                    "status=" + response.statusCode() + LS + "body=" + safeErrorBody(response.body())
             );
             return response;
         } catch (InterruptedException e) {
@@ -163,7 +164,7 @@ public class SalesforceClient {
                     "salesforce-client",
                     requestId,
                     "query-error",
-                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
                     e
             );
             throw e;
@@ -172,7 +173,7 @@ public class SalesforceClient {
                     "salesforce-client",
                     requestId,
                     "query-error",
-                    "url=" + endpoint + "\nmessage=" + safe(e.getMessage()),
+                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
                     e
             );
             throw e;
@@ -302,9 +303,9 @@ public class SalesforceClient {
         if (b == null) {
             return null;
         }
-        b = b.replace("\n", " ").replace("\r", " ");
+        b = b.replace(System.lineSeparator(), " ").replace(System.lineSeparator(), " ");
         if (b.length() > MAX_ERROR_BODY_LEN) {
-            return b.substring(0, MAX_ERROR_BODY_LEN) + "...";
+            return new String(b.toCharArray(), 0, MAX_ERROR_BODY_LEN) + "...";
         }
         return b;
     }

@@ -248,7 +248,8 @@ class AdminConfigServletTest {
         TestableAdminConfigServlet servlet = new TestableAdminConfigServlet(termsStore);
 
         assertEquals("", invokeStaticString("escapeJson", null));
-        assertEquals("a\\\"b\\nc", invokeStaticString("escapeJson", "a\"b\nc"));
+        String jsonInput = "a\"b" + System.lineSeparator() + "c";
+        assertEquals("a\\\"b\\nc", invokeStaticString("escapeJson", jsonInput));
         assertEquals("a\\'b\\\"c", invokeStaticString("escapeJs", "a'b\"c"));
         assertEquals("x&amp;y&lt;z&gt;&quot;&#39;", invokeInstanceString(servlet, "escapeHtml", "x&y<z>\"'"));
         assertEquals("", invokeInstanceString(servlet, "escapeAttribute", null));

@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -43,7 +44,7 @@ import jakarta.json.JsonReader;
 @ApplicationScoped
 public class WidgetAvailabilityChecker {
 
-    private static final Logger log = Logger.getLogger(WidgetAvailabilityChecker.class.getName());
+    private static final Logger log = Logger.getLogger(WidgetAvailabilityChecker.class.getCanonicalName());
 
     private static final String DEFAULT_URL = "http://anythingllm:3001/api/v1/system";
     private static final String DEFAULT_METHOD = "GET";
@@ -54,6 +55,8 @@ public class WidgetAvailabilityChecker {
     private static final String DEBUG_FAILURES_PROP = "sim.widget.healthcheck.debug.failures";
     private static final String REQUIRE_HTTPS_WITH_AUTH_ENV = "WIDGET_HEALTHCHECK_REQUIRE_HTTPS_WITH_AUTH";
     private static final String REQUIRE_HTTPS_WITH_AUTH_PROP = "sim.widget.healthcheck.require.https.with.auth";
+    private static final String LINE_SEPARATOR = System.lineSeparator();
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final Pattern EMBED_STREAM_PATTERN = Pattern.compile("/api/embed/([^/]+)/stream-chat");
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
@@ -71,11 +74,11 @@ public class WidgetAvailabilityChecker {
             .build();
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public WidgetAvailabilityResult checkNow() {
@@ -198,9 +201,9 @@ public class WidgetAvailabilityChecker {
             requestId,
             "healthcheck-request",
             "method=" + safeMsg(cfg.method)
-                + "\nurl=" + safeUrl(cfg.url)
-                + "\ntimeoutMs=" + cfg.timeoutMs
-                + "\nsource=" + safeMsg(cfg.source)
+                + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
+                + LINE_SEPARATOR + "timeoutMs=" + cfg.timeoutMs
+                + LINE_SEPARATOR + "source=" + safeMsg(cfg.source)
         );
 
         boolean sensitiveAuthConfigured = cfg.apiKeyValue != null || cfg.requestCookie != null;
@@ -215,8 +218,8 @@ public class WidgetAvailabilityChecker {
                     "widget-availability-checker",
                     requestId,
                     "healthcheck-blocked",
-                    "reason=sensitive-auth-without-https\nurl=" + safeUrl(cfg.url)
-                            + "\nlatencyMs=" + latencyMs
+                    "reason=sensitive-auth-without-https" + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
+                        + LINE_SEPARATOR + "latencyMs=" + latencyMs
             );
             return down(checkedAt, latencyMs, "Sensitive auth material configured but healthcheck URL is not HTTPS"
                 + sourceSuffix(cfg));
@@ -246,10 +249,10 @@ public class WidgetAvailabilityChecker {
                         requestId,
                         "healthcheck-retry",
                         "reason=auth-header-fallback"
-                        + "\ninitialStatus=" + initialStatus
-                                + "\nfromHeader=Authorization"
-                                + "\ntoHeader=X-API-Key"
-                                + "\nurl=" + safeUrl(cfg.url)
+                    + LINE_SEPARATOR + "initialStatus=" + initialStatus
+                        + LINE_SEPARATOR + "fromHeader=Authorization"
+                        + LINE_SEPARATOR + "toHeader=X-API-Key"
+                        + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
                 );
                 response = sendHttpHealthRequest(cfg, "X-API-Key");
             }
@@ -265,10 +268,10 @@ public class WidgetAvailabilityChecker {
                     requestId,
                     "healthcheck-response",
                     "status=" + status
-                        + "\nlatencyMs=" + latencyMs
-                        + "\ncontentType=" + safeMsg(contentType)
-                        + "\nurl=" + safeUrl(cfg.url)
-                        + "\nbodySnippet=" + bodySnippet(body)
+                        + LINE_SEPARATOR + "latencyMs=" + latencyMs
+                        + LINE_SEPARATOR + "contentType=" + safeMsg(contentType)
+                        + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
+                        + LINE_SEPARATOR + "bodySnippet=" + bodySnippet(body)
                 );
 
             if (status < 200 || status >= 300) {
@@ -312,7 +315,7 @@ public class WidgetAvailabilityChecker {
                     "widget-availability-checker",
                     requestId,
                     "healthcheck-error",
-                    "errorRef=" + errorRef + "\nlatencyMs=" + latencyMs + "\nurl=" + safeUrl(cfg.url),
+                    "errorRef=" + errorRef + LINE_SEPARATOR + "latencyMs=" + latencyMs + LINE_SEPARATOR + "url=" + safeUrl(cfg.url),
                     e
                 );
             if (isFailureDebugEnabled()) {
@@ -331,8 +334,8 @@ public class WidgetAvailabilityChecker {
                 "widget-availability-checker",
                 requestId,
                 "healthcheck-error",
-                "errorRef=" + errorRef + "\nlatencyMs=" + latencyMs + "\nurl=" + safeUrl(cfg.url)
-                    + "\nmessage=" + safeMsg(e.getMessage()),
+                "errorRef=" + errorRef + LINE_SEPARATOR + "latencyMs=" + latencyMs + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
+                    + LINE_SEPARATOR + "message=" + safeMsg(e.getMessage()),
                 e
             );
             if (isFailureDebugEnabled()) {
@@ -423,9 +426,9 @@ public class WidgetAvailabilityChecker {
                 "widget-availability-checker",
                 requestId,
                 "sse-request",
-                "method=POST\nurl=" + safeUrl(probeUrl)
-                        + "\nwidgetId=" + safeMsg(cfg.widgetId)
-                        + "\npayload=" + payload
+            "method=POST" + LINE_SEPARATOR + "url=" + safeUrl(probeUrl)
+                + LINE_SEPARATOR + "widgetId=" + safeMsg(cfg.widgetId)
+                + LINE_SEPARATOR + "payload=" + payload
         );
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
@@ -469,10 +472,10 @@ public class WidgetAvailabilityChecker {
             requestId,
             "sse-response",
             "status=" + status
-                + "\nlatencyMs=" + latencyMs
-                + "\ncontentType=" + safeMsg(contentType)
-                + "\nurl=" + safeUrl(probeUrl)
-                + "\nbodySnippet=" + bodySnippet(body)
+                + LINE_SEPARATOR + "latencyMs=" + latencyMs
+                + LINE_SEPARATOR + "contentType=" + safeMsg(contentType)
+                + LINE_SEPARATOR + "url=" + safeUrl(probeUrl)
+                + LINE_SEPARATOR + "bodySnippet=" + bodySnippet(body)
         );
 
         if (status < 200 || status >= 300) {
@@ -565,7 +568,7 @@ public class WidgetAvailabilityChecker {
                 + (u.getPath() == null ? "" : u.getPath()));
         String s = clean.toString();
         while (s.endsWith("/")) {
-            s = s.substring(0, s.length() - 1);
+            s = safeSlice(s, 0, s.length() - 1);
         }
         return s;
     }
@@ -605,7 +608,7 @@ public class WidgetAvailabilityChecker {
                     continue;
                 }
 
-                String jsonPart = trimmed.substring("data:".length()).trim();
+                String jsonPart = safeSlice(trimmed, "data:".length(), trimmed.length()).trim();
                 if (jsonPart.isEmpty()) {
                     continue;
                 }
@@ -773,7 +776,7 @@ public class WidgetAvailabilityChecker {
             }
             String actual = obj.get(expectedField).toString();
             if (actual.length() >= 2 && actual.charAt(0) == '"' && actual.charAt(actual.length() - 1) == '"') {
-                actual = actual.substring(1, actual.length() - 1);
+                actual = safeSlice(actual, 1, actual.length() - 1);
             }
             return expectedValue.equalsIgnoreCase(actual.trim());
         } catch (JsonException | ClassCastException | IllegalStateException e) {
@@ -792,7 +795,7 @@ public class WidgetAvailabilityChecker {
             log.log(Level.FINE, "stringVal fallback for key=" + key, e);
             String v = obj.get(key).toString();
             if (v != null && v.length() >= 2 && v.charAt(0) == '"' && v.charAt(v.length() - 1) == '"') {
-                v = v.substring(1, v.length() - 1);
+                v = safeSlice(v, 1, v.length() - 1);
             }
             return v;
         }
@@ -856,13 +859,13 @@ public class WidgetAvailabilityChecker {
         String normalized = Normalizer.normalize(body == null ? "" : body, Normalizer.Form.NFKC);
         String withoutNul = normalized.replace('\u0000', ' ');
         if (withoutNul.length() > maxChars) {
-            return withoutNul.substring(0, maxChars);
+            return safeSlice(withoutNul, 0, maxChars);
         }
         return withoutNul;
     }
 
     private String readEnvCanonical(String key, int maxChars) {
-        String raw = System.getenv(key);
+        String raw = ENV.get(key);
         if (raw == null) {
             return null;
         }
@@ -970,7 +973,7 @@ public class WidgetAvailabilityChecker {
             return "";
         }
         if (t.regionMatches(true, 0, "Authorization:", 0, 14)) {
-            return t.substring(14).trim();
+            return safeSlice(t, 14, t.length()).trim();
         }
         return t;
     }
@@ -978,7 +981,7 @@ public class WidgetAvailabilityChecker {
     private String normalizeApiTokenForHeader(String rawToken) {
         String token = stripAuthorizationPrefix(rawToken);
         if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            token = token.substring(7).trim();
+            token = safeSlice(token, 7, token.length()).trim();
         }
 
         token = CONTROL_CHARS.matcher(token).replaceAll("");
@@ -988,7 +991,7 @@ public class WidgetAvailabilityChecker {
             char first = token.charAt(0);
             char last = token.charAt(token.length() - 1);
             if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                token = token.substring(1, token.length() - 1).trim();
+                token = safeSlice(token, 1, token.length() - 1).trim();
             }
         }
 
@@ -1029,7 +1032,7 @@ public class WidgetAvailabilityChecker {
                 sb.append(uri.getAuthority());
             }
             if (uri.getPort() != -1) {
-                sb.append(':').append(uri.getPort());
+                sb.append((char) 58).append(uri.getPort());
             }
             if (uri.getPath() != null) {
                 sb.append(uri.getPath());
@@ -1076,7 +1079,7 @@ public class WidgetAvailabilityChecker {
             return "";
         }
         if (s.length() > 300) {
-            s = s.substring(0, 300) + "...";
+            s = safeSlice(s, 0, 300) + "...";
         }
         return new StringBuilder(" [body=\"")
                 .append(s)
@@ -1093,7 +1096,22 @@ public class WidgetAvailabilityChecker {
         if (s.isEmpty()) {
             return "";
         }
-        return s.length() > 300 ? s.substring(0, 300) + "..." : s;
+        return s.length() > 300 ? safeSlice(s, 0, 300) + "..." : s;
+    }
+
+    private static String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null) {
+            return "";
+        }
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        int length = end - start;
+        if (length <= 0) {
+            return "";
+        }
+        char[] copied = new char[length];
+        value.getChars(start, end, copied, 0);
+        return new String(copied);
     }
 
     private WidgetAvailabilityResult up(String checkedAt, long latencyMs, String details) {

@@ -2,6 +2,7 @@ package com.sim.chatserver.web.admin;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.FilterOutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -32,7 +33,8 @@ import com.sim.chatserver.config.Database;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 final class DatabaseBackupService {
-    private static final Logger log = Logger.getLogger(DatabaseBackupService.class.getName());
+    private static final Logger log = Logger.getLogger(DatabaseBackupService.class.getCanonicalName());
+    private static final String LS = System.lineSeparator();
 
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
@@ -41,6 +43,7 @@ final class DatabaseBackupService {
     private static final LocalDate MIN_ALLOWED_DATE = LocalDate.of(1970, 1, 1);
     private static final LocalDate MAX_ALLOWED_DATE = LocalDate.of(3000, 12, 31);
     private static final List<String> EXCLUDED_TABLES = List.of("flyway_schema_history");
+    private static final byte[] EMPTY_BYTES = new byte[0];
 
     void exportBackup(OutputStream outputStream, String generatedAt) {
         if (outputStream == null) {
@@ -110,27 +113,27 @@ final class DatabaseBackupService {
                     int cols = md.getColumnCount();
 
                     zip.putNextEntry(new ZipEntry("tables/" + tableName + ".csv"));
-                    OutputStreamWriter writer = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
-
-                    for (int columnIndex = 1; columnIndex <= cols; columnIndex++) {
-                        if (columnIndex > 1) {
-                            writer.write(',');
-                        }
-                        writer.write(csvEscape(md.getColumnLabel(columnIndex)));
-                    }
-                    writer.write('\n');
-
-                    while (rs.next()) {
+                    try (OutputStreamWriter writer = new OutputStreamWriter(new NonClosingOutputStream(zip), StandardCharsets.UTF_8)) {
                         for (int columnIndex = 1; columnIndex <= cols; columnIndex++) {
                             if (columnIndex > 1) {
                                 writer.write(',');
                             }
-                            writer.write(csvEscape(readCellAsText(rs, md, columnIndex)));
+                            writer.write(csvEscape(md.getColumnLabel(columnIndex)));
                         }
-                        writer.write('\n');
-                    }
+                        writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
 
-                    writer.flush();
+                        while (rs.next()) {
+                            for (int columnIndex = 1; columnIndex <= cols; columnIndex++) {
+                                if (columnIndex > 1) {
+                                    writer.write(',');
+                                }
+                                writer.write(csvEscape(readCellAsText(rs, md, columnIndex)));
+                            }
+                            writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
+                        }
+
+                        writer.flush();
+                    }
                     zip.closeEntry();
                 }
             }
@@ -142,21 +145,21 @@ final class DatabaseBackupService {
     private void writeManifest(ZipOutputStream zip, List<String> exported, List<String> skipped, String generatedAt) {
         try {
             zip.putNextEntry(new ZipEntry("manifest.json"));
-            OutputStreamWriter writer = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
+            try (OutputStreamWriter writer = new OutputStreamWriter(new NonClosingOutputStream(zip), StandardCharsets.UTF_8)) {
+                writer.write('{' + LS);
+                writer.write("  \"formatVersion\": 1," + LS);
+                writer.write("  \"type\": \"raw-data-export\"," + LS);
+                writer.write("  \"generatedAt\": \"" + jsonEscape(generatedAt) + '\"' + ',' + LS);
+                writer.write("  \"schema\": \"public\"," + LS);
+                writer.write("  \"exportedTableCount\": " + exported.size() + ',' + LS);
+                writer.write("  \"skippedTableCount\": " + skipped.size() + ',' + LS);
+                writer.write("  \"exportedTables\": " + toJsonArray(exported) + ',' + LS);
+                writer.write("  \"skippedTables\": " + toJsonArray(skipped));
+                writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
+                writer.write('}' + LS);
 
-            writer.write("{\n");
-            writer.write("  \"formatVersion\": 1,\n");
-            writer.write("  \"type\": \"raw-data-export\",\n");
-            writer.write("  \"generatedAt\": \"" + jsonEscape(generatedAt) + "\",\n");
-            writer.write("  \"schema\": \"public\",\n");
-            writer.write("  \"exportedTableCount\": " + exported.size() + ",\n");
-            writer.write("  \"skippedTableCount\": " + skipped.size() + ",\n");
-            writer.write("  \"exportedTables\": " + toJsonArray(exported) + ",\n");
-            writer.write("  \"skippedTables\": " + toJsonArray(skipped));
-            writer.write('\n');
-            writer.write("}\n");
-
-            writer.flush();
+                writer.flush();
+            }
             zip.closeEntry();
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write backup manifest.", e);
@@ -187,7 +190,7 @@ final class DatabaseBackupService {
             int sqlType = md.getColumnType(columnIndex);
             if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
                 byte[] bytes = readValidatedBinary(rs, columnIndex);
-                return bytes.length == 0 ? "" : Base64.getEncoder().encodeToString(bytes);
+                return bytes == null || bytes.length == 0 ? "" : Base64.getEncoder().encodeToString(bytes);
             }
 
             if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
@@ -228,7 +231,7 @@ final class DatabaseBackupService {
 
     private byte[] readValidatedBinary(ResultSet rs, int columnIndex) {
         if (rs == null) {
-            return new byte[0];
+            return EMPTY_BYTES;
         }
         try {
             byte[] bytes = rs.getBytes(columnIndex);
@@ -252,14 +255,14 @@ final class DatabaseBackupService {
         StringBuilder safe = new StringBuilder(normalizedInput.length());
         for (int i = 0; i < normalizedInput.length(); i++) {
             char ch = normalizedInput.charAt(i);
-            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
                 continue;
             }
             safe.append(ch);
         }
         String normalized = safe.toString();
         return normalized.length() > MAX_CELL_TEXT_LENGTH
-                ? normalized.substring(0, MAX_CELL_TEXT_LENGTH)
+            ? safeSlice(normalized, 0, MAX_CELL_TEXT_LENGTH)
                 : normalized;
     }
 
@@ -271,7 +274,7 @@ final class DatabaseBackupService {
         if (value == null) {
             return "";
         }
-        boolean needsQuotes = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r");
+        boolean needsQuotes = value.contains(",") || value.contains("\"") || value.contains(System.lineSeparator()) || value.contains(System.lineSeparator());
         String escaped = value.replace("\"", "\"\"");
         return needsQuotes ? '"' + escaped + '"' : escaped;
     }
@@ -317,9 +320,9 @@ final class DatabaseBackupService {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace("\r", "");
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "");
         return normalized.length() > MAX_CELL_TEXT_LENGTH
-                ? normalized.substring(0, MAX_CELL_TEXT_LENGTH)
+                ? safeSlice(normalized, 0, MAX_CELL_TEXT_LENGTH)
                 : normalized;
     }
 
@@ -329,7 +332,7 @@ final class DatabaseBackupService {
 
     private byte[] sanitizeBinary(byte[] bytes) {
         if (bytes == null) {
-            return new byte[0];
+            return EMPTY_BYTES;
         }
         return bytes.length <= MAX_BINARY_BYTES ? bytes : Arrays.copyOf(bytes, MAX_BINARY_BYTES);
     }
@@ -394,5 +397,30 @@ final class DatabaseBackupService {
             return null;
         }
         return parsed;
+    }
+
+    private String safeSlice(String value, int beginIndex, int endIndex) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        int safeBegin = Math.max(0, beginIndex);
+        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
+        int length = safeEnd - safeBegin;
+        if (length <= 0) {
+            return "";
+        }
+        char[] chars = value.toCharArray();
+        return new String(chars, safeBegin, length);
+    }
+
+    private static final class NonClosingOutputStream extends FilterOutputStream {
+        private NonClosingOutputStream(OutputStream delegate) {
+            super(delegate);
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
+        }
     }
 }

@@ -38,12 +38,12 @@ public class AttachmentSanitizer {
 
     @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getName());
+        throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     AttachmentSanitizer() {
@@ -159,8 +159,8 @@ public class AttachmentSanitizer {
         }
 
         try {
-            Base64.getDecoder().decode(v);
-            return true;
+            byte[] decoded = Base64.getDecoder().decode(v);
+            return decoded != null;
         } catch (IllegalArgumentException ex) {
             java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
             return false;
@@ -186,6 +186,6 @@ public class AttachmentSanitizer {
             return "";
         }
         String s = value.trim();
-        return s.length() <= maxChars ? s : s.substring(0, maxChars);
+        return s.length() <= maxChars ? s : new String(s.toCharArray(), 0, maxChars);
     }
 }
