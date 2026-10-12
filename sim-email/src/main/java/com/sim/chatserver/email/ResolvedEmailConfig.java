@@ -9,6 +9,8 @@ public record ResolvedEmailConfig(
         Object providerConfig
         ) {
 
+        private static final String EMPTY = "";
+
     public ResolvedEmailConfig(
             EmailConfig config,
             EmailConfigSource source,
@@ -20,7 +22,7 @@ public record ResolvedEmailConfig(
         this.config = config;
         this.source = (source == null) ? EmailConfigSource.NONE : source;
         this.valid = valid;
-        this.message = (message == null) ? "" : message;
+        this.message = (message == null) ? EMPTY : message;
         this.providerType = (providerType == null) ? EmailProviderType.SMTP : providerType;
 
         Object resolvedProviderConfig = providerConfig;
@@ -41,7 +43,7 @@ public record ResolvedEmailConfig(
                 config,
                 source == null ? EmailConfigSource.NONE : source,
                 valid,
-                message == null ? "" : message,
+                message == null ? EMPTY : message,
                 EmailProviderType.SMTP,
                 config
         );

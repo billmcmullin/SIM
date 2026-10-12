@@ -11,9 +11,13 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 public final class DashboardSessionDataUtil {
+
+    private static final String VALUE_DASH = "-";
+    private static final String LOG_WIDGET_TABLE_METADATA_UNAVAILABLE = "Unable to inspect widget table metadata";
 
     private DashboardSessionDataUtil() {
     }
@@ -51,33 +55,20 @@ public final class DashboardSessionDataUtil {
             }
         }
         if (winner == null) {
-            return "-";
+            return VALUE_DASH;
         }
         return displayNames.getOrDefault(winner, winner);
     }
 
     public static String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = new String(normalized.toCharArray(), 0, 60);
-        }
-        return normalized;
+        return DashboardDbUtil.sanitizeWidgetTableName(widgetId);
     }
 
     public static boolean tableExists(Connection conn, String tableName, Logger log) {
         try {
             DatabaseMetaData meta = conn.getMetaData();
             for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{com.sim.chatserver.util.CommonLiteralConstants.DB_TABLE_TYPE_TABLE})) {
                     if (rs.next()) {
                         return true;
                     }
@@ -85,7 +76,7 @@ public final class DashboardSessionDataUtil {
             }
         } catch (SQLException ex) {
             if (log != null) {
-                log.log(Level.FINE, "Unable to inspect widget table metadata", ex);
+                log.log(Level.FINE, LOG_WIDGET_TABLE_METADATA_UNAVAILABLE, ex);
             }
         }
         return false;

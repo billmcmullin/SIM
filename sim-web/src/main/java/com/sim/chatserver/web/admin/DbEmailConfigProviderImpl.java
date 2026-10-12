@@ -42,32 +42,72 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
     private static final Logger log = Logger.getLogger(DbEmailConfigProviderImpl.class.getCanonicalName());
     private static final int SINGLE_ROW_ID = 1;
+    private static final int DEFAULT_DB_PORT_INT = 5432;
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String EMPTY = "";
+    private static final String SQL_LOAD = """
+            SELECT host, port, auth, starttls, ssl, username, password_enc, default_from
+            FROM email_smtp_config
+            WHERE id = ?
+            """;
+    private static final String SQL_UPDATE = """
+            UPDATE email_smtp_config
+            SET host = ?, port = ?, auth = ?, starttls = ?, ssl = ?,
+                username = ?, password_enc = ?, default_from = ?, updated_by = ?, updated_at = ?
+            WHERE id = ?
+            """;
+    private static final String SQL_INSERT = """
+            INSERT INTO email_smtp_config
+            (id, host, port, auth, starttls, ssl, username, password_enc, default_from, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
+    private static final String COL_HOST = "host";
+    private static final String COL_PORT = "port";
+    private static final String COL_AUTH = "auth";
+    private static final String COL_STARTTLS = "starttls";
+    private static final String COL_SSL = "ssl";
+    private static final String COL_USERNAME = com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME;
+    private static final String COL_PASSWORD_ENC = "password_enc";
+    private static final String COL_DEFAULT_FROM = "default_from";
+    private static final String ERR_LOAD_SMTP_CONFIG = "Failed to load SMTP config from DB";
+    private static final String ERR_CONFIG_NULL = "config must not be null";
+    private static final String ERR_SAVE_SMTP_CONFIG = "Failed to save SMTP config";
+    private static final String ENV_DB_HOST = "DB_HOST";
+    private static final String ENV_DB_PORT = "DB_PORT";
+    private static final String ENV_DB_NAME = "DB_NAME";
+    private static final String ENV_DB_USER = "DB_USER";
+    private static final String ENV_DB_PASSWORD = "DB_PASSWORD";
+    private static final String DEF_DB_HOST = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
+    private static final String DEF_DB_PORT = "5432";
+    private static final String DEF_DB_NAME = com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT;
+    private static final String DEF_DB_USER = "postgres";
+    private static final String LOG_INVALID_DB_PORT = "Invalid DB_PORT value; using fallback";
+    private static final String LOG_ROLLBACK_FAILED = "Rollback failed";
+    private static final String LOG_SET_AUTOCOMMIT_FAILED = "setAutoCommit failed";
+    private static final String ERR_SMTP_HOST_REQUIRED = "SMTP host is required";
+    private static final String ERR_SMTP_PORT_RANGE = "SMTP port must be between 1 and 65535";
+    private static final String NUL_CHAR = com.sim.chatserver.util.CommonLiteralConstants.NULL_CHAR_STRING;
+    private static final int SECRET_MAX_LENGTH = 1024;
     private static final Pattern SAFE_DB_HOST = Pattern.compile("^[A-Za-z0-9.-]{1,255}$");
     private static final Pattern SAFE_DB_PORT = Pattern.compile("^\\d{1,5}$");
     private static final Pattern SAFE_DB_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
     private static final Pattern SAFE_DB_USER = Pattern.compile("^[A-Za-z0-9_.@-]{1,128}$");
     private static final java.util.Map<String, String> ENV = new ProcessBuilder().environment();
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @Override
     public EmailConfig load() {
-        final String sql = """
-                SELECT host, port, auth, starttls, ssl, username, password_enc, default_from
-                FROM email_smtp_config
-                WHERE id = ?
-                """;
-
         try (Connection con = newConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+             PreparedStatement ps = con.prepareStatement(SQL_LOAD)) {
 
             ps.setInt(1, SINGLE_ROW_ID);
 
@@ -76,14 +116,14 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                     return null;
                 }
 
-                String host = trimToEmpty(rs.getString("host"));
-                int port = rs.getInt("port");
-                boolean auth = rs.getBoolean("auth");
-                boolean startTls = rs.getBoolean("starttls");
-                boolean ssl = rs.getBoolean("ssl");
-                String username = trimToEmpty(rs.getString("username"));
-                String passwordEnc = trimToEmpty(rs.getString("password_enc"));
-                String defaultFrom = trimToEmpty(rs.getString("default_from"));
+                String host = trimToEmpty(rs.getString(COL_HOST));
+                int port = rs.getInt(COL_PORT);
+                boolean auth = rs.getBoolean(COL_AUTH);
+                boolean startTls = rs.getBoolean(COL_STARTTLS);
+                boolean ssl = rs.getBoolean(COL_SSL);
+                String username = trimToEmpty(rs.getString(COL_USERNAME));
+                String passwordEnc = trimToEmpty(rs.getString(COL_PASSWORD_ENC));
+                String defaultFrom = trimToEmpty(rs.getString(COL_DEFAULT_FROM));
 
                 String password = decrypt(passwordEnc);
 
@@ -99,7 +139,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                 );
             }
         } catch (SQLException | IllegalStateException | IllegalArgumentException e) {
-            log.log(Level.SEVERE, "Failed to load SMTP config from DB", e);
+            log.log(Level.SEVERE, ERR_LOAD_SMTP_CONFIG, e);
             return null;
         }
     }
@@ -107,26 +147,13 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     @Override
     public void save(EmailConfig config, String updatedBy) {
         if (config == null) {
-            throw new IllegalArgumentException("config must not be null");
+            throw new IllegalArgumentException(ERR_CONFIG_NULL);
         }
 
         validate(config);
 
         // If incoming password is blank, retain existing password via interface helper.
         EmailConfig merged = mergeKeepingExistingPasswordIfBlank(config);
-
-        final String updateSql = """
-                UPDATE email_smtp_config
-                SET host = ?, port = ?, auth = ?, starttls = ?, ssl = ?,
-                    username = ?, password_enc = ?, default_from = ?, updated_by = ?, updated_at = ?
-                WHERE id = ?
-                """;
-
-        final String insertSql = """
-                INSERT INTO email_smtp_config
-                (id, host, port, auth, starttls, ssl, username, password_enc, default_from, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
 
         String encPassword = encrypt(nullToEmpty(merged.password()));
         Timestamp now = Timestamp.from(Instant.now());
@@ -137,13 +164,13 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
             try {
                 int updated;
-                try (PreparedStatement ps = con.prepareStatement(updateSql)) {
+                try (PreparedStatement ps = con.prepareStatement(SQL_UPDATE)) {
                     bindCommonForUpdate(ps, merged, encPassword, actor, now);
                     updated = ps.executeUpdate();
                 }
 
                 if (updated == 0) {
-                    try (PreparedStatement ps = con.prepareStatement(insertSql)) {
+                    try (PreparedStatement ps = con.prepareStatement(SQL_INSERT)) {
                         bindCommonForInsert(ps, merged, encPassword, actor, now);
                         ps.executeUpdate();
                     }
@@ -152,31 +179,31 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
                 con.commit();
             } catch (SQLException e) {
                 rollbackQuietly(con);
-                throw new IllegalStateException("Failed to save SMTP config", e);
+                throw new IllegalStateException(ERR_SAVE_SMTP_CONFIG, e);
             } catch (IllegalStateException | IllegalArgumentException e) {
                 rollbackQuietly(con);
-                throw new IllegalStateException("Failed to save SMTP config", e);
+                throw new IllegalStateException(ERR_SAVE_SMTP_CONFIG, e);
             } finally {
                 setAutoCommitQuietly(con, true);
             }
         } catch (SQLException e) {
-            throw new IllegalStateException("Failed to save SMTP config", e);
+            throw new IllegalStateException(ERR_SAVE_SMTP_CONFIG, e);
         }
     }
 
     private Connection newConnection() throws SQLException {
-        String host = envOrDefault("DB_HOST", "localhost", SAFE_DB_HOST, 255);
-        String portRaw = envOrDefault("DB_PORT", "5432", SAFE_DB_PORT, 5);
-        String db = envOrDefault("DB_NAME", "chat", SAFE_DB_NAME, 128);
-        String user = envOrDefault("DB_USER", "postgres", SAFE_DB_USER, 128);
-        String pass = envSecretOrDefault("DB_PASSWORD", "");
+        String host = envOrDefault(ENV_DB_HOST, DEF_DB_HOST, SAFE_DB_HOST, 255);
+        String portRaw = envOrDefault(ENV_DB_PORT, DEF_DB_PORT, SAFE_DB_PORT, 5);
+        String db = envOrDefault(ENV_DB_NAME, DEF_DB_NAME, SAFE_DB_NAME, 128);
+        String user = envOrDefault(ENV_DB_USER, DEF_DB_USER, SAFE_DB_USER, 128);
+        String pass = envSecretOrDefault(ENV_DB_PASSWORD, EMPTY);
 
         int port;
         try {
             port = Integer.parseInt(portRaw);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid DB_PORT value; using fallback", ex);
-            port = 5432;
+            log.log(Level.FINE, LOG_INVALID_DB_PORT, ex);
+            port = DEFAULT_DB_PORT_INT;
         }
 
         PGSimpleDataSource dataSource = new PGSimpleDataSource();
@@ -209,19 +236,19 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
             return def;
         }
         String normalized = stripControls(v);
-        if (normalized.length() > 1024) {
-            return safeSlice(normalized, 0, 1024);
+        if (normalized.length() > SECRET_MAX_LENGTH) {
+            return new String(normalized.toCharArray(), 0, SECRET_MAX_LENGTH);
         }
         return normalized;
     }
 
     private String stripControls(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
-        return value.replace("\u0000", "")
-                .replace(System.lineSeparator(), "")
-                .replace(System.lineSeparator(), "");
+        return value.replace(NUL_CHAR, EMPTY)
+                .replace(System.lineSeparator(), EMPTY)
+                .replace(System.lineSeparator(), EMPTY);
     }
 
     private String readEnv(String key) {
@@ -233,40 +260,42 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
 
     private void bindCommonForUpdate(PreparedStatement ps, EmailConfig c, String encPassword, String updatedBy, Timestamp now)
             throws SQLException {
-        ps.setString(1, c.host());
-        ps.setInt(2, c.port());
-        ps.setBoolean(3, c.auth());
-        ps.setBoolean(4, c.startTls());
-        ps.setBoolean(5, c.ssl());
-        ps.setString(6, nullToEmpty(c.username()));
-        ps.setString(7, encPassword);
-        ps.setString(8, nullToEmpty(c.defaultFrom()));
-        ps.setString(9, updatedBy);
-        ps.setTimestamp(10, now);
+        bindSmtpFields(ps, 1, c, encPassword);
+        bindAuditFields(ps, 9, updatedBy, now);
         ps.setInt(11, SINGLE_ROW_ID);
     }
 
     private void bindCommonForInsert(PreparedStatement ps, EmailConfig c, String encPassword, String updatedBy, Timestamp now)
             throws SQLException {
         ps.setInt(1, SINGLE_ROW_ID);
-        ps.setString(2, c.host());
-        ps.setInt(3, c.port());
-        ps.setBoolean(4, c.auth());
-        ps.setBoolean(5, c.startTls());
-        ps.setBoolean(6, c.ssl());
-        ps.setString(7, nullToEmpty(c.username()));
-        ps.setString(8, encPassword);
-        ps.setString(9, nullToEmpty(c.defaultFrom()));
-        ps.setString(10, updatedBy);
-        ps.setTimestamp(11, now);
+        bindSmtpFields(ps, 2, c, encPassword);
+        bindAuditFields(ps, 10, updatedBy, now);
+    }
+
+    private void bindSmtpFields(PreparedStatement ps, int startIndex, EmailConfig c, String encPassword)
+            throws SQLException {
+        ps.setString(startIndex, c.host());
+        ps.setInt(startIndex + 1, c.port());
+        ps.setBoolean(startIndex + 2, c.auth());
+        ps.setBoolean(startIndex + 3, c.startTls());
+        ps.setBoolean(startIndex + 4, c.ssl());
+        ps.setString(startIndex + 5, nullToEmpty(c.username()));
+        ps.setString(startIndex + 6, encPassword);
+        ps.setString(startIndex + 7, nullToEmpty(c.defaultFrom()));
+    }
+
+    private void bindAuditFields(PreparedStatement ps, int startIndex, String updatedBy, Timestamp now)
+            throws SQLException {
+        ps.setString(startIndex, updatedBy);
+        ps.setTimestamp(startIndex + 1, now);
     }
 
     private void validate(EmailConfig c) {
         if (!hasText(c.host())) {
-            throw new IllegalArgumentException("SMTP host is required");
+            throw new IllegalArgumentException(ERR_SMTP_HOST_REQUIRED);
         }
         if (c.port() < 1 || c.port() > 65535) {
-            throw new IllegalArgumentException("SMTP port must be between 1 and 65535");
+            throw new IllegalArgumentException(ERR_SMTP_PORT_RANGE);
         }
     }
 
@@ -289,7 +318,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         try {
             con.rollback();
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Rollback failed", ex);
+            log.log(Level.WARNING, LOG_ROLLBACK_FAILED, ex);
         }
     }
 
@@ -297,7 +326,7 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         try {
             con.setAutoCommit(value);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "setAutoCommit failed", ex);
+            log.log(Level.FINE, LOG_SET_AUTOCOMMIT_FAILED, ex);
         }
     }
 
@@ -306,24 +335,11 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
     }
 
     private String trimToEmpty(String s) {
-        return s == null ? "" : s.trim();
+        return s == null ? EMPTY : s.trim();
     }
 
     private String nullToEmpty(String s) {
-        return s == null ? "" : s;
+        return s == null ? EMPTY : s;
     }
 
-    private String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        int safeBegin = Math.max(0, beginIndex);
-        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
-        int length = safeEnd - safeBegin;
-        if (length <= 0) {
-            return "";
-        }
-        char[] chars = value.toCharArray();
-        return new String(chars, safeBegin, length);
-    }
 }

@@ -47,8 +47,8 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(SalesforceOAuthCallbackServlet.class.getCanonicalName());
     private static final String LS = System.lineSeparator();
 
-    private static final String SESSION_USER = "user";
-    private static final String SESSION_ROLE = "role";
+    private static final String SESSION_USER = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
+    private static final String SESSION_ROLE = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
 
     private static final String OAUTH_STATE_KEY = "sf_oauth_state";
     private static final String OAUTH_STATE_TS_KEY = "sf_oauth_state_ts";
@@ -70,7 +70,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return;
         }
 
-        String error = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "error", 1024, true, true));
+        String error = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, 1024, true, true));
         if (error != null) {
             String description = sanitizeOAuthParam(ServletRequestParamUtil.firstParam(req, "error_description", 1024, true, true));
             redirectWithMessage(resp, req, false,
@@ -99,7 +99,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             cfg = EncryptedDbConfigStore.load();
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to load server configuration for OAuth callback", e);
-            throw new ServletException("Unable to load server configuration", e);
+            throw new ServletException(com.sim.chatserver.util.CommonLiteralConstants.MSG_LOAD_SERVER_CONFIGURATION, e);
         }
 
         String loginUrl = trimToNull(cfg.getSalesforceLoginUrl());
@@ -124,8 +124,8 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         HttpRequest tokenReq = HttpRequest.newBuilder()
                 .uri(URI.create(tokenUrl))
                 .timeout(Duration.ofSeconds(15))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("Accept", "application/json")
+                .header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_ACCEPT, com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();
 
@@ -136,7 +136,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 "salesforce-oauth-callback",
                 requestId,
                 "token-request",
-                "method=POST" + LS + "url=" + tokenUrl
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_METHOD_POST + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + tokenUrl
             );
 
             HttpResponse<String> tokenRes = HTTP_CLIENT.send(tokenReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -147,7 +147,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 "salesforce-oauth-callback",
                 requestId,
                 "token-response",
-                "status=" + statusCode + LS + "body=" + redactOauthPayload(body)
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + statusCode + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + redactOauthPayload(body)
             );
 
             if (statusCode < 200 || statusCode >= 300) {
@@ -180,7 +180,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                     "salesforce-oauth-callback",
                     requestId,
                     "token-error",
-                    "url=" + tokenUrl + LS + "message=" + safe(e.getMessage()),
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + tokenUrl + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             redirectWithMessage(resp, req, false, "Salesforce OAuth connection failed.");
@@ -190,21 +190,21 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                     "salesforce-oauth-callback",
                     requestId,
                     "token-error",
-                    "url=" + tokenUrl + LS + "message=" + safe(e.getMessage()),
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + tokenUrl + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             redirectWithMessage(resp, req, false, "Salesforce OAuth callback failed.");
         }
     
         } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -217,7 +217,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
         Object roleObj = session.getAttribute(SESSION_ROLE);
         String role = roleObj == null ? "" : String.valueOf(roleObj);
-        return "ADMIN".equalsIgnoreCase(role);
+        return com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role);
     }
 
     private boolean isValidState(HttpSession session, String stateFromRequest) {
@@ -290,7 +290,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
     }
 
     private void redirectWithMessage(HttpServletResponse resp, HttpServletRequest req, boolean ok, String message) {
-        String status = ok ? "ok" : "error";
+        String status = ok ? "ok" : com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR;
         String safeMessage = safe(message);
 
         HttpSession session = req.getSession(false);
@@ -318,7 +318,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
         String scheme = normalizeScheme(readForwardedHeader(req, "X-Forwarded-Proto"));
         if (isBlank(scheme)) {
-            scheme = req.isSecure() ? "https" : "http";
+            scheme = req.isSecure() ? com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS : com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP;
         }
 
         String hostHeader = readForwardedHeader(req, "X-Forwarded-Host");
@@ -335,11 +335,11 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
                 host = sanitizeHost(h);
             }
         } else {
-            host = "localhost";
+            host = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
         }
 
         if (isBlank(host)) {
-            host = "localhost";
+            host = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
         }
 
         String forwardedPort = readForwardedHeader(req, "X-Forwarded-Port");
@@ -351,14 +351,14 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         }
 
         if (port <= 0) {
-            port = "https".equalsIgnoreCase(scheme) ? 443 : 80;
+            port = com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equalsIgnoreCase(scheme) ? 443 : 80;
         }
 
-        boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
-                || ("https".equalsIgnoreCase(scheme) && port == 443);
+        boolean defaultPort = (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equalsIgnoreCase(scheme) && port == 80)
+                || (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equalsIgnoreCase(scheme) && port == 443);
 
         StringBuilder sb = new StringBuilder();
-        sb.append(scheme).append("://").append(host);
+        sb.append(scheme).append(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR).append(host);
         if (port > 0 && !defaultPort) {
             sb.append((char) 58).append(port);
         }
@@ -394,10 +394,10 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
 
     private String normalizeBaseUrl(String url) {
         String x = url.trim();
-        if (!x.startsWith("http://") && !x.startsWith("https://")) {
-            x = "https://" + x;
+        if (!x.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP) && !x.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
+            x = com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS + x;
         }
-        return x.replaceAll("/+$", "");
+        return x.replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_TRAILING_SLASHES, "");
     }
 
     private String normalizeScheme(String scheme) {
@@ -405,7 +405,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return null;
         }
         String normalized = scheme.trim().toLowerCase();
-        if ("http".equals(normalized) || "https".equals(normalized)) {
+        if (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equals(normalized) || com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equals(normalized)) {
             return normalized;
         }
         return null;
@@ -444,7 +444,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
             return "";
         }
         String trimmed = contextPath.trim();
-        if (!SAFE_CONTEXT_PATH.matcher(trimmed).matches() || trimmed.contains("://") || trimmed.contains(System.lineSeparator()) || trimmed.contains(System.lineSeparator())) {
+        if (!SAFE_CONTEXT_PATH.matcher(trimmed).matches() || trimmed.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR) || trimmed.contains(System.lineSeparator()) || trimmed.contains(System.lineSeparator())) {
             return "";
         }
         return trimmed;
@@ -458,7 +458,7 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         String text = payload == null ? "" : payload;
         text = text.replaceAll("\"access_token\"\\s*:\\s*\"[^\"]*\"", "\"access_token\":\"[REDACTED]\"");
         text = text.replaceAll("\"refresh_token\"\\s*:\\s*\"[^\"]*\"", "\"refresh_token\":\"[REDACTED]\"");
-        return text.length() > 1024 ? new String(text.toCharArray(), 0, 1024) + "..." : text;
+        return text.length() > 1024 ? new String(text.toCharArray(), 0, 1024) + com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS : text;
     }
 
     private String trimToNull(String v) {
@@ -491,10 +491,18 @@ public class SalesforceOAuthCallbackServlet extends HttpServlet {
         return s == null || s.isBlank();
     }
 
-    static final class TokenPayload {
-
-        String accessToken;
-        String refreshToken;
-        String instanceUrl;
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
+
+
+
 }
+
+final class TokenPayload {
+
+    String accessToken;
+    String refreshToken;
+    String instanceUrl;
+}
+

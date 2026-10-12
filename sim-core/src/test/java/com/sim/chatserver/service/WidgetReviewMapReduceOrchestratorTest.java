@@ -8,7 +8,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.model.SelectedEntry;
-import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult;
+import com.sim.chatserver.service.OrchestrationResult;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.ProgressListener;
 
 import jakarta.json.JsonArray;
@@ -27,7 +27,7 @@ import com.sim.chatserver.model.review.BatchFailure;
 import com.sim.chatserver.model.review.MapBatchResult;
 import com.sim.chatserver.model.review.ReduceRequest;
 import com.sim.chatserver.model.review.ReduceResult;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -278,7 +278,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for allSelectedChatIds()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#allSelectedChatIds()
+    * @see com.sim.chatserver.service.OrchestrationResult#allSelectedChatIds()
      * @author bmcmullin
      */
     @Test
@@ -308,7 +308,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -345,7 +345,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for batchFailures()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#batchFailures()
+    * @see com.sim.chatserver.service.OrchestrationResult#batchFailures()
      * @author bmcmullin
      */
     @Test
@@ -375,7 +375,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -412,7 +412,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for coverageComplete()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#coverageComplete()
+    * @see com.sim.chatserver.service.OrchestrationResult#coverageComplete()
      * @author bmcmullin
      */
     @Test
@@ -441,7 +441,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method coverageComplete()
         assertFalse(result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -479,7 +479,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for coveragePassesUsed()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#coveragePassesUsed()
+    * @see com.sim.chatserver.service.OrchestrationResult#coveragePassesUsed()
      * @author bmcmullin
      */
     @Test
@@ -508,7 +508,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method coveragePassesUsed()
         assertEquals(0, result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -546,7 +546,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for failedBatchIndexes()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#failedBatchIndexes()
+    * @see com.sim.chatserver.service.OrchestrationResult#failedBatchIndexes()
      * @author bmcmullin
      */
     @Test
@@ -576,7 +576,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(1, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -613,7 +613,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for finalResponse()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#finalResponse()
+    * @see com.sim.chatserver.service.OrchestrationResult#finalResponse()
      * @author bmcmullin
      */
     @Test
@@ -642,7 +642,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method finalResponse()
         assertNotNull(result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.mapOutputs());
             assertEquals(1, underTest.mapOutputs().size());
@@ -680,7 +680,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for hasFailures()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#hasFailures()
+    * @see com.sim.chatserver.service.OrchestrationResult#hasFailures()
      * @author bmcmullin
      */
     @Test
@@ -709,7 +709,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method hasFailures()
         assertTrue(result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -749,7 +749,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for mapBatchResults()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#mapBatchResults()
+    * @see com.sim.chatserver.service.OrchestrationResult#mapBatchResults()
      * @author bmcmullin
      */
     @Test
@@ -779,7 +779,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(1, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -816,7 +816,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for mapOutputs()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#mapOutputs()
+    * @see com.sim.chatserver.service.OrchestrationResult#mapOutputs()
      * @author bmcmullin
      */
     @Test
@@ -846,7 +846,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(1, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -883,7 +883,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for missingChatIds()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#missingChatIds()
+    * @see com.sim.chatserver.service.OrchestrationResult#missingChatIds()
      * @author bmcmullin
      */
     @Test
@@ -913,7 +913,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -950,7 +950,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for reduceRequest()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#reduceRequest()
+    * @see com.sim.chatserver.service.OrchestrationResult#reduceRequest()
      * @author bmcmullin
      */
     @Test
@@ -979,7 +979,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method reduceRequest()
         assertNotNull(result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -1017,7 +1017,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for reduceResult()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#reduceResult()
+    * @see com.sim.chatserver.service.OrchestrationResult#reduceResult()
      * @author bmcmullin
      */
     @Test
@@ -1046,7 +1046,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method reduceResult()
         assertNotNull(result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -1084,7 +1084,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for totalBatches()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#totalBatches()
+    * @see com.sim.chatserver.service.OrchestrationResult#totalBatches()
      * @author bmcmullin
      */
     @Test
@@ -1113,7 +1113,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method totalBatches()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -1151,7 +1151,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for totalSelected()
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#totalSelected()
+    * @see com.sim.chatserver.service.OrchestrationResult#totalSelected()
      * @author bmcmullin
      */
     @Test
@@ -1180,7 +1180,7 @@ public class WidgetReviewMapReduceOrchestratorTest
         // Then - assertions for result of method totalSelected()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of WidgetReviewMapReduceOrchestrator.OrchestrationResult
+        // Then - assertions for this instance of OrchestrationResult
         assertAll(() -> {
             assertNotNull(underTest.finalResponse());
         }, () -> {
@@ -1218,7 +1218,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withBatchFailures(List)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withBatchFailures(List)
+    * @see com.sim.chatserver.service.OrchestrationResult#withBatchFailures(List)
      * @author bmcmullin
      */
     @Test
@@ -1287,7 +1287,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withBatchFailures(List)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withBatchFailures(List)
+    * @see com.sim.chatserver.service.OrchestrationResult#withBatchFailures(List)
      * @author bmcmullin
      */
     @Test
@@ -1358,7 +1358,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withCoverage(List, boolean, int)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withCoverage(List, boolean,
+    * @see com.sim.chatserver.service.OrchestrationResult#withCoverage(List, boolean,
      *      int)
      * @author bmcmullin
      */
@@ -1431,7 +1431,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withCoverage(List, boolean, int)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withCoverage(List, boolean,
+    * @see com.sim.chatserver.service.OrchestrationResult#withCoverage(List, boolean,
      *      int)
      * @author bmcmullin
      */
@@ -1508,7 +1508,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withCoverage(List, boolean, int)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withCoverage(List, boolean,
+    * @see com.sim.chatserver.service.OrchestrationResult#withCoverage(List, boolean,
      *      int)
      * @author bmcmullin
      */
@@ -1583,7 +1583,7 @@ public class WidgetReviewMapReduceOrchestratorTest
     /**
      * Parasoft Jtest UTA: Test for withCoverage(List, boolean, int)
      *
-     * @see com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator.OrchestrationResult#withCoverage(List, boolean,
+    * @see com.sim.chatserver.service.OrchestrationResult#withCoverage(List, boolean,
      *      int)
      * @author bmcmullin
      */
@@ -2063,5 +2063,6 @@ public class WidgetReviewMapReduceOrchestratorTest
         }
     }
 }
+
 
 

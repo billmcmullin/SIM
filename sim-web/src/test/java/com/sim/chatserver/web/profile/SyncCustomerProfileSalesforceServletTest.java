@@ -13,6 +13,7 @@ import org.mockito.MockedStatic;
 import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
 import com.sim.chatserver.salesforce.SalesforceClient;
+import com.sim.chatserver.salesforce.SalesforceClientException;
 import com.sim.chatserver.salesforce.SalesforceCustomerMatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -276,7 +277,7 @@ public class SyncCustomerProfileSalesforceServletTest
         SyncCustomerProfileSalesforceServlet underTest = new SyncCustomerProfileSalesforceServlet();
 
         SalesforceClient mockedClient = mock(SalesforceClient.class);
-        SalesforceClient.SalesforceClientException failure = newSalesforceClientException(502, "Bad gateway");
+        SalesforceClientException failure = newSalesforceClientException(502, "Bad gateway");
         when(mockedClient.lookupBestCustomerMatch("Alice")).thenThrow(failure);
 
         SalesforceClient originalClient = replaceSalesforceClient(mockedClient);
@@ -541,9 +542,9 @@ public class SyncCustomerProfileSalesforceServletTest
         return resp;
     }
 
-    private static SalesforceClient.SalesforceClientException newSalesforceClientException(int statusCode, String message)
+    private static SalesforceClientException newSalesforceClientException(int statusCode, String message)
             throws Exception {
-        Constructor<SalesforceClient.SalesforceClientException> ctor = SalesforceClient.SalesforceClientException.class
+        Constructor<SalesforceClientException> ctor = SalesforceClientException.class
                 .getDeclaredConstructor(int.class, String.class);
         ctor.setAccessible(true);
         return ctor.newInstance(statusCode, message);

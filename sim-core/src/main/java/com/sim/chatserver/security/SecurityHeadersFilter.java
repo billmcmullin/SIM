@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -24,17 +26,68 @@ import jakarta.servlet.http.HttpServletResponse;
  * If you already set some headers elsewhere, this safely overwrites them with
  * secure defaults.
  */
-@WebFilter("/*")
+@WebFilter(SecurityHeadersFilter.WEB_FILTER_PATTERN)
 public class SecurityHeadersFilter implements Filter {
 
+    public static final String WEB_FILTER_PATTERN = "/*";
     private static final long STATIC_CACHE_SECONDS = 604800L; // 7 days
     private static final int MAX_HEADER_CHARS = 512;
     private static final int MAX_URI_CHARS = 2048;
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
 
     private static final String STATIC_CACHE_CONTROL = "public, max-age=" + STATIC_CACHE_SECONDS + ", immutable";
 
     private static final String DYNAMIC_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
+        private static final String HEADER_X_CONTENT_TYPE_OPTIONS = "X-Content-Type-Options";
+        private static final String VALUE_NOSNIFF = "nosniff";
+        private static final String HEADER_X_FRAME_OPTIONS = "X-Frame-Options";
+        private static final String VALUE_DENY = "DENY";
+        private static final String HEADER_REFERRER_POLICY = "Referrer-Policy";
+        private static final String VALUE_NO_REFERRER = "no-referrer";
+        private static final String HEADER_PERMISSIONS_POLICY = "Permissions-Policy";
+        private static final String VALUE_PERMISSIONS_POLICY = "geolocation=(), microphone=(), camera=(), payment=(), usb=(), accelerometer=(), gyroscope=()";
+        private static final String HEADER_CONTENT_SECURITY_POLICY = "Content-Security-Policy";
+        private static final String VALUE_CSP = "default-src 'self'; "
+            + "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            + "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            + "img-src 'self' data: https:; "
+            + "font-src 'self' https://cdn.jsdelivr.net data:; "
+            + "connect-src 'self'; "
+            + "frame-ancestors 'none'; "
+            + "base-uri 'self'; "
+            + "form-action 'self'";
+        private static final String HEADER_CACHE_CONTROL = "Cache-Control";
+        private static final String HEADER_EXPIRES = "Expires";
+        private static final String HEADER_PRAGMA = "Pragma";
+        private static final String VALUE_NO_CACHE = "no-cache";
+        private static final String HEADER_SET_COOKIE = "Set-Cookie";
+        private static final String COOKIE_JSESSIONID_PREFIX = "JSESSIONID=";
+        private static final String COOKIE_ATTR_HTTP_ONLY = "HttpOnly";
+        private static final String COOKIE_ATTR_SAMESITE_LAX = "SameSite=Lax";
+        private static final String COOKIE_ATTR_SECURE = "Secure";
+        private static final String COOKIE_ATTR_SEPARATOR = "; ";
+        private static final String EMPTY = "";
+        private static final String HEADER_X_FORWARDED_PROTO = "X-Forwarded-Proto";
+        private static final String VALUE_HTTPS = CommonLiteralConstants.SCHEME_HTTPS;
+        private static final String HEADER_X_FORWARDED_SSL = "X-Forwarded-Ssl";
+        private static final String HEADER_FRONT_END_HTTPS = "Front-End-Https";
+        private static final String VALUE_ON = "on";
+        private static final String PATH_FAVICON = "/favicon.ico";
+        private static final String PATH_ASSETS_PREFIX = "/assets/";
+        private static final String EXT_CSS = ".css";
+        private static final String EXT_JS = ".js";
+        private static final String EXT_MJS = ".mjs";
+        private static final String EXT_PNG = ".png";
+        private static final String EXT_JPG = ".jpg";
+        private static final String EXT_JPEG = ".jpeg";
+        private static final String EXT_GIF = ".gif";
+        private static final String EXT_SVG = ".svg";
+        private static final String EXT_ICO = ".ico";
+        private static final String EXT_WEBP = ".webp";
+        private static final String EXT_WOFF = ".woff";
+        private static final String EXT_WOFF2 = ".woff2";
+        private static final String EXT_TTF = ".ttf";
+        private static final String EXT_MAP = ".map";
 
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
@@ -53,39 +106,29 @@ public class SecurityHeadersFilter implements Filter {
 
         if (httpResp != null) {
             // MIME sniff protection
-            httpResp.setHeader("X-Content-Type-Options", "nosniff");
+            httpResp.setHeader(HEADER_X_CONTENT_TYPE_OPTIONS, VALUE_NOSNIFF);
 
             // Clickjacking protection
-            httpResp.setHeader("X-Frame-Options", "DENY");
+            httpResp.setHeader(HEADER_X_FRAME_OPTIONS, VALUE_DENY);
 
             // Referrer leakage protection
-            httpResp.setHeader("Referrer-Policy", "no-referrer");
+            httpResp.setHeader(HEADER_REFERRER_POLICY, VALUE_NO_REFERRER);
 
             // Limit browser feature access
-            httpResp.setHeader("Permissions-Policy",
-                    "geolocation=(), microphone=(), camera=(), payment=(), usb=(), accelerometer=(), gyroscope=()");
+            httpResp.setHeader(HEADER_PERMISSIONS_POLICY, VALUE_PERMISSIONS_POLICY);
 
             // Conservative baseline CSP
             // NOTE: If you use CDN scripts/styles (e.g. marked, DOMPurify), adjust this policy accordingly.
-                httpResp.setHeader("Content-Security-Policy",
-                    "default-src 'self'; "
-                    + "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                    + "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                    + "img-src 'self' data: https:; "
-                    + "font-src 'self' https://cdn.jsdelivr.net data:; "
-                    + "connect-src 'self'; "
-                    + "frame-ancestors 'none'; "
-                    + "base-uri 'self'; "
-                    + "form-action 'self'");
+                httpResp.setHeader(HEADER_CONTENT_SECURITY_POLICY, VALUE_CSP);
 
             if (isStaticAssetRequest(request)) {
                 // Allow browser/proxy caching for static assets to avoid FOUC on navigation.
-                httpResp.setHeader("Cache-Control", STATIC_CACHE_CONTROL);
-                httpResp.setDateHeader("Expires", Instant.now().toEpochMilli() + (STATIC_CACHE_SECONDS * 1000L));
+                httpResp.setHeader(HEADER_CACHE_CONTROL, STATIC_CACHE_CONTROL);
+                httpResp.setDateHeader(HEADER_EXPIRES, Instant.now().toEpochMilli() + (STATIC_CACHE_SECONDS * 1000L));
             } else {
                 // Keep dynamic/authenticated pages non-cacheable.
-                httpResp.setHeader("Cache-Control", DYNAMIC_CACHE_CONTROL);
-                httpResp.setHeader("Pragma", "no-cache");
+                httpResp.setHeader(HEADER_CACHE_CONTROL, DYNAMIC_CACHE_CONTROL);
+                httpResp.setHeader(HEADER_PRAGMA, VALUE_NO_CACHE);
             }
         }
 
@@ -97,7 +140,7 @@ public class SecurityHeadersFilter implements Filter {
     }
 
     private void hardenSessionCookie(HttpServletRequest req, HttpServletResponse resp) {
-        Collection<String> cookieHeaders = resp.getHeaders("Set-Cookie");
+        Collection<String> cookieHeaders = resp.getHeaders(HEADER_SET_COOKIE);
         if (cookieHeaders == null || cookieHeaders.isEmpty()) {
             return;
         }
@@ -112,11 +155,11 @@ public class SecurityHeadersFilter implements Filter {
             }
 
             String out = header;
-            if (startsWithIgnoreCase(out, "JSESSIONID=")) {
-                out = appendCookieAttributeIfMissing(out, "HttpOnly");
-                out = appendCookieAttributeIfMissing(out, "SameSite=Lax");
+            if (startsWithIgnoreCase(out, COOKIE_JSESSIONID_PREFIX)) {
+                out = appendCookieAttributeIfMissing(out, COOKIE_ATTR_HTTP_ONLY);
+                out = appendCookieAttributeIfMissing(out, COOKIE_ATTR_SAMESITE_LAX);
                 if (secureRequest) {
-                    out = appendCookieAttributeIfMissing(out, "Secure");
+                    out = appendCookieAttributeIfMissing(out, COOKIE_ATTR_SECURE);
                 }
             }
 
@@ -130,9 +173,9 @@ public class SecurityHeadersFilter implements Filter {
             return;
         }
 
-        resp.setHeader("Set-Cookie", rewritten.get(0));
+        resp.setHeader(HEADER_SET_COOKIE, rewritten.get(0));
         for (int i = 1; i < rewritten.size(); i++) {
-            resp.addHeader("Set-Cookie", rewritten.get(i));
+            resp.addHeader(HEADER_SET_COOKIE, rewritten.get(i));
         }
     }
 
@@ -143,7 +186,7 @@ public class SecurityHeadersFilter implements Filter {
         if (hasCookieAttribute(cookieHeader, attribute)) {
             return cookieHeader;
         }
-        return cookieHeader + "; " + attribute;
+        return cookieHeader + COOKIE_ATTR_SEPARATOR + attribute;
     }
 
     private boolean hasCookieAttribute(String cookieHeader, String attribute) {
@@ -160,7 +203,7 @@ public class SecurityHeadersFilter implements Filter {
 
         String[] parts = cookieHeader.split(String.valueOf((char) 59));
         for (String part : parts) {
-            String token = part == null ? "" : part.trim();
+            String token = part == null ? EMPTY : part.trim();
             if (token.isEmpty()) {
                 continue;
             }
@@ -186,21 +229,21 @@ public class SecurityHeadersFilter implements Filter {
             return true;
         }
 
-        String xForwardedProto = readHeaderCanonical(req, "X-Forwarded-Proto", MAX_HEADER_CHARS);
+        String xForwardedProto = readHeaderCanonical(req, HEADER_X_FORWARDED_PROTO, MAX_HEADER_CHARS);
         if (xForwardedProto != null) {
             String first = firstCsvToken(xForwardedProto);
-            if ("https".equalsIgnoreCase(first)) {
+            if (VALUE_HTTPS.equalsIgnoreCase(first)) {
                 return true;
             }
         }
 
-        String xForwardedSsl = readHeaderCanonical(req, "X-Forwarded-Ssl", MAX_HEADER_CHARS);
-        if ("on".equalsIgnoreCase(xForwardedSsl)) {
+        String xForwardedSsl = readHeaderCanonical(req, HEADER_X_FORWARDED_SSL, MAX_HEADER_CHARS);
+        if (VALUE_ON.equalsIgnoreCase(xForwardedSsl)) {
             return true;
         }
 
-        String frontEndHttps = readHeaderCanonical(req, "Front-End-Https", MAX_HEADER_CHARS);
-        return "on".equalsIgnoreCase(frontEndHttps);
+        String frontEndHttps = readHeaderCanonical(req, HEADER_FRONT_END_HTTPS, MAX_HEADER_CHARS);
+        return VALUE_ON.equalsIgnoreCase(frontEndHttps);
     }
 
     private boolean isStaticAssetRequest(ServletRequest request) {
@@ -219,25 +262,25 @@ public class SecurityHeadersFilter implements Filter {
             path = uri.substring(contextPath.length());
         }
 
-        if ("/favicon.ico".equals(path) || path.startsWith("/assets/")) {
+        if (PATH_FAVICON.equals(path) || path.startsWith(PATH_ASSETS_PREFIX)) {
             return true;
         }
 
         String lowerPath = path.toLowerCase(Locale.ROOT);
-        return lowerPath.endsWith(".css")
-                || lowerPath.endsWith(".js")
-                || lowerPath.endsWith(".mjs")
-                || lowerPath.endsWith(".png")
-                || lowerPath.endsWith(".jpg")
-                || lowerPath.endsWith(".jpeg")
-                || lowerPath.endsWith(".gif")
-                || lowerPath.endsWith(".svg")
-                || lowerPath.endsWith(".ico")
-                || lowerPath.endsWith(".webp")
-                || lowerPath.endsWith(".woff")
-                || lowerPath.endsWith(".woff2")
-                || lowerPath.endsWith(".ttf")
-                || lowerPath.endsWith(".map");
+        return lowerPath.endsWith(EXT_CSS)
+                || lowerPath.endsWith(EXT_JS)
+                || lowerPath.endsWith(EXT_MJS)
+                || lowerPath.endsWith(EXT_PNG)
+                || lowerPath.endsWith(EXT_JPG)
+                || lowerPath.endsWith(EXT_JPEG)
+                || lowerPath.endsWith(EXT_GIF)
+                || lowerPath.endsWith(EXT_SVG)
+                || lowerPath.endsWith(EXT_ICO)
+                || lowerPath.endsWith(EXT_WEBP)
+                || lowerPath.endsWith(EXT_WOFF)
+                || lowerPath.endsWith(EXT_WOFF2)
+                || lowerPath.endsWith(EXT_TTF)
+                || lowerPath.endsWith(EXT_MAP);
     }
 
     private String readCanonicalRequestUri(HttpServletRequest req) {

@@ -8,11 +8,11 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult;
+import com.sim.chatserver.security.review.ReviewValidationResult;
 /**
- * Parasoft Jtest UTA: Test class for ValidationResult
+ * Parasoft Jtest UTA: Test class for ReviewValidationResult
  *
- * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult
+ * @see com.sim.chatserver.security.review.ReviewValidationResult
  * @author bmcmullin
  */
 public class ReviewOutputValidator_ValidationResultTest
@@ -21,7 +21,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getErrors()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getErrors()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getErrors()
      * @author bmcmullin
      */
     @Test
@@ -38,7 +38,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getErrors();
@@ -48,7 +48,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getExpectedChatIds()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getExpectedChatIds()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getExpectedChatIds()
      * @author bmcmullin
      */
     @Test
@@ -65,7 +65,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getExpectedChatIds();
@@ -75,7 +75,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getFoundChatIds()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getFoundChatIds()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getFoundChatIds()
      * @author bmcmullin
      */
     @Test
@@ -92,7 +92,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getFoundChatIds();
@@ -102,7 +102,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getLength()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getLength()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getLength()
      * @author bmcmullin
      */
     @Test
@@ -119,7 +119,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         int result = invokeGetLength(underTest);
@@ -129,7 +129,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getMissingChatIds()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getMissingChatIds()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getMissingChatIds()
      * @author bmcmullin
      */
     @Test
@@ -146,7 +146,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getMissingChatIds();
@@ -156,7 +156,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getUnexpectedChatIds()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getUnexpectedChatIds()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getUnexpectedChatIds()
      * @author bmcmullin
      */
     @Test
@@ -173,7 +173,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getUnexpectedChatIds();
@@ -183,7 +183,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for getWarnings()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#getWarnings()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#getWarnings()
      * @author bmcmullin
      */
     @Test
@@ -200,7 +200,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         List<String> result = underTest.getWarnings();
@@ -210,7 +210,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for isValid()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#isValid()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#isValid()
      * @author bmcmullin
      */
     @Test
@@ -227,7 +227,7 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         boolean result = underTest.isValid();
@@ -237,7 +237,7 @@ public class ReviewOutputValidator_ValidationResultTest
     /**
      * Parasoft Jtest UTA: Test for toString()
      *
-     * @see com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult#toString()
+     * @see com.sim.chatserver.security.review.ReviewValidationResult#toString()
      * @author bmcmullin
      */
     @Test
@@ -254,13 +254,13 @@ public class ReviewOutputValidator_ValidationResultTest
         List<String> foundChatIds = null; // UTA: configured value
         List<String> missingChatIds = null; // UTA: configured value
         List<String> unexpectedChatIds = null; // UTA: configured value
-        ValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
+        ReviewValidationResult underTest = createValidationResult(valid, errors, warnings, length, expectedChatIds, foundChatIds, missingChatIds, unexpectedChatIds);
 
         // When
         String result = underTest.toString();
 
     }
-    private static ValidationResult createValidationResult(
+    private static ReviewValidationResult createValidationResult(
             boolean valid,
             List<String> errors,
             List<String> warnings,
@@ -271,7 +271,7 @@ public class ReviewOutputValidator_ValidationResultTest
             List<String> unexpectedChatIds
     ) throws Throwable {
         try {
-            Constructor<ValidationResult> ctor = ValidationResult.class.getDeclaredConstructor(
+            Constructor<ReviewValidationResult> ctor = ReviewValidationResult.class.getDeclaredConstructor(
                     boolean.class,
                     List.class,
                     List.class,
@@ -288,9 +288,9 @@ public class ReviewOutputValidator_ValidationResultTest
         }
     }
 
-    private static int invokeGetLength(ValidationResult target) throws Throwable {
+    private static int invokeGetLength(ReviewValidationResult target) throws Throwable {
         try {
-            Method method = ValidationResult.class.getDeclaredMethod("getLength");
+            Method method = ReviewValidationResult.class.getDeclaredMethod("getLength");
             method.setAccessible(true);
             return (int) method.invoke(target);
         } catch (InvocationTargetException ex) {

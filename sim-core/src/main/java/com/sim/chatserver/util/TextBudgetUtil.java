@@ -5,6 +5,12 @@ package com.sim.chatserver.util;
  */
 public final class TextBudgetUtil {
 
+    private static final String EMPTY = "";
+    private static final String VALUE_EMPTY_TEXT = com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS;
+    private static final String SINGLE_SPACE = " ";
+    private static final String REGEX_WHITESPACE = com.sim.chatserver.util.CommonLiteralConstants.REGEX_WHITESPACE;
+    private static final String ELLIPSIS = com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS;
+
     private TextBudgetUtil() {
         // util
     }
@@ -38,7 +44,7 @@ public final class TextBudgetUtil {
      */
     private static String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
         return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
@@ -48,21 +54,21 @@ public final class TextBudgetUtil {
      */
     static String compressText(String value, int maxChars) {
         if (value == null || value.isBlank()) {
-            return "(empty)";
+            return VALUE_EMPTY_TEXT;
         }
         if (maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
 
-        String normalized = value.replaceAll("\\s+", " ").trim();
+        String normalized = value.replaceAll(REGEX_WHITESPACE, SINGLE_SPACE).trim();
         if (normalized.length() <= maxChars) {
             return normalized;
         }
 
-        if (maxChars == 1) {
-            return "â€¦";
+        if (maxChars <= ELLIPSIS.length()) {
+            return new String(ELLIPSIS.toCharArray(), 0, maxChars);
         }
-        return new String(normalized.toCharArray(), 0, maxChars - 1) + "â€¦";
+        return new String(normalized.toCharArray(), 0, maxChars - ELLIPSIS.length()) + ELLIPSIS;
     }
 
     /**
@@ -74,7 +80,7 @@ public final class TextBudgetUtil {
         String s = defaultString(suffix);
 
         if (maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
         if (b.length() >= maxChars) {
             return trimTo(b, maxChars);
@@ -115,6 +121,6 @@ public final class TextBudgetUtil {
     }
 
     private static String defaultString(String s) {
-        return s == null ? "" : s;
+        return s == null ? EMPTY : s;
     }
 }

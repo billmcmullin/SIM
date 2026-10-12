@@ -56,7 +56,7 @@ class WidgetTableAdminQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
 
         try (MockedStatic<CDI> cdi = mockCdi(holder)) {
-            WidgetTableAdminQueryService.CheckResult result = service.checkTable("widget_table_1");
+            CheckResult result = service.checkTable("widget_table_1");
             assertTrue(result.exists);
             assertEquals(Long.valueOf(5L), result.count);
             assertEquals("Table is accessible.", result.message);
@@ -87,7 +87,7 @@ class WidgetTableAdminQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
 
         try (MockedStatic<CDI> cdi = mockCdi(holder)) {
-            WidgetTableAdminQueryService.CheckResult result = service.checkTable("widget_table_1");
+            CheckResult result = service.checkTable("widget_table_1");
             assertFalse(result.exists);
             assertEquals(null, result.count);
             assertEquals("Table does not exist.", result.message);
@@ -136,7 +136,7 @@ class WidgetTableAdminQueryServiceTest {
         when(dataSource.getConnection()).thenReturn(conn);
 
         try (MockedStatic<CDI> cdi = mockCdi(holder)) {
-            WidgetTableAdminQueryService.CheckResult result = service.createTableIfMissing("widget_table_1");
+            CheckResult result = service.createTableIfMissing("widget_table_1");
             assertTrue(result.exists);
             assertTrue(result.created);
             assertEquals(Long.valueOf(0L), result.count);
@@ -147,7 +147,7 @@ class WidgetTableAdminQueryServiceTest {
     @Test
     void checkTables_emptyInput_returnsEmptyMap() {
         WidgetTableAdminQueryService service = new WidgetTableAdminQueryService(Logger.getLogger("test"));
-        Map<String, WidgetTableAdminQueryService.CheckResult> result = service.checkTables(List.of());
+        Map<String, CheckResult> result = service.checkTables(List.of());
         assertTrue(result.isEmpty());
     }
 

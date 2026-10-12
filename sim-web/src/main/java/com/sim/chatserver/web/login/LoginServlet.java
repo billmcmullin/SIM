@@ -17,8 +17,10 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
-@WebServlet(name = "LoginServlet", urlPatterns = {"", "/login"})
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
+@WebServlet(name = "LoginServlet", urlPatterns = {"", com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN})
 public class LoginServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(LoginServlet.class.getCanonicalName());
     private static final String VIEW = "/WEB-INF/views/login.html";
@@ -42,7 +44,7 @@ public class LoginServlet extends HttpServlet {
         resolveUserService().ensureAdminExists(); // creates admin/admin if absent
 
         HttpSession session = req.getSession(false);
-        if (session != null && session.getAttribute("user") != null) {
+        if (session != null && session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) != null) {
             forwardToDashboard(req, resp);
             return;
         }
@@ -56,8 +58,8 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        String username = sanitizeUsername(ServletRequestParamUtil.firstParam(req, "username", 256, true, true));
-        String password = sanitizePassword(ServletRequestParamUtil.firstParam(req, "password", 256, true, true));
+        String username = sanitizeUsername(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, 256, true, true));
+        String password = sanitizePassword(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_PASSWORD, 256, true, true));
         if (username == null || password == null) {
             req.setAttribute("loginError", "missing");
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -87,7 +89,7 @@ public class LoginServlet extends HttpServlet {
         }
 
         HttpSession session = req.getSession(true);
-        session.setAttribute("user", sessionUser);
+        session.setAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER, sessionUser);
         session.setMaxInactiveInterval(30 * 60);
 
         forwardToDashboard(req, resp);
@@ -103,7 +105,7 @@ public class LoginServlet extends HttpServlet {
             dispatcher.forward(req, resp);
         } catch (IOException | ServletException ex) {
             log.log(Level.WARNING, "Login request forward failed", ex);
-            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -117,7 +119,7 @@ public class LoginServlet extends HttpServlet {
             dispatcher.forward(req, resp);
         } catch (IOException | ServletException ex) {
             log.log(Level.WARNING, "Login request forward failed", ex);
-            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            safeSendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -164,4 +166,9 @@ public class LoginServlet extends HttpServlet {
         }
         return value;
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

@@ -12,8 +12,9 @@ import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
+import com.sim.chatserver.model.SessionOverview;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -23,6 +24,24 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 
 public final class DashboardServletQueryService {
+
+    private static final String MSG_COMPUTE_TERM_SUMMARY_FAILED = "Unable to compute term summary";
+    private static final String MSG_COMPUTE_SESSION_OVERVIEW_FAILED = "Unable to compute session overview";
+    private static final String SQL_SELECT_CREATED_AT_PREFIX = "SELECT created_at FROM ";
+    private static final String SQL_SELECT_CREATED_AT_SUFFIX = CommonLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
+    private static final String COL_CREATED_AT = CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String DEFAULT_ZERO_TEXT = "0";
+    private static final String MSG_PARSE_EXISTING_DAILY_COUNT = "Unable to parse existing daily count; using zero fallback";
+    private static final String MSG_LOAD_5_DAY_TREND_FAILED = "Unable to load 5-day trend data";
+    private static final String MSG_PARSE_DAILY_CHART_COUNT = "Unable to parse daily chart count; using zero fallback";
+    private static final String JSON_LABELS = CommonLiteralConstants.FIELD_LABELS;
+    private static final String JSON_VALUES = CommonLiteralConstants.FIELD_VALUES;
+    private static final String JSON_DAYS = CommonLiteralConstants.FIELD_DAYS;
+    private static final String MSG_OPEN_DASHBOARD_DATA_CONN_FAILED = "Unable to open dashboard data connection";
+    private static final String MSG_INVALID_SQL_IDENTIFIER = CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String IDENTIFIER_REGEX = CommonLiteralConstants.SQL_IDENTIFIER_REGEX;
+    private static final String QUOTE = "\"";
+    private static final String DOUBLE_QUOTE = CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
 
     private final Logger log;
 
@@ -34,7 +53,7 @@ public final class DashboardServletQueryService {
         return new DashboardServletQueryService(log);
     }
 
-    com.sim.chatserver.model.DashboardViewModels.TermSummary loadTermSummary(
+    com.sim.chatserver.model.TermSummary loadTermSummary(
             DashboardTermService termService,
             List<WidgetEntry> widgets,
             LocalDate rangeStart,
@@ -44,7 +63,7 @@ public final class DashboardServletQueryService {
             var terms = termService.loadAllTerms();
             return termService.buildTermSummary(conn, widgets, terms, rangeStart, rangeEnd);
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to compute term summary", ex);
+            log.log(Level.WARNING, MSG_COMPUTE_TERM_SUMMARY_FAILED, ex);
             return null;
         }
     }
@@ -59,7 +78,7 @@ public final class DashboardServletQueryService {
         try (Connection conn = openConnectionSafe()) {
             return sessionService.buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to compute session overview", ex);
+            log.log(Level.WARNING, MSG_COMPUTE_SESSION_OVERVIEW_FAILED, ex);
             return null;
         }
     }
@@ -88,8 +107,8 @@ public final class DashboardServletQueryService {
                     continue;
                 }
 
-                String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
+                String sql = SQL_SELECT_CREATED_AT_PREFIX + quoteIdentifier(tableName)
+                    + SQL_SELECT_CREATED_AT_SUFFIX;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
@@ -97,7 +116,7 @@ public final class DashboardServletQueryService {
 
                     try (java.sql.ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, COL_CREATED_AT);
                             if (ts == null) {
                                 continue;
                             }
@@ -107,12 +126,12 @@ public final class DashboardServletQueryService {
                                 continue;
                             }
 
-                            String existingText = Objects.toString(totalDaily.get(entryDate), "0");
+                            String existingText = Objects.toString(totalDaily.get(entryDate), DEFAULT_ZERO_TEXT);
                             int currentCount;
                             try {
                                 currentCount = Integer.parseInt(existingText);
                             } catch (NumberFormatException ex) {
-                                log.log(Level.FINE, "Unable to parse existing daily count; using zero fallback", ex);
+                                log.log(Level.FINE, MSG_PARSE_EXISTING_DAILY_COUNT, ex);
                                 currentCount = 0;
                             }
                             totalDaily.put(entryDate, Integer.valueOf(currentCount + 1));
@@ -121,28 +140,28 @@ public final class DashboardServletQueryService {
                 }
             }
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to load 5-day trend data", ex);
+            log.log(Level.WARNING, MSG_LOAD_5_DAY_TREND_FAILED, ex);
         }
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
         JsonArrayBuilder values = Json.createArrayBuilder();
         for (Map.Entry<LocalDate, Integer> entry : totalDaily.entrySet()) {
             labels.add(entry.getKey().toString());
-            String dayCountText = Objects.toString(entry.getValue(), "0");
+            String dayCountText = Objects.toString(entry.getValue(), DEFAULT_ZERO_TEXT);
             int safeCount;
             try {
                 safeCount = Integer.parseInt(dayCountText);
             } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Unable to parse daily chart count; using zero fallback", ex);
+                log.log(Level.FINE, MSG_PARSE_DAILY_CHART_COUNT, ex);
                 safeCount = 0;
             }
             values.add(safeCount);
         }
 
         return Json.createObjectBuilder()
-                .add("labels", labels)
-                .add("values", values)
-                .add("days", 5)
+                .add(JSON_LABELS, labels)
+                .add(JSON_VALUES, values)
+                .add(JSON_DAYS, 5)
                 .build()
                 .toString();
     }
@@ -151,7 +170,7 @@ public final class DashboardServletQueryService {
         try {
             return dataSourceHolder().getDataSource().getConnection();
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open dashboard data connection", ex);
+            throw new IllegalStateException(MSG_OPEN_DASHBOARD_DATA_CONN_FAILED, ex);
         }
     }
 
@@ -161,11 +180,12 @@ public final class DashboardServletQueryService {
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || identifier.isBlank()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        if (!identifier.matches("^[A-Za-z_][A-Za-z0-9_]{0,62}$")) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+        if (!identifier.matches(IDENTIFIER_REGEX)) {
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(QUOTE, DOUBLE_QUOTE) + '"';
     }
 }
+

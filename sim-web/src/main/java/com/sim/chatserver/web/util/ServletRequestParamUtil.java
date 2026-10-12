@@ -12,6 +12,12 @@ import jakarta.servlet.http.HttpServletRequest;
 public final class ServletRequestParamUtil {
 
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
+    private static final String NULL_CHAR = com.sim.chatserver.util.CommonLiteralConstants.NULL_CHAR_STRING;
+    private static final String EMPTY = "";
+    private static final String MSG_PAYLOAD_EXCEEDS_SIZE = "Payload exceeds allowed size.";
+    private static final String MSG_UNABLE_READ_REQUEST_BODY = "Unable to read request body.";
+    private static final String OWASP_LOGGER = com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP;
+    private static final String HANDLED_EXCEPTION = com.sim.chatserver.util.CommonLiteralConstants.LOG_HANDLED_EXCEPTION;
 
     private ServletRequestParamUtil() {
         // utility
@@ -65,8 +71,8 @@ public final class ServletRequestParamUtil {
         }
 
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
-            .replace("\u0000", "")
-                .replace(System.lineSeparator(), "")
+            .replace(NULL_CHAR, EMPTY)
+                .replace(System.lineSeparator(), EMPTY)
                 .trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
@@ -98,7 +104,7 @@ public final class ServletRequestParamUtil {
             int maxLen,
             int bufferSize) {
         if (reader == null) {
-            return "";
+            return EMPTY;
         }
         char[] buffer = new char[Math.max(256, bufferSize)];
         StringBuilder body = new StringBuilder(Math.min(Math.max(maxLen, 1), 4096));
@@ -109,12 +115,12 @@ public final class ServletRequestParamUtil {
             while ((read = reader.read(buffer)) != -1) {
                 total += read;
                 if (maxLen > 0 && total > maxLen) {
-                    throw new IllegalStateException("Payload exceeds allowed size.");
+                    throw new IllegalStateException(MSG_PAYLOAD_EXCEEDS_SIZE);
                 }
                 body.append(buffer, 0, read);
             }
         } catch (IOException e) {
-            throw new IllegalStateException("Unable to read request body.", e);
+            throw new IllegalStateException(MSG_UNABLE_READ_REQUEST_BODY, e);
         }
 
         return normalizeBodyText(body.toString(), 0, false);
@@ -129,7 +135,7 @@ public final class ServletRequestParamUtil {
             int maxLen,
             int bufferSize) {
         if (reader == null) {
-            return "";
+            return EMPTY;
         }
         char[] buffer = new char[Math.max(256, bufferSize)];
         StringBuilder body = new StringBuilder(Math.min(Math.max(maxLen, 1), 4096));
@@ -140,13 +146,13 @@ public final class ServletRequestParamUtil {
             while ((read = reader.read(buffer)) != -1) {
                 total += read;
                 if (maxLen > 0 && total > maxLen) {
-                    return "";
+                    return EMPTY;
                 }
                 body.append(buffer, 0, read);
             }
         } catch (IOException e) {
-            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", e);
-            return "";
+            java.util.logging.Logger.getLogger(OWASP_LOGGER).log(java.util.logging.Level.FINE, HANDLED_EXCEPTION, e);
+            return EMPTY;
         }
 
         return normalizeBodyText(body.toString(), 0, false);
@@ -162,9 +168,9 @@ public final class ServletRequestParamUtil {
 
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         if (stripNullByte) {
-            normalized = normalized.replace("\u0000", "");
+            normalized = normalized.replace(NULL_CHAR, EMPTY);
         }
-        normalized = normalized.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
+        normalized = normalized.replace(System.lineSeparator(), EMPTY).replace(System.lineSeparator(), EMPTY).trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
             return null;

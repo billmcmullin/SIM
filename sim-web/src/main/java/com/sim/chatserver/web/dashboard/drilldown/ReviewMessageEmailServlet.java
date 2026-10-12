@@ -10,7 +10,7 @@ import com.sim.chatserver.email.EmailService;
 import com.sim.chatserver.email.ResolvedEmailConfig;
 import com.sim.chatserver.service.translation.DefaultTranslationService;
 import com.sim.chatserver.service.translation.TranslationService;
-import com.sim.chatserver.service.translation.TranslationService.TranslationResult;
+import com.sim.chatserver.service.translation.TranslationResult;
 import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -42,10 +42,14 @@ import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "ReviewMessageEmailServlet", urlPatterns = {"/dashboard/widgets/drilldown/review/email"})
 public class ReviewMessageEmailServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(ReviewMessageEmailServlet.class.getCanonicalName());
+    private static final String EMPTY = "";
     private static final String LS = System.lineSeparator();
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
@@ -86,19 +90,19 @@ public class ReviewMessageEmailServlet extends HttpServlet {
 
         try {
             HttpSession session = req.getSession(false);
-            if (session == null || session.getAttribute("user") == null) {
-                writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+                writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
                 return;
             }
 
             if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
                 return;
             }
 
             JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
             if (payload == null || payload.isEmpty()) {
-                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
                 return;
             }
 
@@ -108,16 +112,16 @@ public class ReviewMessageEmailServlet extends HttpServlet {
                 return;
             }
 
-            String prompt = normalizeText(JsonRequestParserUtil.getString(payload, "prompt", ""), MAX_TEXT_LENGTH);
-            String responseText = normalizeText(JsonRequestParserUtil.getString(payload, "response", ""), MAX_TEXT_LENGTH);
+            String prompt = normalizeText(JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT, ""), MAX_TEXT_LENGTH);
+            String responseText = normalizeText(JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, ""), MAX_TEXT_LENGTH);
             if (prompt == null && responseText == null) {
                 writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Either prompt or response is required.");
                 return;
             }
 
-            String chatId = normalizeSimple(JsonRequestParserUtil.getString(payload, "chatId", ""), 120);
-            String createdAtRaw = normalizeSimple(JsonRequestParserUtil.getString(payload, "createdAt", ""), 200);
-            String sessionId = normalizeSimple(JsonRequestParserUtil.getString(payload, "sessionId", ""), 200);
+            String chatId = normalizeSimple(JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CHAT_ID, ""), 120);
+            String createdAtRaw = normalizeSimple(JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CREATED_AT, ""), 200);
+            String sessionId = normalizeSimple(JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, ""), 200);
             String subjectLabel = normalizeText(JsonRequestParserUtil.getString(payload, "subjectLabel", ""), MAX_LABEL_LENGTH);
             String subjectType = normalizeSimple(JsonRequestParserUtil.getString(payload, "subjectType", ""), 40);
             String customMessage = normalizeText(JsonRequestParserUtil.getString(payload, "customMessage", ""), MAX_CUSTOM_MESSAGE_LENGTH);
@@ -133,7 +137,7 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             PreparedText preparedPrompt = prepareText(prompt, translateToEnglish, translationService);
             PreparedText preparedResponse = prepareText(responseText, translateToEnglish, translationService);
 
-            String sharedBy = String.valueOf(session.getAttribute("user"));
+            String sharedBy = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
             String textBody = buildTextBody(
                     sharedBy,
                     chatId,
@@ -167,8 +171,8 @@ public class ReviewMessageEmailServlet extends HttpServlet {
             emailService.send(email);
 
             JsonObjectBuilder success = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("message", "Email sent.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Email sent.")
                     .add("translatedPrompt", preparedPrompt.wasTranslated)
                     .add("translatedResponse", preparedResponse.wasTranslated)
                     .add("promptSourceLang", preparedPrompt.sourceLang)
@@ -465,56 +469,64 @@ public class ReviewMessageEmailServlet extends HttpServlet {
         writeJson(resp,
                 status,
                 Json.createObjectBuilder()
-                        .add("status", "error")
-                        .add("message", safe(message))
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(message))
                         .build());
     }
 
-    private static final class DependencyOverrides {
-
-        final DbEmailConfigProvider dbProviderOverride;
-        final ResolvedEmailConfig resolvedConfigOverride;
-        final EmailService emailServiceOverride;
-        final TranslationService translationServiceOverride;
-
-        private DependencyOverrides(
-                DbEmailConfigProvider dbProviderOverride,
-                ResolvedEmailConfig resolvedConfigOverride,
-                EmailService emailServiceOverride,
-                TranslationService translationServiceOverride) {
-            this.dbProviderOverride = dbProviderOverride;
-            this.resolvedConfigOverride = resolvedConfigOverride;
-            this.emailServiceOverride = emailServiceOverride;
-            this.translationServiceOverride = translationServiceOverride;
-        }
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
-    private static final class PreparedText {
+}
 
-        final String original;
-        final String english;
-        final String sourceLang;
-        final boolean wasTranslated;
-        final String translationIssue;
+final class DependencyOverrides {
 
-        private PreparedText(String original, String english, String sourceLang, boolean wasTranslated, String translationIssue) {
-            this.original = original == null ? "" : original;
-            this.english = english == null ? "" : english;
-            this.sourceLang = sourceLang == null ? "" : sourceLang;
-            this.wasTranslated = wasTranslated;
-            this.translationIssue = translationIssue == null ? "" : translationIssue;
-        }
+    final DbEmailConfigProvider dbProviderOverride;
+    final ResolvedEmailConfig resolvedConfigOverride;
+    final EmailService emailServiceOverride;
+    final TranslationService translationServiceOverride;
 
-        private static PreparedText empty() {
-            return new PreparedText("", "", "", false, "");
-        }
+    DependencyOverrides(
+            DbEmailConfigProvider dbProviderOverride,
+            ResolvedEmailConfig resolvedConfigOverride,
+            EmailService emailServiceOverride,
+            TranslationService translationServiceOverride) {
+        this.dbProviderOverride = dbProviderOverride;
+        this.resolvedConfigOverride = resolvedConfigOverride;
+        this.emailServiceOverride = emailServiceOverride;
+        this.translationServiceOverride = translationServiceOverride;
+    }
+}
 
-        private static PreparedText untranslated(String original) {
-            return new PreparedText(original, original, "", false, "");
-        }
+final class PreparedText {
 
-        private static PreparedText failed(String original, String issue) {
-            return new PreparedText(original, original, "", false, issue);
-        }
+    private static final String EMPTY = "";
+    private static final PreparedText EMPTY_INSTANCE = new PreparedText(EMPTY, EMPTY, EMPTY, false, EMPTY);
+
+    final String original;
+    final String english;
+    final String sourceLang;
+    final boolean wasTranslated;
+    final String translationIssue;
+
+    PreparedText(String original, String english, String sourceLang, boolean wasTranslated, String translationIssue) {
+        this.original = original == null ? EMPTY : original;
+        this.english = english == null ? EMPTY : english;
+        this.sourceLang = sourceLang == null ? EMPTY : sourceLang;
+        this.wasTranslated = wasTranslated;
+        this.translationIssue = translationIssue == null ? EMPTY : translationIssue;
+    }
+
+    static PreparedText empty() {
+        return EMPTY_INSTANCE;
+    }
+
+    static PreparedText untranslated(String original) {
+        return new PreparedText(original, original, EMPTY, false, EMPTY);
+    }
+
+    static PreparedText failed(String original, String issue) {
+        return new PreparedText(original, original, EMPTY, false, issue);
     }
 }

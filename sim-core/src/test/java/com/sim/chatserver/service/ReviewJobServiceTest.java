@@ -12,7 +12,7 @@ import com.sim.chatserver.service.ReviewJobService.JobTask;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
-import com.sim.chatserver.service.ReviewJobService.JobResult;
+import com.sim.chatserver.service.JobResult;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -3086,7 +3086,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for allSelectedChatIds()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#allSelectedChatIds()
+     * @see com.sim.chatserver.service.JobResult#allSelectedChatIds()
      * @author bmcmullin
      */
     @Test
@@ -3118,7 +3118,7 @@ public class ReviewJobServiceTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3160,7 +3160,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for completedBatches()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#completedBatches()
+     * @see com.sim.chatserver.service.JobResult#completedBatches()
      * @author bmcmullin
      */
     @Test
@@ -3191,7 +3191,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method completedBatches()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3234,7 +3234,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for contentType()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#contentType()
+     * @see com.sim.chatserver.service.JobResult#contentType()
      * @author bmcmullin
      */
     @Test
@@ -3265,7 +3265,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method contentType()
         assertEquals("application/json", result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3308,7 +3308,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for coverageComplete()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#coverageComplete()
+     * @see com.sim.chatserver.service.JobResult#coverageComplete()
      * @author bmcmullin
      */
     @Test
@@ -3339,7 +3339,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method coverageComplete()
         assertTrue(result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3384,7 +3384,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for coveragePercent()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#coveragePercent()
+     * @see com.sim.chatserver.service.JobResult#coveragePercent()
      * @author bmcmullin
      */
     @Test
@@ -3415,7 +3415,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method coveragePercent()
         assertEquals(0, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3460,7 +3460,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for errorMessage()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#errorMessage()
+     * @see com.sim.chatserver.service.JobResult#errorMessage()
      * @author bmcmullin
      */
     @Test
@@ -3491,7 +3491,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method errorMessage()
         assertEquals("", result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3534,7 +3534,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for failedBatchIndexes()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#failedBatchIndexes()
+     * @see com.sim.chatserver.service.JobResult#failedBatchIndexes()
      * @author bmcmullin
      */
     @Test
@@ -3566,7 +3566,7 @@ public class ReviewJobServiceTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3608,7 +3608,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for failedBatches()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#failedBatches()
+     * @see com.sim.chatserver.service.JobResult#failedBatches()
      * @author bmcmullin
      */
     @Test
@@ -3639,7 +3639,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method failedBatches()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3682,7 +3682,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for finalReport()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#finalReport()
+     * @see com.sim.chatserver.service.JobResult#finalReport()
      * @author bmcmullin
      */
     @Test
@@ -3713,7 +3713,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method finalReport()
         assertEquals("", result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3756,7 +3756,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for httpStatus()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#httpStatus()
+     * @see com.sim.chatserver.service.JobResult#httpStatus()
      * @author bmcmullin
      */
     @Test
@@ -3787,7 +3787,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method httpStatus()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertFalse(jobResultBoolean(underTest, "success"));
         }, () -> {
@@ -3830,7 +3830,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for message()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#message()
+     * @see com.sim.chatserver.service.JobResult#message()
      * @author bmcmullin
      */
     @Test
@@ -3861,7 +3861,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method message()
         assertEquals("message", result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3904,7 +3904,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for missingChatIds()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#missingChatIds()
+     * @see com.sim.chatserver.service.JobResult#missingChatIds()
      * @author bmcmullin
      */
     @Test
@@ -3936,7 +3936,7 @@ public class ReviewJobServiceTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -3978,7 +3978,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for rawResponseBody()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#rawResponseBody()
+     * @see com.sim.chatserver.service.JobResult#rawResponseBody()
      * @author bmcmullin
      */
     @Test
@@ -4009,7 +4009,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method rawResponseBody()
         assertEquals("", result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -4052,7 +4052,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for retries()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#retries()
+     * @see com.sim.chatserver.service.JobResult#retries()
      * @author bmcmullin
      */
     @Test
@@ -4083,7 +4083,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method retries()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -4126,7 +4126,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for success()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#success()
+     * @see com.sim.chatserver.service.JobResult#success()
      * @author bmcmullin
      */
     @Test
@@ -4157,7 +4157,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method success()
         assertFalse(result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -4200,7 +4200,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for totalBatches()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#totalBatches()
+     * @see com.sim.chatserver.service.JobResult#totalBatches()
      * @author bmcmullin
      */
     @Test
@@ -4231,7 +4231,7 @@ public class ReviewJobServiceTest
         // Then - assertions for result of method totalBatches()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -4274,7 +4274,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for usedChatIds()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#usedChatIds()
+     * @see com.sim.chatserver.service.JobResult#usedChatIds()
      * @author bmcmullin
      */
     @Test
@@ -4306,7 +4306,7 @@ public class ReviewJobServiceTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {
@@ -4348,7 +4348,7 @@ public class ReviewJobServiceTest
     /**
      * Parasoft Jtest UTA: Test for warnings()
      *
-     * @see com.sim.chatserver.service.ReviewJobService.JobResult#warnings()
+     * @see com.sim.chatserver.service.JobResult#warnings()
      * @author bmcmullin
      */
     @Test
@@ -4380,7 +4380,7 @@ public class ReviewJobServiceTest
         assertNotNull(result);
         assertEquals(0, result.size());
 
-        // Then - assertions for this instance of ReviewJobService.JobResult
+        // Then - assertions for this instance of JobResult
         assertAll(() -> {
             assertEquals(1, jobResultInt(underTest, "httpStatus"));
         }, () -> {

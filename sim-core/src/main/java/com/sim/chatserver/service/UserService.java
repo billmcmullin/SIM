@@ -24,19 +24,42 @@ import jakarta.transaction.Transactional;
 public class UserService {
 
     private static final Logger log = Logger.getLogger(UserService.class.getCanonicalName());
+    private static final String PERSISTENCE_UNIT_CHATS = "ChatsPU-Local";
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String ERR_ENTITY_MANAGER_NOT_INIT = "Container-managed EntityManager is not initialized in UserService";
+    private static final String QUERY_USER_BY_USERNAME = "SELECT u FROM UserAccount u WHERE u.username = :u";
+    private static final String QUERY_LIST_USERS = "SELECT u FROM UserAccount u ORDER BY u.username ASC";
+    private static final String QUERY_PARAM_USER = "u";
+    private static final String BCRYPT_PREFIX_2A = "$2a$";
+    private static final String BCRYPT_PREFIX_2B = "$2b$";
+    private static final String BCRYPT_PREFIX_2Y = "$2y$";
+    private static final String ROLE_ADMIN = "admin";
+    private static final String LOG_USER_NOT_FOUND = "User not found for username lookup";
+    private static final String LOG_UNEXPECTED_QUERY_RESULT = "Unexpected query result type in findByUsername";
+    private static final String LOG_BCRYPT_FAILED = "BCrypt check failed";
+    private static final String LOG_CREATE_USER_FAILED_PREFIX = "Failed to create user: ";
+    private static final String LOG_CREATE_USER_NON_CONTAINER_FAILED = "Failed to create user in non-container context";
+    private static final String LOG_UPDATE_CREDENTIALS_FAILED_PREFIX = "Failed to update credentials: ";
+    private static final String LOG_DELETE_INVALID_ID = "Invalid user id for delete operation";
+    private static final String LOG_DELETE_USER_FAILED_PREFIX = "Failed to delete user: ";
+    private static final String LOG_CREATE_DEFAULT_ADMIN = "Creating default admin user (username=admin)";
+    private static final String LOG_ENSURE_ADMIN_FAILED_PREFIX = "ensureAdminExists failed: ";
+    private static final String SQL_SYNC_USER_SEQ = "SELECT setval(pg_get_serial_sequence('user_account','id'), COALESCE((SELECT MAX(id) FROM user_account), 1), true)";
+    private static final String LOG_SYNC_SEQ_OK = "syncUserAccountIdSequence: sequence synchronized result={0}";
+    private static final String LOG_SYNC_SEQ_FAILED_PREFIX = "syncUserAccountIdSequence: skipped/failed (non-fatal): ";
 
-    @PersistenceContext(unitName = "ChatsPU-Local")
+    @PersistenceContext(unitName = PERSISTENCE_UNIT_CHATS)
     EntityManager em;
 
     // Legacy test seam retained for generated tests that assign this field.
     AppDataSourceHolder dsHolder;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -64,7 +87,7 @@ public class UserService {
                     return legacyEntityManager;
                 }
             }
-            throw new IllegalStateException("Container-managed EntityManager is not initialized in UserService");
+            throw new IllegalStateException(ERR_ENTITY_MANAGER_NOT_INIT);
         }
         return em;
     }
@@ -79,14 +102,14 @@ public class UserService {
     private UserAccount findByUsername(String username) {
         EntityManager entityManager = requireEntityManager();
         try {
-            return entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
-                    .setParameter("u", username)
+            return entityManager.createQuery(QUERY_USER_BY_USERNAME, UserAccount.class)
+                    .setParameter(QUERY_PARAM_USER, username)
                     .getSingleResult();
         } catch (NoResultException nre) {
-            log.log(Level.FINE, "User not found for username lookup");
+            log.log(Level.FINE, LOG_USER_NOT_FOUND);
             return null;
         } catch (ClassCastException cce) {
-            log.log(Level.FINE, "Unexpected query result type in findByUsername", cce);
+            log.log(Level.FINE, LOG_UNEXPECTED_QUERY_RESULT, cce);
             return null;
         }
     }
@@ -110,11 +133,11 @@ public class UserService {
         }
 
         // If stored value looks like a bcrypt hash, verify using BCrypt
-        if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
+        if (stored.startsWith(BCRYPT_PREFIX_2A) || stored.startsWith(BCRYPT_PREFIX_2B) || stored.startsWith(BCRYPT_PREFIX_2Y)) {
             try {
                 return BCrypt.checkpw(password, stored) ? u : null;
             } catch (IllegalArgumentException e) {
-                log.log(Level.WARNING, "BCrypt check failed", e);
+                log.log(Level.WARNING, LOG_BCRYPT_FAILED, e);
                 return null;
             }
         }
@@ -154,11 +177,11 @@ public class UserService {
             entityManager.persist(u);
             return u;
         } catch (PersistenceException | IllegalArgumentException e) {
-            log.log(Level.SEVERE, "Failed to create user: " + e.getMessage(), e);
+            log.log(Level.SEVERE, LOG_CREATE_USER_FAILED_PREFIX + e.getMessage(), e);
             throw e;
         } catch (IllegalStateException e) {
             // Legacy generated tests exercise partially mocked JPA flows.
-            log.log(Level.WARNING, "Failed to create user in non-container context", e);
+            log.log(Level.WARNING, LOG_CREATE_USER_NON_CONTAINER_FAILED, e);
             return null;
         }
     }
@@ -170,8 +193,8 @@ public class UserService {
     public UserAccount updateCredentials(String currentUsername, String newUsername, String newPassword) {
         EntityManager entityManager = requireEntityManager();
         try {
-            UserAccount user = entityManager.createQuery("SELECT u FROM UserAccount u WHERE u.username = :u", UserAccount.class)
-                    .setParameter("u", currentUsername)
+            UserAccount user = entityManager.createQuery(QUERY_USER_BY_USERNAME, UserAccount.class)
+                    .setParameter(QUERY_PARAM_USER, currentUsername)
                     .getSingleResult();
 
             String trimmedUsername = newUsername.trim();
@@ -182,7 +205,7 @@ public class UserService {
             }
             return user;
         } catch (PersistenceException | IllegalArgumentException e) {
-            log.log(Level.SEVERE, "Failed to update credentials: " + e.getMessage(), e);
+            log.log(Level.SEVERE, LOG_UPDATE_CREDENTIALS_FAILED_PREFIX + e.getMessage(), e);
             throw e;
         }
     }
@@ -193,7 +216,7 @@ public class UserService {
     public List<UserAccount> listAllUsers() {
         EntityManager entityManager = requireEntityManager();
         TypedQuery<UserAccount> query
-                = entityManager.createQuery("SELECT u FROM UserAccount u ORDER BY u.username ASC", UserAccount.class);
+                = entityManager.createQuery(QUERY_LIST_USERS, UserAccount.class);
         return query.getResultList();
     }
 
@@ -211,10 +234,10 @@ public class UserService {
             entityManager.remove(user);
             return true;
         } catch (NumberFormatException nfe) {
-            log.log(Level.FINE, "Invalid user id for delete operation", nfe);
+            log.log(Level.FINE, LOG_DELETE_INVALID_ID, nfe);
             return false;
         } catch (PersistenceException | IllegalArgumentException e) {
-            log.log(Level.SEVERE, "Failed to delete user: " + e.getMessage(), e);
+            log.log(Level.SEVERE, LOG_DELETE_USER_FAILED_PREFIX + e.getMessage(), e);
             return false;
         }
     }
@@ -224,12 +247,12 @@ public class UserService {
      */
     public void ensureAdminExists() {
         try {
-            if (!userExists("admin")) {
-                log.info("Creating default admin user (username=admin)");
-                createUser("admin", "admin", "admin");
+            if (!userExists(ROLE_ADMIN)) {
+                log.info(LOG_CREATE_DEFAULT_ADMIN);
+                createUser(ROLE_ADMIN, ROLE_ADMIN, ROLE_ADMIN);
             }
         } catch (PersistenceException | IllegalStateException | IllegalArgumentException e) {
-            log.log(Level.WARNING, "ensureAdminExists failed: " + e.getMessage(), e);
+            log.log(Level.WARNING, LOG_ENSURE_ADMIN_FAILED_PREFIX + e.getMessage(), e);
         }
     }
 
@@ -241,17 +264,12 @@ public class UserService {
      */
     private void syncUserAccountIdSequence(EntityManager em) {
         try {
-            Query q = em.createNativeQuery(
-                    "SELECT setval("
-                    + "pg_get_serial_sequence('user_account','id'), "
-                    + "COALESCE((SELECT MAX(id) FROM user_account), 1), "
-                    + "true)"
-            );
+            Query q = em.createNativeQuery(SQL_SYNC_USER_SEQ);
             Object sequenceResult = q.getResultStream().findFirst().orElse(null);
-            log.log(Level.FINE, "syncUserAccountIdSequence: sequence synchronized result={0}", sequenceResult);
+            log.log(Level.FINE, LOG_SYNC_SEQ_OK, sequenceResult);
         } catch (PersistenceException | IllegalArgumentException | IllegalStateException e) {
             // Keep this non-fatal for portability (H2/tests/non-Postgres)
-            log.log(Level.FINE, "syncUserAccountIdSequence: skipped/failed (non-fatal): " + e.getMessage(), e);
+            log.log(Level.FINE, LOG_SYNC_SEQ_FAILED_PREFIX + e.getMessage(), e);
         }
     }
 }

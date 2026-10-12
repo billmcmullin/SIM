@@ -7,8 +7,8 @@ import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.service.UpstreamRequestService.UpstreamConnectivityException;
 import com.sim.chatserver.service.UpstreamRequestService.UpstreamResponse;
+import com.sim.chatserver.service.UpstreamConnectivityException;
 
 import jakarta.json.JsonArray;
 

@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonWriter;
@@ -17,8 +19,17 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public final class ServletJsonResponseUtil {
 
+    private static final String EMPTY = "";
+
     private static final Logger LOG = Logger.getLogger(ServletJsonResponseUtil.class.getCanonicalName());
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final String JSON_UTF8 = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8;
+    private static final String KEY_STATUS = com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS;
+    private static final String KEY_ERROR = com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR;
+    private static final String KEY_MESSAGE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String LOG_OUTPUT_STREAM_UNAVAILABLE = "Output stream unavailable; falling back to writer.";
+    private static final String LOG_OUTPUT_STREAM_NULL_BACKED =
+            "Output stream writer was null-backed; falling back to character writer.";
+    private static final String MSG_RESPONSE_WRITER_UNAVAILABLE = "Response writer unavailable";
 
     private ServletJsonResponseUtil() {
         // utility
@@ -28,8 +39,8 @@ public final class ServletJsonResponseUtil {
             int status,
             String message) throws IOException {
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
+            .add(KEY_STATUS, KEY_ERROR)
+            .add(KEY_MESSAGE, message == null ? EMPTY : message)
                 .build();
         writeJson(response, status, payload);
     }
@@ -46,7 +57,7 @@ public final class ServletJsonResponseUtil {
         try {
             out = response.getOutputStream();
         } catch (IllegalStateException ex) {
-            LOG.log(Level.FINE, "Output stream unavailable; falling back to writer.", ex);
+            LOG.log(Level.FINE, LOG_OUTPUT_STREAM_UNAVAILABLE, ex);
             out = null;
         }
 
@@ -56,13 +67,13 @@ public final class ServletJsonResponseUtil {
                 return;
             } catch (NullPointerException ex) {
                 // Some mocked servlet responses return null-backed streams in tests.
-                LOG.log(Level.FINE, "Output stream writer was null-backed; falling back to character writer.", ex);
+                LOG.log(Level.FINE, LOG_OUTPUT_STREAM_NULL_BACKED, ex);
             }
         }
 
         Writer fallbackWriter = response.getWriter();
         if (fallbackWriter == null) {
-            throw new IOException("Response writer unavailable");
+            throw new IOException(MSG_RESPONSE_WRITER_UNAVAILABLE);
         }
         try (JsonWriter writer = Json.createWriter(fallbackWriter)) {
             writer.writeObject(safePayload);

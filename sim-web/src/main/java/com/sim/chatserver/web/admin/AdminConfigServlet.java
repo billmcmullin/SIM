@@ -16,6 +16,7 @@ import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -28,8 +29,22 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 public class AdminConfigServlet extends HttpServlet {
     private static final String TEMPLATE_PATH = "/WEB-INF/views/admin_config.html";
+    private static final String SESSION_USER_ATTR = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
+    private static final String SESSION_ROLE_ATTR = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
+    private static final String LOGIN_PATH = com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN;
+    private static final String ADMIN_ROLE = CommonLiteralConstants.ROLE_ADMIN;
+    private static final String CONTEXT_PLACEHOLDER = CommonLiteralConstants.TEMPLATE_CONTEXT_PATH;
+    private static final String USER_PLACEHOLDER = CommonLiteralConstants.TEMPLATE_USER;
+    private static final String HTML_UTF8_CONTENT_TYPE = CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8;
+    private static final String REQUEST_FAILED_MESSAGE = CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED;
+    private static final String FALLBACK_SEND_ERROR_LOG = CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD;
+    private static final String LOAD_CONFIG_ERROR = CommonLiteralConstants.MSG_LOAD_SERVER_CONFIGURATION;
+    private static final String UNHANDLED_DO_GET_LOG = CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET;
     private static final Logger log = Logger.getLogger(AdminConfigServlet.class.getCanonicalName());
 
     @Override
@@ -57,18 +72,18 @@ public class AdminConfigServlet extends HttpServlet {
 
         try {
             HttpSession session = req.getSession(false);
-            if (session == null || session.getAttribute("user") == null) {
+            if (session == null || session.getAttribute(SESSION_USER_ATTR) == null) {
                 log.info(() -> "[RID " + rid + "] Redirecting to login because no valid session/user is present.");
-                req.getRequestDispatcher("/login").forward(req, resp);
+                req.getRequestDispatcher(LOGIN_PATH).forward(req, resp);
                 return;
             }
 
-            String username = String.valueOf(session.getAttribute("user"));
-            Object roleAttr = session.getAttribute("role");
-            String role = roleAttr == null ? "UNKNOWN" : roleAttr.toString();
+            String username = String.valueOf(session.getAttribute(SESSION_USER_ATTR));
+            Object roleAttr = session.getAttribute(SESSION_ROLE_ATTR);
+            String role = roleAttr == null ? CommonLiteralConstants.VALUE_UNKNOWN_UPPER : roleAttr.toString();
             log.info(() -> String.format("[RID %s] User '%s' with role '%s' requested /admin", rid, username, role));
 
-            if (!"ADMIN".equalsIgnoreCase(role)) {
+            if (!ADMIN_ROLE.equalsIgnoreCase(role)) {
                 log.warning(() -> String.format("[RID %s] User '%s' with role '%s' denied access to /admin; redirecting to dashboard.", rid, username, role));
                 req.getRequestDispatcher("/dashboard").forward(req, resp);
                 return;
@@ -83,8 +98,8 @@ public class AdminConfigServlet extends HttpServlet {
                 config = EncryptedDbConfigStore.load();
                 log.info(() -> "[RID " + rid + "] EncryptedDbConfigStore.load OK");
             } catch (SQLException | IllegalStateException e) {
-                log.log(Level.SEVERE, "[RID " + rid + "] Unable to load server configuration", e);
-                throw new ServletException("Unable to load server configuration", e);
+                log.log(Level.SEVERE, "[RID " + rid + "] " + LOAD_CONFIG_ERROR, e);
+                throw new ServletException(LOAD_CONFIG_ERROR, e);
             }
 
             String widgetListJson = "[]";
@@ -154,8 +169,8 @@ public class AdminConfigServlet extends HttpServlet {
             }
 
             String rendered = template
-                    .replace("${user}", escapeHtml(username))
-                    .replace("${contextPath}", req.getContextPath())
+                    .replace(USER_PLACEHOLDER, escapeHtml(username))
+                    .replace(CONTEXT_PLACEHOLDER, req.getContextPath())
                     .replace("${serverHost}", escapeAttribute(config != null ? config.getServerHost() : ""))
                     .replace("${serverPort}", config != null ? String.valueOf(config.getServerPort()) : "")
                     .replace("${connectionInfo}", escapeAttribute(config != null ? config.getConnectionInfo() : ""))
@@ -191,7 +206,7 @@ public class AdminConfigServlet extends HttpServlet {
 
             log.info(() -> "[RID " + rid + "] Rendered admin page size=" + rendered.length());
 
-            resp.setContentType("text/html;charset=UTF-8");
+            resp.setContentType(HTML_UTF8_CONTENT_TYPE);
             try (PrintWriter out = resp.getWriter()) {
                 out.print(rendered);
             }
@@ -201,22 +216,22 @@ public class AdminConfigServlet extends HttpServlet {
             log.log(Level.SEVERE, "[RID " + rid + "] AdminConfigServlet doGet failed", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, REQUEST_FAILED_MESSAGE);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, FALLBACK_SEND_ERROR_LOG, ioe);
                 }
             }
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, UNHANDLED_DO_GET_LOG, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, REQUEST_FAILED_MESSAGE);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, FALLBACK_SEND_ERROR_LOG, ioe);
                 }
             }
         }
@@ -285,9 +300,9 @@ public class AdminConfigServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace(System.lineSeparator(), "\\n")
+        return value.replace("\\", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO)
+                .replace("\"", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO)
+                .replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO)
                 .replace(System.lineSeparator(), "");
     }
 
@@ -295,10 +310,10 @@ public class AdminConfigServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\"", "\\\"")
-                .replace(System.lineSeparator(), "\\n")
+        return value.replace("\\", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO)
+                .replace("'", com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_SINGLE_QUOTE)
+                .replace("\"", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO)
+                .replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO)
                 .replace(System.lineSeparator(), "");
     }
 
@@ -313,4 +328,9 @@ public class AdminConfigServlet extends HttpServlet {
     private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

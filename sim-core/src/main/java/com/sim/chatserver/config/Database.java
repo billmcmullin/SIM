@@ -15,7 +15,15 @@ public final class Database {
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
     private static final Pattern HOST_PATTERN = Pattern.compile("^[a-zA-Z0-9.-]+$");
     private static final Pattern DB_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
+    private static final String MSG_ENV_PREFIX = "Environment variable ";
+    private static final String MSG_REQUIRED_SUFFIX = " is required.";
+    private static final String MSG_INVALID_CONTROL_CHARS_SUFFIX = " contains invalid control characters.";
+    private static final String MSG_TOO_LONG_SUFFIX = " is too long.";
+    private static final String MSG_INVALID_HOST_SUFFIX = " contains invalid host characters.";
+    private static final String MSG_PORT_RANGE_SUFFIX = " must be between 1 and 65535.";
+    private static final String MSG_INVALID_INTEGER_SUFFIX = " must be a valid integer.";
+    private static final String MSG_INVALID_DB_NAME_SUFFIX = " must contain only letters, digits, or underscore.";
 
     private static final String DB_HOST = requireValidHost("DB_HOST");
     private static final int DB_PORT = requireValidPort("DB_PORT");
@@ -45,17 +53,17 @@ public final class Database {
     private static String requireEnv(String name) {
         String value = ENV.get(name);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Environment variable " + name + " is required.");
+            throw new IllegalStateException(MSG_ENV_PREFIX + name + MSG_REQUIRED_SUFFIX);
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
         if (normalized.isBlank()) {
-            throw new IllegalStateException("Environment variable " + name + " is required.");
+            throw new IllegalStateException(MSG_ENV_PREFIX + name + MSG_REQUIRED_SUFFIX);
         }
         if (CONTROL_CHARS.matcher(normalized).find()) {
-            throw new IllegalStateException("Environment variable " + name + " contains invalid control characters.");
+            throw new IllegalStateException(MSG_ENV_PREFIX + name + MSG_INVALID_CONTROL_CHARS_SUFFIX);
         }
         if (normalized.length() > 1024) {
-            throw new IllegalStateException("Environment variable " + name + " is too long.");
+            throw new IllegalStateException(MSG_ENV_PREFIX + name + MSG_TOO_LONG_SUFFIX);
         }
         return normalized;
     }
@@ -64,7 +72,7 @@ public final class Database {
         String host = requireEnv(name);
         if (!HOST_PATTERN.matcher(host).matches()) {
             throw new IllegalStateException(
-                "Environment variable " + name + " contains invalid host characters.");
+                MSG_ENV_PREFIX + name + MSG_INVALID_HOST_SUFFIX);
         }
         return host;
     }
@@ -75,12 +83,12 @@ public final class Database {
             int port = Integer.parseInt(portValue);
             if (port < 1 || port > 65535) {
                 throw new IllegalStateException(
-                    "Environment variable " + name + " must be between 1 and 65535.");
+                    MSG_ENV_PREFIX + name + MSG_PORT_RANGE_SUFFIX);
             }
             return port;
         } catch (NumberFormatException ex) {
             throw new IllegalStateException(
-                "Environment variable " + name + " must be a valid integer.", ex);
+                MSG_ENV_PREFIX + name + MSG_INVALID_INTEGER_SUFFIX, ex);
         }
     }
 
@@ -88,7 +96,7 @@ public final class Database {
         String dbName = requireEnv(name);
         if (!DB_NAME_PATTERN.matcher(dbName).matches()) {
             throw new IllegalStateException(
-                "Environment variable " + name + " must contain only letters, digits, or underscore.");
+                MSG_ENV_PREFIX + name + MSG_INVALID_DB_NAME_SUFFIX);
         }
         return dbName;
     }

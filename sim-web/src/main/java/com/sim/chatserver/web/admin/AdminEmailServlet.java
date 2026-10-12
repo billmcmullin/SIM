@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "AdminEmailServlet", urlPatterns = {"/admin/email/send"})
 public class AdminEmailServlet extends HttpServlet {
 
@@ -44,14 +46,14 @@ public class AdminEmailServlet extends HttpServlet {
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid JSON payload.");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
         JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
         if (payload == null || payload.isEmpty()) {
             log.fine("Invalid admin email payload");
-            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid JSON payload.");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
@@ -59,14 +61,14 @@ public class AdminEmailServlet extends HttpServlet {
             // Resolve SMTP source every request (ENV -> PROPERTIES -> DB)
             ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(resolveDbProvider());
             if (!resolved.valid() || resolved.config() == null || resolved.source() == EmailConfigSource.NONE) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error",
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR,
                         "No valid SMTP configuration found (ENV, properties, DB).");
                 return;
             }
 
             EmailService emailService = EmailFactory.smtp(resolved.config());
 
-            String from = payload.getString("from", "").trim();
+            String from = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_FROM, "").trim();
             String subject = payload.getString("subject", "").trim();
             String textBody = payload.getString("textBody", "");
             String htmlBody = payload.getString("htmlBody", "");
@@ -77,20 +79,20 @@ public class AdminEmailServlet extends HttpServlet {
             List<String> bcc = toList(payload.getJsonArray("bcc"));
 
             if (to.isEmpty()) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "At least one 'to' recipient is required.");
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, "At least one 'to' recipient is required.");
                 return;
             }
             if (subject.isBlank()) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Subject is required.");
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, "Subject is required.");
                 return;
             }
             if (from.isBlank() && (resolved.config().defaultFrom() == null || resolved.config().defaultFrom().isBlank())) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error",
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR,
                         "From address is required (payload.from or configured defaultFrom).");
                 return;
             }
 
-            validateEmails("from", from.isBlank() ? null : List.of(from));
+            validateEmails(com.sim.chatserver.util.CommonLiteralConstants.FIELD_FROM, from.isBlank() ? null : List.of(from));
             validateEmails("to", to);
             validateEmails("cc", cc);
             validateEmails("bcc", bcc);
@@ -110,18 +112,18 @@ public class AdminEmailServlet extends HttpServlet {
                 emailService.send(message);
 
             JsonObject ok = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("message", "Email sent.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Email sent.")
                     .add("smtpSource", resolved.source().name())
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, ok);
 
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid admin email request", e);
-            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, "error", "Invalid email request.");
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, "Invalid email request.");
         } catch (EmailException | IllegalStateException e) {
             log.log(Level.SEVERE, "Failed to send admin email", e);
-            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "error", "Failed to send email.");
+            writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, "Failed to send email.");
         }
     }
 
@@ -162,13 +164,13 @@ public class AdminEmailServlet extends HttpServlet {
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, "error", "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            writeJson(resp, HttpServletResponse.SC_FORBIDDEN, "error", "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            writeJson(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
@@ -176,8 +178,8 @@ public class AdminEmailServlet extends HttpServlet {
 
     private void writeJson(HttpServletResponse resp, int status, String result, String message) {
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", safe(result))
-                .add("message", safe(message))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, safe(result))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(message))
                 .build();
         writeJson(resp, status, payload);
     }
@@ -198,6 +200,11 @@ public class AdminEmailServlet extends HttpServlet {
     }
 
     private String safe(String s) {
-        return s == null ? "" : s.replace("\"", "\\\"");
+        return s == null ? "" : s.replace("\"", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO);
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

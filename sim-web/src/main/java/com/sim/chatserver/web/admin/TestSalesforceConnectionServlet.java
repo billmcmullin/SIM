@@ -13,7 +13,9 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.security.AuthResult;
 import com.sim.chatserver.security.SalesforceAuthClient;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -27,6 +29,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "TestSalesforceConnectionServlet", urlPatterns = {"/admin/test-salesforce-connection"})
 public class TestSalesforceConnectionServlet extends HttpServlet {
 
@@ -42,9 +47,9 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
-                    Json.createObjectBuilder().add("status", "error").add("message", "Authentication required.").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR).add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED).build());
             return;
         }
 
@@ -81,8 +86,8 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 } catch (IllegalStateException | IllegalArgumentException e) {
                 log.log(Level.WARNING, "Unable to load stored Salesforce configuration", e);
                 writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                        Json.createObjectBuilder().add("status", "error")
-                                .add("message", "Unable to load stored Salesforce configuration.").build());
+                        Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to load stored Salesforce configuration.").build());
                 return;
             }
         }
@@ -96,7 +101,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             authConfig.setSalesforceApiToken(apiToken);
 
             try {
-                SalesforceAuthClient.AuthResult authResult = new SalesforceAuthClient(getHttpClient())
+                AuthResult authResult = new SalesforceAuthClient(getHttpClient())
                         .refreshAccessToken(authConfig);
                 apiKey = authResult == null ? null : authResult.accessToken;
                 if (isBlank(instanceUrl)) {
@@ -106,29 +111,29 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
                 log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                        Json.createObjectBuilder().add("status", "error")
-                                .add("message", "Unable to acquire Salesforce access token from configured credentials.").build());
+                        Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to acquire Salesforce access token from configured credentials.").build());
                 return;
                 } catch (IOException | SQLException | IllegalStateException | IllegalArgumentException | SecurityException e) {
                 log.log(Level.WARNING, "Salesforce token acquisition failed during connection test", e);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                        Json.createObjectBuilder().add("status", "error")
-                                .add("message", "Unable to acquire Salesforce access token from configured credentials.").build());
+                        Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to acquire Salesforce access token from configured credentials.").build());
                 return;
             }
         }
 
         if (isBlank(instanceUrl)) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                    Json.createObjectBuilder().add("status", "error")
-                            .add("message", "Salesforce instance URL is required.").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Salesforce instance URL is required.").build());
             return;
         }
 
         if (isBlank(apiKey)) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
-                    Json.createObjectBuilder().add("status", "error")
-                            .add("message", "Salesforce API key is required.").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Salesforce API key is required.").build());
             return;
         }
 
@@ -143,14 +148,14 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-request",
-                "method=GET" + LS + "url=" + endpoint
+                "method=GET" + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + endpoint
             );
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(10))
-                    .header("Authorization", "Bearer " + normalizedApiKey)
-                    .header("Accept", "application/json")
+                    .header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + normalizedApiKey)
+                    .header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_ACCEPT, com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON)
                     .GET()
                     .build();
 
@@ -159,20 +164,20 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-response",
-                "status=" + response.statusCode() + LS + "body=" + truncate(response.body())
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + response.statusCode() + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + truncate(response.body())
             );
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 writeJson(resp, HttpServletResponse.SC_OK,
-                        Json.createObjectBuilder().add("status", "ok")
-                                .add("message", "Salesforce connection successful.").build());
+                        Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Salesforce connection successful.").build());
             } else {
                 String body = response.body();
                 if (isBlank(body)) {
                     body = "Salesforce returned status " + response.statusCode();
                 }
                 writeJson(resp, response.statusCode(),
-                        Json.createObjectBuilder().add("status", "error").add("message", body).build());
+                        Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR).add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, body).build());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -181,35 +186,35 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
                 "test-salesforce-connection-servlet",
                 requestId,
                 "http-error",
-                "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + endpoint + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                 e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
-                Json.createObjectBuilder().add("status", "error")
-                    .add("message", "Unable to contact Salesforce endpoint.").build());
+                Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to contact Salesforce endpoint.").build());
         } catch (IOException | IllegalArgumentException e) {
             log.log(Level.WARNING, "Salesforce connection test failed", e);
             ServerDiagnosticsLog.write(
                     "test-salesforce-connection-servlet",
                     requestId,
                     "http-error",
-                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + endpoint + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY,
-                    Json.createObjectBuilder().add("status", "error")
-                            .add("message", "Salesforce connection test failed.").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Salesforce connection test failed.").build());
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -223,17 +228,17 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         try {
             return EncryptedDbConfigStore.load();
         } catch (SQLException e) {
-            log.log(Level.SEVERE, "Unable to load server configuration", e);
-            throw new IllegalStateException("Unable to load server configuration", e);
+            log.log(Level.SEVERE, com.sim.chatserver.util.CommonLiteralConstants.MSG_LOAD_SERVER_CONFIGURATION, e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_LOAD_SERVER_CONFIGURATION, e);
         }
     }
 
     private String buildSalesforceDataEndpoint(String instanceUrl) {
         String normalized = instanceUrl;
-        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            normalized = "https://" + normalized;
+        if (!normalized.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP) && !normalized.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
+            normalized = com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS + normalized;
         }
-        normalized = normalized.replaceAll("/+$", "");
+        normalized = normalized.replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_TRAILING_SLASHES, "");
         return normalized + "/services/data/";
     }
 
@@ -242,7 +247,7 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.SEVERE, "Unable to write test-salesforce response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE_NO_PERIOD, e);
         }
     }
 
@@ -254,11 +259,16 @@ public class TestSalesforceConnectionServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + "..." : value;
+        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS : value;
     }
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.sim.chatserver.service.admin.CheckResult;
 import com.sim.chatserver.service.admin.WidgetTableAdminQueryService;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -26,10 +27,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetTableServlet", urlPatterns = {"/admin/widgets/table-check"})
 public class WidgetTableServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableServlet.class.getCanonicalName());
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.SQL_IDENTIFIER_REGEX);
     private static final int DEFAULT_PARAM_MAX_LEN = 256;
     private static final int BULK_IDS_PARAM_MAX_LEN = 8192;
     private static final WidgetTableAdminQueryService QUERY_SERVICE = new WidgetTableAdminQueryService(log);
@@ -41,7 +45,7 @@ public class WidgetTableServlet extends HttpServlet {
         }
         // support either single widgetId or bulk ids (comma-separated widgetIds)
         String idsParam = firstParam(req, "ids", BULK_IDS_PARAM_MAX_LEN);
-        String widgetId = firstParam(req, "widgetId");
+        String widgetId = firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID);
 
         if ((idsParam == null || idsParam.isBlank()) && (widgetId == null || widgetId.isBlank())) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide 'widgetId' or 'ids' query parameter.");
@@ -71,13 +75,13 @@ public class WidgetTableServlet extends HttpServlet {
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : String.valueOf(session.getAttribute("role"));
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            jsonError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE));
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            jsonError(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
@@ -85,7 +89,7 @@ public class WidgetTableServlet extends HttpServlet {
 
     // Handle single widget check (existing behavior, extended to include count when exists)
     private void handleCheck(HttpServletRequest req, HttpServletResponse resp) {
-        String widgetId = firstParam(req, "widgetId");
+        String widgetId = firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID);
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
             return;
@@ -97,7 +101,7 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         try {
-            WidgetTableAdminQueryService.CheckResult status = QUERY_SERVICE.checkTable(tableName);
+            CheckResult status = QUERY_SERVICE.checkTable(tableName);
             writeSingleResponse(resp,
                     HttpServletResponse.SC_OK,
                     widgetId,
@@ -125,11 +129,11 @@ public class WidgetTableServlet extends HttpServlet {
                 String tableName = sanitizeWidgetId(wid);
                 if (!isSafeIdentifier(tableName)) {
                     JsonObjectBuilder statusBody = Json.createObjectBuilder()
-                            .add("widgetId", wid == null ? "" : wid)
-                            .add("tableName", tableName)
-                            .add("tableExists", false)
-                            .addNull("count")
-                            .add("message", "Invalid widget identifier.");
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, wid == null ? "" : wid)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_NAME, tableName)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_EXISTS, false)
+                            .addNull(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Invalid widget identifier.");
                     statuses.add(statusBody);
                     continue;
                 }
@@ -138,34 +142,34 @@ public class WidgetTableServlet extends HttpServlet {
                 validTables.add(tableName);
             }
 
-            Map<String, WidgetTableAdminQueryService.CheckResult> checks = QUERY_SERVICE.checkTables(validTables);
+            Map<String, CheckResult> checks = QUERY_SERVICE.checkTables(validTables);
 
             for (Map.Entry<String, String> entry : widgetToTable.entrySet()) {
                 String wid = entry.getKey();
                 String tableName = entry.getValue();
-                WidgetTableAdminQueryService.CheckResult result = checks.get(tableName);
+                CheckResult result = checks.get(tableName);
 
                 JsonObjectBuilder statusBody = Json.createObjectBuilder()
-                        .add("widgetId", wid == null ? "" : wid)
-                        .add("tableName", tableName)
-                        .add("tableExists", result != null && result.exists)
-                        .add("message", "");
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, wid == null ? "" : wid)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_NAME, tableName)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_EXISTS, result != null && result.exists)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "");
                 Object resultCount = result == null ? null : result.count;
                 if (resultCount == null) {
-                    statusBody.addNull("count");
+                    statusBody.addNull(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT);
                 } else {
                     OptionalLong parsedCount = parseNullableLong(resultCount);
                     if (parsedCount.isEmpty()) {
-                        statusBody.addNull("count");
+                        statusBody.addNull(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT);
                     } else {
-                        statusBody.add("count", parsedCount.getAsLong());
+                        statusBody.add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, parsedCount.getAsLong());
                     }
                 }
                 statuses.add(statusBody);
             }
 
                 JsonObjectBuilder payload = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("statuses", statuses);
                 writeJson(resp, HttpServletResponse.SC_OK, payload.build());
         } catch (IllegalStateException e) {
@@ -181,7 +185,7 @@ public class WidgetTableServlet extends HttpServlet {
      * successfully, returns created=true.
      */
     private void handleCreate(HttpServletRequest req, HttpServletResponse resp) {
-        String widgetId = firstParam(req, "widgetId");
+        String widgetId = firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID);
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId is required.");
             return;
@@ -193,7 +197,7 @@ public class WidgetTableServlet extends HttpServlet {
             return;
         }
         try {
-            WidgetTableAdminQueryService.CheckResult result = QUERY_SERVICE.createTableIfMissing(tableName);
+            CheckResult result = QUERY_SERVICE.createTableIfMissing(tableName);
             if (!result.created) {
                 writeSingleResponse(resp,
                         HttpServletResponse.SC_OK,
@@ -222,9 +226,9 @@ public class WidgetTableServlet extends HttpServlet {
     }
 
     private String sanitizeWidgetId(String widgetId) {
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        String normalized = widgetId.trim().replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_NON_ALNUM_UNDERSCORE, "_");
         if (normalized.isEmpty()) {
-            normalized = "widget";
+            normalized = com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
         }
         if (!Character.isLetter(normalized.charAt(0))) {
             normalized = "w_" + normalized;
@@ -257,12 +261,12 @@ public class WidgetTableServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write JSON error response", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_ERROR_RESPONSE, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(status, message == null ? "Request failed." : message);
+                    resp.sendError(status, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -272,12 +276,12 @@ public class WidgetTableServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write JSON response", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_RESPONSE, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -292,20 +296,20 @@ public class WidgetTableServlet extends HttpServlet {
             String message,
             boolean created) {
         JsonObjectBuilder body = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("widgetId", widgetId == null ? "" : widgetId)
-                .add("tableName", tableName == null ? "" : tableName)
-                .add("tableExists", exists)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, widgetId == null ? "" : widgetId)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_NAME, tableName == null ? "" : tableName)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TABLE_EXISTS, exists)
                 .add("created", created)
-                .add("message", message == null ? "" : message);
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? "" : message);
         if (count == null) {
-            body.addNull("count");
+            body.addNull(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT);
         } else {
             OptionalLong parsedCount = parseNullableLong(count);
             if (parsedCount.isEmpty()) {
-                body.addNull("count");
+                body.addNull(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT);
             } else {
-                body.add("count", parsedCount.getAsLong());
+                body.add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, parsedCount.getAsLong());
             }
         }
         writeJson(resp, status, body.build());
@@ -325,6 +329,11 @@ public class WidgetTableServlet extends HttpServlet {
             log.log(Level.FINE, "Invalid count value", ex);
             return OptionalLong.empty();
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

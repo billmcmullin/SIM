@@ -5,10 +5,12 @@ import com.vladsch.flexmark.parser.Parser;
 
 public class MarkdownRenderer {
 
+    private static final String SUPPRESS_UNUSED = "unused";
+
     private final Parser parser = Parser.builder().build();
     private final HtmlRenderer renderer = HtmlRenderer.builder().build();
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

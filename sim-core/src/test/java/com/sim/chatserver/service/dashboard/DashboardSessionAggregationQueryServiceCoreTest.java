@@ -73,12 +73,12 @@ class DashboardSessionAggregationQueryServiceCoreTest {
             dbUtil.when(() -> DashboardDbUtil.tableExistsCached(any(Connection.class), anyString(), any()))
                     .thenReturn(true);
 
-            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> out = service.collectAccumulators(
+                Map<String, SessionAccumulatorData> out = service.collectAccumulators(
                     List.of(DashboardWidgetEntryTestFactory.newWidgetEntry(1, "w1", "W1", Instant.now())),
                     "sid");
 
             assertEquals(1, out.size());
-            DashboardSessionAggregationQueryService.SessionAccumulatorData acc = out.get("s1");
+                SessionAccumulatorData acc = out.get("s1");
             assertEquals(5, acc.count);
             assertEquals(Integer.valueOf(5), acc.widgetCounts.get("w1"));
             assertEquals(newer, acc.lastEntry);
@@ -121,7 +121,7 @@ class DashboardSessionAggregationQueryServiceCoreTest {
             dbUtil.when(() -> DashboardDbUtil.tableExistsCached(any(Connection.class), anyString(), any()))
                     .thenReturn(true);
 
-            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> out = service.collectAccumulators(
+                Map<String, SessionAccumulatorData> out = service.collectAccumulators(
                     List.of(
                             DashboardWidgetEntryTestFactory.newWidgetEntry(1, "w1", "W1", Instant.now()),
                             DashboardWidgetEntryTestFactory.newWidgetEntry(2, "w2", "W2", Instant.now())),

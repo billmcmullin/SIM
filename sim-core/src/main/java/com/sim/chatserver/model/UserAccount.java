@@ -11,18 +11,24 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 @Entity
-@Table(name = "user_account")
+@Table(name = UserAccount.TABLE_USER_ACCOUNT)
 @Access(AccessType.FIELD)
-public class UserAccount { 
+public class UserAccount {
 
-    @SuppressWarnings("unused")
+    public static final String TABLE_USER_ACCOUNT = "user_account";
+    private static final String COLUMN_CREATED_AT = CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String COLUMN_ROLE = CommonLiteralConstants.ROLE;
+    private static final String COLUMN_FULL_NAME = "full_name";
+    private static final String DEFAULT_ROLE_USER = CommonLiteralConstants.VALUE_USER;
+
+
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -38,7 +44,7 @@ public class UserAccount {
 
     private String email;
 
-    @Column(name = "created_at")
+    @Column(name = COLUMN_CREATED_AT)
     private Instant createdAt;
 
     // getters & setters
@@ -91,15 +97,15 @@ public class UserAccount {
     }
 
     // inside class UserAccount (add fields)
-    @Column(name = "role")
+    @Column(name = COLUMN_ROLE)
     private String role;
 
-    @Column(name = "full_name")
+    @Column(name = COLUMN_FULL_NAME)
     private String fullName;
 
 // add these getters/setters and compatibility methods
     public String getRole() {
-        return role == null ? "user" : role;
+        return role == null ? DEFAULT_ROLE_USER : role;
     }
 
     public void setRole(String role) {

@@ -33,6 +33,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardTopicsDataServlet", urlPatterns = {"/dashboard/topics/data"})
 public class DashboardTopicsDataServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsDataServlet.class.getCanonicalName());
@@ -44,9 +47,9 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
-                    Json.createObjectBuilder().add("status", "unauthorized").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.TEXT_UNAUTHORIZED).build());
             return;
         }
 
@@ -59,8 +62,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         } catch (IllegalStateException e) {
             log.log(Level.SEVERE, "Unable to build topics data", e);
             JsonObject err = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to build topics data")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to build topics data")
                     .build();
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, err);
             return;
@@ -69,8 +72,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, buildTopicsPayload(window, includeOther, aggregation));
     
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -89,10 +92,10 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             }
 
             globalArray.add(Json.createObjectBuilder()
-                    .add("rank", rank++)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANK, rank++)
                     .add("topic", topic)
                     .add("mentions", mentions)
-                    .add("selectedChatIds", idsArray));
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_SELECTED_CHAT_IDS, idsArray));
         }
 
         JsonArrayBuilder widgetsArray = Json.createArrayBuilder();
@@ -123,10 +126,10 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 }
 
                 topicsArray.add(Json.createObjectBuilder()
-                        .add("rank", widgetRank++)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANK, widgetRank++)
                         .add("topic", topic)
                         .add("mentions", mentions)
-                        .add("selectedChatIds", idsArray));
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_SELECTED_CHAT_IDS, idsArray));
             }
 
             widgetsArray.add(Json.createObjectBuilder()
@@ -135,13 +138,13 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         }
 
         return Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("query", "")
-                .add("limit", "all")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_QUERY, "")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_LIMIT, com.sim.chatserver.util.CommonLiteralConstants.VALUE_ALL)
                 .add("includeOther", includeOther)
-                .add("day", window.dayToken)
-                .add("rangeStart", window.startInclusive.format(DATE_FMT))
-                .add("rangeEnd", window.endExclusive.minusDays(1).format(DATE_FMT))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, window.dayToken)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_START, window.startInclusive.format(DATE_FMT))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_END, window.endExclusive.minusDays(1).format(DATE_FMT))
                 .add("globalTopics", globalArray)
                 .add("widgets", widgetsArray)
                 .add("termsTotal", aggregation.totalMentions)
@@ -150,7 +153,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
     }
 
     private DateWindow resolveDateWindow(HttpServletRequest req) {
-        Optional<LocalDate> dayOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, "day", 256, true, true));
+        Optional<LocalDate> dayOpt = parseLocalDate(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, 256, true, true));
         if (dayOpt.isPresent()) {
             LocalDate d = dayOpt.get();
             return new DateWindow(d, d.plusDays(1), d.format(DATE_FMT));
@@ -197,7 +200,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             return false;
         }
         String v = raw.trim().toLowerCase(Locale.ROOT);
-        return "1".equals(v) || "true".equals(v) || "yes".equals(v) || "on".equals(v);
+        return "1".equals(v) || com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equals(v) || com.sim.chatserver.util.CommonLiteralConstants.VALUE_YES.equals(v) || "on".equals(v);
     }
 
     private int safeInt(Object value) {
@@ -221,7 +224,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write dashboard topics JSON response", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
         }
     }
 
@@ -232,7 +235,7 @@ public class DashboardTopicsDataServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Fallback sendError failed", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
         }
     }
 
@@ -243,38 +246,8 @@ public class DashboardTopicsDataServlet extends HttpServlet {
                 .collect(Collectors.toList());
     }
 
-    static final class TopicPattern {
-
-        final String name;
-        final Pattern pattern;
-
-        TopicPattern(String name, Pattern pattern) {
-            this.name = name;
-            this.pattern = pattern;
-        }
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
-
-    static final class DateWindow {
-
-        final LocalDate startInclusive;
-        final LocalDate endExclusive;
-        final String dayToken;
-
-        private DateWindow(LocalDate startInclusive, LocalDate endExclusive, String dayToken) {
-            this.startInclusive = startInclusive;
-            this.endExclusive = endExclusive;
-            this.dayToken = dayToken;
-        }
-    }
-
-    static final class TopicsAggregation {
-
-        final Map<String, Integer> globalCounts = new LinkedHashMap<>();
-        final Map<String, Set<String>> globalChatIdsByTopic = new LinkedHashMap<>();
-        final Map<String, Map<String, Integer>> byWidgetCounts = new LinkedHashMap<>();
-        final Map<String, Map<String, Set<String>>> byWidgetChatIds = new LinkedHashMap<>();
-        final Set<String> allMatchedChatIds = new LinkedHashSet<>();
-        long totalMentions = 0L;
-    }
-
 }
+

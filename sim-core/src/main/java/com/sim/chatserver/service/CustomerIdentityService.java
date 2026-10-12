@@ -9,23 +9,29 @@ import com.sim.chatserver.model.CustomerIdentity;
 import com.sim.chatserver.model.CustomerIdentitySessionLink;
 import com.sim.chatserver.model.CustomerIdentityStore;
 import com.sim.chatserver.util.SessionLabelStore;
-import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
+import com.sim.chatserver.util.SessionLabel;
 
 public class CustomerIdentityService {
 
-    @SuppressWarnings("unused")
+    private static final String EMPTY = "";
+    private static final String MSG_SESSION_ID_REQUIRED = "sessionId is required";
+    private static final String CONFIDENCE_LOW = com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW;
+    private static final String CONFIDENCE_HIGH = "high";
+    private static final String CONFIDENCE_MEDIUM = "medium";
+    private static final String MSG_IDENTITY_ID_RESOLUTION_FAILED = "Unable to resolve identity id for session link";
+
+
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     public CustomerIdentity resolveOrCreateBySessionId(String sessionId) throws SQLException {
         if (sessionId == null || sessionId.isBlank()) {
-            throw new IllegalArgumentException("sessionId is required");
+            throw new IllegalArgumentException(MSG_SESSION_ID_REQUIRED);
         }
 
         // 1) existing mapping
@@ -43,16 +49,16 @@ public class CustomerIdentityService {
 
         // 3) identity resolution priority: email > friendlyName > create new
         CustomerIdentity identity = null;
-        String confidence = "low";
+        String confidence = CONFIDENCE_LOW;
 
         if (email != null) {
             identity = CustomerIdentityStore.findByCanonicalEmail(email);
-            confidence = "high";
+            confidence = CONFIDENCE_HIGH;
         }
 
         if (identity == null && displayName != null) {
             identity = CustomerIdentityStore.findByCanonicalName(displayName);
-            confidence = email != null ? "high" : "medium";
+            confidence = email != null ? CONFIDENCE_HIGH : CONFIDENCE_MEDIUM;
         }
 
         long identityId = -1L;
@@ -65,18 +71,18 @@ public class CustomerIdentityService {
             identity.setCanonicalName(displayName);
             identity.setConfidence(confidence);
         } else {
-            String identityIdText = Objects.toString(identity.getIdentityId(), "");
+            String identityIdText = Objects.toString(identity.getIdentityId(), EMPTY);
             if (!identityIdText.isBlank()) {
                 try {
                     identityId = Long.parseLong(identityIdText);
                 } catch (NumberFormatException ex) {
-                    throw new SQLException("Unable to resolve identity id for session link", ex);
+                    throw new SQLException(MSG_IDENTITY_ID_RESOLUTION_FAILED, ex);
                 }
             }
         }
 
         if (identityId <= 0L) {
-            throw new SQLException("Unable to resolve identity id for session link");
+            throw new SQLException(MSG_IDENTITY_ID_RESOLUTION_FAILED);
         }
 
         CustomerIdentityStore.upsertSessionLink(identityId, sessionId, displayName, email);

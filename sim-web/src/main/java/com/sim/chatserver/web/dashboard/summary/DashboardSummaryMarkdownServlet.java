@@ -24,6 +24,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardSummaryMarkdownServlet", urlPatterns = {"/dashboard/summary-markdown"})
 public class DashboardSummaryMarkdownServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSummaryMarkdownServlet.class.getCanonicalName());
@@ -37,14 +40,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            DashboardDailySummaryStore initializedStore = summaryStore();
-            if (initializedStore == null) {
-                throw new IllegalStateException("Summary store is unavailable");
-            }
-        } catch (IllegalStateException e) {
-            log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore", e);
-            throw new ServletException("Failed to initialize dashboard summary markdown servlet", e);
+        DashboardDailySummaryStore initializedStore = summaryStore();
+        if (initializedStore == null) {
+            log.log(Level.SEVERE, "Unable to initialize DashboardDailySummaryStore");
+            throw new ServletException("Failed to initialize dashboard summary markdown servlet");
         }
     }
 
@@ -52,52 +51,52 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        LocalDate day = parseDay(ServletRequestParamUtil.firstParam(req, "day", 128, true, true), zone);
-        int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParam(req, "slot", 128, true, true), zone);
+        LocalDate day = parseDay(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, 128, true, true), zone);
+        int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT, 128, true, true), zone);
 
         try {
             JsonObject payload = summaryStore().fetchExactOrLatest(day, slot);
 
-            String user = String.valueOf(session.getAttribute("user"));
+            String user = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
             String markdown = buildMarkdown(payload);
             String previewHtml = buildPreviewHtml(payload);
 
-            JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
-            JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
+            JsonObject summary = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY);
+            JsonObject meta = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.FIELD_META);
 
-            String metaDay = readJsonString(meta, "day", day.toString());
-            String metaSlot = String.valueOf(readJsonInt(meta, "slot", slot));
-            String metaGeneratedAt = readJsonString(meta, "generatedAt", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-            String statusText = readJsonString(meta, "statusText", "idle");
+            String metaDay = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, day.toString());
+            String metaSlot = String.valueOf(readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT, slot));
+            String metaGeneratedAt = readJsonString(meta, DashboardDailySummaryStore.KEY_GENERATED_AT, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+            String statusText = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_STATUS_TEXT, com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE);
             String statusClass = cssStatus(statusText);
 
-            int entryCount = readJsonInt(summary, "entryCount", 0);
-            int progressPct = readJsonInt(meta, "progressPct", 0);
-            String metaUpdatedAt = readJsonString(meta, "updatedAt", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-            String metaMessage = readJsonString(meta, "message", "");
+            int entryCount = readJsonInt(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_ENTRY_COUNT, 0);
+            int progressPct = readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROGRESS_PCT, 0);
+            String metaUpdatedAt = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_UPDATED_AT, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+            String metaMessage = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "");
             String suggestedNextAction = suggestNextAction(payload);
 
             String template = DashboardTemplateRenderer.loadTemplateCached(req.getServletContext(), TEMPLATE_PATH);
 
             Map<String, String> vars = new LinkedHashMap<>();
             vars.put("contextPath", req.getContextPath());
-            vars.put("user", DashboardTemplateRenderer.escapeHtml(user));
+            vars.put(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER, DashboardTemplateRenderer.escapeHtml(user));
 
             vars.put("metaDay", DashboardTemplateRenderer.escapeHtml(metaDay));
             vars.put("metaSlot", DashboardTemplateRenderer.escapeHtml(metaSlot));
             vars.put("metaGeneratedAt", DashboardTemplateRenderer.escapeHtml(metaGeneratedAt));
             vars.put("metaUpdatedAt", DashboardTemplateRenderer.escapeHtml(metaUpdatedAt));
-            vars.put("statusText", DashboardTemplateRenderer.escapeHtml(statusText));
+            vars.put(com.sim.chatserver.util.CommonLiteralConstants.FIELD_STATUS_TEXT, DashboardTemplateRenderer.escapeHtml(statusText));
             vars.put("statusClass", DashboardTemplateRenderer.escapeHtml(statusClass));
-            vars.put("entryCount", DashboardTemplateRenderer.escapeHtml(String.valueOf(Math.max(0, entryCount))));
-            vars.put("progressPct", DashboardTemplateRenderer.escapeHtml(String.valueOf(progressPct)));
-            vars.put("metaMessage", DashboardTemplateRenderer.escapeHtml(metaMessage.isBlank() ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : metaMessage));
+            vars.put(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ENTRY_COUNT, DashboardTemplateRenderer.escapeHtml(String.valueOf(Math.max(0, entryCount))));
+            vars.put(com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROGRESS_PCT, DashboardTemplateRenderer.escapeHtml(String.valueOf(progressPct)));
+            vars.put("metaMessage", DashboardTemplateRenderer.escapeHtml(metaMessage.isBlank() ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : metaMessage));
 
             vars.put("previewHtml", previewHtml);
             vars.put("suggestedNextAction", DashboardTemplateRenderer.escapeHtml(suggestedNextAction));
@@ -107,7 +106,7 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
             String rendered = DashboardTemplateRenderer.renderTemplate(template, vars);
 
-            resp.setContentType("text/html;charset=UTF-8");
+            resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8);
             try (PrintWriter out = resp.getWriter()) {
                 out.print(rendered);
             }
@@ -118,15 +117,15 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             resp.getWriter().write("Unable to load summary markdown page.");
         }
     
-        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -169,23 +168,23 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     }
 
     private String buildMarkdown(JsonObject payload) {
-        JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
-        JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
+        JsonObject summary = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY);
+        JsonObject meta = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.FIELD_META);
 
-        String overall = readJsonString(summary, "overall", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-        String quality = readJsonString(summary, "quality", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-        String response = readJsonString(summary, "response", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-        String usage = readJsonString(summary, "usage", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â");
-        int entryCount = readJsonInt(summary, "entryCount", 0);
+        String overall = readJsonString(summary, "overall", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+        String quality = readJsonString(summary, "quality", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+        String response = readJsonString(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+        String usage = readJsonString(summary, "usage", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA);
+        int entryCount = readJsonInt(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_ENTRY_COUNT, 0);
 
-        String day = readJsonString(meta, "day", "");
-        int slot = readJsonInt(meta, "slot", 0);
-        String generatedAt = readJsonString(meta, "generatedAt", "");
+        String day = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, "");
+        int slot = readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT, 0);
+        String generatedAt = readJsonString(meta, DashboardDailySummaryStore.KEY_GENERATED_AT, "");
         String startedAt = readJsonString(meta, "startedAt", "");
-        String updatedAt = readJsonString(meta, "updatedAt", "");
-        String statusText = readJsonString(meta, "statusText", "idle");
-        int progressPct = readJsonInt(meta, "progressPct", 0);
-        String message = readJsonString(meta, "message", "");
+        String updatedAt = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_UPDATED_AT, "");
+        String statusText = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_STATUS_TEXT, com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE);
+        int progressPct = readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROGRESS_PCT, 0);
+        String message = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "");
         String nextAction = suggestNextAction(payload);
 
         StringBuilder md = new StringBuilder(1200);
@@ -212,20 +211,20 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     }
 
     private String buildPreviewHtml(JsonObject payload) {
-        JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
-        JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
+        JsonObject summary = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY);
+        JsonObject meta = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.FIELD_META);
 
-        String overall = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "overall", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
-        String quality = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "quality", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
-        String response = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "response", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
-        String usage = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "usage", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
+        String overall = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "overall", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
+        String quality = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "quality", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
+        String response = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
+        String usage = DashboardTemplateRenderer.escapeHtml(readJsonString(summary, "usage", com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
 
-        String day = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "day", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
-        String slot = DashboardTemplateRenderer.escapeHtml(String.valueOf(readJsonInt(meta, "slot", 0)));
-        String generatedAt = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "generatedAt", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"));
-        String statusText = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, "statusText", "idle"));
-        int progressPct = readJsonInt(meta, "progressPct", 0);
-        int entryCount = readJsonInt(summary, "entryCount", 0);
+        String day = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
+        String slot = DashboardTemplateRenderer.escapeHtml(String.valueOf(readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT, 0)));
+        String generatedAt = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, DashboardDailySummaryStore.KEY_GENERATED_AT, com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA));
+        String statusText = DashboardTemplateRenderer.escapeHtml(readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_STATUS_TEXT, com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE));
+        int progressPct = readJsonInt(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROGRESS_PCT, 0);
+        int entryCount = readJsonInt(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_ENTRY_COUNT, 0);
 
         String progressText = Integer.toString(progressPct);
         String entryCountText = Integer.toString(Math.max(0, entryCount));
@@ -248,19 +247,19 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     }
 
     private String suggestNextAction(JsonObject payload) {
-        JsonObject summary = payload == null ? null : payload.getJsonObject("summary");
-        JsonObject meta = payload == null ? null : payload.getJsonObject("meta");
+        JsonObject summary = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY);
+        JsonObject meta = payload == null ? null : payload.getJsonObject(com.sim.chatserver.util.CommonLiteralConstants.FIELD_META);
 
-        String status = readJsonString(meta, "statusText", "idle").toLowerCase();
+        String status = readJsonString(meta, com.sim.chatserver.util.CommonLiteralConstants.FIELD_STATUS_TEXT, com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE).toLowerCase();
         String quality = readJsonString(summary, "quality", "").toLowerCase();
-        String response = readJsonString(summary, "response", "").toLowerCase();
+        String response = readJsonString(summary, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, "").toLowerCase();
         String usage = readJsonString(summary, "usage", "").toLowerCase();
 
-        if ("running".equals(status) || "queued".equals(status)) {
+        if (com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING.equals(status) || "queued".equals(status)) {
             return "Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.";
         }
 
-        if (containsAny(quality, "low", "inconsistent", "hallucination", "incorrect", "poor")) {
+        if (containsAny(quality, com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW, "inconsistent", "hallucination", "incorrect", "poor")) {
             return "Review low-quality conversations first and tighten prompt instructions/guardrails for the affected widgets.";
         }
 
@@ -268,11 +267,11 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             return "Investigate response latency by widget and reduce prompt/context size where possible to improve speed.";
         }
 
-        if (containsAny(usage, "low", "drop", "decline", "underused")) {
+        if (containsAny(usage, com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW, "drop", "decline", "underused")) {
             return "Promote underused high-value widgets and add clearer in-app guidance so users discover the right tools faster.";
         }
 
-        return "Review Top Terms and Latest Chats to identify one repeated issue, then apply a focused prompt update and monitor tomorrowÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢s trend.";
+        return "Review Top Terms and Latest Chats to identify one repeated issue, then apply a focused prompt update and monitor tomorrow's trend.";
     }
 
     private boolean containsAny(String text, String... terms) {
@@ -289,21 +288,21 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
     private String cssStatus(String status) {
         String s = status == null ? "" : status.trim().toLowerCase();
-        if ("error".equals(s)) {
-            return "error";
+        if (com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR.equals(s)) {
+            return com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR;
         }
-        if ("running".equals(s) || "queued".equals(s)) {
-            return "running";
+        if (com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING.equals(s) || "queued".equals(s)) {
+            return com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING;
         }
         return "";
     }
 
     private String blankDash(String s) {
-        return (s == null || s.isBlank()) ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : s;
+        return (s == null || s.isBlank()) ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : s;
     }
 
     private String safeBlock(String s) {
-        return (s == null || s.isBlank()) ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : s;
+        return (s == null || s.isBlank()) ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : s;
     }
 
     private String readJsonString(JsonObject obj, String key, String fallback) {
@@ -367,4 +366,9 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

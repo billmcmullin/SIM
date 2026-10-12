@@ -53,8 +53,8 @@ class InactiveUsersListPageServletTest {
         InactiveUsersListPageServlet servlet = new InactiveUsersListPageServlet();
 
         @SuppressWarnings("unchecked")
-        InactiveUsersListPageServlet.FrustrationResult result =
-                (InactiveUsersListPageServlet.FrustrationResult) invoke(servlet, "detectFrustration", new Class<?>[]{List.class},
+        InactiveUsersListFrustrationResult result =
+            (InactiveUsersListFrustrationResult) invoke(servlet, "detectFrustration", new Class<?>[]{List.class},
                         List.of("This is terrible!!!", "you don't understand"));
 
         assertTrue(result.detected);
@@ -113,7 +113,7 @@ class InactiveUsersListPageServletTest {
     @Test
     void buildJson_serializesRows() throws Exception {
         InactiveUsersListPageServlet servlet = new InactiveUsersListPageServlet();
-        InactiveUsersListPageServlet.Row row = new InactiveUsersListPageServlet.Row();
+        Row row = new Row();
         row.sessionId = "s-1";
         row.displayLabel = "User One";
         row.widgetId = "w1";

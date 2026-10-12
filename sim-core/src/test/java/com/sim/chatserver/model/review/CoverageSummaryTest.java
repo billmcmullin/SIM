@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.review.CoverageSummary.Builder;
+import com.sim.chatserver.model.review.CoverageSummaryBuilder;
 
 import jakarta.json.JsonObject;
 
@@ -30,7 +30,7 @@ public class CoverageSummaryTest
     public void testBuilder() throws Throwable
     {
         // When
-        Builder result = CoverageSummary.builder();
+        CoverageSummaryBuilder result = CoverageSummary.builder();
 
     }
 

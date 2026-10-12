@@ -14,13 +14,36 @@ import java.util.Locale;
 public class PromptTemplateService {
 
     private static final String LS = System.lineSeparator();
+    private static final String UNUSED_SUPPRESSION = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String LABEL_USER_REQUEST = "User request:";
+    private static final String LABEL_TASK = "Task:";
+    private static final String GUARDRAIL_MARKDOWN_ONLY_LINE = "- Output in Markdown only using the requested section headings.";
+    private static final String EMPTY = "";
 
-    @SuppressWarnings("unused")
+    private static final String KEY_EXECUTIVE_SUMMARY = "## executive summary";
+    private static final String KEY_EXECUTIVE_CHAT_ANALYSIS = "## executive chat analysis";
+    private static final String KEY_KEY_METRICS = "## key metrics";
+    private static final String KEY_RISKS_AND_OPPORTUNITIES = "## risks and opportunities";
+    private static final String KEY_RECOMMENDATIONS = "## recommendations";
+    private static final String KEY_COVERAGE_AND_METHODOLOGY = "## coverage and methodology";
+    private static final String KEY_COVERAGE_AND_CARRY_FORWARD = "## coverage and carry-forward";
+    private static final String KEY_SENTIMENT_AND_FRUSTRATION = "## sentiment and frustration signals";
+    private static final String KEY_FRUSTRATION_SIGNALS_COUNT = "frustration signals count";
+    private static final String KEY_HIGH_FRUSTRATION_CHATS_COUNT = "high-frustration chats count";
+    private static final String KEY_FRUSTRATION_LEVEL = "frustration level";
+    private static final String KEY_OUTPUT_FORMAT = "output format";
+    private static final String KEY_MARKDOWN_ONLY = "markdown only";
+    private static final String KEY_DO_NOT_RETURN_JSON = "do not return json";
+    private static final String KEY_EXACT_SECTION_HEADINGS = "use these exact section headings";
+    private static final String KEY_DETERMINISTIC_METADATA = "deterministic metadata";
+    private static final String KEY_DO_NOT_ESTIMATE = "do not estimate";
+
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -35,7 +58,7 @@ public class PromptTemplateService {
             return m;
         }
 
-        return baseRubric() + LS + LS + "User request:" + LS + m;
+        return baseRubric() + LS + LS + LABEL_USER_REQUEST + LS + m;
     }
 
     final String withPromptInjectionGuardrails(String message) {
@@ -45,7 +68,7 @@ public class PromptTemplateService {
         if (m.isBlank()) {
             return guardrails;
         }
-        return guardrails + LS + LS + "Task:" + LS + m;
+        return guardrails + LS + LS + LABEL_TASK + LS + m;
     }
 
     final String buildControlledPrompt(String userMessage, boolean enforceRubric) {
@@ -76,41 +99,41 @@ public class PromptTemplateService {
         }
 
         String rubric = compactRubric ? compactRubric() : baseRubric();
-        return rubric + LS + LS + "User request:" + LS + m;
+        return rubric + LS + LS + LABEL_USER_REQUEST + LS + m;
     }
 
     private String withPromptInjectionGuardrails(String message, boolean enforceMarkdownOnly) {
         String m = safe(message);
         String guardrails = enforceMarkdownOnly
                 ? defaultGuardrails()
-            : defaultGuardrails().replace("- Output in Markdown only using the requested section headings." + LS, "");
+            : defaultGuardrails().replace(GUARDRAIL_MARKDOWN_ONLY_LINE + LS, EMPTY);
 
         if (m.isBlank()) {
             return guardrails.trim();
         }
-        return guardrails + LS + LS + "Task:" + LS + m;
+        return guardrails + LS + LS + LABEL_TASK + LS + m;
     }
 
     private boolean looksStructuredAlready(String message) {
         String lower = safe(message).toLowerCase(Locale.ROOT);
 
-        return lower.contains("## executive summary")
-                || lower.contains("## executive chat analysis")
-                || lower.contains("## key metrics")
-                || lower.contains("## risks and opportunities")
-                || lower.contains("## recommendations")
-                || lower.contains("## coverage and methodology")
-                || lower.contains("## coverage and carry-forward")
-                || lower.contains("## sentiment and frustration signals")
-                || lower.contains("frustration signals count")
-                || lower.contains("high-frustration chats count")
-                || lower.contains("frustration level")
-                || lower.contains("output format")
-                || lower.contains("markdown only")
-                || lower.contains("do not return json")
-                || lower.contains("use these exact section headings")
-                || lower.contains("deterministic metadata")
-                || lower.contains("do not estimate");
+        return lower.contains(KEY_EXECUTIVE_SUMMARY)
+            || lower.contains(KEY_EXECUTIVE_CHAT_ANALYSIS)
+            || lower.contains(KEY_KEY_METRICS)
+            || lower.contains(KEY_RISKS_AND_OPPORTUNITIES)
+            || lower.contains(KEY_RECOMMENDATIONS)
+            || lower.contains(KEY_COVERAGE_AND_METHODOLOGY)
+            || lower.contains(KEY_COVERAGE_AND_CARRY_FORWARD)
+            || lower.contains(KEY_SENTIMENT_AND_FRUSTRATION)
+            || lower.contains(KEY_FRUSTRATION_SIGNALS_COUNT)
+            || lower.contains(KEY_HIGH_FRUSTRATION_CHATS_COUNT)
+            || lower.contains(KEY_FRUSTRATION_LEVEL)
+            || lower.contains(KEY_OUTPUT_FORMAT)
+            || lower.contains(KEY_MARKDOWN_ONLY)
+            || lower.contains(KEY_DO_NOT_RETURN_JSON)
+            || lower.contains(KEY_EXACT_SECTION_HEADINGS)
+            || lower.contains(KEY_DETERMINISTIC_METADATA)
+            || lower.contains(KEY_DO_NOT_ESTIMATE);
     }
 
     private String defaultGuardrails() {
@@ -245,7 +268,7 @@ public class PromptTemplateService {
 
     private String safe(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String trimmed = value.trim();
         StringBuilder cleaned = new StringBuilder(trimmed.length());

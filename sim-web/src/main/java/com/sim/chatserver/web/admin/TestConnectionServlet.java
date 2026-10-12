@@ -22,8 +22,10 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.service.ApiAuthResolver;
+import com.sim.chatserver.service.ResolvedApiAuth;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -57,8 +59,14 @@ public class TestConnectionServlet extends HttpServlet {
     private static final String CHAT_PROBE_PAYLOAD_MINIMAL_RESET = "{\"message\":\"connection test\",\"reset\":true}";
     private static final String CHAT_PROBE_PAYLOAD_MINIMAL_NO_RESET = "{\"message\":\"connection test\",\"reset\":false}";
     private static final String LINE_SEPARATOR = System.lineSeparator();
+    private static final String COMPONENT_TEST_CONNECTION = CommonLiteralConstants.COMPONENT_TEST_CONNECTION_SERVLET;
+    private static final String TEXT_NO_VALID_API_KEY = CommonLiteralConstants.TEXT_NO_VALID_API_KEY;
+    private static final String TEXT_UNAUTHORIZED = CommonLiteralConstants.TEXT_UNAUTHORIZED;
+    private static final String MESSAGE_UNABLE_TO_WRITE_RESPONSE = CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE;
+    private static final String LOG_FALLBACK_SEND_ERROR_FAILED = CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED;
+    private static final String REQUEST_FAILED_MESSAGE = CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED;
 
-    private enum AuthHeaderMode {
+    enum AuthHeaderMode {
         CUSTOM_HEADER,
         AUTH_BEARER,
         AUTH_RAW,
@@ -71,28 +79,14 @@ public class TestConnectionServlet extends HttpServlet {
         CHAT
     }
 
-    private static final class ProbeResponse {
-        final int status;
-        final String body;
-        final AuthHeaderMode mode;
-        final String authSource;
-
-        private ProbeResponse(int status, String body, AuthHeaderMode mode, String authSource) {
-            this.status = status;
-            this.body = body;
-            this.mode = mode;
-            this.authSource = authSource;
-        }
-    }
-
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Authentication required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED)
                     .build());
             return;
         }
@@ -105,8 +99,8 @@ public class TestConnectionServlet extends HttpServlet {
 
         if (host == null || host.isBlank() || port == null || port.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Host and port are required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Host and port are required.")
                     .build());
             return;
         }
@@ -121,12 +115,12 @@ public class TestConnectionServlet extends HttpServlet {
             workspaceName = storedConfig.getWorkspaceName();
         }
 
-        ApiAuthResolver.ResolvedApiAuth resolvedAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
-        List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(resolvedAuth, null);
+        ResolvedApiAuth resolvedAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
+        List<ResolvedApiAuth> authCandidates = buildAuthCandidates(resolvedAuth, null);
         if (authCandidates.isEmpty()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "API key is required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "API key is required.")
                     .build());
             return;
         }
@@ -135,10 +129,10 @@ public class TestConnectionServlet extends HttpServlet {
         try {
             baseUrl = buildBaseUrl(host.trim(), port.trim());
         } catch (IllegalArgumentException ex) {
-            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP).log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.LOG_HANDLED_EXCEPTION, ex);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Invalid host or port format.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Invalid host or port format.")
                     .build());
             return;
         }
@@ -152,7 +146,7 @@ public class TestConnectionServlet extends HttpServlet {
 
         try {
             ServerDiagnosticsLog.write(
-                "test-connection-servlet",
+                COMPONENT_TEST_CONNECTION,
                 requestId,
                 "http-request",
                 "systemUrl=" + systemEndpoint
@@ -165,13 +159,13 @@ public class TestConnectionServlet extends HttpServlet {
             ProbeResponse systemResponse = executeProbe(systemEndpoint, authCandidates, ProbeKind.SYSTEM);
 
             ServerDiagnosticsLog.write(
-                "test-connection-servlet",
+                COMPONENT_TEST_CONNECTION,
                 requestId,
                 "http-response-system",
-                "status=" + systemResponse.status
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + systemResponse.status
                         + LINE_SEPARATOR + "authMode=" + systemResponse.mode.name()
                         + LINE_SEPARATOR + "authSource=" + safe(systemResponse.authSource)
-                        + LINE_SEPARATOR + "body=" + truncate(systemResponse.body)
+                        + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + truncate(systemResponse.body)
             );
 
             if (systemResponse.status < 200 || systemResponse.status >= 300) {
@@ -183,8 +177,8 @@ public class TestConnectionServlet extends HttpServlet {
                     systemEndpoint
                 );
                 writeJson(resp, systemResponse.status, Json.createObjectBuilder()
-                        .add("status", "error")
-                    .add("message", failureMessage)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, failureMessage)
                         .add("probe", "system")
                         .add("upstreamStatus", systemResponse.status)
                         .add("authMode", systemResponse.mode.name())
@@ -196,8 +190,8 @@ public class TestConnectionServlet extends HttpServlet {
 
             if (chatEndpoint.isBlank()) {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
-                        .add("status", "ok")
-                        .add("message", "Connection successful (system endpoint only; workspace not configured).")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection successful (system endpoint only; workspace not configured).")
                         .add("authSource", safe(systemResponse.authSource))
                         .build());
                 return;
@@ -213,19 +207,19 @@ public class TestConnectionServlet extends HttpServlet {
             }
 
             ServerDiagnosticsLog.write(
-                "test-connection-servlet",
+                COMPONENT_TEST_CONNECTION,
                 requestId,
                 "http-response-chat",
-                "status=" + chatResponse.status
+                com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + chatResponse.status
                         + LINE_SEPARATOR + "authMode=" + chatResponse.mode.name()
                     + LINE_SEPARATOR + "authSource=" + safe(chatResponse.authSource)
-                        + LINE_SEPARATOR + "body=" + truncate(chatResponse.body)
+                        + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + truncate(chatResponse.body)
             );
 
             if (chatResponse.status >= 200 && chatResponse.status < 300) {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
-                        .add("status", "ok")
-                        .add("message", "Connection successful.")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection successful.")
                     .add("authSource", safe(chatResponse.authSource))
                         .build());
             } else {
@@ -237,9 +231,9 @@ public class TestConnectionServlet extends HttpServlet {
                     chatEndpoint
                 );
                 writeJson(resp, chatResponse.status, Json.createObjectBuilder()
-                        .add("status", "error")
-                    .add("message", failureMessage)
-                        .add("probe", "chat")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, failureMessage)
+                        .add("probe", com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT)
                         .add("upstreamStatus", chatResponse.status)
                         .add("authMode", chatResponse.mode.name())
                         .add("authSource", safe(chatResponse.authSource))
@@ -255,43 +249,43 @@ public class TestConnectionServlet extends HttpServlet {
                 "Connection test failed. errorRef={0} requestId={1}. See server diagnostics log for stack trace.",
                 new Object[]{errorRef, requestId});
             ServerDiagnosticsLog.write(
-                    "test-connection-servlet",
+                    COMPONENT_TEST_CONNECTION,
                     requestId,
                     "http-error",
-                    "errorRef=" + errorRef + LINE_SEPARATOR + "url=" + safe(systemEndpoint) + LINE_SEPARATOR + "message=" + safe(e.getMessage()),
+                    "errorRef=" + errorRef + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + safe(systemEndpoint) + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Connection test failed.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection test failed.")
                     .build());
         }
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, REQUEST_FAILED_MESSAGE);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
     }
 
-    private ProbeResponse executeProbe(String endpoint, List<ApiAuthResolver.ResolvedApiAuth> authCandidates, ProbeKind probeKind)
+    private ProbeResponse executeProbe(String endpoint, List<ResolvedApiAuth> authCandidates, ProbeKind probeKind)
             {
         return executeProbe(endpoint, authCandidates, probeKind, CHAT_PROBE_PAYLOAD);
     }
 
-    private ProbeResponse executeProbe(String endpoint, List<ApiAuthResolver.ResolvedApiAuth> authCandidates, ProbeKind probeKind, String chatPayload)
+    private ProbeResponse executeProbe(String endpoint, List<ResolvedApiAuth> authCandidates, ProbeKind probeKind, String chatPayload)
             {
         ProbeResponse lastResponse = null;
 
         for (int authIndex = 0; authIndex < authCandidates.size(); authIndex++) {
-            ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(authIndex);
+            ResolvedApiAuth auth = authCandidates.get(authIndex);
             AuthHeaderMode mode = resolvePrimaryAuthMode(auth.preferredHeaderName());
             HttpRequest request = buildProbeRequest(endpoint, auth, mode, probeKind, chatPayload);
             HttpResponse<String> response;
@@ -325,10 +319,10 @@ public class TestConnectionServlet extends HttpServlet {
 
     private AuthHeaderMode resolvePrimaryAuthMode(String preferredHeaderName) {
         String header = preferredHeaderName == null ? "" : preferredHeaderName.trim();
-        if ("x-api-key".equalsIgnoreCase(header)) {
+        if (CommonLiteralConstants.HEADER_X_API_KEY_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.X_API_KEY;
         }
-        if (!header.isBlank() && !"authorization".equalsIgnoreCase(header)) {
+        if (!header.isBlank() && !CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.CUSTOM_HEADER;
         }
         return AuthHeaderMode.AUTH_BEARER;
@@ -336,7 +330,7 @@ public class TestConnectionServlet extends HttpServlet {
 
     private HttpRequest buildProbeRequest(
             String endpoint,
-            ApiAuthResolver.ResolvedApiAuth auth,
+            ResolvedApiAuth auth,
             AuthHeaderMode mode,
                 ProbeKind probeKind,
                 String chatPayload
@@ -344,11 +338,11 @@ public class TestConnectionServlet extends HttpServlet {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
                 .timeout(REQUEST_TIMEOUT)
-                .header("Accept", "application/json");
+                .header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_ACCEPT, com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON);
 
         if (probeKind == ProbeKind.CHAT) {
                 String payload = chatPayload == null || chatPayload.isBlank() ? CHAT_PROBE_PAYLOAD : chatPayload;
-            builder.header("Content-Type", "application/json")
+            builder.header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_CONTENT_TYPE, com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON)
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
         } else {
             builder.GET();
@@ -361,13 +355,13 @@ public class TestConnectionServlet extends HttpServlet {
 
         switch (mode) {
             case CUSTOM_HEADER -> applyPreferredHeader(builder, preferredHeader, rawValue, safeToken);
-            case AUTH_RAW -> builder.header("Authorization", normalizeRawAuthorizationValue(rawValue, safeToken));
-            case X_API_KEY -> builder.header("X-API-Key", safeToken);
+            case AUTH_RAW -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, normalizeRawAuthorizationValue(rawValue, safeToken));
+            case X_API_KEY -> builder.header(CommonLiteralConstants.HEADER_X_API_KEY, safeToken);
             case AUTH_BEARER_AND_X_API_KEY -> builder
-                .header("Authorization", "Bearer " + safeToken)
-                .header("X-API-Key", safeToken);
-            case AUTH_BEARER -> builder.header("Authorization", "Bearer " + safeToken);
-            default -> builder.header("Authorization", "Bearer " + safeToken);
+                .header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + safeToken)
+                .header(CommonLiteralConstants.HEADER_X_API_KEY, safeToken);
+            case AUTH_BEARER -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + safeToken);
+            default -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + safeToken);
         }
 
         return builder.build();
@@ -381,8 +375,8 @@ public class TestConnectionServlet extends HttpServlet {
 
         String normalizedKey = normalizedHeader.toLowerCase(Locale.ROOT);
         switch (normalizedKey) {
-            case "authorization" -> builder.header("Authorization", "Bearer " + token);
-            case "x-api-key" -> builder.header("X-API-Key", token);
+            case CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + token);
+            case CommonLiteralConstants.HEADER_X_API_KEY_LOWER -> builder.header(CommonLiteralConstants.HEADER_X_API_KEY, token);
             default -> builder.header(normalizedHeader, defaultIfBlank(rawValue, token));
         }
     }
@@ -399,12 +393,12 @@ public class TestConnectionServlet extends HttpServlet {
         return status == HttpServletResponse.SC_UNAUTHORIZED || status == HttpServletResponse.SC_FORBIDDEN;
     }
 
-    private List<ApiAuthResolver.ResolvedApiAuth> buildAuthCandidates(
-            ApiAuthResolver.ResolvedApiAuth primary,
-            ApiAuthResolver.ResolvedApiAuth secondary
+    private List<ResolvedApiAuth> buildAuthCandidates(
+            ResolvedApiAuth primary,
+            ResolvedApiAuth secondary
     ) {
-        Map<String, ApiAuthResolver.ResolvedApiAuth> unique = new LinkedHashMap<>();
-        for (ApiAuthResolver.ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
+        Map<String, ResolvedApiAuth> unique = new LinkedHashMap<>();
+        for (ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
             if (candidate == null || !candidate.hasToken()) {
                 continue;
             }
@@ -418,12 +412,12 @@ public class TestConnectionServlet extends HttpServlet {
         return new ArrayList<>(unique.values());
     }
 
-    private String summarizeAuthCandidates(List<ApiAuthResolver.ResolvedApiAuth> authCandidates) {
+    private String summarizeAuthCandidates(List<ResolvedApiAuth> authCandidates) {
         if (authCandidates == null || authCandidates.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        for (ApiAuthResolver.ResolvedApiAuth auth : authCandidates) {
+        for (ResolvedApiAuth auth : authCandidates) {
             if (sb.length() > 0) {
                 sb.append(',');
             }
@@ -436,7 +430,7 @@ public class TestConnectionServlet extends HttpServlet {
 
     private ProbeResponse retryChatProbeWithAlternatePayloads(
             String endpoint,
-            List<ApiAuthResolver.ResolvedApiAuth> authCandidates,
+            List<ResolvedApiAuth> authCandidates,
             String requestId
         ) {
         String[] payloads = new String[]{
@@ -448,7 +442,7 @@ public class TestConnectionServlet extends HttpServlet {
         ProbeResponse last = null;
         for (String payload : payloads) {
             ServerDiagnosticsLog.write(
-                    "test-connection-servlet",
+                    COMPONENT_TEST_CONNECTION,
                     requestId,
                     "chat-probe-retry",
                     "reason=null-id-abort" + LINE_SEPARATOR + "payload=" + payload
@@ -487,8 +481,8 @@ public class TestConnectionServlet extends HttpServlet {
         String safeWorkspace = safe(workspaceSlug);
 
         if (status == HttpServletResponse.SC_UNAUTHORIZED || status == HttpServletResponse.SC_FORBIDDEN
-                || lower.contains("no valid api key")
-                || lower.contains("unauthorized")
+            || lower.contains(TEXT_NO_VALID_API_KEY)
+            || lower.contains(TEXT_UNAUTHORIZED)
                 || lower.contains("forbidden")) {
             return "Authentication failed for " + probeLabel(probeKind)
                     + " endpoint. Verify the API key in Server and Workspace configuration.";
@@ -510,7 +504,7 @@ public class TestConnectionServlet extends HttpServlet {
     }
 
     private String probeLabel(ProbeKind probeKind) {
-        return probeKind == ProbeKind.CHAT ? "chat" : "system";
+        return probeKind == ProbeKind.CHAT ? com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT : "system";
     }
 
     private String extractUpstreamReason(String body) {
@@ -520,15 +514,15 @@ public class TestConnectionServlet extends HttpServlet {
 
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject object = reader.readObject();
-            String error = object.getString("error", "");
+            String error = object.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, "");
             if (!error.isBlank()) {
                 return error;
             }
-            String message = object.getString("message", "");
+            String message = object.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "");
             if (!message.isBlank()) {
                 return message;
             }
-            String textResponse = object.getString("textResponse", "");
+            String textResponse = object.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TEXT_RESPONSE, "");
             if (!textResponse.isBlank()) {
                 return textResponse;
             }
@@ -577,10 +571,10 @@ public class TestConnectionServlet extends HttpServlet {
         String normalizedHost = host.trim();
         String scheme = extractScheme(normalizedHost);
         if (scheme == null) {
-            scheme = (portNumber == 443 || portNumber == 8443) ? "https" : "http";
+            scheme = (portNumber == 443 || portNumber == 8443) ? com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS : com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP;
         }
 
-        return scheme + "://" + hostPart + (char) 58 + portNumber;
+        return scheme + com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR + hostPart + (char) 58 + portNumber;
     }
 
     private String extractScheme(String rawHost) {
@@ -588,11 +582,11 @@ public class TestConnectionServlet extends HttpServlet {
             return null;
         }
         String normalized = rawHost.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("https://")) {
-            return "https";
+        if (normalized.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
+            return com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS;
         }
-        if (normalized.startsWith("http://")) {
-            return "http";
+        if (normalized.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP)) {
+            return com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP;
         }
         return null;
     }
@@ -613,10 +607,10 @@ public class TestConnectionServlet extends HttpServlet {
             return null;
         }
         String trimmed = rawHost.trim();
-        if (trimmed.startsWith("http://")) {
-            trimmed = trimmed.substring("http://".length());
-        } else if (trimmed.startsWith("https://")) {
-            trimmed = trimmed.substring("https://".length());
+        if (trimmed.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP)) {
+            trimmed = trimmed.substring(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP.length());
+        } else if (trimmed.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
+            trimmed = trimmed.substring(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS.length());
         }
 
         int slash = trimmed.indexOf('/');
@@ -638,9 +632,9 @@ public class TestConnectionServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to write test-connection JSON response", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, MESSAGE_UNABLE_TO_WRITE_RESPONSE);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, LOG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -650,7 +644,7 @@ public class TestConnectionServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + "..." : value;
+        return value.length() > 512 ? new String(value.toCharArray(), 0, 512) + com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS : value;
     }
 
     private String safe(String value) {
@@ -660,4 +654,26 @@ public class TestConnectionServlet extends HttpServlet {
     private boolean causedByInterrupted(Throwable throwable) {
         return ThrowableUtil.hasInterruptedCause(throwable);
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
+
+
 }
+
+final class ProbeResponse {
+    final int status;
+    final String body;
+    final TestConnectionServlet.AuthHeaderMode mode;
+    final String authSource;
+
+    ProbeResponse(int status, String body, TestConnectionServlet.AuthHeaderMode mode, String authSource) {
+        this.status = status;
+        this.body = body;
+        this.mode = mode;
+        this.authSource = authSource;
+    }
+}
+

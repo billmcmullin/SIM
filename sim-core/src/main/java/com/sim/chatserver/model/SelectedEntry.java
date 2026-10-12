@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
@@ -21,6 +23,17 @@ import jakarta.json.JsonObjectBuilder;
 public final class SelectedEntry {
 
     private static final Logger LOGGER = Logger.getLogger(SelectedEntry.class.getCanonicalName());
+    private static final String FIELD_CHAT_ID = com.sim.chatserver.util.CommonLiteralConstants.FIELD_CHAT_ID;
+    private static final String FIELD_PROMPT = CommonLiteralConstants.FIELD_PROMPT;
+    private static final String FIELD_RESPONSE = CommonLiteralConstants.FIELD_RESPONSE;
+    private static final String FIELD_CREATED_AT = CommonLiteralConstants.FIELD_CREATED_AT;
+    private static final String FIELD_SESSION_ID = CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String EMPTY = "";
+    private static final String MSG_PARSE_JSON_FIELD_FAILED = "Unable to parse SelectedEntry JSON field: {0}";
+    private static final String TO_STRING_PREFIX = "SelectedEntry{";
+    private static final String TO_STRING_CHAT_ID = "chatId='";
+    private static final String TO_STRING_CREATED_AT = ", createdAt='";
+    private static final String TO_STRING_SESSION_ID = ", sessionId='";
 
     private final String chatId;
     private final String prompt;
@@ -58,25 +71,25 @@ public final class SelectedEntry {
 
     private JsonObject toJson() {
         JsonObjectBuilder b = Json.createObjectBuilder();
-        b.add("chatId", chatId);
-        b.add("prompt", prompt);
-        b.add("response", response);
-        b.add("createdAt", createdAt);
-        b.add("sessionId", sessionId);
+        b.add(FIELD_CHAT_ID, chatId);
+        b.add(FIELD_PROMPT, prompt);
+        b.add(FIELD_RESPONSE, response);
+        b.add(FIELD_CREATED_AT, createdAt);
+        b.add(FIELD_SESSION_ID, sessionId);
         return b.build();
     }
 
     private static SelectedEntry fromJson(JsonObject o) {
         if (o == null) {
-            return new SelectedEntry("", "", "", "", "");
+            return new SelectedEntry(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY);
         }
 
         return new SelectedEntry(
-                str(o, "chatId"),
-                str(o, "prompt"),
-                str(o, "response"),
-                str(o, "createdAt"),
-                str(o, "sessionId")
+                str(o, FIELD_CHAT_ID),
+                str(o, FIELD_PROMPT),
+                str(o, FIELD_RESPONSE),
+                str(o, FIELD_CREATED_AT),
+                str(o, FIELD_SESSION_ID)
         );
     }
 
@@ -118,26 +131,26 @@ public final class SelectedEntry {
             var value = o.get(key);
             if (value != null) {
                 if (value.getValueType() == jakarta.json.JsonValue.ValueType.STRING) {
-                    return o.getString(key, "");
+                    return o.getString(key, EMPTY);
                 }
                 return String.valueOf(value);
             }
         } catch (ClassCastException | IllegalStateException ex) {
-            LOGGER.log(Level.FINE, "Unable to parse SelectedEntry JSON field: {0}", key);
+            LOGGER.log(Level.FINE, MSG_PARSE_JSON_FIELD_FAILED, key);
         }
-        return "";
+        return EMPTY;
     }
 
     private static String safe(String s) {
-        return s == null ? "" : s;
+        return s == null ? EMPTY : s;
     }
 
     @Override
     public String toString() {
-        return "SelectedEntry{"
-                + "chatId='" + chatId + '\''
-                + ", createdAt='" + createdAt + '\''
-                + ", sessionId='" + sessionId + '\''
+        return TO_STRING_PREFIX
+                + TO_STRING_CHAT_ID + chatId + '\''
+                + TO_STRING_CREATED_AT + createdAt + '\''
+                + TO_STRING_SESSION_ID + sessionId + '\''
                 + '}';
     }
 

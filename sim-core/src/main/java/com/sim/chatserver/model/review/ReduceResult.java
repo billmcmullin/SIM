@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -23,6 +25,46 @@ import jakarta.json.JsonObject;
  * exact missing IDs are preserved in output
  */
 public final class ReduceResult {
+
+    private static final String EMPTY = "";
+    private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
+    private static final String FIELD_HTTP_STATUS = "httpStatus";
+    private static final String FIELD_SUCCESS = CommonLiteralConstants.FIELD_SUCCESS;
+    private static final String FIELD_RETRY_USED = "retryUsed";
+    private static final String FIELD_CONTEXT_TOO_LARGE_DETECTED = "contextTooLargeDetected";
+    private static final String FIELD_FINAL_REPORT = "finalReport";
+    private static final String FIELD_ERROR_MESSAGE = "errorMessage";
+    private static final String FIELD_TOTAL_SELECTED = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL_SELECTED;
+    private static final String FIELD_TOTAL_BATCHES = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_MAP_OUTPUTS_RECEIVED = "mapOutputsReceived";
+    private static final String FIELD_FAILED_BATCH_COUNT = "failedBatchCount";
+    private static final String FIELD_FAILED_BATCH_INDEXES = com.sim.chatserver.util.CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES;
+    private static final String FIELD_FAILED_BATCH_REASONS = "failedBatchReasons";
+    private static final String FIELD_ALL_SELECTED_CHAT_IDS = com.sim.chatserver.util.CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS;
+    private static final String FIELD_USED_CHAT_IDS = CommonLiteralConstants.FIELD_USED_CHAT_IDS;
+    private static final String FIELD_MISSING_CHAT_IDS = CommonLiteralConstants.FIELD_MISSING_CHAT_IDS;
+    private static final String FIELD_COVERAGE_COMPLETE = CommonLiteralConstants.FIELD_COVERAGE_COMPLETE;
+    private static final String FIELD_COVERAGE_PERCENT = "coveragePercent";
+    private static final String FIELD_LATENCY_MS = CommonLiteralConstants.FIELD_LATENCY_MS;
+    private static final String ERR_MAP_OUTPUTS_GT_BATCHES = "mapOutputsReceived cannot exceed totalBatches";
+    private static final String ERR_MISSING_IDS_MISMATCH = "missingChatIds must exactly equal allSelectedChatIds - usedChatIds";
+    private static final String ERR_COVERAGE_COMPLETE_MISMATCH = "coverageComplete must equal missingChatIds.isEmpty()";
+    private static final String ERR_SUCCESS_CONSTRAINT = "success=true requires coverageComplete=true and httpStatus<400";
+    private static final String ERR_REQUIRED_SUFFIX = com.sim.chatserver.util.CommonLiteralConstants.ERR_REQUIRED_SUFFIX;
+    private static final String TOSTRING_PREFIX = "ReduceResult{";
+    private static final String TOSTRING_REQUEST_ID_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.TOSTRING_REQUEST_ID_PREFIX;
+    private static final String TOSTRING_HTTP_STATUS_PREFIX = ", httpStatus=";
+    private static final String TOSTRING_SUCCESS_PREFIX = ", success=";
+    private static final String TOSTRING_RETRY_USED_PREFIX = ", retryUsed=";
+    private static final String TOSTRING_CONTEXT_TOO_LARGE_PREFIX = ", contextTooLargeDetected=";
+    private static final String TOSTRING_TOTAL_SELECTED_PREFIX = ", totalSelected=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_MAP_OUTPUTS_PREFIX = ", mapOutputsReceived=";
+    private static final String TOSTRING_FAILED_BATCHES_PREFIX = ", failedBatchIndexes=";
+    private static final String TOSTRING_COVERAGE_COMPLETE_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.TOSTRING_COVERAGE_COMPLETE_PREFIX;
+    private static final String TOSTRING_COVERAGE_PERCENT_PREFIX = ", coveragePercent=";
+    private static final String TOSTRING_MISSING_IDS_PREFIX = ", missingChatIds=";
+    private static final String TOSTRING_LATENCY_PREFIX = ", latencyMs=";
 
     private final String requestId;
 
@@ -49,15 +91,15 @@ public final class ReduceResult {
 
     private final long latencyMs;
 
-    private ReduceResult(Builder b) {
-        this.requestId = requireNonBlank(b.requestId, "requestId");
+    ReduceResult(ReduceResultBuilder b) {
+        this.requestId = requireNonBlank(b.requestId, FIELD_REQUEST_ID);
 
         this.httpStatus = b.httpStatus;
         this.retryUsed = b.retryUsed;
         this.contextTooLargeDetected = b.contextTooLargeDetected;
 
-        this.finalReport = defaultIfNull(b.finalReport, "");
-        this.errorMessage = defaultIfNull(b.errorMessage, "");
+        this.finalReport = defaultIfNull(b.finalReport, EMPTY);
+        this.errorMessage = defaultIfNull(b.errorMessage, EMPTY);
 
         this.totalSelected = Math.max(0, b.totalSelected);
         this.totalBatches = Math.max(0, b.totalBatches);
@@ -89,7 +131,7 @@ public final class ReduceResult {
 
     private void validateConsistency() {
         if (mapOutputsReceived > totalBatches && totalBatches > 0) {
-            throw new IllegalArgumentException("mapOutputsReceived cannot exceed totalBatches");
+            throw new IllegalArgumentException(ERR_MAP_OUTPUTS_GT_BATCHES);
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
@@ -97,20 +139,20 @@ public final class ReduceResult {
             expectedMissing.remove(usedId);
         }
         if (!expectedMissing.equals(new LinkedHashSet<>(missingChatIds))) {
-            throw new IllegalArgumentException("missingChatIds must exactly equal allSelectedChatIds - usedChatIds");
+            throw new IllegalArgumentException(ERR_MISSING_IDS_MISMATCH);
         }
 
         if (coverageComplete != missingChatIds.isEmpty()) {
-            throw new IllegalArgumentException("coverageComplete must equal missingChatIds.isEmpty()");
+            throw new IllegalArgumentException(ERR_COVERAGE_COMPLETE_MISMATCH);
         }
 
         if (success && (!coverageComplete || httpStatus >= 400)) {
-            throw new IllegalArgumentException("success=true requires coverageComplete=true and httpStatus<400");
+            throw new IllegalArgumentException(ERR_SUCCESS_CONSTRAINT);
         }
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static ReduceResultBuilder builder() {
+        return new ReduceResultBuilder();
     }
 
     static ReduceResult failed(
@@ -220,169 +262,50 @@ public final class ReduceResult {
 
     JsonObject toJson() {
         return Json.createObjectBuilder()
-                .add("requestId", requestId)
-                .add("httpStatus", httpStatus)
-                .add("success", success)
-                .add("retryUsed", retryUsed)
-                .add("contextTooLargeDetected", contextTooLargeDetected)
-                .add("finalReport", finalReport)
-                .add("errorMessage", errorMessage)
-                .add("totalSelected", totalSelected)
-                .add("totalBatches", totalBatches)
-                .add("mapOutputsReceived", mapOutputsReceived)
-                .add("failedBatchCount", getFailedBatchCount())
-                .add("failedBatchIndexes", toJsonIntArray(failedBatchIndexes))
-                .add("failedBatchReasons", toJsonStringArray(failedBatchReasons))
-                .add("allSelectedChatIds", toJsonStringArray(allSelectedChatIds))
-                .add("usedChatIds", toJsonStringArray(usedChatIds))
-                .add("missingChatIds", toJsonStringArray(missingChatIds)) // exact derived missing IDs preserved
-                .add("coverageComplete", coverageComplete)
-                .add("coveragePercent", coveragePercent)
-                .add("latencyMs", latencyMs)
+            .add(FIELD_REQUEST_ID, requestId)
+            .add(FIELD_HTTP_STATUS, httpStatus)
+            .add(FIELD_SUCCESS, success)
+            .add(FIELD_RETRY_USED, retryUsed)
+            .add(FIELD_CONTEXT_TOO_LARGE_DETECTED, contextTooLargeDetected)
+            .add(FIELD_FINAL_REPORT, finalReport)
+            .add(FIELD_ERROR_MESSAGE, errorMessage)
+            .add(FIELD_TOTAL_SELECTED, totalSelected)
+            .add(FIELD_TOTAL_BATCHES, totalBatches)
+            .add(FIELD_MAP_OUTPUTS_RECEIVED, mapOutputsReceived)
+            .add(FIELD_FAILED_BATCH_COUNT, getFailedBatchCount())
+            .add(FIELD_FAILED_BATCH_INDEXES, toJsonIntArray(failedBatchIndexes))
+            .add(FIELD_FAILED_BATCH_REASONS, toJsonStringArray(failedBatchReasons))
+            .add(FIELD_ALL_SELECTED_CHAT_IDS, toJsonStringArray(allSelectedChatIds))
+            .add(FIELD_USED_CHAT_IDS, toJsonStringArray(usedChatIds))
+            .add(FIELD_MISSING_CHAT_IDS, toJsonStringArray(missingChatIds)) // exact derived missing IDs preserved
+            .add(FIELD_COVERAGE_COMPLETE, coverageComplete)
+            .add(FIELD_COVERAGE_PERCENT, coveragePercent)
+            .add(FIELD_LATENCY_MS, latencyMs)
                 .build();
     }
 
     @Override
     public String toString() {
-        return "ReduceResult{"
-                + "requestId='" + requestId + '\''
-                + ", httpStatus=" + httpStatus
-                + ", success=" + success
-                + ", retryUsed=" + retryUsed
-                + ", contextTooLargeDetected=" + contextTooLargeDetected
-                + ", totalSelected=" + totalSelected
-                + ", totalBatches=" + totalBatches
-                + ", mapOutputsReceived=" + mapOutputsReceived
-                + ", failedBatchIndexes=" + failedBatchIndexes
-                + ", coverageComplete=" + coverageComplete
-                + ", coveragePercent=" + coveragePercent
-                + ", missingChatIds=" + missingChatIds.size()
-                + ", latencyMs=" + latencyMs
+        return TOSTRING_PREFIX
+            + TOSTRING_REQUEST_ID_PREFIX + requestId + '\''
+            + TOSTRING_HTTP_STATUS_PREFIX + httpStatus
+            + TOSTRING_SUCCESS_PREFIX + success
+            + TOSTRING_RETRY_USED_PREFIX + retryUsed
+            + TOSTRING_CONTEXT_TOO_LARGE_PREFIX + contextTooLargeDetected
+            + TOSTRING_TOTAL_SELECTED_PREFIX + totalSelected
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_MAP_OUTPUTS_PREFIX + mapOutputsReceived
+            + TOSTRING_FAILED_BATCHES_PREFIX + failedBatchIndexes
+            + TOSTRING_COVERAGE_COMPLETE_PREFIX + coverageComplete
+            + TOSTRING_COVERAGE_PERCENT_PREFIX + coveragePercent
+            + TOSTRING_MISSING_IDS_PREFIX + missingChatIds.size()
+            + TOSTRING_LATENCY_PREFIX + latencyMs
                 + '}';
-    }
-
-    public static final class Builder {
-
-        private String requestId;
-
-        private int httpStatus;
-        private boolean success;
-        private boolean retryUsed;
-        private boolean contextTooLargeDetected;
-
-        private String finalReport;
-        private String errorMessage;
-
-        private int totalSelected;
-        private int totalBatches;
-        private int mapOutputsReceived;
-
-        private List<Integer> failedBatchIndexes = new ArrayList<>();
-        private List<String> failedBatchReasons = new ArrayList<>();
-
-        private List<String> allSelectedChatIds = new ArrayList<>();
-        private List<String> usedChatIds = new ArrayList<>();
-        private List<String> missingChatIds = new ArrayList<>(); // compatibility only (ignored in strict derive)
-        private boolean coverageCompleteOverride; // compatibility only (ignored in strict derive)
-
-        private long latencyMs;
-
-        private Builder() {
-        }
-
-        public Builder requestId(String requestId) {
-            this.requestId = requestId;
-            return this;
-        }
-
-        public Builder httpStatus(int httpStatus) {
-            this.httpStatus = httpStatus;
-            return this;
-        }
-
-        public Builder success(boolean success) {
-            this.success = success;
-            return this;
-        }
-
-        public Builder retryUsed(boolean retryUsed) {
-            this.retryUsed = retryUsed;
-            return this;
-        }
-
-        public Builder contextTooLargeDetected(boolean contextTooLargeDetected) {
-            this.contextTooLargeDetected = contextTooLargeDetected;
-            return this;
-        }
-
-        public Builder finalReport(String finalReport) {
-            this.finalReport = finalReport;
-            return this;
-        }
-
-        public Builder errorMessage(String errorMessage) {
-            this.errorMessage = errorMessage;
-            return this;
-        }
-
-        public Builder totalSelected(int totalSelected) {
-            this.totalSelected = totalSelected;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder mapOutputsReceived(int mapOutputsReceived) {
-            this.mapOutputsReceived = mapOutputsReceived;
-            return this;
-        }
-
-        public Builder failedBatchIndexes(List<Integer> failedBatchIndexes) {
-            this.failedBatchIndexes = failedBatchIndexes == null ? new ArrayList<>() : failedBatchIndexes;
-            return this;
-        }
-
-        public Builder failedBatchReasons(List<String> failedBatchReasons) {
-            this.failedBatchReasons = failedBatchReasons == null ? new ArrayList<>() : failedBatchReasons;
-            return this;
-        }
-
-        public Builder allSelectedChatIds(List<String> allSelectedChatIds) {
-            this.allSelectedChatIds = allSelectedChatIds == null ? new ArrayList<>() : allSelectedChatIds;
-            return this;
-        }
-
-        public Builder usedChatIds(List<String> usedChatIds) {
-            this.usedChatIds = usedChatIds == null ? new ArrayList<>() : usedChatIds;
-            return this;
-        }
-
-        public Builder missingChatIds(List<String> missingChatIds) {
-            this.missingChatIds = missingChatIds == null ? new ArrayList<>() : missingChatIds;
-            return this;
-        }
-
-        public Builder coverageComplete(boolean coverageComplete) {
-            this.coverageCompleteOverride = coverageComplete;
-            return this;
-        }
-
-        public Builder latencyMs(long latencyMs) {
-            this.latencyMs = latencyMs;
-            return this;
-        }
-
-        public ReduceResult build() {
-            return new ReduceResult(this);
-        }
     }
 
     private static String requireNonBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new IllegalArgumentException(field + ERR_REQUIRED_SUFFIX);
         }
         return value;
     }
@@ -471,4 +394,6 @@ public final class ReduceResult {
         }
         return b.build();
     }
+
 }
+

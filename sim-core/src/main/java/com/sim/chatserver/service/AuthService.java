@@ -14,9 +14,13 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class AuthService {
 
-    private static final Logger log = Logger.getLogger(AuthService.class.getCanonicalName());
 
-    private static final String UNKNOWN = "UNKNOWN";
+    private static final Logger log = Logger.getLogger(AuthService.class.getCanonicalName());
+    private static final String EMPTY = "";
+
+    private static final String UNKNOWN = com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_UPPER;
+    private static final String MASK_SINGLE = "*";
+    private static final String MASK_MIDDLE = "***";
     private static final String LOG_LOOKUP_INIT = "AuthService.authenticate: lookup initiated";
     private static final String LOG_EMPTY_USERNAME = "AuthService.authenticate: empty username";
     private static final String LOG_USER_NOT_FOUND = "AuthService.authenticate: user not found";
@@ -25,12 +29,10 @@ public class AuthService {
     @Inject
     UserService userService;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -69,18 +71,18 @@ public class AuthService {
      */
     private static String maskIdentifier(String id) {
         if (id == null || id.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         int len = id.length();
         if (len == 1) {
-            return "*";
+            return MASK_SINGLE;
         }
         if (len == 2) {
-            return id.charAt(0) + "*";
+            return id.charAt(0) + MASK_SINGLE;
         }
         return new StringBuilder(5)
                 .append(id.charAt(0))
-                .append("***")
+                .append(MASK_MIDDLE)
                 .append(id.charAt(len - 1))
                 .toString();
     }

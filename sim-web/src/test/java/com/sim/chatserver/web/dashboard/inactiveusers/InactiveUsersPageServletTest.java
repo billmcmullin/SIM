@@ -174,7 +174,7 @@ public class InactiveUsersPageServletTest
         void jsonBuild_and_rowConversion_coverOutputPaths() throws Exception {
             InactiveUsersPageService servlet = new InactiveUsersPageService();
     
-            InactiveUsersPageService.InactiveRow row = new InactiveUsersPageService.InactiveRow();
+            InactiveRow row = new InactiveRow();
             row.sessionId = "s1";
             row.displayLabel = "Alice";
             row.widgetId = "w1";
@@ -185,7 +185,7 @@ public class InactiveUsersPageServletTest
             row.frustrationScore = 0.8;
             row.frustrationReason = "keyword:ridiculous";
     
-            Map<String, List<InactiveUsersPageService.InactiveRow>> byWidget = new LinkedHashMap<>();
+            Map<String, List<InactiveRow>> byWidget = new LinkedHashMap<>();
             byWidget.put("ALL", List.of(row));
             byWidget.put("w1", List.of(row));
     

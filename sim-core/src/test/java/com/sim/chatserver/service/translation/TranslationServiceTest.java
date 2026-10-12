@@ -2,7 +2,7 @@ package com.sim.chatserver.service.translation;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.service.translation.TranslationService.TranslationResult;
+import com.sim.chatserver.service.translation.TranslationResult;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,9 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
- * Parasoft Jtest UTA: Test class for TranslationService.TranslationResult
+ * Parasoft Jtest UTA: Test class for TranslationResult
  *
- * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult
+ * @see com.sim.chatserver.service.translation.TranslationResult
  * @author bmcmullin
  */
 public class TranslationServiceTest
@@ -21,7 +21,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for fail(String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#fail(String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#fail(String)
      * @author bmcmullin
      */
     @Test
@@ -51,7 +51,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for fail(String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#fail(String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#fail(String)
      * @author bmcmullin
      */
     @Test
@@ -81,7 +81,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for getMessage()
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#getMessage()
+     * @see com.sim.chatserver.service.translation.TranslationResult#getMessage()
      * @author bmcmullin
      */
     @Test
@@ -97,7 +97,7 @@ public class TranslationServiceTest
         // Then - assertions for result of method getMessage()
         assertEquals("message", result);
 
-        // Then - assertions for this instance of TranslationService.TranslationResult
+        // Then - assertions for this instance of TranslationResult
         assertAll(() -> {
             assertFalse(underTest.isSuccess());
         }, () -> {
@@ -113,7 +113,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for getSourceLang()
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#getSourceLang()
+     * @see com.sim.chatserver.service.translation.TranslationResult#getSourceLang()
      * @author bmcmullin
      */
     @Test
@@ -129,7 +129,7 @@ public class TranslationServiceTest
         // Then - assertions for result of method getSourceLang()
         assertEquals("", result);
 
-        // Then - assertions for this instance of TranslationService.TranslationResult
+        // Then - assertions for this instance of TranslationResult
         assertAll(() -> {
             assertFalse(underTest.isSuccess());
         }, () -> {
@@ -145,7 +145,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for getTargetLang()
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#getTargetLang()
+     * @see com.sim.chatserver.service.translation.TranslationResult#getTargetLang()
      * @author bmcmullin
      */
     @Test
@@ -161,7 +161,7 @@ public class TranslationServiceTest
         // Then - assertions for result of method getTargetLang()
         assertEquals("", result);
 
-        // Then - assertions for this instance of TranslationService.TranslationResult
+        // Then - assertions for this instance of TranslationResult
         assertAll(() -> {
             assertFalse(underTest.isSuccess());
         }, () -> {
@@ -177,7 +177,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for getTranslatedText()
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#getTranslatedText()
+     * @see com.sim.chatserver.service.translation.TranslationResult#getTranslatedText()
      * @author bmcmullin
      */
     @Test
@@ -193,7 +193,7 @@ public class TranslationServiceTest
         // Then - assertions for result of method getTranslatedText()
         assertEquals("", result);
 
-        // Then - assertions for this instance of TranslationService.TranslationResult
+        // Then - assertions for this instance of TranslationResult
         assertAll(() -> {
             assertFalse(underTest.isSuccess());
         }, () -> {
@@ -209,7 +209,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for isSuccess()
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#isSuccess()
+     * @see com.sim.chatserver.service.translation.TranslationResult#isSuccess()
      * @author bmcmullin
      */
     @Test
@@ -225,7 +225,7 @@ public class TranslationServiceTest
         // Then - assertions for result of method isSuccess()
         assertFalse(result);
 
-        // Then - assertions for this instance of TranslationService.TranslationResult
+        // Then - assertions for this instance of TranslationResult
         assertAll(() -> {
             assertEquals("", underTest.getSourceLang());
         }, () -> {
@@ -241,7 +241,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -273,7 +273,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -305,7 +305,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -337,7 +337,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -369,7 +369,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -401,7 +401,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -433,7 +433,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test
@@ -465,7 +465,7 @@ public class TranslationServiceTest
     /**
      * Parasoft Jtest UTA: Test for ok(String, String, String)
      *
-     * @see com.sim.chatserver.service.translation.TranslationService.TranslationResult#ok(String, String, String)
+     * @see com.sim.chatserver.service.translation.TranslationResult#ok(String, String, String)
      * @author bmcmullin
      */
     @Test

@@ -13,11 +13,11 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.util.SessionLabel;
 
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
@@ -1736,3 +1736,4 @@ public class DashboardRowsRendererTest
 
     }
 }
+

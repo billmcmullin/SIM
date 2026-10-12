@@ -5,7 +5,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.term.TermChatSnapshot;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -15,7 +15,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for TermSummary
  *
- * @see com.sim.chatserver.model.DashboardViewModels.TermSummary
+ * @see com.sim.chatserver.model.TermSummary
  * @author bmcmullin
  */
 public class DashboardViewModels_TermSummaryTest
@@ -24,7 +24,7 @@ public class DashboardViewModels_TermSummaryTest
     /**
      * Parasoft Jtest UTA: Test for copyTermSnapshots()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermSummary#copyTermSnapshots()
+     * @see com.sim.chatserver.model.TermSummary#copyTermSnapshots()
      * @author bmcmullin
      */
     @Test
@@ -54,7 +54,7 @@ public class DashboardViewModels_TermSummaryTest
     /**
      * Parasoft Jtest UTA: Test for ensureTerm(String)
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermSummary#ensureTerm(String)
+     * @see com.sim.chatserver.model.TermSummary#ensureTerm(String)
      * @author bmcmullin
      */
     @Test
@@ -81,7 +81,7 @@ public class DashboardViewModels_TermSummaryTest
     /**
      * Parasoft Jtest UTA: Test for getTermCounts()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermSummary#getTermCounts()
+     * @see com.sim.chatserver.model.TermSummary#getTermCounts()
      * @author bmcmullin
      */
     @Test
@@ -106,7 +106,7 @@ public class DashboardViewModels_TermSummaryTest
     /**
      * Parasoft Jtest UTA: Test for getTermSnapshots()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermSummary#getTermSnapshots()
+     * @see com.sim.chatserver.model.TermSummary#getTermSnapshots()
      * @author bmcmullin
      */
     @Test
@@ -131,7 +131,7 @@ public class DashboardViewModels_TermSummaryTest
     /**
      * Parasoft Jtest UTA: Test for recordMatch(String, TermChatSnapshot)
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermSummary#recordMatch(String, TermChatSnapshot)
+     * @see com.sim.chatserver.model.TermSummary#recordMatch(String, TermChatSnapshot)
      * @author bmcmullin
      */
     @Test
@@ -156,3 +156,4 @@ public class DashboardViewModels_TermSummaryTest
 
     }
 }
+

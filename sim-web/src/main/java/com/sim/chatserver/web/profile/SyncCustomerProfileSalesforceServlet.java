@@ -8,6 +8,7 @@ import java.util.regex.Pattern;
 import com.sim.chatserver.model.CustomerProfile;
 import com.sim.chatserver.model.CustomerProfileStore;
 import com.sim.chatserver.salesforce.SalesforceClient;
+import com.sim.chatserver.salesforce.SalesforceClientException;
 import com.sim.chatserver.salesforce.SalesforceCustomerMatch;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -21,6 +22,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "SyncCustomerProfileSalesforceServlet", urlPatterns = {"/admin/sync-customer-profile"})
 public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
@@ -32,12 +36,12 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorPayload("Authentication required."));
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorPayload(com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED));
             return;
         }
 
-        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, "sessionId", 128, true, true));
+        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, 128, true, true));
         String friendlyName = trimToNull(ServletRequestParamUtil.firstParam(req, "friendlyName", 128, true, true));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
@@ -70,7 +74,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
             SalesforceCustomerMatch match;
             try {
                 match = SALESFORCE_CLIENT.lookupBestCustomerMatch(searchName);
-            } catch (SalesforceClient.SalesforceClientException sce) {
+            } catch (SalesforceClientException sce) {
                 logFailure("Salesforce request failed while syncing customer profile", sce);
                 writeJson(resp, sce.statusCode(), errorPayload("Salesforce request failed."));
                 return;
@@ -123,7 +127,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                 CustomerProfileStore.saveProfile(profile);
 
             JsonObject profileJson = Json.createObjectBuilder()
-                    .add("sessionId", nullToEmpty(resolvedSessionId))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, nullToEmpty(resolvedSessionId))
                     .add("friendlyName", nullToEmpty(resolvedFriendlyName))
                     .add("salesforceContactId", nullToEmpty(match.contactId()))
                     .add("salesforceAccountId", nullToEmpty(match.accountId()))
@@ -135,8 +139,8 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
                     .build();
 
             JsonObject ok = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("message", "Customer profile synced successfully.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Customer profile synced successfully.")
                     .add("profile", profileJson)
                     .build();
 
@@ -146,14 +150,14 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
         }
     
         } catch (ServletException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -161,7 +165,7 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
-        resp.setContentType("application/json");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON);
         resp.setCharacterEncoding("UTF-8");
         try {
             JsonWriter writer = Json.createWriter(resp.getWriter());
@@ -172,14 +176,14 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
             }
         } catch (IOException e) {
             logFailure("Unable to write sync-customer-profile response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE_NO_PERIOD, e);
         }
     }
 
     private JsonObject errorPayload(String message) {
         return Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", nullToEmpty(message))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, nullToEmpty(message))
                 .build();
     }
 
@@ -198,6 +202,11 @@ public class SyncCustomerProfileSalesforceServlet extends HttpServlet {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

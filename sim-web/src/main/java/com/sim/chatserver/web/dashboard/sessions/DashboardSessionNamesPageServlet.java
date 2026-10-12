@@ -20,6 +20,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardSessionNamesPageServlet", urlPatterns = {"/dashboard/session-names"})
 public class DashboardSessionNamesPageServlet extends HttpServlet {
 
@@ -30,30 +33,25 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            RequestDispatcher dispatcher = req.getRequestDispatcher("/login");
-            if (dispatcher != null) {
-                dispatcher.forward(req, resp);
-            } else {
-                sendFallbackError(resp, HttpServletResponse.SC_UNAUTHORIZED);
-            }
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
-        String userName = session.getAttribute("user") instanceof String value ? value : "";
-        String role = session.getAttribute("role") instanceof String roleValue ? roleValue : "USER";
+        String userName = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) instanceof String value ? value : "";
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) instanceof String roleValue ? roleValue : "USER";
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
         String contextPath = req.getContextPath();
         if (contextPath == null) {
             contextPath = "";
         }
         String rendered = template
-                .replace("${contextPath}", contextPath)
-            .replace("${user}", DashboardTemplateRenderer.escapeHtml(userName))
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, contextPath)
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, DashboardTemplateRenderer.escapeHtml(userName))
             .replace("${role}", DashboardTemplateRenderer.escapeHtml(role));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
         PrintWriter out = resp.getWriter();
         if (out == null) {
             throw new IOException("Response writer unavailable");
@@ -61,15 +59,15 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
         out.write(rendered);
         out.flush();
     
-        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -107,4 +105,9 @@ public class DashboardSessionNamesPageServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to send fallback session names error", ex);
         }
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

@@ -7,7 +7,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.security.review.ReviewOutputValidator.ValidationResult;
+import com.sim.chatserver.security.review.ReviewValidationResult;
 /**
  * Parasoft Jtest UTA: Test class for ReviewOutputValidator
  *
@@ -67,7 +67,7 @@ public class ReviewOutputValidatorTest
 
         // When
         String report = "report"; // UTA: configured value
-        ValidationResult result = underTest.validateFinalReport(report);
+        ReviewValidationResult result = underTest.validateFinalReport(report);
 
     }
 
@@ -85,7 +85,7 @@ public class ReviewOutputValidatorTest
 
         // When
         String report = null; // UTA: configured value
-        ValidationResult result = underTest.validateFinalReport(report);
+        ReviewValidationResult result = underTest.validateFinalReport(report);
 
     }
 
@@ -104,7 +104,7 @@ public class ReviewOutputValidatorTest
         // When
         String report = "report"; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReport(report, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReport(report, maxChars);
 
     }
 
@@ -123,7 +123,7 @@ public class ReviewOutputValidatorTest
         // When
         String report = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReport(report, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReport(report, maxChars);
 
     }
 
@@ -142,7 +142,7 @@ public class ReviewOutputValidatorTest
         // When
         String report = null; // UTA: configured value
         int maxChars = 0; // UTA: configured value
-        ValidationResult result = underTest.validateFinalReport(report, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReport(report, maxChars);
 
     }
 
@@ -162,7 +162,7 @@ public class ReviewOutputValidatorTest
         String report = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
 
     }
 
@@ -182,7 +182,7 @@ public class ReviewOutputValidatorTest
         String report = ""; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
 
     }
 
@@ -202,7 +202,7 @@ public class ReviewOutputValidatorTest
         String report = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
 
     }
 
@@ -224,7 +224,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
 
     }
 
@@ -246,7 +246,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportHierarchical(report, expectedChatIds, maxChars);
 
     }
 
@@ -266,7 +266,7 @@ public class ReviewOutputValidatorTest
         String report = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
 
     }
 
@@ -286,7 +286,7 @@ public class ReviewOutputValidatorTest
         String report = ""; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
 
     }
 
@@ -306,7 +306,7 @@ public class ReviewOutputValidatorTest
         String report = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
 
     }
 
@@ -328,7 +328,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
 
     }
 
@@ -350,7 +350,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
+        ReviewValidationResult result = underTest.validateFinalReportStrict(report, expectedChatIds, maxChars);
 
     }
 
@@ -368,7 +368,7 @@ public class ReviewOutputValidatorTest
 
         // When
         String output = "output"; // UTA: configured value
-        ValidationResult result = underTest.validateMapOutput(output);
+        ReviewValidationResult result = underTest.validateMapOutput(output);
 
     }
 
@@ -386,7 +386,7 @@ public class ReviewOutputValidatorTest
 
         // When
         String output = null; // UTA: configured value
-        ValidationResult result = underTest.validateMapOutput(output);
+        ReviewValidationResult result = underTest.validateMapOutput(output);
 
     }
 
@@ -405,7 +405,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = "output"; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutput(output, maxChars);
+        ReviewValidationResult result = underTest.validateMapOutput(output, maxChars);
 
     }
 
@@ -424,7 +424,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = underTest.validateMapOutput(output, maxChars);
+        ReviewValidationResult result = underTest.validateMapOutput(output, maxChars);
 
     }
 
@@ -443,7 +443,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         int maxChars = 0; // UTA: configured value
-        ValidationResult result = underTest.validateMapOutput(output, maxChars);
+        ReviewValidationResult result = underTest.validateMapOutput(output, maxChars);
 
     }
 
@@ -462,7 +462,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = "output"; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -481,7 +481,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -500,7 +500,7 @@ public class ReviewOutputValidatorTest
         // When
         String output = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -521,7 +521,7 @@ public class ReviewOutputValidatorTest
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -542,7 +542,7 @@ public class ReviewOutputValidatorTest
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds);
 
     }
 
@@ -562,7 +562,7 @@ public class ReviewOutputValidatorTest
         String output = "output"; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -582,7 +582,7 @@ public class ReviewOutputValidatorTest
         String output = null; // UTA: configured value
         List<String> expectedChatIds = null; // UTA: configured value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -602,7 +602,7 @@ public class ReviewOutputValidatorTest
         String output = null; // UTA: configured value
         List<String> expectedChatIds = new ArrayList<String>(); // UTA: default value
         int maxChars = 1; // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -624,7 +624,7 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
 
@@ -646,10 +646,10 @@ public class ReviewOutputValidatorTest
         String item = "item"; // UTA: default value
         expectedChatIds.add(item);
         int maxChars = 1; // UTA: default value
-        ValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
+        ReviewValidationResult result = invokeValidateMapOutputStrict(underTest, output, expectedChatIds, maxChars);
 
     }
-    private static ValidationResult invokeValidateMapOutputStrict(
+    private static ReviewValidationResult invokeValidateMapOutputStrict(
             ReviewOutputValidator target,
             String output,
             List<String> expectedChatIds
@@ -657,13 +657,13 @@ public class ReviewOutputValidatorTest
         try {
             Method method = ReviewOutputValidator.class.getDeclaredMethod("validateMapOutputStrict", String.class, List.class);
             method.setAccessible(true);
-            return (ValidationResult) method.invoke(target, output, expectedChatIds);
+            return (ReviewValidationResult) method.invoke(target, output, expectedChatIds);
         } catch (InvocationTargetException ex) {
             throw ex.getCause() == null ? ex : ex.getCause();
         }
     }
 
-    private static ValidationResult invokeValidateMapOutputStrict(
+    private static ReviewValidationResult invokeValidateMapOutputStrict(
             ReviewOutputValidator target,
             String output,
             List<String> expectedChatIds,
@@ -672,7 +672,7 @@ public class ReviewOutputValidatorTest
         try {
             Method method = ReviewOutputValidator.class.getDeclaredMethod("validateMapOutputStrict", String.class, List.class, int.class);
             method.setAccessible(true);
-            return (ValidationResult) method.invoke(target, output, expectedChatIds, maxChars);
+            return (ReviewValidationResult) method.invoke(target, output, expectedChatIds, maxChars);
         } catch (InvocationTargetException ex) {
             throw ex.getCause() == null ? ex : ex.getCause();
         }

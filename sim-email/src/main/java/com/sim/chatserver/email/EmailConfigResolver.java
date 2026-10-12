@@ -5,6 +5,12 @@ import java.util.logging.Logger;
 public final class EmailConfigResolver {
 
     private static final Logger log = Logger.getLogger(EmailConfigResolver.class.getCanonicalName());
+    private static final String RESOLVE_MSG_ENV_SMTP = "Using SMTP config from ENV";
+    private static final String RESOLVE_MSG_PROPERTIES_SMTP = "Using SMTP config from properties";
+    private static final String RESOLVE_MSG_DATABASE_GRAPH = "Using Graph config from database";
+    private static final String RESOLVE_MSG_DATABASE_SMTP = "Using SMTP config from database";
+    private static final String RESOLVE_MSG_NO_VALID_CONFIG =
+            "No valid email configuration found in ENV, properties, or database.";
 
     private final DbEmailConfigProvider dbProvider;
     private final DbGraphEmailConfigProvider graphDbProvider; // optional, can be null
@@ -30,13 +36,13 @@ public final class EmailConfigResolver {
         // 1) SMTP from ENV
         EmailConfig env = EmailConfigLoader.loadEnvOnly();
         if (isUsableSmtp(env)) {
-            return ResolvedEmailConfig.smtp(env, EmailConfigSource.ENV, true, "Using SMTP config from ENV");
+            return ResolvedEmailConfig.smtp(env, EmailConfigSource.ENV, true, RESOLVE_MSG_ENV_SMTP);
         }
 
         // 2) SMTP from properties
         EmailConfig props = EmailConfigLoader.loadPropertiesOnly();
         if (isUsableSmtp(props)) {
-            return ResolvedEmailConfig.smtp(props, EmailConfigSource.PROPERTIES, true, "Using SMTP config from properties");
+            return ResolvedEmailConfig.smtp(props, EmailConfigSource.PROPERTIES, true, RESOLVE_MSG_PROPERTIES_SMTP);
         }
 
         // 3) GRAPH from DB (if provider present)
@@ -45,7 +51,7 @@ public final class EmailConfigResolver {
             graph = graphDbProvider.load();
         }
         if (isUsableGraph(graph)) {
-            return ResolvedEmailConfig.graph(graph, EmailConfigSource.DATABASE, true, "Using Graph config from database");
+            return ResolvedEmailConfig.graph(graph, EmailConfigSource.DATABASE, true, RESOLVE_MSG_DATABASE_GRAPH);
         }
 
         // 4) SMTP from DB
@@ -54,7 +60,7 @@ public final class EmailConfigResolver {
             db = dbProvider.load();
         }
         if (isUsableSmtp(db)) {
-            return ResolvedEmailConfig.smtp(db, EmailConfigSource.DATABASE, true, "Using SMTP config from database");
+            return ResolvedEmailConfig.smtp(db, EmailConfigSource.DATABASE, true, RESOLVE_MSG_DATABASE_SMTP);
         }
 
         // 5) none
@@ -62,7 +68,7 @@ public final class EmailConfigResolver {
                 null,
                 EmailConfigSource.NONE,
                 false,
-                "No valid email configuration found in ENV, properties, or database."
+            RESOLVE_MSG_NO_VALID_CONFIG
         );
     }
 

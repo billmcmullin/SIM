@@ -7,6 +7,7 @@ import com.sim.chatserver.email.EmailFactory;
 import com.sim.chatserver.email.EmailMessage;
 import com.sim.chatserver.email.EmailService;
 import com.sim.chatserver.email.ResolvedEmailConfig;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -33,6 +34,16 @@ import java.util.regex.Pattern;
 public class AdminEmailConfigServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminEmailConfigServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 32 * 1024;
+    private static final String JSON_KEY_HOST = "host";
+    private static final String JSON_KEY_PORT = "port";
+    private static final String SESSION_USER_KEY = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
+    private static final String SESSION_ROLE_KEY = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
+    private static final String ADMIN_ROLE = com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN;
+    private static final String MSG_INVALID_JSON_PAYLOAD = CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD;
+    private static final String LOG_UNHANDLED_DO_POST = CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST;
+    private static final String MSG_AUTH_REQUIRED = CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED;
+    private static final String MSG_ADMIN_REQUIRED = CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED;
+    private static final String DESERIALIZATION_NOT_ALLOWED = com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED;
 
     private static final Pattern EMAIL_RX = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
@@ -51,16 +62,16 @@ public class AdminEmailConfigServlet extends HttpServlet {
         JsonObjectBuilder effectiveJson = Json.createObjectBuilder()
                 .add("source", safe(resolved.source() == null ? "NONE" : resolved.source().name()))
                 .add("valid", resolved.valid())
-                .add("message", safe(resolved.message()));
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(resolved.message()));
 
         if (effective != null) {
             effectiveJson
-                    .add("host", safe(effective.host()))
-                    .add("port", effective.port())
+                    .add(JSON_KEY_HOST, safe(effective.host()))
+                    .add(JSON_KEY_PORT, effective.port())
                     .add("auth", effective.auth())
                     .add("starttls", effective.startTls())
                     .add("ssl", effective.ssl())
-                    .add("username", safe(effective.username()))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, safe(effective.username()))
                     .add("passwordConfigured", effective.password() != null && !effective.password().isBlank())
                     .add("defaultFrom", safe(effective.defaultFrom()));
         }
@@ -74,7 +85,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         }
 
         JsonObject response = Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("effective", effectiveJson)
                 .add("dbConfigured", dbConfigured)
                 .build();
@@ -82,14 +93,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
         writeJson(resp, HttpServletResponse.SC_OK, response);
     
         } catch (IllegalStateException | IllegalArgumentException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -107,7 +118,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             payload = readValidatedJsonPayload(req);
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Rejected SMTP config payload: {0}", safe(e.getMessage()));
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
@@ -120,14 +131,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
         handleSave(req, payload, resp);
     
         } catch (IllegalStateException | IllegalArgumentException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, LOG_UNHANDLED_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -143,26 +154,12 @@ public class AdminEmailConfigServlet extends HttpServlet {
             return;
         }
 
-        String host = payload.getString("host", "").trim();
-        int port = payload.getInt("port", -1);
-        boolean auth = payload.getBoolean("auth", false);
-        boolean starttls = payload.getBoolean("starttls", false);
-        boolean ssl = payload.getBoolean("ssl", false);
-        String username = payload.getString("username", "").trim();
-        String password = payload.getString("password", "");
-        String defaultFrom = payload.getString("defaultFrom", "").trim();
-
-        if (!hasText(host) || port < 1 || port > 65535) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "host and valid port are required.");
+        SmtpRequestConfig requestConfig = validateSmtpRequestConfig(payload, resp, "host and valid port are required.");
+        if (requestConfig == null) {
             return;
         }
 
-        if (hasText(defaultFrom) && !isValidEmail(defaultFrom)) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
-            return;
-        }
-
-        String finalPassword = password;
+        String finalPassword = requestConfig.password();
         if (!hasText(finalPassword)) {
             EmailConfig existing = null;
             try {
@@ -174,7 +171,14 @@ public class AdminEmailConfigServlet extends HttpServlet {
         }
 
         EmailConfig config = new EmailConfig(
-                host, port, auth, starttls, ssl, username, finalPassword, defaultFrom
+                requestConfig.host(),
+                requestConfig.port(),
+                requestConfig.auth(),
+                requestConfig.starttls(),
+                requestConfig.ssl(),
+                requestConfig.username(),
+                finalPassword,
+                requestConfig.defaultFrom()
         );
 
         String updatedBy = getUser(req);
@@ -182,13 +186,22 @@ public class AdminEmailConfigServlet extends HttpServlet {
         try {
             log.log(Level.INFO,
                 "Saving SMTP config: host={0}, port={1}, auth={2}, starttls={3}, ssl={4}, username={5}, defaultFrom={6}, updatedBy={7}",
-                new Object[]{host, port, auth, starttls, ssl, username, defaultFrom, updatedBy});
+                new Object[]{
+                        requestConfig.host(),
+                        requestConfig.port(),
+                        requestConfig.auth(),
+                        requestConfig.starttls(),
+                        requestConfig.ssl(),
+                        requestConfig.username(),
+                        requestConfig.defaultFrom(),
+                        updatedBy
+                });
 
             provider.save(config, updatedBy);
 
             JsonObject response = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("message", "SMTP configuration saved.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "SMTP configuration saved.")
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, response);
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -203,46 +216,16 @@ public class AdminEmailConfigServlet extends HttpServlet {
             EmailConfig cfg;
 
             if (hasText(payload.getString("host", ""))) {
-                String host = payload.getString("host", "").trim();
-                int port = payload.getInt("port", -1);
-                boolean auth = payload.getBoolean("auth", false);
-                boolean starttls = payload.getBoolean("starttls", false);
-                boolean ssl = payload.getBoolean("ssl", false);
-                String username = payload.getString("username", "").trim();
-                String password = payload.getString("password", "");
-                String defaultFrom = payload.getString("defaultFrom", "").trim();
-
-                if (!hasText(host) || port < 1 || port > 65535) {
-                    writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "host and valid port are required for test.");
+                SmtpRequestConfig requestConfig = validateSmtpRequestConfig(
+                        payload,
+                        resp,
+                        "host and valid port are required for test."
+                );
+                if (requestConfig == null) {
                     return;
                 }
 
-                if (hasText(defaultFrom) && !isValidEmail(defaultFrom)) {
-                    writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
-                    return;
-                }
-
-                // FIX: fallback to DB values when payload fields are blank (especially password)
-                if (!hasText(password) || !hasText(username) || !hasText(defaultFrom)) {
-                    try {
-                        EmailConfig existing = provider.load();
-                        if (existing != null) {
-                            if (!hasText(password)) {
-                                password = safe(existing.password());
-                            }
-                            if (!hasText(username)) {
-                                username = safe(existing.username());
-                            }
-                            if (!hasText(defaultFrom)) {
-                                defaultFrom = safe(existing.defaultFrom());
-                            }
-                        }
-                    } catch (IllegalStateException | IllegalArgumentException e) {
-                        log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
-                    }
-                }
-
-                cfg = new EmailConfig(host, port, auth, starttls, ssl, username, password, defaultFrom);
+                cfg = buildTestConfig(provider, requestConfig);
             } else {
                 ResolvedEmailConfig resolved = EmailConfigResolver.resolveEffectiveConfig(provider);
                 if (!resolved.valid() || resolved.config() == null) {
@@ -258,7 +241,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
                 return;
             }
 
-            String from = payload.getString("from", "").trim();
+            String from = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_FROM, "").trim();
             if (!hasText(from)) {
                 from = safe(cfg.defaultFrom());
             }
@@ -283,8 +266,8 @@ public class AdminEmailConfigServlet extends HttpServlet {
             service.send(message);
 
             JsonObject response = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("message", "SMTP test email sent.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "SMTP test email sent.")
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, response);
@@ -296,13 +279,13 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(SESSION_USER_KEY) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, MSG_AUTH_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(SESSION_ROLE_KEY) == null ? "" : session.getAttribute(SESSION_ROLE_KEY).toString();
+        if (!ADMIN_ROLE.equalsIgnoreCase(role)) {
+            writeError(resp, HttpServletResponse.SC_FORBIDDEN, MSG_ADMIN_REQUIRED);
             return false;
         }
         return true;
@@ -311,10 +294,10 @@ public class AdminEmailConfigServlet extends HttpServlet {
     private String getUser(HttpServletRequest req) {
         HttpSession session = req.getSession(false);
         if (session == null) {
-            return "UNKNOWN";
+            return CommonLiteralConstants.VALUE_UNKNOWN_UPPER;
         }
-        Object user = session.getAttribute("user");
-        return user == null ? "UNKNOWN" : user.toString();
+        Object user = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
+        return user == null ? CommonLiteralConstants.VALUE_UNKNOWN_UPPER : user.toString();
     }
 
     private boolean hasText(String s) {
@@ -329,6 +312,87 @@ public class AdminEmailConfigServlet extends HttpServlet {
         return s == null ? "" : s;
     }
 
+    private SmtpRequestConfig validateSmtpRequestConfig(
+            JsonObject payload,
+            HttpServletResponse resp,
+            String hostAndPortMessage
+    ) {
+        SmtpRequestConfig requestConfig = readSmtpRequestConfig(payload);
+        if (!hasText(requestConfig.host()) || requestConfig.port() < 1 || requestConfig.port() > 65535) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, hostAndPortMessage);
+            return null;
+        }
+
+        if (hasText(requestConfig.defaultFrom()) && !isValidEmail(requestConfig.defaultFrom())) {
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "defaultFrom is not a valid email address.");
+            return null;
+        }
+
+        return requestConfig;
+    }
+
+    private EmailConfig buildTestConfig(DbEmailConfigProvider provider, SmtpRequestConfig requestConfig) {
+        String username = requestConfig.username();
+        String password = requestConfig.password();
+        String defaultFrom = requestConfig.defaultFrom();
+
+        // Keep test-mode behavior: fallback to DB values for missing fields.
+        if (!hasText(password) || !hasText(username) || !hasText(defaultFrom)) {
+            try {
+                EmailConfig existing = provider.load();
+                if (existing != null) {
+                    if (!hasText(password)) {
+                        password = safe(existing.password());
+                    }
+                    if (!hasText(username)) {
+                        username = safe(existing.username());
+                    }
+                    if (!hasText(defaultFrom)) {
+                        defaultFrom = safe(existing.defaultFrom());
+                    }
+                }
+            } catch (IllegalStateException | IllegalArgumentException e) {
+                log.log(Level.WARNING, "Unable to load existing SMTP config for test fallback", e);
+            }
+        }
+
+        return new EmailConfig(
+                requestConfig.host(),
+                requestConfig.port(),
+                requestConfig.auth(),
+                requestConfig.starttls(),
+                requestConfig.ssl(),
+                username,
+                password,
+                defaultFrom
+        );
+    }
+
+    private SmtpRequestConfig readSmtpRequestConfig(JsonObject payload) {
+        return new SmtpRequestConfig(
+                payload.getString(JSON_KEY_HOST, "").trim(),
+                payload.getInt(JSON_KEY_PORT, -1),
+                payload.getBoolean("auth", false),
+                payload.getBoolean("starttls", false),
+                payload.getBoolean("ssl", false),
+                payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, "").trim(),
+                payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_PASSWORD, ""),
+                payload.getString("defaultFrom", "").trim()
+        );
+    }
+
+    private record SmtpRequestConfig(
+            String host,
+            int port,
+            boolean auth,
+            boolean starttls,
+            boolean ssl,
+            String username,
+            String password,
+            String defaultFrom
+    ) {
+    }
+
     private JsonObject readValidatedJsonPayload(HttpServletRequest req) {
         if (req == null) {
             throw new IllegalArgumentException("Missing request");
@@ -341,7 +405,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
         try (JsonReader reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             return reader.readObject();
         } catch (JsonException e) {
-            throw new IllegalArgumentException("Invalid JSON payload", e);
+            throw new IllegalArgumentException(MSG_INVALID_JSON_PAYLOAD, e);
         }
     }
 
@@ -364,8 +428,8 @@ public class AdminEmailConfigServlet extends HttpServlet {
 
     private void writeError(HttpServletResponse resp, int status, String message) {
         JsonObject obj = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", safe(message))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(message))
                 .build();
         writeJson(resp, status, obj);
     }
@@ -385,4 +449,9 @@ public class AdminEmailConfigServlet extends HttpServlet {
             }
         }
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

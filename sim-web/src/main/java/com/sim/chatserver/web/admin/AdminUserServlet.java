@@ -3,11 +3,13 @@ package com.sim.chatserver.web.admin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.model.UserAccount;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.service.UserService;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -24,6 +26,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "AdminUserServlet", urlPatterns = {"/admin/users"})
 public class AdminUserServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminUserServlet.class.getCanonicalName());
@@ -47,13 +52,13 @@ public class AdminUserServlet extends HttpServlet {
                 String role = user.getRole();
             arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", userId)
-                    .add("username", username)
-                    .add("role", role)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, username)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.ROLE, role)
                     .build());
         });
 
         JsonObject response = Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("users", arrayBuilder)
                 .build();
         writeJson(resp, HttpServletResponse.SC_OK, response);
@@ -66,20 +71,23 @@ public class AdminUserServlet extends HttpServlet {
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
         JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
         if (payload == null || payload.isEmpty()) {
             log.fine("Invalid admin user payload");
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
-        String username = JsonRequestParserUtil.getString(payload, "username", 128).trim();
-        String password = JsonRequestParserUtil.getString(payload, "password", 512);
-        String role = JsonRequestParserUtil.getString(payload, "role", "USER").trim().toUpperCase();
+        String username = JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, 128).trim();
+        String password = JsonRequestParserUtil.getString(payload, com.sim.chatserver.util.CommonLiteralConstants.KEY_PASSWORD, 512);
+        String role = JsonRequestParserUtil
+            .getString(payload, com.sim.chatserver.util.CommonLiteralConstants.ROLE, CommonLiteralConstants.VALUE_USER.toUpperCase(Locale.ROOT))
+            .trim()
+            .toUpperCase(Locale.ROOT);
 
         if (username.isEmpty() || password.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "username and password are required.");
@@ -88,7 +96,7 @@ public class AdminUserServlet extends HttpServlet {
 
         try {
             resolveUserService().createUser(username, password, role);
-            writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
+            writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok").build());
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.SEVERE, "Failed to create user", e);
             writeError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to create user.");
@@ -111,18 +119,18 @@ public class AdminUserServlet extends HttpServlet {
             writeError(resp, HttpServletResponse.SC_NOT_FOUND, "User not found.");
             return;
         }
-        writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
+        writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok").build());
     }
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            writeError(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
@@ -154,8 +162,8 @@ public class AdminUserServlet extends HttpServlet {
 
     private void writeError(HttpServletResponse resp, int status, String message) {
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? "" : message)
                 .build();
         writeJson(resp, status, payload);
     }
@@ -174,4 +182,9 @@ public class AdminUserServlet extends HttpServlet {
             }
         }
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

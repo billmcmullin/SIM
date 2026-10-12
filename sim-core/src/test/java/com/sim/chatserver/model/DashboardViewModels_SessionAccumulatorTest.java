@@ -4,7 +4,7 @@ import java.sql.Timestamp;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionAccumulator;
+import com.sim.chatserver.model.SessionAccumulator;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +14,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for SessionAccumulator
  *
- * @see com.sim.chatserver.model.DashboardViewModels.SessionAccumulator
+ * @see com.sim.chatserver.model.SessionAccumulator
  * @author bmcmullin
  */
 public class DashboardViewModels_SessionAccumulatorTest
@@ -23,7 +23,7 @@ public class DashboardViewModels_SessionAccumulatorTest
     /**
      * Parasoft Jtest UTA: Test for addCount(int)
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionAccumulator#addCount(int)
+     * @see com.sim.chatserver.model.SessionAccumulator#addCount(int)
      * @author bmcmullin
      */
     @Test
@@ -48,7 +48,7 @@ public class DashboardViewModels_SessionAccumulatorTest
     /**
      * Parasoft Jtest UTA: Test for getCount()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionAccumulator#getCount()
+     * @see com.sim.chatserver.model.SessionAccumulator#getCount()
      * @author bmcmullin
      */
     @Test
@@ -71,7 +71,7 @@ public class DashboardViewModels_SessionAccumulatorTest
     /**
      * Parasoft Jtest UTA: Test for getLastEntry()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionAccumulator#getLastEntry()
+     * @see com.sim.chatserver.model.SessionAccumulator#getLastEntry()
      * @author bmcmullin
      */
     @Test
@@ -94,7 +94,7 @@ public class DashboardViewModels_SessionAccumulatorTest
     /**
      * Parasoft Jtest UTA: Test for setLastEntry(Timestamp)
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionAccumulator#setLastEntry(Timestamp)
+     * @see com.sim.chatserver.model.SessionAccumulator#setLastEntry(Timestamp)
      * @author bmcmullin
      */
     @Test
@@ -116,3 +116,4 @@ public class DashboardViewModels_SessionAccumulatorTest
 
     }
 }
+

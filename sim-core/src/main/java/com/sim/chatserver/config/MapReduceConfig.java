@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 /**
  * Central configuration for widget-review map-reduce orchestration.
  *
@@ -15,6 +17,49 @@ import java.util.logging.Logger;
 public final class MapReduceConfig {
 
     private static final Logger log = Logger.getLogger(MapReduceConfig.class.getCanonicalName());
+    private static final String ENV_REVIEW_MR_SINGLE_PASS_MAX_SELECTED = "REVIEW_MR_SINGLE_PASS_MAX_SELECTED";
+    private static final String ENV_REVIEW_MR_BATCH_SIZE = "REVIEW_MR_BATCH_SIZE";
+    private static final String ENV_REVIEW_MR_MIN_BATCH_SIZE = "REVIEW_MR_MIN_BATCH_SIZE";
+    private static final String ENV_REVIEW_MR_MAX_PARALLEL = "REVIEW_MR_MAX_PARALLEL";
+    private static final String ENV_REVIEW_MR_MAX_COVERAGE_PASSES = "REVIEW_MR_MAX_COVERAGE_PASSES";
+    private static final String ENV_REVIEW_MR_EXHAUSTIVE_MODE = "REVIEW_MR_EXHAUSTIVE_MODE";
+    private static final String ENV_REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT = "REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT";
+    private static final String ENV_REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT = "REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT";
+    private static final String ENV_REVIEW_MR_SINGLE_PASS_MESSAGE_MAX_CHARS = "REVIEW_MR_SINGLE_PASS_MESSAGE_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_SINGLE_PASS_CONTEXT_MAX_CHARS = "REVIEW_MR_SINGLE_PASS_CONTEXT_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_MAP_MESSAGE_MAX_CHARS = "REVIEW_MR_MAP_MESSAGE_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_MAP_CONTEXT_MAX_CHARS = "REVIEW_MR_MAP_CONTEXT_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_REDUCE_MESSAGE_MAX_CHARS = "REVIEW_MR_REDUCE_MESSAGE_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_REDUCE_CONTEXT_MAX_CHARS = "REVIEW_MR_REDUCE_CONTEXT_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_RETRY_CONTEXT_CHARS = "REVIEW_MR_RETRY_CONTEXT_CHARS";
+    private static final String ENV_REVIEW_MR_RETRY_MESSAGE_MAX_CHARS = "REVIEW_MR_RETRY_MESSAGE_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_WORKSPACE_TIMEOUT_SECONDS = "REVIEW_MR_WORKSPACE_TIMEOUT_SECONDS";
+    private static final String ENV_REVIEW_MR_WORKSPACE_MAX_RETRIES = "REVIEW_MR_WORKSPACE_MAX_RETRIES";
+    private static final String ENV_REVIEW_MR_SEGMENT_PROMPT_CHARS = "REVIEW_MR_SEGMENT_PROMPT_CHARS";
+    private static final String ENV_REVIEW_MR_SEGMENT_RESPONSE_CHARS = "REVIEW_MR_SEGMENT_RESPONSE_CHARS";
+    private static final String ENV_REVIEW_MR_STRICT_FIXED_BATCH_MODE = "REVIEW_MR_STRICT_FIXED_BATCH_MODE";
+    private static final String ENV_REVIEW_MR_FIXED_BATCH_SIZE = "REVIEW_MR_FIXED_BATCH_SIZE";
+    private static final String ENV_REVIEW_MR_PROGRESS_ENABLED = "REVIEW_MR_PROGRESS_ENABLED";
+    private static final String ENV_REVIEW_MR_PROGRESS_POLL_MS = "REVIEW_MR_PROGRESS_POLL_MS";
+    private static final String ENV_REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE = "REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE";
+    private static final String ENV_REVIEW_MR_REDUCE_MIN_CHUNK_SIZE = "REVIEW_MR_REDUCE_MIN_CHUNK_SIZE";
+    private static final String ENV_REVIEW_MR_REDUCE_MAX_LEVELS = "REVIEW_MR_REDUCE_MAX_LEVELS";
+    private static final String ENV_REVIEW_MR_REDUCE_CHUNK_SUMMARY_MAX_CHARS = "REVIEW_MR_REDUCE_CHUNK_SUMMARY_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_FINAL_REDUCE_MAX_SUMMARIES = "REVIEW_MR_FINAL_REDUCE_MAX_SUMMARIES";
+    private static final String ENV_REVIEW_MR_FINAL_REDUCE_SUMMARY_MAX_CHARS = "REVIEW_MR_FINAL_REDUCE_SUMMARY_MAX_CHARS";
+    private static final String ENV_REVIEW_MR_FINAL_REDUCE_MAX_ATTEMPTS = "REVIEW_MR_FINAL_REDUCE_MAX_ATTEMPTS";
+    private static final String VALUE_ONE = "1";
+    private static final String VALUE_ZERO = "0";
+    private static final String VALUE_TRUE = CommonLiteralConstants.VALUE_TRUE;
+    private static final String VALUE_FALSE = CommonLiteralConstants.VALUE_FALSE;
+    private static final String VALUE_YES = CommonLiteralConstants.VALUE_YES;
+    private static final String VALUE_NO = "no";
+    private static final String VALUE_Y = "y";
+    private static final String VALUE_N = "n";
+    private static final String VALUE_ON = "on";
+    private static final String VALUE_OFF = "off";
+    private static final String LOG_INVALID_INT_ENV = "Invalid integer environment value: {0}";
+    private static final String TOSTRING_TEMPLATE = "MapReduceConfig{singlePassMaxSelected=%d, batchSize=%d, minBatchSize=%d, maxParallel=%d, maxCoveragePasses=%d, exhaustiveMode=%b, rebatchOnContextLimit=%b, retryReduceOnContextLimit=%b, singlePassMessageMaxChars=%d, singlePassContextMaxChars=%d, mapMessageMaxChars=%d, mapContextMaxChars=%d, reduceMessageMaxChars=%d, reduceContextMaxChars=%d, retryContextChars=%d, retryMessageMaxChars=%d, workspaceTimeout=%s, workspaceMaxRetries=%d, segmentPromptChars=%d, segmentResponseChars=%d, strictFixedBatchMode=%b, fixedBatchSize=%d, progressEnabled=%b, progressPollMs=%d, reduceInitialChunkSize=%d, reduceMinChunkSize=%d, reduceMaxLevels=%d, reduceChunkSummaryMaxChars=%d, finalReduceMaxSummaries=%d, finalReduceSummaryMaxChars=%d, finalReduceMaxAttempts=%d}";
 
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
@@ -187,48 +232,48 @@ public final class MapReduceConfig {
     }
 
     public static MapReduceConfig load() {
-        int singlePassMaxSelected = boundedInt("REVIEW_MR_SINGLE_PASS_MAX_SELECTED", D_SINGLE_PASS_MAX_SELECTED, 1, 20000);
-        int batchSize = boundedInt("REVIEW_MR_BATCH_SIZE", D_BATCH_SIZE, 1, 500);
-        int minBatchSize = boundedInt("REVIEW_MR_MIN_BATCH_SIZE", D_MIN_BATCH_SIZE, 1, 128);
-        int maxParallel = boundedInt("REVIEW_MR_MAX_PARALLEL", D_MAX_PARALLEL, 1, 16);
-        int maxCoveragePasses = boundedInt("REVIEW_MR_MAX_COVERAGE_PASSES", D_MAX_COVERAGE_PASSES, 1, 20);
+        int singlePassMaxSelected = boundedInt(ENV_REVIEW_MR_SINGLE_PASS_MAX_SELECTED, D_SINGLE_PASS_MAX_SELECTED, 1, 20000);
+        int batchSize = boundedInt(ENV_REVIEW_MR_BATCH_SIZE, D_BATCH_SIZE, 1, 500);
+        int minBatchSize = boundedInt(ENV_REVIEW_MR_MIN_BATCH_SIZE, D_MIN_BATCH_SIZE, 1, 128);
+        int maxParallel = boundedInt(ENV_REVIEW_MR_MAX_PARALLEL, D_MAX_PARALLEL, 1, 16);
+        int maxCoveragePasses = boundedInt(ENV_REVIEW_MR_MAX_COVERAGE_PASSES, D_MAX_COVERAGE_PASSES, 1, 20);
 
-        boolean exhaustiveMode = booleanFromEnv("REVIEW_MR_EXHAUSTIVE_MODE", D_EXHAUSTIVE_MODE);
-        boolean rebatchOnContextLimit = booleanFromEnv("REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT", D_REBATCH_ON_CONTEXT_LIMIT);
-        boolean retryReduceOnContextLimit = booleanFromEnv("REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT", D_RETRY_REDUCE_ON_CONTEXT_LIMIT);
+        boolean exhaustiveMode = booleanFromEnv(ENV_REVIEW_MR_EXHAUSTIVE_MODE, D_EXHAUSTIVE_MODE);
+        boolean rebatchOnContextLimit = booleanFromEnv(ENV_REVIEW_MR_REBATCH_ON_CONTEXT_LIMIT, D_REBATCH_ON_CONTEXT_LIMIT);
+        boolean retryReduceOnContextLimit = booleanFromEnv(ENV_REVIEW_MR_RETRY_REDUCE_ON_CONTEXT_LIMIT, D_RETRY_REDUCE_ON_CONTEXT_LIMIT);
 
-        int singlePassMessageMaxChars = boundedInt("REVIEW_MR_SINGLE_PASS_MESSAGE_MAX_CHARS", D_SINGLE_PASS_MESSAGE_MAX_CHARS, 1000, 500000);
-        int singlePassContextMaxChars = boundedInt("REVIEW_MR_SINGLE_PASS_CONTEXT_MAX_CHARS", D_SINGLE_PASS_CONTEXT_MAX_CHARS, 1000, 500000);
+        int singlePassMessageMaxChars = boundedInt(ENV_REVIEW_MR_SINGLE_PASS_MESSAGE_MAX_CHARS, D_SINGLE_PASS_MESSAGE_MAX_CHARS, 1000, 500000);
+        int singlePassContextMaxChars = boundedInt(ENV_REVIEW_MR_SINGLE_PASS_CONTEXT_MAX_CHARS, D_SINGLE_PASS_CONTEXT_MAX_CHARS, 1000, 500000);
 
-        int mapMessageMaxChars = boundedInt("REVIEW_MR_MAP_MESSAGE_MAX_CHARS", D_MAP_MESSAGE_MAX_CHARS, 1000, 500000);
-        int mapContextMaxChars = boundedInt("REVIEW_MR_MAP_CONTEXT_MAX_CHARS", D_MAP_CONTEXT_MAX_CHARS, 1000, 500000);
+        int mapMessageMaxChars = boundedInt(ENV_REVIEW_MR_MAP_MESSAGE_MAX_CHARS, D_MAP_MESSAGE_MAX_CHARS, 1000, 500000);
+        int mapContextMaxChars = boundedInt(ENV_REVIEW_MR_MAP_CONTEXT_MAX_CHARS, D_MAP_CONTEXT_MAX_CHARS, 1000, 500000);
 
-        int reduceMessageMaxChars = boundedInt("REVIEW_MR_REDUCE_MESSAGE_MAX_CHARS", D_REDUCE_MESSAGE_MAX_CHARS, 1000, 500000);
-        int reduceContextMaxChars = boundedInt("REVIEW_MR_REDUCE_CONTEXT_MAX_CHARS", D_REDUCE_CONTEXT_MAX_CHARS, 1000, 500000);
+        int reduceMessageMaxChars = boundedInt(ENV_REVIEW_MR_REDUCE_MESSAGE_MAX_CHARS, D_REDUCE_MESSAGE_MAX_CHARS, 1000, 500000);
+        int reduceContextMaxChars = boundedInt(ENV_REVIEW_MR_REDUCE_CONTEXT_MAX_CHARS, D_REDUCE_CONTEXT_MAX_CHARS, 1000, 500000);
 
-        int retryContextChars = boundedInt("REVIEW_MR_RETRY_CONTEXT_CHARS", D_RETRY_CONTEXT_CHARS, 500, 500000);
-        int retryMessageMaxChars = boundedInt("REVIEW_MR_RETRY_MESSAGE_MAX_CHARS", D_RETRY_MESSAGE_MAX_CHARS, 500, 500000);
+        int retryContextChars = boundedInt(ENV_REVIEW_MR_RETRY_CONTEXT_CHARS, D_RETRY_CONTEXT_CHARS, 500, 500000);
+        int retryMessageMaxChars = boundedInt(ENV_REVIEW_MR_RETRY_MESSAGE_MAX_CHARS, D_RETRY_MESSAGE_MAX_CHARS, 500, 500000);
 
-        int timeoutSec = boundedInt("REVIEW_MR_WORKSPACE_TIMEOUT_SECONDS", D_WORKSPACE_TIMEOUT_SECONDS, 5, 600);
-        int maxRetries = boundedInt("REVIEW_MR_WORKSPACE_MAX_RETRIES", D_WORKSPACE_MAX_RETRIES, 0, 10);
+        int timeoutSec = boundedInt(ENV_REVIEW_MR_WORKSPACE_TIMEOUT_SECONDS, D_WORKSPACE_TIMEOUT_SECONDS, 5, 600);
+        int maxRetries = boundedInt(ENV_REVIEW_MR_WORKSPACE_MAX_RETRIES, D_WORKSPACE_MAX_RETRIES, 0, 10);
 
-        int segmentPromptChars = boundedInt("REVIEW_MR_SEGMENT_PROMPT_CHARS", D_SEGMENT_PROMPT_CHARS, 200, 200000);
-        int segmentResponseChars = boundedInt("REVIEW_MR_SEGMENT_RESPONSE_CHARS", D_SEGMENT_RESPONSE_CHARS, 200, 200000);
+        int segmentPromptChars = boundedInt(ENV_REVIEW_MR_SEGMENT_PROMPT_CHARS, D_SEGMENT_PROMPT_CHARS, 200, 200000);
+        int segmentResponseChars = boundedInt(ENV_REVIEW_MR_SEGMENT_RESPONSE_CHARS, D_SEGMENT_RESPONSE_CHARS, 200, 200000);
 
-        boolean strictFixedBatchMode = booleanFromEnv("REVIEW_MR_STRICT_FIXED_BATCH_MODE", D_STRICT_FIXED_BATCH_MODE);
-        int fixedBatchSize = boundedInt("REVIEW_MR_FIXED_BATCH_SIZE", D_FIXED_BATCH_SIZE, 1, 128);
+        boolean strictFixedBatchMode = booleanFromEnv(ENV_REVIEW_MR_STRICT_FIXED_BATCH_MODE, D_STRICT_FIXED_BATCH_MODE);
+        int fixedBatchSize = boundedInt(ENV_REVIEW_MR_FIXED_BATCH_SIZE, D_FIXED_BATCH_SIZE, 1, 128);
 
-        boolean progressEnabled = booleanFromEnv("REVIEW_MR_PROGRESS_ENABLED", D_PROGRESS_ENABLED);
-        int progressPollMs = boundedInt("REVIEW_MR_PROGRESS_POLL_MS", D_PROGRESS_POLL_MS, 250, 15000);
+        boolean progressEnabled = booleanFromEnv(ENV_REVIEW_MR_PROGRESS_ENABLED, D_PROGRESS_ENABLED);
+        int progressPollMs = boundedInt(ENV_REVIEW_MR_PROGRESS_POLL_MS, D_PROGRESS_POLL_MS, 250, 15000);
 
-        int reduceInitialChunkSize = boundedInt("REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE", D_REDUCE_INITIAL_CHUNK_SIZE, 2, 64);
-        int reduceMinChunkSize = boundedInt("REVIEW_MR_REDUCE_MIN_CHUNK_SIZE", D_REDUCE_MIN_CHUNK_SIZE, 1, 64);
-        int reduceMaxLevels = boundedInt("REVIEW_MR_REDUCE_MAX_LEVELS", D_REDUCE_MAX_LEVELS, 1, 20);
-        int reduceChunkSummaryMaxChars = boundedInt("REVIEW_MR_REDUCE_CHUNK_SUMMARY_MAX_CHARS", D_REDUCE_CHUNK_SUMMARY_MAX_CHARS, 200, 20000);
+        int reduceInitialChunkSize = boundedInt(ENV_REVIEW_MR_REDUCE_INITIAL_CHUNK_SIZE, D_REDUCE_INITIAL_CHUNK_SIZE, 2, 64);
+        int reduceMinChunkSize = boundedInt(ENV_REVIEW_MR_REDUCE_MIN_CHUNK_SIZE, D_REDUCE_MIN_CHUNK_SIZE, 1, 64);
+        int reduceMaxLevels = boundedInt(ENV_REVIEW_MR_REDUCE_MAX_LEVELS, D_REDUCE_MAX_LEVELS, 1, 20);
+        int reduceChunkSummaryMaxChars = boundedInt(ENV_REVIEW_MR_REDUCE_CHUNK_SUMMARY_MAX_CHARS, D_REDUCE_CHUNK_SUMMARY_MAX_CHARS, 200, 20000);
 
-        int finalReduceMaxSummaries = boundedInt("REVIEW_MR_FINAL_REDUCE_MAX_SUMMARIES", D_FINAL_REDUCE_MAX_SUMMARIES, 1, 20);
-        int finalReduceSummaryMaxChars = boundedInt("REVIEW_MR_FINAL_REDUCE_SUMMARY_MAX_CHARS", D_FINAL_REDUCE_SUMMARY_MAX_CHARS, 200, 20000);
-        int finalReduceMaxAttempts = boundedInt("REVIEW_MR_FINAL_REDUCE_MAX_ATTEMPTS", D_FINAL_REDUCE_MAX_ATTEMPTS, 1, 20);
+        int finalReduceMaxSummaries = boundedInt(ENV_REVIEW_MR_FINAL_REDUCE_MAX_SUMMARIES, D_FINAL_REDUCE_MAX_SUMMARIES, 1, 20);
+        int finalReduceSummaryMaxChars = boundedInt(ENV_REVIEW_MR_FINAL_REDUCE_SUMMARY_MAX_CHARS, D_FINAL_REDUCE_SUMMARY_MAX_CHARS, 200, 20000);
+        int finalReduceMaxAttempts = boundedInt(ENV_REVIEW_MR_FINAL_REDUCE_MAX_ATTEMPTS, D_FINAL_REDUCE_MAX_ATTEMPTS, 1, 20);
 
         // Safety normalization
         if (singlePassContextMaxChars > singlePassMessageMaxChars) {
@@ -309,10 +354,10 @@ public final class MapReduceConfig {
         }
 
         String n = v.trim().toLowerCase(Locale.ROOT);
-        if ("1".equals(n) || "true".equals(n) || "yes".equals(n) || "y".equals(n) || "on".equals(n)) {
+        if (VALUE_ONE.equals(n) || VALUE_TRUE.equals(n) || VALUE_YES.equals(n) || VALUE_Y.equals(n) || VALUE_ON.equals(n)) {
             return true;
         }
-        if ("0".equals(n) || "false".equals(n) || "no".equals(n) || "n".equals(n) || "off".equals(n)) {
+        if (VALUE_ZERO.equals(n) || VALUE_FALSE.equals(n) || VALUE_NO.equals(n) || VALUE_N.equals(n) || VALUE_OFF.equals(n)) {
             return false;
         }
         return defaultValue;
@@ -338,7 +383,7 @@ public final class MapReduceConfig {
         try {
             return Integer.parseInt(s.trim());
         } catch (NumberFormatException ignored) {
-            log.log(Level.FINE, "Invalid integer environment value: {0}", s);
+            log.log(Level.FINE, LOG_INVALID_INT_ENV, s);
             return defaultValue;
         }
     }
@@ -469,38 +514,40 @@ public final class MapReduceConfig {
 
     @Override
     public String toString() {
-        return "MapReduceConfig{"
-                + "singlePassMaxSelected=" + singlePassMaxSelected
-                + ", batchSize=" + batchSize
-                + ", minBatchSize=" + minBatchSize
-                + ", maxParallel=" + maxParallel
-                + ", maxCoveragePasses=" + maxCoveragePasses
-                + ", exhaustiveMode=" + exhaustiveMode
-                + ", rebatchOnContextLimit=" + rebatchOnContextLimit
-                + ", retryReduceOnContextLimit=" + retryReduceOnContextLimit
-                + ", singlePassMessageMaxChars=" + singlePassMessageMaxChars
-                + ", singlePassContextMaxChars=" + singlePassContextMaxChars
-                + ", mapMessageMaxChars=" + mapMessageMaxChars
-                + ", mapContextMaxChars=" + mapContextMaxChars
-                + ", reduceMessageMaxChars=" + reduceMessageMaxChars
-                + ", reduceContextMaxChars=" + reduceContextMaxChars
-                + ", retryContextChars=" + retryContextChars
-                + ", retryMessageMaxChars=" + retryMessageMaxChars
-                + ", workspaceTimeout=" + workspaceTimeout
-                + ", workspaceMaxRetries=" + workspaceMaxRetries
-                + ", segmentPromptChars=" + segmentPromptChars
-                + ", segmentResponseChars=" + segmentResponseChars
-                + ", strictFixedBatchMode=" + strictFixedBatchMode
-                + ", fixedBatchSize=" + fixedBatchSize
-                + ", progressEnabled=" + progressEnabled
-                + ", progressPollMs=" + progressPollMs
-                + ", reduceInitialChunkSize=" + reduceInitialChunkSize
-                + ", reduceMinChunkSize=" + reduceMinChunkSize
-                + ", reduceMaxLevels=" + reduceMaxLevels
-                + ", reduceChunkSummaryMaxChars=" + reduceChunkSummaryMaxChars
-                + ", finalReduceMaxSummaries=" + finalReduceMaxSummaries
-                + ", finalReduceSummaryMaxChars=" + finalReduceSummaryMaxChars
-                + ", finalReduceMaxAttempts=" + finalReduceMaxAttempts
-                + '}';
+        return String.format(
+            Locale.ROOT,
+            TOSTRING_TEMPLATE,
+            singlePassMaxSelected,
+            batchSize,
+            minBatchSize,
+            maxParallel,
+            maxCoveragePasses,
+            exhaustiveMode,
+            rebatchOnContextLimit,
+            retryReduceOnContextLimit,
+            singlePassMessageMaxChars,
+            singlePassContextMaxChars,
+            mapMessageMaxChars,
+            mapContextMaxChars,
+            reduceMessageMaxChars,
+            reduceContextMaxChars,
+            retryContextChars,
+            retryMessageMaxChars,
+            workspaceTimeout,
+            workspaceMaxRetries,
+            segmentPromptChars,
+            segmentResponseChars,
+            strictFixedBatchMode,
+            fixedBatchSize,
+            progressEnabled,
+            progressPollMs,
+            reduceInitialChunkSize,
+            reduceMinChunkSize,
+            reduceMaxLevels,
+            reduceChunkSummaryMaxChars,
+            finalReduceMaxSummaries,
+            finalReduceSummaryMaxChars,
+            finalReduceMaxAttempts
+        );
     }
 }

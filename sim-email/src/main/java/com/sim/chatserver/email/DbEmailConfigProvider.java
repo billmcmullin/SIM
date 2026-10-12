@@ -10,6 +10,8 @@ import java.util.Optional;
  */
 public interface DbEmailConfigProvider {
 
+    String EMPTY = "";
+
     /**
      * Loads SMTP config from DB.
      *
@@ -48,7 +50,7 @@ public interface DbEmailConfigProvider {
         }
 
         EmailConfig existing = load();
-        String existingPassword = existing == null ? "" : nullToEmpty(existing.password());
+        String existingPassword = existing == null ? EMPTY : nullToEmpty(existing.password());
 
         return new EmailConfig(
                 incoming.host(),
@@ -63,6 +65,6 @@ public interface DbEmailConfigProvider {
     }
 
     private static String nullToEmpty(String v) {
-        return v == null ? "" : v;
+        return v == null ? EMPTY : v;
     }
 }

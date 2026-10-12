@@ -15,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.service.dashboard.DashboardTrendsQueryService;
+import com.sim.chatserver.service.dashboard.TrendResult;
 import com.sim.chatserver.util.DashboardTemplateRenderer;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -29,6 +30,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardTrendsServlet", urlPatterns = {"/dashboard/trends"})
 public class DashboardTrendsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTrendsServlet.class.getCanonicalName());
@@ -39,16 +43,16 @@ public class DashboardTrendsServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
-        int days = parseDays(ServletRequestParamUtil.firstParam(req, "days", 32, true, true));
+        int days = parseDays(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_DAYS, 32, true, true));
         LocalDate end = LocalDate.now(java.time.ZoneId.systemDefault());
         LocalDate start = end.minusDays(days - 1);
 
-            DashboardTrendsQueryService.TrendResult trend = QUERY_SERVICE.loadTrendData(start, end);
+            TrendResult trend = QUERY_SERVICE.loadTrendData(start, end);
         Map<LocalDate, Integer> totalDaily = trend.totalDaily;
         Map<String, Map<LocalDate, Integer>> widgetDaily = trend.widgetDaily;
         Map<String, String> widgetNameToId = trend.widgetNameToId;
@@ -83,10 +87,10 @@ public class DashboardTrendsServlet extends HttpServlet {
                     : 0.0d;
 
             widgetSeries.add(Json.createObjectBuilder()
-                    .add("name", widgetName)
-                    .add("widgetId", widgetId)
-                    .add("values", widgetValues)
-                    .add("total", widgetTotal)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, widgetName)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, widgetId)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_VALUES, widgetValues)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL, widgetTotal)
                     .add("avgPerDay", widgetAverage));
         }
 
@@ -101,10 +105,10 @@ public class DashboardTrendsServlet extends HttpServlet {
             : 0.0d;
 
         JsonObject trendData = Json.createObjectBuilder()
-                .add("labels", labels)
-                .add("values", values)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_LABELS, labels)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_VALUES, values)
                 .add("widgetSeries", widgetSeries)
-                .add("days", days)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DAYS, days)
                 .add("totalPosts", grandTotal)
                 .add("averagePostsPerDay", averagePostsPerDay)
                 .build();
@@ -114,22 +118,22 @@ public class DashboardTrendsServlet extends HttpServlet {
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-            .replace("${contextPath}", DashboardTemplateRenderer.escapeHtml(req.getContextPath() == null ? "" : req.getContextPath()))
-            .replace("${user}", DashboardTemplateRenderer.escapeHtml(currentUser))
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, DashboardTemplateRenderer.escapeHtml(req.getContextPath() == null ? "" : req.getContextPath()))
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, DashboardTemplateRenderer.escapeHtml(currentUser))
                 .replace("${selectedDays}", String.valueOf(days))
                 .replace("${trendData}", escapeForJs(trendDataJson));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html;charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8);
         byte[] renderedBytes = rendered.getBytes(StandardCharsets.UTF_8);
         resp.setContentLength(renderedBytes.length);
         try (var out = resp.getOutputStream()) {
             out.write(renderedBytes);
         }
     
-        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -140,7 +144,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
@@ -148,7 +152,7 @@ public class DashboardTrendsServlet extends HttpServlet {
         if (session == null) {
             return "";
         }
-        Object user = session.getAttribute("user");
+        Object user = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
         return user instanceof String ? (String) user : "";
     }
 
@@ -218,8 +222,13 @@ public class DashboardTrendsServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\").replace("'", "\\'")
-                .replace(System.lineSeparator(), "\\n").replace(System.lineSeparator(), "\\r");
+        return value.replace("\\", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO).replace("'", com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_SINGLE_QUOTE)
+                .replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO).replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_CARRIAGE_RETURN);
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

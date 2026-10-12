@@ -2,7 +2,7 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.CacheValue;
+import com.sim.chatserver.model.CacheValue;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for CacheValue
  *
- * @see com.sim.chatserver.model.DashboardViewModels.CacheValue
+ * @see com.sim.chatserver.model.CacheValue
  * @author bmcmullin
  */
 public class DashboardViewModels_CacheValueTest
@@ -20,7 +20,7 @@ public class DashboardViewModels_CacheValueTest
     /**
      * Parasoft Jtest UTA: Test for getExpiresAt()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.CacheValue#getExpiresAt()
+     * @see com.sim.chatserver.model.CacheValue#getExpiresAt()
      * @author bmcmullin
      */
     @Test
@@ -45,7 +45,7 @@ public class DashboardViewModels_CacheValueTest
     /**
      * Parasoft Jtest UTA: Test for getValue()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.CacheValue#getValue()
+     * @see com.sim.chatserver.model.CacheValue#getValue()
      * @author bmcmullin
      */
     @Test
@@ -70,7 +70,7 @@ public class DashboardViewModels_CacheValueTest
     /**
      * Parasoft Jtest UTA: Test for isExpired(long)
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.CacheValue#isExpired(long)
+     * @see com.sim.chatserver.model.CacheValue#isExpired(long)
      * @author bmcmullin
      */
     @Test
@@ -97,3 +97,4 @@ public class DashboardViewModels_CacheValueTest
 
     }
 }
+

@@ -14,7 +14,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -888,3 +888,4 @@ public class DashboardTermServiceTest
 
     }
 }
+

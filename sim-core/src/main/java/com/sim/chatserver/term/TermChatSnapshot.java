@@ -8,6 +8,11 @@ import java.util.Objects;
  */
 public final class TermChatSnapshot {
 
+    private static final String EMPTY = "";
+    private static final String MSG_TERM_NAME_REQUIRED = "termName required";
+    private static final String MSG_WIDGET_ID_REQUIRED = "widgetId required";
+    private static final String MSG_CHAT_ID_REQUIRED = "chatId required";
+
     private final String termName;
     private final String widgetId;
     private final String chatId;
@@ -23,13 +28,13 @@ public final class TermChatSnapshot {
             String response,
             Timestamp createdAt,
             String sessionId) {
-        this.termName = Objects.requireNonNull(termName, "termName required");
-        this.widgetId = Objects.requireNonNull(widgetId, "widgetId required");
-        this.chatId = Objects.requireNonNull(chatId, "chatId required");
-        this.prompt = prompt == null ? "" : prompt;
-        this.response = response == null ? "" : response;
+        this.termName = Objects.requireNonNull(termName, MSG_TERM_NAME_REQUIRED);
+        this.widgetId = Objects.requireNonNull(widgetId, MSG_WIDGET_ID_REQUIRED);
+        this.chatId = Objects.requireNonNull(chatId, MSG_CHAT_ID_REQUIRED);
+        this.prompt = prompt == null ? EMPTY : prompt;
+        this.response = response == null ? EMPTY : response;
         this.createdAt = createdAt;
-        this.sessionId = sessionId == null ? "" : sessionId;
+        this.sessionId = sessionId == null ? EMPTY : sessionId;
     }
 
     public String getTermName() {

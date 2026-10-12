@@ -18,6 +18,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.config.Database;
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 public final class CustomerIdentityStore {
 
@@ -26,6 +27,73 @@ public final class CustomerIdentityStore {
 
     private static final String IDENTITY_TABLE = "customer_identity";
     private static final String SESSION_TABLE = "customer_identity_session";
+    private static final String COL_IDENTITY_ID = "identity_id";
+    private static final String COL_CREATED_AT = CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String COL_UPDATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_UPDATED_AT;
+    private static final String COL_SESSION_ID = CommonLiteralConstants.SQL_COL_SESSION_ID;
+    private static final String COL_CANONICAL_EMAIL = "canonical_email";
+    private static final String COL_CANONICAL_NAME = "canonical_name";
+    private static final String COL_SF_CONTACT_ID = "salesforce_contact_id";
+    private static final String COL_SF_ACCOUNT_ID = "salesforce_account_id";
+    private static final String COL_EMAIL_ENC = "email_enc";
+    private static final String COL_PHONE_ENC = "phone_enc";
+    private static final String COL_TITLE_ENC = "title_enc";
+    private static final String COL_DEPARTMENT_ENC = "department_enc";
+    private static final String COL_RAW_JSON_ENC = "raw_json_enc";
+    private static final String COL_CONFIDENCE = "confidence";
+    private static final String COL_LAST_SYNCED_AT = "last_synced_at";
+    private static final String COL_DISPLAY_NAME_SNAPSHOT = "display_name_snapshot";
+    private static final String COL_CONTACT_EMAIL_SNAPSHOT = "contact_email_snapshot";
+    private static final String COL_LINKED_AT = "linked_at";
+    private static final String SQL_TYPE_TIMESTAMPTZ = "TIMESTAMPTZ";
+    private static final String SQL_TYPE_BIGSERIAL = "BIGSERIAL";
+    private static final String SQL_TYPE_BIGINT = "BIGINT";
+    private static final String SQL_TYPE_TEXT = "TEXT";
+    private static final String SQL_TYPE_VARCHAR_32 = "VARCHAR(32)";
+    private static final String DEFAULT_CONFIDENCE_HIGH = "high";
+    private static final String INVALID_SQL_IDENTIFIER = CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String EMPTY = "";
+    private static final String VALUE_Z = "Z";
+    private static final String REGEX_SIGNED_LONG = "^-?\\d{1,18}$";
+    private static final String MSG_SCHEMA_INIT_COMPLETE = "CustomerIdentityStore schema initialization complete.";
+    private static final String MSG_SCHEMA_ENSURE_FAILED = "Failed to ensure customer identity schema";
+    private static final String MSG_LEGACY_MIGRATION_FAILED = "Legacy migration for customer_identity.session_id failed";
+    private static final String MSG_INSERT_IDENTITY_FAILED = "Failed to insert identity";
+    private static final String MSG_SESSION_ID_REQUIRED = "sessionId is required";
+    private static final String MSG_NOW_DEFAULT_FAILED = "Unable to set NOW() default for {0}.{1}";
+    private static final String MSG_VERIFY_PK_FAILED = "Unable to verify primary key for table {0}";
+    private static final String MSG_ADD_PK_FAILED = "Unable to add primary key {0} on table {1}";
+    private static final String MSG_VERIFY_FK_FAILED = "Unable to verify foreign key {0} on table {1}";
+    private static final String MSG_ADD_FK_FAILED = "Unable to add foreign key {0} on table {1}";
+    private static final String MSG_VERIFY_CONSTRAINT_FAILED = "Unable to verify constraint {0} on table {1}";
+    private static final String MSG_DROP_CONSTRAINT_FAILED = "Unable to drop constraint {0} on table {1}";
+    private static final String MSG_PARSE_LONG_FAILED_PREFIX = "Unable to parse long value for column ";
+    private static final String MSG_PARSE_INSTANT_FAILED_PREFIX = "Instant parse failed for column ";
+    private static final String MSG_PARSE_INSTANT_FAILED_SUFFIX = ", trying SQL timestamp parse";
+    private static final String MSG_PARSE_TIMESTAMP_FAILED_PREFIX = "Unable to parse timestamp for column ";
+    private static final String MSG_READ_STRING_FAILED_PREFIX = "String read failed for column ";
+    private static final String SQL_ALTER_TABLE_PREFIX = "ALTER TABLE ";
+    private static final String SQL_ADD_COLUMN = " ADD COLUMN ";
+    private static final String SQL_ALTER_COLUMN = " ALTER COLUMN ";
+    private static final String SQL_SET_DEFAULT_NOW = " SET DEFAULT NOW()";
+    private static final String SQL_ADD_CONSTRAINT = " ADD CONSTRAINT ";
+    private static final String SQL_PRIMARY_KEY_OPEN = " PRIMARY KEY (";
+    private static final String SQL_FOREIGN_KEY_OPEN = " FOREIGN KEY (";
+    private static final String SQL_OPEN_PAREN = " (";
+    private static final String SQL_REFERENCES = ") REFERENCES ";
+    private static final String SQL_ON_DELETE_CASCADE = ") ON DELETE CASCADE";
+    private static final String SQL_DROP_CONSTRAINT = " DROP CONSTRAINT ";
+    private static final String CONSTRAINT_PK_IDENTITY = "pk_customer_identity";
+    private static final String CONSTRAINT_PK_SESSION = "pk_customer_identity_session";
+    private static final String CONSTRAINT_FK_SESSION_IDENTITY = "fk_customer_identity_session_identity";
+    private static final String CONSTRAINT_UQ_LEGACY_SESSION = "uq_customer_identity_session_id";
+    private static final String CONSTRAINT_LEGACY_SESSION_KEY = "customer_identity_session_id_key";
+    private static final String SQL_DROP_IDENTITY_SESSION_NOT_NULL = "ALTER TABLE customer_identity ALTER COLUMN session_id DROP NOT NULL";
+    private static final String SQL_CREATE_INDEX_IDENTITY_EMAIL = "CREATE INDEX IF NOT EXISTS idx_customer_identity_email ON customer_identity (LOWER(canonical_email))";
+    private static final String SQL_CREATE_INDEX_IDENTITY_NAME = "CREATE INDEX IF NOT EXISTS idx_customer_identity_name ON customer_identity (LOWER(canonical_name))";
+    private static final String SQL_CREATE_INDEX_SESSION_IDENTITY = "CREATE INDEX IF NOT EXISTS idx_customer_identity_session_identity ON customer_identity_session (identity_id)";
+    private static final String SQL_SELECT_SESSION_FLAG_BY_ID = "SELECT system_flag FROM term_definition WHERE id = ?";
+    private static final String SQL_SELECT_SESSION_FLAG_BY_IDENTITY = "SELECT system_flag FROM customer_identity WHERE identity_id = ?";
 
     private static volatile boolean initialized = false;
 
@@ -42,7 +110,7 @@ public final class CustomerIdentityStore {
             }
             ensureTables();
             initialized = true;
-            log.info("CustomerIdentityStore schema initialization complete.");
+            log.info(MSG_SCHEMA_INIT_COMPLETE);
         }
     }
 
@@ -52,52 +120,52 @@ public final class CustomerIdentityStore {
             ensureSessionTable(c);
 
             // identity columns
-            ensureColumn(c, IDENTITY_TABLE, "identity_id", "BIGSERIAL");
-            ensureColumn(c, IDENTITY_TABLE, "canonical_email", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "canonical_name", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "salesforce_contact_id", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "salesforce_account_id", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "email_enc", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "phone_enc", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "title_enc", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "department_enc", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "raw_json_enc", "TEXT");
-            ensureColumn(c, IDENTITY_TABLE, "confidence", "VARCHAR(32)");
-            ensureColumn(c, IDENTITY_TABLE, "created_at", "TIMESTAMPTZ");
-            ensureColumn(c, IDENTITY_TABLE, "updated_at", "TIMESTAMPTZ");
-            ensureColumn(c, IDENTITY_TABLE, "last_synced_at", "TIMESTAMPTZ");
+            ensureColumn(c, IDENTITY_TABLE, COL_IDENTITY_ID, SQL_TYPE_BIGSERIAL);
+            ensureColumn(c, IDENTITY_TABLE, COL_CANONICAL_EMAIL, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_CANONICAL_NAME, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_SF_CONTACT_ID, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_SF_ACCOUNT_ID, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_EMAIL_ENC, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_PHONE_ENC, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_TITLE_ENC, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_DEPARTMENT_ENC, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_RAW_JSON_ENC, SQL_TYPE_TEXT);
+            ensureColumn(c, IDENTITY_TABLE, COL_CONFIDENCE, SQL_TYPE_VARCHAR_32);
+                ensureColumn(c, IDENTITY_TABLE, COL_CREATED_AT, SQL_TYPE_TIMESTAMPTZ);
+                ensureColumn(c, IDENTITY_TABLE, COL_UPDATED_AT, SQL_TYPE_TIMESTAMPTZ);
+                ensureColumn(c, IDENTITY_TABLE, COL_LAST_SYNCED_AT, SQL_TYPE_TIMESTAMPTZ);
 
             // session columns
-            ensureColumn(c, SESSION_TABLE, "session_id", "TEXT");
-            ensureColumn(c, SESSION_TABLE, "identity_id", "BIGINT");
-            ensureColumn(c, SESSION_TABLE, "display_name_snapshot", "TEXT");
-            ensureColumn(c, SESSION_TABLE, "contact_email_snapshot", "TEXT");
-            ensureColumn(c, SESSION_TABLE, "linked_at", "TIMESTAMPTZ");
-            ensureColumn(c, SESSION_TABLE, "updated_at", "TIMESTAMPTZ");
+                ensureColumn(c, SESSION_TABLE, COL_SESSION_ID, SQL_TYPE_TEXT);
+                ensureColumn(c, SESSION_TABLE, COL_IDENTITY_ID, SQL_TYPE_BIGINT);
+            ensureColumn(c, SESSION_TABLE, COL_DISPLAY_NAME_SNAPSHOT, SQL_TYPE_TEXT);
+            ensureColumn(c, SESSION_TABLE, COL_CONTACT_EMAIL_SNAPSHOT, SQL_TYPE_TEXT);
+                ensureColumn(c, SESSION_TABLE, COL_LINKED_AT, SQL_TYPE_TIMESTAMPTZ);
+                ensureColumn(c, SESSION_TABLE, COL_UPDATED_AT, SQL_TYPE_TIMESTAMPTZ);
 
             // LEGACY cleanup: old schema sometimes had session_id on identity table
             migrateLegacyIdentitySessionColumn(c);
 
-            ensureNowDefault(c, IDENTITY_TABLE, "created_at");
-            ensureNowDefault(c, IDENTITY_TABLE, "updated_at");
-            ensureNowDefault(c, SESSION_TABLE, "linked_at");
-            ensureNowDefault(c, SESSION_TABLE, "updated_at");
+                ensureNowDefault(c, IDENTITY_TABLE, COL_CREATED_AT);
+                ensureNowDefault(c, IDENTITY_TABLE, COL_UPDATED_AT);
+            ensureNowDefault(c, SESSION_TABLE, COL_LINKED_AT);
+                ensureNowDefault(c, SESSION_TABLE, COL_UPDATED_AT);
 
-            ensurePrimaryKey(c, IDENTITY_TABLE, "identity_id", "pk_customer_identity");
-            ensurePrimaryKey(c, SESSION_TABLE, "session_id", "pk_customer_identity_session");
+                ensurePrimaryKey(c, IDENTITY_TABLE, COL_IDENTITY_ID, CONSTRAINT_PK_IDENTITY);
+                ensurePrimaryKey(c, SESSION_TABLE, COL_SESSION_ID, CONSTRAINT_PK_SESSION);
 
-            ensureForeignKey(c, SESSION_TABLE, "identity_id", IDENTITY_TABLE, "identity_id",
-                    "fk_customer_identity_session_identity");
+                ensureForeignKey(c, SESSION_TABLE, COL_IDENTITY_ID, IDENTITY_TABLE, COL_IDENTITY_ID,
+                    CONSTRAINT_FK_SESSION_IDENTITY);
 
-            try (PreparedStatement ps1 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_email ON customer_identity (LOWER(canonical_email))");
-                    PreparedStatement ps2 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_name ON customer_identity (LOWER(canonical_name))");
-                    PreparedStatement ps3 = c.prepareStatement("CREATE INDEX IF NOT EXISTS idx_customer_identity_session_identity ON customer_identity_session (identity_id)")) {
+            try (PreparedStatement ps1 = c.prepareStatement(SQL_CREATE_INDEX_IDENTITY_EMAIL);
+                    PreparedStatement ps2 = c.prepareStatement(SQL_CREATE_INDEX_IDENTITY_NAME);
+                    PreparedStatement ps3 = c.prepareStatement(SQL_CREATE_INDEX_SESSION_IDENTITY)) {
                 ps1.executeUpdate();
                 ps2.executeUpdate();
                 ps3.executeUpdate();
             }
         } catch (SQLException e) {
-            log.log(Level.SEVERE, "Failed to ensure customer identity schema", e);
+            log.log(Level.SEVERE, MSG_SCHEMA_ENSURE_FAILED, e);
             throw e;
         }
     }
@@ -142,24 +210,24 @@ public final class CustomerIdentityStore {
 
     private static void migrateLegacyIdentitySessionColumn(Connection c) {
         try {
-            if (!columnExists(c, IDENTITY_TABLE, "session_id")) {
+            if (!columnExists(c, IDENTITY_TABLE, COL_SESSION_ID)) {
                 return;
             }
 
             // Drop NOT NULL so inserts without session_id no longer fail.
-            try (PreparedStatement ps = c.prepareStatement("ALTER TABLE customer_identity ALTER COLUMN session_id DROP NOT NULL")) {
+            try (PreparedStatement ps = c.prepareStatement(SQL_DROP_IDENTITY_SESSION_NOT_NULL)) {
                 ps.executeUpdate();
             } catch (SQLException ignore) {
             }
 
             // Optional: drop old unique/index constraints tied to session_id if they exist.
-            dropConstraintIfExists(c, IDENTITY_TABLE, "uq_customer_identity_session_id");
-            dropConstraintIfExists(c, IDENTITY_TABLE, "customer_identity_session_id_key");
+            dropConstraintIfExists(c, IDENTITY_TABLE, CONSTRAINT_UQ_LEGACY_SESSION);
+            dropConstraintIfExists(c, IDENTITY_TABLE, CONSTRAINT_LEGACY_SESSION_KEY);
 
             // We intentionally keep legacy column for compatibility instead of dropping automatically.
             // If you want to remove it later, do explicit migration.
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Legacy migration for customer_identity.session_id failed", e);
+            log.log(Level.WARNING, MSG_LEGACY_MIGRATION_FAILED, e);
         }
     }
 
@@ -249,10 +317,10 @@ public final class CustomerIdentityStore {
         try (Connection c = Database.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, nullIfBlank(canonicalEmail));
             ps.setString(2, nullIfBlank(canonicalName));
-            ps.setString(3, isBlank(confidence) ? "high" : confidence.trim());
+            ps.setString(3, isBlank(confidence) ? DEFAULT_CONFIDENCE_HIGH : confidence.trim());
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
-                    throw new SQLException("Failed to insert identity");
+                    throw new SQLException(MSG_INSERT_IDENTITY_FAILED);
                 }
                 return rs.getLong(1);
             }
@@ -262,7 +330,7 @@ public final class CustomerIdentityStore {
     public static void upsertSessionLink(long identityId, String sessionId, String displayName, String email) throws SQLException {
         ensureInitialized();
         if (isBlank(sessionId)) {
-            throw new IllegalArgumentException("sessionId is required");
+            throw new IllegalArgumentException(MSG_SESSION_ID_REQUIRED);
         }
 
         String sql = """
@@ -300,16 +368,16 @@ public final class CustomerIdentityStore {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     CustomerIdentitySessionLink link = new CustomerIdentitySessionLink();
-                    link.setSessionId(readSanitizedDbText(rs, "session_id", 256));
-                    link.setIdentityId(readNonNegativeLongObject(rs, "identity_id"));
-                    link.setDisplayNameSnapshot(readSanitizedDbText(rs, "display_name_snapshot", 512));
-                    link.setContactEmailSnapshot(readSanitizedDbText(rs, "contact_email_snapshot", 512));
+                    link.setSessionId(readSanitizedDbText(rs, COL_SESSION_ID, 256));
+                    link.setIdentityId(readNonNegativeLongObject(rs, COL_IDENTITY_ID));
+                    link.setDisplayNameSnapshot(readSanitizedDbText(rs, COL_DISPLAY_NAME_SNAPSHOT, 512));
+                    link.setContactEmailSnapshot(readSanitizedDbText(rs, COL_CONTACT_EMAIL_SNAPSHOT, 512));
 
-                    Timestamp linkedAt = readSafeTimestamp(rs, "linked_at");
+                    Timestamp linkedAt = readSafeTimestamp(rs, COL_LINKED_AT);
                     if (linkedAt != null) {
                         link.setLinkedAt(linkedAt.toInstant().atOffset(ZoneOffset.UTC));
                     }
-                    Timestamp updatedAt = readSafeTimestamp(rs, "updated_at");
+                    Timestamp updatedAt = readSafeTimestamp(rs, COL_UPDATED_AT);
                     if (updatedAt != null) {
                         link.setUpdatedAt(updatedAt.toInstant().atOffset(ZoneOffset.UTC));
                     }
@@ -323,27 +391,27 @@ public final class CustomerIdentityStore {
 
     private static CustomerIdentity mapIdentity(ResultSet rs) throws SQLException {
         CustomerIdentity x = new CustomerIdentity();
-        x.setIdentityId(readNonNegativeLongObject(rs, "identity_id"));
-        x.setCanonicalEmail(readSanitizedDbText(rs, "canonical_email", 512));
-        x.setCanonicalName(readSanitizedDbText(rs, "canonical_name", 512));
-        x.setSalesforceContactId(readSanitizedDbText(rs, "salesforce_contact_id", 256));
-        x.setSalesforceAccountId(readSanitizedDbText(rs, "salesforce_account_id", 256));
-        x.setEmail(readSanitizedDbText(rs, "email_enc", 4096));
-        x.setPhone(readSanitizedDbText(rs, "phone_enc", 1024));
-        x.setTitle(readSanitizedDbText(rs, "title_enc", 512));
-        x.setDepartment(readSanitizedDbText(rs, "department_enc", 512));
-        x.setRawJson(readSanitizedDbText(rs, "raw_json_enc", 20000));
-        x.setConfidence(readSanitizedDbText(rs, "confidence", 32));
+        x.setIdentityId(readNonNegativeLongObject(rs, COL_IDENTITY_ID));
+        x.setCanonicalEmail(readSanitizedDbText(rs, COL_CANONICAL_EMAIL, 512));
+        x.setCanonicalName(readSanitizedDbText(rs, COL_CANONICAL_NAME, 512));
+        x.setSalesforceContactId(readSanitizedDbText(rs, COL_SF_CONTACT_ID, 256));
+        x.setSalesforceAccountId(readSanitizedDbText(rs, COL_SF_ACCOUNT_ID, 256));
+        x.setEmail(readSanitizedDbText(rs, COL_EMAIL_ENC, 4096));
+        x.setPhone(readSanitizedDbText(rs, COL_PHONE_ENC, 1024));
+        x.setTitle(readSanitizedDbText(rs, COL_TITLE_ENC, 512));
+        x.setDepartment(readSanitizedDbText(rs, COL_DEPARTMENT_ENC, 512));
+        x.setRawJson(readSanitizedDbText(rs, COL_RAW_JSON_ENC, 20000));
+        x.setConfidence(readSanitizedDbText(rs, COL_CONFIDENCE, 32));
 
-        Timestamp created = readSafeTimestamp(rs, "created_at");
+        Timestamp created = readSafeTimestamp(rs, COL_CREATED_AT);
         if (created != null) {
             x.setCreatedAt(created.toInstant().atOffset(ZoneOffset.UTC));
         }
-        Timestamp updated = readSafeTimestamp(rs, "updated_at");
+        Timestamp updated = readSafeTimestamp(rs, COL_UPDATED_AT);
         if (updated != null) {
             x.setUpdatedAt(updated.toInstant().atOffset(ZoneOffset.UTC));
         }
-        Timestamp synced = readSafeTimestamp(rs, "last_synced_at");
+        Timestamp synced = readSafeTimestamp(rs, COL_LAST_SYNCED_AT);
         if (synced != null) {
             x.setLastSyncedAt(synced.toInstant().atOffset(ZoneOffset.UTC));
         }
@@ -354,7 +422,7 @@ public final class CustomerIdentityStore {
         if (columnExists(conn, table, column)) {
             return;
         }
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD COLUMN " + q(column) + ' ' + sqlType)) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ALTER_TABLE_PREFIX + q(table) + SQL_ADD_COLUMN + q(column) + ' ' + sqlType)) {
             ps.executeUpdate();
         }
     }
@@ -367,10 +435,10 @@ public final class CustomerIdentityStore {
     }
 
     private static void ensureNowDefault(Connection conn, String table, String column) {
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ALTER COLUMN " + q(column) + " SET DEFAULT NOW()")) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ALTER_TABLE_PREFIX + q(table) + SQL_ALTER_COLUMN + q(column) + SQL_SET_DEFAULT_NOW)) {
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to set NOW() default for {0}.{1}", new Object[]{table, column});
+            log.log(Level.FINE, MSG_NOW_DEFAULT_FAILED, new Object[]{table, column});
         }
     }
 
@@ -389,15 +457,15 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to verify primary key for table {0}", table);
+            log.log(Level.FINE, MSG_VERIFY_PK_FAILED, table);
             return;
         }
 
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " ADD CONSTRAINT " + q(constraintName)
-            + " PRIMARY KEY (" + q(column) + ')')) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ALTER_TABLE_PREFIX + q(table) + SQL_ADD_CONSTRAINT + q(constraintName)
+            + SQL_PRIMARY_KEY_OPEN + q(column) + ')')) {
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to add primary key {0} on table {1}", new Object[]{constraintName, table});
+            log.log(Level.FINE, MSG_ADD_PK_FAILED, new Object[]{constraintName, table});
         }
     }
 
@@ -419,17 +487,17 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to verify foreign key {0} on table {1}", new Object[]{fkName, sourceTable});
+            log.log(Level.FINE, MSG_VERIFY_FK_FAILED, new Object[]{fkName, sourceTable});
             return;
         }
 
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(sourceTable)
-                + " ADD CONSTRAINT " + q(fkName)
-                + " FOREIGN KEY (" + q(sourceColumn) + ") REFERENCES "
-                + q(targetTable) + " (" + q(targetColumn) + ") ON DELETE CASCADE")) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ALTER_TABLE_PREFIX + q(sourceTable)
+                + SQL_ADD_CONSTRAINT + q(fkName)
+                + SQL_FOREIGN_KEY_OPEN + q(sourceColumn) + SQL_REFERENCES
+                + q(targetTable) + SQL_OPEN_PAREN + q(targetColumn) + SQL_ON_DELETE_CASCADE)) {
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to add foreign key {0} on table {1}", new Object[]{fkName, sourceTable});
+            log.log(Level.FINE, MSG_ADD_FK_FAILED, new Object[]{fkName, sourceTable});
         }
     }
 
@@ -449,20 +517,20 @@ public final class CustomerIdentityStore {
                 }
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to verify constraint {0} on table {1}", new Object[]{constraint, table});
+            log.log(Level.FINE, MSG_VERIFY_CONSTRAINT_FAILED, new Object[]{constraint, table});
             return;
         }
 
-        try (PreparedStatement ps = conn.prepareStatement("ALTER TABLE " + q(table) + " DROP CONSTRAINT " + q(constraint))) {
+        try (PreparedStatement ps = conn.prepareStatement(SQL_ALTER_TABLE_PREFIX + q(table) + SQL_DROP_CONSTRAINT + q(constraint))) {
             ps.executeUpdate();
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to drop constraint {0} on table {1}", new Object[]{constraint, table});
+            log.log(Level.FINE, MSG_DROP_CONSTRAINT_FAILED, new Object[]{constraint, table});
         }
     }
 
     private static String q(String ident) {
         if (ident == null || !SQL_IDENTIFIER.matcher(ident).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(INVALID_SQL_IDENTIFIER);
         }
         return new StringBuilder(ident.length() + 2)
             .append('"')
@@ -490,7 +558,7 @@ public final class CustomerIdentityStore {
         }
 
         String trimmed = text.trim();
-        if (!trimmed.matches("^-?\\d{1,18}$")) {
+        if (!trimmed.matches(REGEX_SIGNED_LONG)) {
             return 0L;
         }
 
@@ -498,7 +566,7 @@ public final class CustomerIdentityStore {
         try {
             value = Long.parseLong(trimmed);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse long value for column " + column, ex);
+            log.log(Level.FINE, MSG_PARSE_LONG_FAILED_PREFIX + column, ex);
             return 0L;
         }
         return validateTaintedLong(value);
@@ -513,14 +581,14 @@ public final class CustomerIdentityStore {
         try {
             return Timestamp.from(Instant.parse(text));
         } catch (DateTimeException ex) {
-            log.log(Level.FINE, "Instant parse failed for column " + column + ", trying SQL timestamp parse", ex);
+            log.log(Level.FINE, MSG_PARSE_INSTANT_FAILED_PREFIX + column + MSG_PARSE_INSTANT_FAILED_SUFFIX, ex);
         }
 
         try {
-            String legacy = text.endsWith("Z") ? text.substring(0, text.length() - 1) : text;
+            String legacy = text.endsWith(VALUE_Z) ? text.substring(0, text.length() - 1) : text;
             return Timestamp.valueOf(legacy.replace('T', ' '));
         } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Unable to parse timestamp for column " + column, ex);
+            log.log(Level.FINE, MSG_PARSE_TIMESTAMP_FAILED_PREFIX + column, ex);
             return null;
         }
     }
@@ -538,10 +606,10 @@ public final class CustomerIdentityStore {
 
     private static String readRawDbText(ResultSet rs, String column) {
         try {
-            String raw = java.util.Objects.requireNonNullElse(rs.getString(column), "");
+            String raw = java.util.Objects.requireNonNullElse(rs.getString(column), EMPTY);
             return sanitizeDbText(raw, 4096);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "String read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_READ_STRING_FAILED_PREFIX + column, ex);
         }
         return null;
     }

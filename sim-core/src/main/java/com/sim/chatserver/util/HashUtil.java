@@ -13,6 +13,12 @@ import java.util.logging.Logger;
  */
 public final class HashUtil {
 
+    private static final String EMPTY = "";
+    private static final String ALGO_SHA_1 = "SHA-1";
+    private static final String ALGO_SHA_256 = "SHA-256";
+    private static final String LOG_HASH_ALGO_UNAVAILABLE_PREFIX = "Hash algorithm unavailable: ";
+    private static final String HASH_ERROR_SUFFIX = "_error";
+
     private static final Logger LOG = Logger.getLogger(HashUtil.class.getCanonicalName());
 
     private HashUtil() {
@@ -20,21 +26,21 @@ public final class HashUtil {
     }
 
     static String sha1Hex(String value) {
-        return digestHex("SHA-1", value);
+        return digestHex(ALGO_SHA_1, value);
     }
 
     static String sha256Hex(String value) {
-        return digestHex("SHA-256", value);
+        return digestHex(ALGO_SHA_256, value);
     }
 
     private static String digestHex(String algorithm, String value) {
         try {
             MessageDigest md = MessageDigest.getInstance(algorithm);
-            byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+            byte[] bytes = md.digest((value == null ? EMPTY : value).getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(bytes);
         } catch (NoSuchAlgorithmException ex) {
-            LOG.log(Level.WARNING, "Hash algorithm unavailable: " + algorithm, ex);
-            return algorithm.toLowerCase(Locale.ROOT) + "_error";
+            LOG.log(Level.WARNING, LOG_HASH_ALGO_UNAVAILABLE_PREFIX + algorithm, ex);
+            return algorithm.toLowerCase(Locale.ROOT) + HASH_ERROR_SUFFIX;
         }
     }
 }

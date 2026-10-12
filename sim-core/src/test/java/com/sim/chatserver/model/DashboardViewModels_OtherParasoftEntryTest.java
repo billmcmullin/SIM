@@ -4,7 +4,7 @@ import java.sql.Timestamp;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
+import com.sim.chatserver.model.OtherParasoftEntry;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for OtherParasoftEntry
  *
- * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry
+ * @see com.sim.chatserver.model.OtherParasoftEntry
  * @author bmcmullin
  */
 public class DashboardViewModels_OtherParasoftEntryTest
@@ -22,7 +22,7 @@ public class DashboardViewModels_OtherParasoftEntryTest
     /**
      * Parasoft Jtest UTA: Test for getCreatedAt()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry#getCreatedAt()
+     * @see com.sim.chatserver.model.OtherParasoftEntry#getCreatedAt()
      * @author bmcmullin
      */
     @Test
@@ -56,7 +56,7 @@ public class DashboardViewModels_OtherParasoftEntryTest
     /**
      * Parasoft Jtest UTA: Test for getPrompt()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry#getPrompt()
+     * @see com.sim.chatserver.model.OtherParasoftEntry#getPrompt()
      * @author bmcmullin
      */
     @Test
@@ -90,7 +90,7 @@ public class DashboardViewModels_OtherParasoftEntryTest
     /**
      * Parasoft Jtest UTA: Test for getSessionId()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry#getSessionId()
+     * @see com.sim.chatserver.model.OtherParasoftEntry#getSessionId()
      * @author bmcmullin
      */
     @Test
@@ -126,7 +126,7 @@ public class DashboardViewModels_OtherParasoftEntryTest
     /**
      * Parasoft Jtest UTA: Test for getWidgetId()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry#getWidgetId()
+     * @see com.sim.chatserver.model.OtherParasoftEntry#getWidgetId()
      * @author bmcmullin
      */
     @Test
@@ -160,7 +160,7 @@ public class DashboardViewModels_OtherParasoftEntryTest
     /**
      * Parasoft Jtest UTA: Test for getWidgetName()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry#getWidgetName()
+     * @see com.sim.chatserver.model.OtherParasoftEntry#getWidgetName()
      * @author bmcmullin
      */
     @Test
@@ -191,3 +191,4 @@ public class DashboardViewModels_OtherParasoftEntryTest
 
     }
 }
+

@@ -28,6 +28,27 @@ final class DashboardTopicsSelectionService {
 
     private static final int IN_CLAUSE_BATCH_SIZE = 200;
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,62}");
+    private static final String MSG_RESOLVE_SELECTED_CHATS_FAILED = "Unable to resolve selected chats";
+    private static final String SQL_JOIN_DELIMITER = ",";
+    private static final String SQL_PLACEHOLDER = "?";
+    private static final String SQL_SELECT_CHAT_ROWS_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.SQL_SELECT_WIDGET_CHAT_PREFIX;
+    private static final String SQL_SELECT_CHAT_ROWS_SUFFIX = " WHERE widget_chat_id IN (";
+    private static final String COL_WIDGET_CHAT_ID = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_WIDGET_CHAT_ID;
+    private static final String TOPIC_POPULAR_TOPICS = "Popular Topics";
+    private static final String COL_PROMPT = com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT;
+    private static final String COL_RESPONSE_TEXT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_RESPONSE_TEXT;
+    private static final String COL_CREATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String MSG_OPEN_CONNECTION_FAILED = "Unable to open dashboard topics connection";
+    private static final String MSG_TABLE_METADATA_INSPECTION_FAILED_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_INSPECT_TABLE_METADATA_PREFIX;
+    private static final String DEFAULT_WIDGET_TABLE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
+    private static final String NON_IDENTIFIER_REGEX = com.sim.chatserver.util.CommonLiteralConstants.REGEX_NON_ALNUM_UNDERSCORE;
+    private static final String UNDERSCORE = "_";
+    private static final String WIDGET_PREFIX = "w_";
+    private static final String MSG_INVALID_SQL_IDENTIFIER = com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String QUOTE = "\"";
+    private static final String DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
+    private static final String MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX = "Typed DB text read failed for column ";
 
     private final AppDataSourceHolder dataSourceHolder;
     private final Logger log;
@@ -50,7 +71,7 @@ final class DashboardTopicsSelectionService {
                 resolveWidgetChats(conn, entry.getKey(), idList, idCount, snapshots, foundIds);
             }
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to resolve selected chats", ex);
+            throw new IllegalStateException(MSG_RESOLVE_SELECTED_CHATS_FAILED, ex);
         }
 
         return new SelectionResolution(snapshots, foundIds);
@@ -83,10 +104,10 @@ final class DashboardTopicsSelectionService {
             List<TermChatSnapshot> snapshots,
             Set<String> foundIds
     ) throws SQLException {
-        String inClause = String.join(",", chunk.stream().map(id -> "?").toList());
-        String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+            String inClause = String.join(SQL_JOIN_DELIMITER, chunk.stream().map(id -> SQL_PLACEHOLDER).toList());
+            String sql = SQL_SELECT_CHAT_ROWS_PREFIX
                 + quoteIdentifier(tableName)
-                + " WHERE widget_chat_id IN (" + inClause + ')';
+                + SQL_SELECT_CHAT_ROWS_SUFFIX + inClause + ')';
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
@@ -106,19 +127,19 @@ final class DashboardTopicsSelectionService {
             Set<String> foundIds
     ) throws SQLException {
         while (rs.next()) {
-            String chatId = readDbText(rs, "widget_chat_id", 512);
+            String chatId = readDbText(rs, COL_WIDGET_CHAT_ID, 512);
             if (chatId == null || chatId.isBlank()) {
                 continue;
             }
 
             snapshots.add(new TermChatSnapshot(
-                    "Popular Topics",
+                    TOPIC_POPULAR_TOPICS,
                     widgetId,
                     chatId,
-                    readDbText(rs, "prompt", 64000),
-                    readDbText(rs, "response_text", 64000),
-                    SqlTimeUtil.safeTimestamp(rs, "created_at"),
-                    readDbText(rs, "session_id", 512)
+                    readDbText(rs, COL_PROMPT, 64000),
+                    readDbText(rs, COL_RESPONSE_TEXT, 64000),
+                    SqlTimeUtil.safeTimestamp(rs, COL_CREATED_AT),
+                    readDbText(rs, COL_SESSION_ID, 512)
             ));
             foundIds.add(chatId);
         }
@@ -128,7 +149,7 @@ final class DashboardTopicsSelectionService {
         try {
             return dataSourceHolder.getDataSource().getConnection();
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open dashboard topics connection", ex);
+            throw new IllegalStateException(MSG_OPEN_CONNECTION_FAILED, ex);
         }
     }
 
@@ -136,28 +157,28 @@ final class DashboardTopicsSelectionService {
         try {
             DatabaseMetaData meta = conn.getMetaData();
             for (String candidate : new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{com.sim.chatserver.util.CommonLiteralConstants.DB_TABLE_TYPE_TABLE})) {
                     if (rs.next()) {
                         return true;
                     }
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
+            log.log(Level.FINE, MSG_TABLE_METADATA_INSPECTION_FAILED_PREFIX + tableName, ex);
         }
         return false;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
+            return DEFAULT_WIDGET_TABLE;
         }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        String normalized = widgetId.trim().replaceAll(NON_IDENTIFIER_REGEX, UNDERSCORE);
         if (normalized.isEmpty()) {
-            normalized = "widget";
+            normalized = DEFAULT_WIDGET_TABLE;
         }
         if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
+            normalized = WIDGET_PREFIX + normalized;
         }
         if (normalized.length() > 60) {
             normalized = new String(normalized.toCharArray(), 0, 60);
@@ -167,9 +188,9 @@ final class DashboardTopicsSelectionService {
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || !SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(QUOTE, DOUBLE_QUOTE) + '"';
     }
 
     private String readDbText(ResultSet rs, String column, int maxChars) {
@@ -196,7 +217,7 @@ final class DashboardTopicsSelectionService {
 
             return ServletRequestParamUtil.normalizeBodyText(value.toString(), maxChars, true);
         } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX + column, ex);
             return null;
         }
     }
@@ -204,3 +225,4 @@ final class DashboardTopicsSelectionService {
     record SelectionResolution(List<TermChatSnapshot> snapshots, Set<String> foundIds) {
     }
 }
+

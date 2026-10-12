@@ -13,6 +13,17 @@ import java.util.function.Supplier;
 
 final class WidgetSyncRunService {
 
+    private static final String EMPTY = "";
+    private static final String MSG_SERVER_CONFIG_LOADER_REQUIRED = "serverConfigLoader";
+    private static final String MSG_WIDGET_LOADER_REQUIRED = "widgetLoader";
+    private static final String MSG_START_PROGRESS_REQUIRED = "startProgress";
+    private static final String MSG_CURRENT_WIDGET_PROGRESS_UPDATER_REQUIRED = "currentWidgetProgressUpdater";
+    private static final String MSG_CLEAR_CURRENT_WIDGET_PROGRESS_REQUIRED = "clearCurrentWidgetProgress";
+    private static final String MSG_TABLE_NAME_RESOLVER_REQUIRED = "tableNameResolver";
+    private static final String MSG_WIDGET_SYNC_FUNCTION_REQUIRED = "widgetSyncFunction";
+    private static final String MSG_SERVER_CONFIG_MISSING = "Server configuration is missing.";
+    private static final String MSG_WIDGET_SYNC_INTERRUPTED = "Widget sync interrupted before processing next widget.";
+
     @FunctionalInterface
     interface CurrentWidgetProgressUpdater {
         void update(String widgetId, String tableName, int widgetIndex, int totalWidgets);
@@ -31,17 +42,17 @@ final class WidgetSyncRunService {
             Function<String, String> tableNameResolver,
             BiFunction<ServerConfig, String, T> widgetSyncFunction
     ) {
-        serverConfigLoader = Objects.requireNonNull(serverConfigLoader, "serverConfigLoader");
-        widgetLoader = Objects.requireNonNull(widgetLoader, "widgetLoader");
-        startProgress = Objects.requireNonNull(startProgress, "startProgress");
-        currentWidgetProgressUpdater = Objects.requireNonNull(currentWidgetProgressUpdater, "currentWidgetProgressUpdater");
-        clearCurrentWidgetProgress = Objects.requireNonNull(clearCurrentWidgetProgress, "clearCurrentWidgetProgress");
-        tableNameResolver = Objects.requireNonNull(tableNameResolver, "tableNameResolver");
-        widgetSyncFunction = Objects.requireNonNull(widgetSyncFunction, "widgetSyncFunction");
+        serverConfigLoader = Objects.requireNonNull(serverConfigLoader, MSG_SERVER_CONFIG_LOADER_REQUIRED);
+        widgetLoader = Objects.requireNonNull(widgetLoader, MSG_WIDGET_LOADER_REQUIRED);
+        startProgress = Objects.requireNonNull(startProgress, MSG_START_PROGRESS_REQUIRED);
+        currentWidgetProgressUpdater = Objects.requireNonNull(currentWidgetProgressUpdater, MSG_CURRENT_WIDGET_PROGRESS_UPDATER_REQUIRED);
+        clearCurrentWidgetProgress = Objects.requireNonNull(clearCurrentWidgetProgress, MSG_CLEAR_CURRENT_WIDGET_PROGRESS_REQUIRED);
+        tableNameResolver = Objects.requireNonNull(tableNameResolver, MSG_TABLE_NAME_RESOLVER_REQUIRED);
+        widgetSyncFunction = Objects.requireNonNull(widgetSyncFunction, MSG_WIDGET_SYNC_FUNCTION_REQUIRED);
 
         ServerConfig config = serverConfigLoader.get();
         if (config == null) {
-            throw new IllegalStateException("Server configuration is missing.");
+            throw new IllegalStateException(MSG_SERVER_CONFIG_MISSING);
         }
 
         List<WidgetEntry> widgets = widgetLoader.get();
@@ -67,11 +78,11 @@ final class WidgetSyncRunService {
         for (int i = 0; i < totalWidgets; i++) {
             if (Thread.currentThread().isInterrupted()) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException("Widget sync interrupted before processing next widget.");
+                throw new IllegalStateException(MSG_WIDGET_SYNC_INTERRUPTED);
             }
 
             WidgetEntry widget = validWidgets.get(i);
-            String widgetId = widget == null ? "" : defaultString(widget.getWidgetId());
+            String widgetId = widget == null ? EMPTY : defaultString(widget.getWidgetId());
             String tableName = defaultString(tableNameResolver.apply(widgetId));
             currentWidgetProgressUpdater.update(widgetId, tableName, i + 1, totalWidgets);
 
@@ -84,6 +95,6 @@ final class WidgetSyncRunService {
     }
 
     private static String defaultString(String value) {
-        return value == null ? "" : value;
+        return value == null ? EMPTY : value;
     }
 }

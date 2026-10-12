@@ -6,9 +6,9 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TextSanitizer;
@@ -16,20 +16,22 @@ import com.sim.chatserver.widget.WidgetEntry;
 
 final class DashboardMetricsService {
 
+    private static final String EMPTY = "";
+    private static final String LOG_TOPIC_PATTERN_EVALUATION_FAILED = "Topic pattern evaluation failed";
+
+
     private static final Logger LOG = Logger.getLogger(DashboardMetricsService.class.getCanonicalName());
-    private static final DashboardLocalViewModels.ProgressStat ZERO_PROGRESS =
-            new DashboardLocalViewModels.ProgressStat(0, 0);
+        private static final ProgressStat ZERO_PROGRESS =
+            new ProgressStat(0, 0);
 
     static final String OTHER_PARASOFT_LABEL = com.sim.chatserver.service.dashboard.DashboardMetricsService.OTHER_PARASOFT_LABEL;
 
     private final com.sim.chatserver.service.dashboard.DashboardMetricsService delegate;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -44,78 +46,15 @@ final class DashboardMetricsService {
         );
     }
 
-    static final class DashboardProgressMetrics {
-
-        private final int chatsToday;
-        private final int chatsYesterday;
-        private final DashboardLocalViewModels.ProgressStat chatsProgression;
-
-        private final int termsToday;
-        private final int termsYesterday;
-        private final DashboardLocalViewModels.ProgressStat termsProgression;
-
-        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, Object termsTodayCount, Object termsYesterdayCount) {
-            this.chatsToday = chatsToday;
-            this.chatsYesterday = chatsYesterday;
-            this.chatsProgression = new DashboardLocalViewModels.ProgressStat(chatsToday, chatsYesterday);
-
-            int normalizedTermsToday = termsTodayCount == null ? 0 : Integer.parseInt(termsTodayCount.toString());
-            int normalizedTermsYesterday = termsYesterdayCount == null ? 0 : Integer.parseInt(termsYesterdayCount.toString());
-            this.termsToday = normalizedTermsToday;
-            this.termsYesterday = normalizedTermsYesterday;
-            this.termsProgression = new DashboardLocalViewModels.ProgressStat(normalizedTermsToday, normalizedTermsYesterday);
-        }
-
-        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, Object termsTodayCount, Object termsYesterdayCount) {
-            return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
-        }
-
-        private static DashboardProgressMetrics fromCore(com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics core) {
-            if (core == null) {
-                return new DashboardProgressMetrics(0, 0, 0, 0);
-            }
-            return new DashboardProgressMetrics(
-                    core.chatsToday(),
-                    core.chatsYesterday(),
-                    Integer.valueOf(core.termsToday()),
-                    Integer.valueOf(core.termsYesterday())
-            );
-        }
-
-        int getChatsToday() {
-            return chatsToday;
-        }
-
-        int getChatsYesterday() {
-            return chatsYesterday;
-        }
-
-        DashboardLocalViewModels.ProgressStat getChatsProgression() {
-            return chatsProgression;
-        }
-
-        int getTermsToday() {
-            return termsToday;
-        }
-
-        int getTermsYesterday() {
-            return termsYesterday;
-        }
-
-        DashboardLocalViewModels.ProgressStat getTermsProgression() {
-            return termsProgression;
-        }
-    }
-
     List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         return delegate.collectWidgetStats(widgets);
     }
 
-    DashboardLocalViewModels.ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
+    ProgressStat buildChatProgression(List<WidgetEntry> widgets) {
         return toLocalProgressStat(delegate.collectChatProgression(widgets));
     }
 
-    DashboardLocalViewModels.ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
+    ProgressStat buildNewUserProgression(List<WidgetEntry> widgets) {
         return toLocalProgressStat(delegate.collectNewUserProgression(widgets));
     }
 
@@ -131,13 +70,13 @@ final class DashboardMetricsService {
         return delegate.collectLatestOtherParasoftEntries(widgets, limit);
     }
 
-    private DashboardLocalViewModels.ProgressStat toLocalProgressStat(
-            com.sim.chatserver.model.DashboardViewModels.ProgressStat coreProgress
+    private ProgressStat toLocalProgressStat(
+            com.sim.chatserver.model.ProgressStat coreProgress
     ) {
         if (coreProgress == null) {
             return ZERO_PROGRESS;
         }
-        return new DashboardLocalViewModels.ProgressStat(coreProgress.todayValue(), coreProgress.yesterdayValue());
+        return new ProgressStat(coreProgress.todayValue(), coreProgress.yesterdayValue());
     }
 
     private boolean matchesAnyPattern(String text, List<Pattern> patterns) {
@@ -145,7 +84,7 @@ final class DashboardMetricsService {
             return false;
         }
 
-        String safeText = TextSanitizer.sanitizeForMatching(text == null ? "" : text);
+        String safeText = TextSanitizer.sanitizeForMatching(text == null ? EMPTY : text);
         for (Pattern pattern : patterns) {
             if (findPatternStart(pattern, safeText) != Integer.MAX_VALUE) {
                 return true;
@@ -156,7 +95,7 @@ final class DashboardMetricsService {
     }
 
     private String resolveBestMatchingLabel(String promptRaw, List<TermDefinition> activeTerms, List<Pattern> compiledPatterns) {
-        String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+        String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? EMPTY : promptRaw);
         int bestStart = Integer.MAX_VALUE;
         String bestTermName = null;
 
@@ -187,11 +126,13 @@ final class DashboardMetricsService {
         }
 
         try {
-            Matcher matcher = pattern.matcher(text == null ? "" : text);
+            Matcher matcher = pattern.matcher(text == null ? EMPTY : text);
             return matcher.find() ? matcher.start() : Integer.MAX_VALUE;
         } catch (IllegalStateException ex) {
-            LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
+            LOG.log(Level.FINE, LOG_TOPIC_PATTERN_EVALUATION_FAILED, ex);
             return Integer.MAX_VALUE;
         }
     }
 }
+
+

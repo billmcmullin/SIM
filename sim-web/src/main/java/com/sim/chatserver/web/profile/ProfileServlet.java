@@ -23,17 +23,19 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "ProfileServlet", urlPatterns = {"/profile"})
 public class ProfileServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(ProfileServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/profile.html";
-    private static final String LOGIN_PATH = "/login";
+    private static final String LOGIN_PATH = com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             try {
                 resp.sendRedirect(LOGIN_PATH);
             } catch (IOException ex) {
@@ -44,16 +46,16 @@ public class ProfileServlet extends HttpServlet {
         }
 
         String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
-        String username = String.valueOf(session.getAttribute("user"));
+        String username = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
         String contextPath = req.getContextPath();
         if (contextPath == null) {
             contextPath = "";
         }
         String rendered = template
-                .replace("${user}", escapeHtml(username))
-                .replace("${contextPath}", contextPath);
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(username))
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, contextPath);
 
-        resp.setContentType("text/html;charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8);
         try {
             PrintWriter out = resp.getWriter();
             if (out == null) {
@@ -71,19 +73,19 @@ public class ProfileServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return;
         }
 
-        Object sessionUser = session.getAttribute("user");
+        Object sessionUser = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
         if (!(sessionUser instanceof String currentUsername) || currentUsername.isBlank()) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return;
         }
 
-        String newUsername = sanitizeInput(ServletRequestParamUtil.firstParam(req, "username", 128, true, true));
-        String newPassword = sanitizeInput(ServletRequestParamUtil.firstParam(req, "password", 128, true, true));
+        String newUsername = sanitizeInput(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, 128, true, true));
+        String newPassword = sanitizeInput(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_PASSWORD, 128, true, true));
 
         if (newUsername == null || newUsername.isBlank()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Username cannot be empty.");
@@ -98,10 +100,10 @@ public class ProfileServlet extends HttpServlet {
                 return;
             }
 
-            session.setAttribute("user", updatedUsername);
+            session.setAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER, updatedUsername);
             JsonObject ok = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("username", updatedUsername)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, updatedUsername)
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, ok);
         } catch (jakarta.persistence.PersistenceException pe) {
@@ -152,11 +154,11 @@ public class ProfileServlet extends HttpServlet {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
             switch (c) {
-                case '&' -> out.append("&amp;");
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
+                case '&' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '"' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> out.append(c);
             }
         }
@@ -165,15 +167,15 @@ public class ProfileServlet extends HttpServlet {
 
     private void writeError(HttpServletResponse resp, int status, String message) {
         JsonObject error = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? "" : message)
                 .build();
         writeJson(resp, status, error);
     }
 
     private void writeJson(HttpServletResponse resp, int status, JsonObject payload) {
         resp.setStatus(status);
-        resp.setContentType("application/json");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         try {
             try (JsonWriter jsonWriter = Json.createWriter(resp.getWriter())) {
@@ -193,6 +195,11 @@ public class ProfileServlet extends HttpServlet {
         } catch (IOException ex) {
             log.log(Level.FINE, "Unable to send fallback profile response", ex);
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

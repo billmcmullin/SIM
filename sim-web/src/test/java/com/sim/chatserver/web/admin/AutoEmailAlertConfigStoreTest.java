@@ -137,7 +137,7 @@ import org.junit.jupiter.api.Test;
         when(rs.getString("health_last_restart_attempt_at")).thenReturn("2026-08-07T09:23:00Z");
 
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
-        AutoEmailAlertConfigStore.AutoEmailAlertConfig cfg = store.load();
+        AutoEmailAlertConfig cfg = store.load();
 
         assertNotNull(cfg);
         assertEquals(5, cfg.getId());
@@ -217,12 +217,12 @@ import org.junit.jupiter.api.Test;
         when(rsLoad2.getString("term_check_interval_seconds")).thenReturn("600");
 
         AutoEmailAlertConfigStore store = new AutoEmailAlertConfigStore(ds);
-        AutoEmailAlertConfigStore.AutoEmailAlertConfig incoming = new AutoEmailAlertConfigStore.AutoEmailAlertConfig();
+        AutoEmailAlertConfig incoming = new AutoEmailAlertConfig();
         incoming.setTermName("newTerm");
         incoming.setHealthEnabled(true);
         incoming.setTermEnabled(true);
 
-        AutoEmailAlertConfigStore.AutoEmailAlertConfig saved = store.saveConfig(incoming, "tester");
+        AutoEmailAlertConfig saved = store.saveConfig(incoming, "tester");
         assertNotNull(saved);
         assertEquals("newTerm", saved.getTermName());
         verify(psClear).executeUpdate();

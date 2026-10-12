@@ -7,6 +7,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -18,6 +19,9 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "SaveConfigServlet", urlPatterns = {"/admin/save-config"})
 public class SaveConfigServlet extends HttpServlet {
 
@@ -190,20 +194,20 @@ public class SaveConfigServlet extends HttpServlet {
 
             EncryptedDbConfigStore.save(config);
             writeJson(resp, HttpServletResponse.SC_OK,
-                    Json.createObjectBuilder().add("status", "ok").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok").build());
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
             throw new ServletException("Unable to save server configuration", e);
         }
     
         } catch (ServletException | IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -222,7 +226,12 @@ public class SaveConfigServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.SEVERE, "Unable to write save config response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE, e);
         }
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

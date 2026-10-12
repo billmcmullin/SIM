@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 
 public class CustomerIdentity {
 
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+
     private Long identityId;
     private String canonicalEmail;
     private String canonicalName;
@@ -22,12 +24,12 @@ public class CustomerIdentity {
     private OffsetDateTime updatedAt;
     private OffsetDateTime lastSyncedAt;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.review.ReviewJobStatus.Builder;
+import com.sim.chatserver.model.review.ReviewJobStatusBuilder;
 import com.sim.chatserver.model.review.ReviewJobStatus.Phase;
 
 import jakarta.json.JsonObject;
@@ -30,7 +30,7 @@ public class ReviewJobStatusTest
     public void testBuilder() throws Throwable
     {
         // When
-        Builder result = ReviewJobStatus.builder();
+        ReviewJobStatusBuilder result = ReviewJobStatus.builder();
 
     }
 

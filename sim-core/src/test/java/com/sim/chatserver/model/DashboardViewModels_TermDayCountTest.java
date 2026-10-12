@@ -2,13 +2,13 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.TermDayCount;
+import com.sim.chatserver.model.TermDayCount;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Parasoft Jtest UTA: Test class for TermDayCount
  *
- * @see com.sim.chatserver.model.DashboardViewModels.TermDayCount
+ * @see com.sim.chatserver.model.TermDayCount
  * @author bmcmullin
  */
 public class DashboardViewModels_TermDayCountTest
@@ -17,7 +17,7 @@ public class DashboardViewModels_TermDayCountTest
     /**
      * Parasoft Jtest UTA: Test for getToday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermDayCount#getToday()
+     * @see com.sim.chatserver.model.TermDayCount#getToday()
      * @author bmcmullin
      */
     @Test
@@ -37,7 +37,7 @@ public class DashboardViewModels_TermDayCountTest
     /**
      * Parasoft Jtest UTA: Test for getYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermDayCount#getYesterday()
+     * @see com.sim.chatserver.model.TermDayCount#getYesterday()
      * @author bmcmullin
      */
     @Test
@@ -57,7 +57,7 @@ public class DashboardViewModels_TermDayCountTest
     /**
      * Parasoft Jtest UTA: Test for incToday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermDayCount#incToday()
+     * @see com.sim.chatserver.model.TermDayCount#incToday()
      * @author bmcmullin
      */
     @Test
@@ -74,7 +74,7 @@ public class DashboardViewModels_TermDayCountTest
     /**
      * Parasoft Jtest UTA: Test for incYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TermDayCount#incYesterday()
+     * @see com.sim.chatserver.model.TermDayCount#incYesterday()
      * @author bmcmullin
      */
     @Test
@@ -88,3 +88,4 @@ public class DashboardViewModels_TermDayCountTest
 
     }
 }
+

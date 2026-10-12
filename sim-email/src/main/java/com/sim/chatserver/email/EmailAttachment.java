@@ -6,15 +6,19 @@ public record EmailAttachment(
         byte[] content
         ) {
 
+    private static final String MSG_FILE_NAME_REQUIRED = "fileName is required";
+    private static final String MSG_CONTENT_TYPE_REQUIRED = "contentType is required";
+    private static final String MSG_CONTENT_REQUIRED = "content is required";
+
     public EmailAttachment {
         if (fileName == null) {
-            throw new NullPointerException("fileName is required");
+            throw new NullPointerException(MSG_FILE_NAME_REQUIRED);
         }
         if (contentType == null) {
-            throw new NullPointerException("contentType is required");
+            throw new NullPointerException(MSG_CONTENT_TYPE_REQUIRED);
         }
         if (content == null) {
-            throw new NullPointerException("content is required");
+            throw new NullPointerException(MSG_CONTENT_REQUIRED);
         }
     }
 }

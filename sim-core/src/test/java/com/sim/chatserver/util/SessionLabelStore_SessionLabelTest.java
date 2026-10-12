@@ -4,13 +4,13 @@ import java.lang.reflect.Constructor;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
+import com.sim.chatserver.util.SessionLabel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Parasoft Jtest UTA: Test class for SessionLabel
  *
- * @see com.sim.chatserver.util.SessionLabelStore.SessionLabel
+ * @see com.sim.chatserver.util.SessionLabel
  * @author bmcmullin
  */
 public class SessionLabelStore_SessionLabelTest
@@ -19,7 +19,7 @@ public class SessionLabelStore_SessionLabelTest
     /**
      * Parasoft Jtest UTA: Test for getDisplayName()
      *
-     * @see com.sim.chatserver.util.SessionLabelStore.SessionLabel#getDisplayName()
+     * @see com.sim.chatserver.util.SessionLabel#getDisplayName()
      * @author bmcmullin
      */
     @Test
@@ -36,7 +36,7 @@ public class SessionLabelStore_SessionLabelTest
         // Then - assertions for result of method getDisplayName()
         assertEquals("displayName", result);
 
-        // Then - assertions for this instance of SessionLabelStore.SessionLabel
+        // Then - assertions for this instance of SessionLabel
         assertEquals("email", underTest.getEmail());
 
     }
@@ -44,7 +44,7 @@ public class SessionLabelStore_SessionLabelTest
     /**
      * Parasoft Jtest UTA: Test for getEmail()
      *
-     * @see com.sim.chatserver.util.SessionLabelStore.SessionLabel#getEmail()
+     * @see com.sim.chatserver.util.SessionLabel#getEmail()
      * @author bmcmullin
      */
     @Test
@@ -61,7 +61,7 @@ public class SessionLabelStore_SessionLabelTest
         // Then - assertions for result of method getEmail()
         assertEquals("email", result);
 
-        // Then - assertions for this instance of SessionLabelStore.SessionLabel
+        // Then - assertions for this instance of SessionLabel
         assertEquals("displayName", underTest.getDisplayName());
 
     }

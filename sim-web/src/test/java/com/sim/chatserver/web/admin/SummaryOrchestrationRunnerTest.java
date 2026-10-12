@@ -22,11 +22,12 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.model.review.ReduceRequest;
 import com.sim.chatserver.model.review.ReduceResult;
+import com.sim.chatserver.service.OrchestrationResult;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 
 class SummaryOrchestrationRunnerTest {
 
@@ -123,10 +124,10 @@ class SummaryOrchestrationRunnerTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestrationResult(WorkspaceResponse response) {
+        private static OrchestrationResult orchestrationResult(WorkspaceResponse response) {
         try {
-            Constructor<WidgetReviewMapReduceOrchestrator.OrchestrationResult> ctor =
-                    WidgetReviewMapReduceOrchestrator.OrchestrationResult.class.getDeclaredConstructor(
+            Constructor<OrchestrationResult> ctor =
+                OrchestrationResult.class.getDeclaredConstructor(
                             WorkspaceResponse.class,
                             List.class,
                             List.class,
@@ -154,3 +155,4 @@ class SummaryOrchestrationRunnerTest {
         }
     }
 }
+

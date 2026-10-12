@@ -4,16 +4,19 @@ import java.io.IOException;
 import java.util.List;
 
 import com.sim.chatserver.model.SelectedEntry;
+import com.sim.chatserver.service.OrchestrationResult;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 
 import jakarta.json.JsonArray;
 
 final class WidgetReviewOrchestrationRunner {
 
+    private static final String MSG_MAP_REDUCE_ORCHESTRATION_FAILED = "Map-reduce orchestration failed";
+
     private WidgetReviewOrchestrationRunner() {
     }
 
-    static WidgetReviewMapReduceOrchestrator.OrchestrationResult run(
+    static OrchestrationResult run(
             WidgetReviewMapReduceOrchestrator orchestrator,
             String targetUrl,
             String apiKey,
@@ -43,7 +46,7 @@ final class WidgetReviewOrchestrationRunner {
             Thread.currentThread().interrupt();
             throw e;
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            throw new IOException("Map-reduce orchestration failed", e);
+            throw new IOException(MSG_MAP_REDUCE_ORCHESTRATION_FAILED, e);
         }
     }
 }

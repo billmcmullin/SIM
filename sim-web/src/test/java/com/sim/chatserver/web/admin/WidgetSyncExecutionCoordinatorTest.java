@@ -44,7 +44,7 @@ class WidgetSyncExecutionCoordinatorTest {
         AtomicBoolean forcePersist = new AtomicBoolean(false);
         AtomicInteger summaryCalls = new AtomicInteger();
 
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.MANUAL,
                 "widget-1",
                 ignored -> List.of("ok"),
@@ -72,7 +72,7 @@ class WidgetSyncExecutionCoordinatorTest {
 
     @Test
     void execute_manualMode_whenAutoDisabled_returnsDisabledMessage() {
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.MANUAL,
                 null,
                 ignored -> List.of("ok"),
@@ -94,7 +94,7 @@ class WidgetSyncExecutionCoordinatorTest {
 
     @Test
     void execute_manualMode_whenNotDue_returnsIntervalMessage() {
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.MANUAL,
                 null,
                 ignored -> List.of("ok"),
@@ -120,7 +120,7 @@ class WidgetSyncExecutionCoordinatorTest {
         AtomicReference<String> progressPhase = new AtomicReference<>();
         AtomicInteger progressMinPercent = new AtomicInteger(-1);
 
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.MANUAL,
                 null,
                 ignored -> List.of("ok"),
@@ -149,7 +149,7 @@ class WidgetSyncExecutionCoordinatorTest {
     void execute_scheduledMode_whenDueAndSummarySucceeds_returnsScheduledSuccess_andHandlesNullStatuses() {
         AtomicBoolean forcePersist = new AtomicBoolean(true);
 
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.SCHEDULED,
                 null,
                 ignored -> null,
@@ -172,7 +172,7 @@ class WidgetSyncExecutionCoordinatorTest {
 
     @Test
     void execute_scheduledMode_whenNotDue_returnsScheduledIntervalMessage() {
-        WidgetSyncExecutionCoordinator.OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
+        OrchestrationResult<String> result = WidgetSyncExecutionCoordinator.execute(
                 WidgetSyncExecutionCoordinator.Mode.SCHEDULED,
                 null,
                 ignored -> List.of("ok"),

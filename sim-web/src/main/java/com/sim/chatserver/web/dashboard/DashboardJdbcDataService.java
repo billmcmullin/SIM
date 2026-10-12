@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard;
 
+import com.sim.chatserver.util.SessionLabel;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -25,10 +26,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionAccumulator;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.SessionAccumulator;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.SessionTimeline;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.service.dashboard.DashboardTermService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -38,7 +39,6 @@ import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
-import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.SessionOverview;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -50,18 +50,64 @@ final class DashboardJdbcDataService {
     private static final Logger log = Logger.getLogger(DashboardJdbcDataService.class.getCanonicalName());
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
+    private static final String EMPTY = "";
+    private static final String DASH = "-";
+    private static final String SQL_PARAM = "?";
+    private static final String COMMA_SPACE = ", ";
+    private static final String DB_COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String DB_COL_TOTAL = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL;
+    private static final String DB_COL_LAST_ENTRY = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_LAST_ENTRY;
+    private static final String DB_COL_FIRST_SEEN = "first_seen";
+    private static final String DB_COL_DAY_VALUE = "day_value";
+    private static final String DB_COL_DAY_COUNT = "day_count";
+    private static final String DB_COL_CREATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String JSON_KEY_SESSION_ID = com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String JSON_KEY_COUNTS = "counts";
+    private static final String JSON_KEY_LABELS = com.sim.chatserver.util.CommonLiteralConstants.FIELD_LABELS;
+    private static final String JSON_KEY_SERIES = "series";
+    private static final String JSON_KEY_RANGE_START = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_START;
+    private static final String JSON_KEY_RANGE_END = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_END;
+    private static final String JSON_KEY_VALUES = com.sim.chatserver.util.CommonLiteralConstants.FIELD_VALUES;
+    private static final String JSON_KEY_DAYS = com.sim.chatserver.util.CommonLiteralConstants.FIELD_DAYS;
+    private static final String SQL_SELECT_SESSION_TOTAL_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.SQL_SELECT_SESSION_COUNTS_PREFIX;
+    private static final String SQL_SELECT_SESSION_FIRST_SEEN_PREFIX = "SELECT session_id, MIN(created_at) AS first_seen FROM ";
+    private static final String SQL_WHERE_SESSION_NOT_NULL_GROUP_BY_SESSION = " WHERE session_id IS NOT NULL GROUP BY session_id";
+    private static final String SQL_SELECT_TIMELINE_PREFIX = "SELECT session_id, CAST(created_at AS DATE) AS day_value, COUNT(*) AS day_count FROM ";
+    private static final String SQL_WHERE_SESSION_IN = " WHERE session_id IN (";
+    private static final String SQL_CREATED_AT_RANGE = ") AND created_at >= ? AND created_at < ?";
+    private static final String SQL_GROUP_BY_TIMELINE = " GROUP BY session_id, CAST(created_at AS DATE)";
+    private static final String SQL_SELECT_CREATED_AT_PREFIX = "SELECT created_at FROM ";
+    private static final String SQL_WHERE_CREATED_AT_RANGE = com.sim.chatserver.util.CommonLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
+    private static final String SQL_IDENTIFIER_REGEX = com.sim.chatserver.util.CommonLiteralConstants.SQL_IDENTIFIER_REGEX;
+    private static final String SQL_IDENTIFIER_INVALID_MSG = com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String QUOTE = "\"";
+    private static final String QUOTE_ESCAPED = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
+    private static final String MSG_UNABLE_LOAD_WIDGET_REGISTRY = "Unable to load widget registry for dashboard";
+    private static final String MSG_UNABLE_LOAD_SESSION_LABELS = "Unable to load session labels";
+    private static final String MSG_UNABLE_COMPUTE_TERM_SUMMARY = "Unable to compute term summary";
+    private static final String MSG_UNABLE_COMPUTE_SESSION_OVERVIEW = "Unable to compute session overview";
+    private static final String MSG_LOCALDATE_PARSE_FALLBACK = "LocalDate parse fallback for column ";
+    private static final String MSG_INSTANT_PARSE_FALLBACK = "Instant parse fallback for column ";
+    private static final String MSG_TIMESTAMP_PARSE_FALLBACK = "Timestamp parse fallback for column ";
+    private static final String MSG_UNABLE_READ_DB_CHAR_STREAM = "Unable to read DB character stream for column ";
+    private static final String MSG_UNABLE_DECODE_DB_CHAR_STREAM = "Unable to decode DB character stream for column ";
+    private static final String MSG_UNABLE_READ_DB_BYTES = "Unable to read DB bytes for column ";
+    private static final String MSG_UNABLE_READ_DB_STRING = "Unable to read DB string for column ";
+    private static final String MSG_UNABLE_READ_DB_OBJECT_TEXT = "Unable to read DB object text for column ";
+    private static final String MSG_UNABLE_LOAD_5_DAY_TREND = "Unable to load 5-day trend data";
+    private static final String MSG_UNABLE_OPEN_DASHBOARD_CONNECTION = "Unable to open dashboard data connection";
 
     List<WidgetEntry> loadWidgets() {
         try {
             return WidgetStore.list(null);
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load widget registry for dashboard", e);
+            log.log(Level.WARNING, MSG_UNABLE_LOAD_WIDGET_REGISTRY, e);
             return List.of();
         }
     }
 
-    Map<String, SessionLabelStore.SessionLabel> loadSessionLabels(List<SessionStat> stats) {
+    Map<String, SessionLabel> loadSessionLabels(List<SessionStat> stats) {
         if (stats == null || stats.isEmpty()) {
             return Map.of();
         }
@@ -77,7 +123,7 @@ final class DashboardJdbcDataService {
         try {
             return SessionLabelStore.mapDisplayNames(sessionIds);
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to load session labels", e);
+            log.log(Level.WARNING, MSG_UNABLE_LOAD_SESSION_LABELS, e);
             return Map.of();
         }
     }
@@ -100,7 +146,7 @@ final class DashboardJdbcDataService {
             }
             return termService.computeTermSummaryForDashboard(conn, widgets, terms);
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to compute term summary", ex);
+            log.log(Level.WARNING, MSG_UNABLE_COMPUTE_TERM_SUMMARY, ex);
             return null;
         }
     }
@@ -115,7 +161,7 @@ final class DashboardJdbcDataService {
         try (Connection conn = openConnectionSafe(dataSourceHolder)) {
             return buildSessionOverview(conn, widgets, rangeStart, rangeEnd, activeDays);
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to compute session overview", ex);
+            log.log(Level.WARNING, MSG_UNABLE_COMPUTE_SESSION_OVERVIEW, ex);
             return null;
         }
     }
@@ -147,36 +193,36 @@ final class DashboardJdbcDataService {
                     continue;
                 }
 
-                String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
+                String sql = SQL_SELECT_SESSION_TOTAL_PREFIX
                         + quoteIdentifier(tableName)
-                        + " WHERE session_id IS NOT NULL GROUP BY session_id";
+                    + SQL_WHERE_SESSION_NOT_NULL_GROUP_BY_SESSION;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
+                        String sessionId = readDbText(rs, DB_COL_SESSION_ID, 256);
                         if (sessionId.isBlank()) {
                             continue;
                         }
 
                         sessionId = sessionId.trim();
                         SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                        acc.addCount(rs.getInt("total"));
+                        acc.addCount(rs.getInt(DB_COL_TOTAL));
 
-                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
+                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, DB_COL_LAST_ENTRY);
                         if (lastEntry != null && (acc.getLastEntry() == null || lastEntry.after(acc.getLastEntry()))) {
                             acc.setLastEntry(lastEntry);
                         }
                     }
                 }
 
-                String firstSeenSql = "SELECT session_id, MIN(created_at) AS first_seen FROM "
+                String firstSeenSql = SQL_SELECT_SESSION_FIRST_SEEN_PREFIX
                         + quoteIdentifier(tableName)
-                        + " WHERE session_id IS NOT NULL GROUP BY session_id";
+                    + SQL_WHERE_SESSION_NOT_NULL_GROUP_BY_SESSION;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(firstSeenSql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
-                        Timestamp firstSeenTs = SqlTimeUtil.safeTimestamp(rs, "first_seen");
+                        String sessionId = readDbText(rs, DB_COL_SESSION_ID, 256);
+                        Timestamp firstSeenTs = SqlTimeUtil.safeTimestamp(rs, DB_COL_FIRST_SEEN);
                         if (sessionId.isBlank() || firstSeenTs == null) {
                             continue;
                         }
@@ -219,8 +265,8 @@ final class DashboardJdbcDataService {
         }
         int activeUsersYesterday = Math.max(0, totalUsers - inactiveUsersYesterday);
 
-        DashboardLocalViewModels.ProgressStat activeUsersProgression =
-                new DashboardLocalViewModels.ProgressStat(activeUsers, activeUsersYesterday);
+        ProgressStat activeUsersProgression =
+            new ProgressStat(activeUsers, activeUsersYesterday);
 
         int newSessionsToday = 0;
         int newSessionsYesterday = 0;
@@ -231,8 +277,8 @@ final class DashboardJdbcDataService {
                 newSessionsYesterday++;
             }
         }
-        DashboardLocalViewModels.ProgressStat newSessionsProgression =
-                new DashboardLocalViewModels.ProgressStat(newSessionsToday, newSessionsYesterday);
+        ProgressStat newSessionsProgression =
+            new ProgressStat(newSessionsToday, newSessionsYesterday);
 
         final int limit = 10;
         PriorityQueue<Map.Entry<String, SessionAccumulator>> pq
@@ -314,7 +360,7 @@ final class DashboardJdbcDataService {
             return new SessionTimeline(labels, countsBySession);
         }
 
-        String inClause = String.join(", ", Collections.nCopies(sessionIds.size(), "?"));
+        String inClause = String.join(COMMA_SPACE, Collections.nCopies(sessionIds.size(), SQL_PARAM));
         Timestamp startTs = Timestamp.valueOf(rangeStart.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(rangeEnd.plusDays(1).atStartOfDay());
 
@@ -328,10 +374,10 @@ final class DashboardJdbcDataService {
                 continue;
             }
 
-            String sql = "SELECT session_id, CAST(created_at AS DATE) AS day_value, COUNT(*) AS day_count FROM "
+                String sql = SQL_SELECT_TIMELINE_PREFIX
                     + quoteIdentifier(tableName)
-                    + " WHERE session_id IN (" + inClause + ") AND created_at >= ? AND created_at < ?"
-                    + " GROUP BY session_id, CAST(created_at AS DATE)";
+                    + SQL_WHERE_SESSION_IN + inClause + SQL_CREATED_AT_RANGE
+                    + SQL_GROUP_BY_TIMELINE;
 
             try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                 int idx = 1;
@@ -343,9 +389,9 @@ final class DashboardJdbcDataService {
 
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
-                        LocalDate entryDate = readLocalDateColumn(rs, "day_value");
-                        int dayCount = rs.getInt("day_count");
+                        String sessionId = readDbText(rs, DB_COL_SESSION_ID, 256);
+                        LocalDate entryDate = readLocalDateColumn(rs, DB_COL_DAY_VALUE);
+                        int dayCount = rs.getInt(DB_COL_DAY_COUNT);
                         if (sessionId.isBlank() || entryDate == null) {
                             continue;
                         }
@@ -392,37 +438,37 @@ final class DashboardJdbcDataService {
             }
 
             seriesBuilder.add(Json.createObjectBuilder()
-                    .add("sessionId", session.getSessionId())
-                    .add("counts", countsBuilder));
+                    .add(JSON_KEY_SESSION_ID, session.getSessionId())
+                    .add(JSON_KEY_COUNTS, countsBuilder));
         }
 
         return Json.createObjectBuilder()
-                .add("labels", labelBuilder)
-                .add("series", seriesBuilder)
-                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
-                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+                .add(JSON_KEY_LABELS, labelBuilder)
+                .add(JSON_KEY_SERIES, seriesBuilder)
+                .add(JSON_KEY_RANGE_START, rangeStart.format(DATE_FORMATTER))
+                .add(JSON_KEY_RANGE_END, rangeEnd.format(DATE_FORMATTER))
                 .build()
                 .toString();
     }
 
     String buildEmptySessionPayload(LocalDate rangeStart, LocalDate rangeEnd) {
         return Json.createObjectBuilder()
-                .add("labels", Json.createArrayBuilder())
-                .add("series", Json.createArrayBuilder())
-                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
-                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+            .add(JSON_KEY_LABELS, Json.createArrayBuilder())
+            .add(JSON_KEY_SERIES, Json.createArrayBuilder())
+            .add(JSON_KEY_RANGE_START, rangeStart.format(DATE_FORMATTER))
+            .add(JSON_KEY_RANGE_END, rangeEnd.format(DATE_FORMATTER))
                 .build()
                 .toString();
     }
 
     private LocalDate readLocalDateColumn(ResultSet rs, String column) {
-        String columnName = column == null ? "" : column;
+        String columnName = column == null ? EMPTY : column;
         String dayText = readDbText(rs, column, 64);
         if (!dayText.isBlank()) {
             try {
                 return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "LocalDate parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, MSG_LOCALDATE_PARSE_FALLBACK + columnName, ex);
             }
 
             try {
@@ -430,7 +476,7 @@ final class DashboardJdbcDataService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "Instant parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, MSG_INSTANT_PARSE_FALLBACK + columnName, ex);
             }
 
             try {
@@ -439,7 +485,7 @@ final class DashboardJdbcDataService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (IllegalArgumentException ex) {
-                log.log(Level.FINE, "Timestamp parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, MSG_TIMESTAMP_PARSE_FALLBACK + columnName, ex);
             }
         }
 
@@ -448,11 +494,11 @@ final class DashboardJdbcDataService {
 
     private String readDbText(ResultSet rs, String column, int maxLen) {
         if (column == null || column.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String raw = readRawDbText(rs, column);
         if (raw == null) {
-            return "";
+            return EMPTY;
         }
         return TextIoSanitizerUtil.validateCanonicalized(raw, maxLen);
     }
@@ -478,9 +524,9 @@ final class DashboardJdbcDataService {
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB character stream for column " + column, ex);
+            log.log(Level.FINE, MSG_UNABLE_READ_DB_CHAR_STREAM + column, ex);
         } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to decode DB character stream for column " + column, ex);
+            log.log(Level.FINE, MSG_UNABLE_DECODE_DB_CHAR_STREAM + column, ex);
         }
 
         try {
@@ -490,7 +536,7 @@ final class DashboardJdbcDataService {
                         new String(rawBytes, StandardCharsets.UTF_8), 4096);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
+            log.log(Level.FINE, MSG_UNABLE_READ_DB_BYTES + column, ex);
         }
 
         try {
@@ -499,7 +545,7 @@ final class DashboardJdbcDataService {
                 return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB string for column " + column, ex);
+            log.log(Level.FINE, MSG_UNABLE_READ_DB_STRING + column, ex);
         }
 
         try {
@@ -509,14 +555,14 @@ final class DashboardJdbcDataService {
             }
             return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB object text for column " + column, ex);
+            log.log(Level.FINE, MSG_UNABLE_READ_DB_OBJECT_TEXT + column, ex);
             return null;
         }
     }
 
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "-";
+            return DASH;
         }
         return ts.toInstant().atZone(ZoneId.systemDefault()).format(ENTRY_FORMATTER);
     }
@@ -544,8 +590,8 @@ final class DashboardJdbcDataService {
                     continue;
                 }
 
-                String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ?";
+                String sql = SQL_SELECT_CREATED_AT_PREFIX + quoteIdentifier(tableName)
+                    + SQL_WHERE_CREATED_AT_RANGE;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
@@ -553,7 +599,7 @@ final class DashboardJdbcDataService {
 
                     try (java.sql.ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, DB_COL_CREATED_AT);
                             if (ts == null) {
                                 continue;
                             }
@@ -574,7 +620,7 @@ final class DashboardJdbcDataService {
                 }
             }
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to load 5-day trend data", ex);
+            log.log(Level.WARNING, MSG_UNABLE_LOAD_5_DAY_TREND, ex);
         }
 
         JsonArrayBuilder labels = Json.createArrayBuilder();
@@ -590,9 +636,9 @@ final class DashboardJdbcDataService {
         }
 
         return Json.createObjectBuilder()
-                .add("labels", labels)
-                .add("values", values)
-                .add("days", 5)
+            .add(JSON_KEY_LABELS, labels)
+            .add(JSON_KEY_VALUES, values)
+            .add(JSON_KEY_DAYS, 5)
                 .build()
                 .toString();
     }
@@ -601,17 +647,19 @@ final class DashboardJdbcDataService {
         try {
             return dataSourceHolder.getDataSource().getConnection();
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open dashboard data connection", ex);
+            throw new IllegalStateException(MSG_UNABLE_OPEN_DASHBOARD_CONNECTION, ex);
         }
     }
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || identifier.isBlank()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(SQL_IDENTIFIER_INVALID_MSG);
         }
-        if (!identifier.matches("^[A-Za-z_][A-Za-z0-9_]{0,62}$")) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+        if (!identifier.matches(SQL_IDENTIFIER_REGEX)) {
+            throw new IllegalArgumentException(SQL_IDENTIFIER_INVALID_MSG);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(QUOTE, QUOTE_ESCAPED) + '"';
     }
 }
+
+

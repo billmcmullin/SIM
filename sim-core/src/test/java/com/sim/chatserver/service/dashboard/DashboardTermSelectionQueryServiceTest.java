@@ -25,7 +25,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermsStore;

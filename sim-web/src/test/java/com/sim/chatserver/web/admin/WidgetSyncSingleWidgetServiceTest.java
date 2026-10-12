@@ -46,7 +46,7 @@ class WidgetSyncSingleWidgetServiceTest {
         AtomicInteger upserts = new AtomicInteger();
         AtomicInteger cacheWrites = new AtomicInteger();
 
-        WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+        WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                 tableEnsured::incrementAndGet,
                 progress::add,
                 List::of,
@@ -80,7 +80,7 @@ class WidgetSyncSingleWidgetServiceTest {
         AtomicReference<List<String>> cachedIds = new AtomicReference<>();
         List<JsonObject> chats = List.of(chat("a"), chat("b"));
 
-        WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+        WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                 () -> {},
                 progress::add,
                 () -> chats,
@@ -113,7 +113,7 @@ class WidgetSyncSingleWidgetServiceTest {
         JsonObject chatB = chat("b");
         JsonObject chatC = chat("c");
 
-        WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+    WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                 () -> {},
                 progress::add,
                 () -> List.of(chatA, chatB, chatC),
@@ -141,7 +141,7 @@ class WidgetSyncSingleWidgetServiceTest {
     void execute_whenUpserterReturnsNull_treatsAsZero() {
         AtomicInteger cacheWrites = new AtomicInteger();
 
-        WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+        WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                 () -> {},
                 ignored -> {},
                 () -> List.of(chat("x")),
@@ -162,7 +162,7 @@ class WidgetSyncSingleWidgetServiceTest {
         AtomicInteger cacheWrites = new AtomicInteger();
         AtomicInteger upserts = new AtomicInteger();
 
-        WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+        WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                 () -> {},
                 ignored -> {},
                 () -> List.of(chat("x")),

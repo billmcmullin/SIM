@@ -9,6 +9,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.service.dashboard.WidgetTableSelectionQueryService;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -24,6 +25,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetTableSelectionServlet", urlPatterns = {"/dashboard/widgets/drilldown/view/select-ids"})
 public class WidgetTableSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(WidgetTableSelectionServlet.class.getCanonicalName());
@@ -36,7 +40,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         if (!isLoggedIn(req, resp)) {
             return;
         }
-        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, true, true));
+        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, 256, true, true));
         if (widgetId == null || widgetId.isBlank()) {
             jsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId required.");
             return;
@@ -53,14 +57,14 @@ public class WidgetTableSelectionServlet extends HttpServlet {
                     widgetId,
                     ServletRequestParamUtil.firstParam(req, "filterPrompt", 256, true, true),
                     ServletRequestParamUtil.firstParam(req, "filterResponse", 256, true, true),
-                    ServletRequestParamUtil.firstParam(req, "search", 256, true, true)
+                    ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_SEARCH, 256, true, true)
             );
 
             JsonArrayBuilder arrayBuilder = Json.createArrayBuilder();
             chatIds.forEach(arrayBuilder::add);
 
             JsonObject body = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("chatIds", arrayBuilder)
                     .add("totalRows", chatIds.size())
                     .build();
@@ -75,14 +79,14 @@ public class WidgetTableSelectionServlet extends HttpServlet {
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -90,8 +94,8 @@ public class WidgetTableSelectionServlet extends HttpServlet {
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
         return true;
@@ -106,7 +110,7 @@ public class WidgetTableSelectionServlet extends HttpServlet {
                 }
             }
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to list widgets", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_LIST_WIDGETS, e);
         }
         return null;
     }
@@ -127,8 +131,8 @@ public class WidgetTableSelectionServlet extends HttpServlet {
 
     private void jsonError(HttpServletResponse resp, int status, String message) {
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? "" : message)
                 .build();
         writeJson(resp, status, payload);
     }
@@ -147,6 +151,11 @@ public class WidgetTableSelectionServlet extends HttpServlet {
                 log.log(Level.FINE, "Unable to send fallback widget table selection error", sendErrorFailure);
             }
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

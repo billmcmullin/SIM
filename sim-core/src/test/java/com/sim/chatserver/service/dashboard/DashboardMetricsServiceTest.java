@@ -13,11 +13,11 @@ import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.service.dashboard.DashboardProgressMetrics;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
@@ -2570,7 +2570,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getChatsProgression()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getChatsProgression()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getChatsProgression()
      * @author bmcmullin
      */
     @Test
@@ -2597,7 +2597,7 @@ public class DashboardMetricsServiceTest
             assertEquals("up", result.getDirection());
         });
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(1, underTest.chatsToday());
         }, () -> {
@@ -2621,7 +2621,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getChatsToday()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getChatsToday()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getChatsToday()
      * @author bmcmullin
      */
     @Test
@@ -2640,7 +2640,7 @@ public class DashboardMetricsServiceTest
         // Then - assertions for result of method getChatsToday()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(-1, underTest.chatsYesterday());
         }, () -> {
@@ -2670,7 +2670,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getChatsYesterday()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getChatsYesterday()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getChatsYesterday()
      * @author bmcmullin
      */
     @Test
@@ -2689,7 +2689,7 @@ public class DashboardMetricsServiceTest
         // Then - assertions for result of method getChatsYesterday()
         assertEquals(-1, result);
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(1, underTest.chatsToday());
         }, () -> {
@@ -2719,7 +2719,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getTermsProgression()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getTermsProgression()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getTermsProgression()
      * @author bmcmullin
      */
     @Test
@@ -2746,7 +2746,7 @@ public class DashboardMetricsServiceTest
             assertEquals("up", result.getDirection());
         });
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(1, underTest.chatsToday());
         }, () -> {
@@ -2770,7 +2770,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getTermsToday()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getTermsToday()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getTermsToday()
      * @author bmcmullin
      */
     @Test
@@ -2789,7 +2789,7 @@ public class DashboardMetricsServiceTest
         // Then - assertions for result of method getTermsToday()
         assertEquals(1, result);
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(1, underTest.chatsToday());
         }, () -> {
@@ -2819,7 +2819,7 @@ public class DashboardMetricsServiceTest
     /**
      * Parasoft Jtest UTA: Test for getTermsYesterday()
      *
-     * @see com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics#getTermsYesterday()
+     * @see com.sim.chatserver.service.dashboard.DashboardProgressMetrics#getTermsYesterday()
      * @author bmcmullin
      */
     @Test
@@ -2838,7 +2838,7 @@ public class DashboardMetricsServiceTest
         // Then - assertions for result of method getTermsYesterday()
         assertEquals(-1, result);
 
-        // Then - assertions for this instance of DashboardMetricsService.DashboardProgressMetrics
+        // Then - assertions for this instance of DashboardProgressMetrics
         assertAll(() -> {
             assertEquals(1, underTest.chatsToday());
         }, () -> {
@@ -2865,5 +2865,7 @@ public class DashboardMetricsServiceTest
 
     }
 }
+
+
 
 

@@ -12,13 +12,13 @@ import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.TermSummary;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.service.dashboard.DashboardProgressMetrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -794,3 +794,5 @@ public class DashboardCacheRegistryTest
         return condition.getAsBoolean();
     }
 }
+
+

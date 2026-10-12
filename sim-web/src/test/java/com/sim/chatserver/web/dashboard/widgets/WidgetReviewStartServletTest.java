@@ -10,7 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.term.TermChatSnapshot;
-import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection;
+import com.sim.chatserver.web.dashboard.widgets.Selection;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,7 +24,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.SearchTerms;
+import com.sim.chatserver.web.dashboard.widgets.SearchTerms;
 import static org.junit.jupiter.api.Assertions.assertAll;
 /**
  * Parasoft Jtest UTA: Test class for WidgetReviewStartServlet
@@ -697,7 +697,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromTermSnapshots(String, String, List)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromTermSnapshots(String,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromTermSnapshots(String,
          *      String, List)
          * @author bmcmullin
          */
@@ -744,7 +744,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromTermSnapshots(String, String, List)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromTermSnapshots(String,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromTermSnapshots(String,
          *      String, List)
          * @author bmcmullin
          */
@@ -791,7 +791,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromTermSnapshots(String, String, List)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromTermSnapshots(String,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromTermSnapshots(String,
          *      String, List)
          * @author bmcmullin
          */
@@ -838,7 +838,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromTermSnapshots(String, String, List)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromTermSnapshots(String,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromTermSnapshots(String,
          *      String, List)
          * @author bmcmullin
          */
@@ -885,7 +885,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -901,7 +901,7 @@ public class WidgetReviewStartServletTest
             String date = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -926,7 +926,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -942,7 +942,7 @@ public class WidgetReviewStartServletTest
             String date = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -967,7 +967,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -983,7 +983,7 @@ public class WidgetReviewStartServletTest
             String date = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1014,7 +1014,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1030,7 +1030,7 @@ public class WidgetReviewStartServletTest
             String date = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1061,7 +1061,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1077,7 +1077,7 @@ public class WidgetReviewStartServletTest
             String date = "*"; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1102,7 +1102,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1118,7 +1118,7 @@ public class WidgetReviewStartServletTest
             String date = ""; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1143,7 +1143,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1159,7 +1159,7 @@ public class WidgetReviewStartServletTest
             String date = "*"; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1184,7 +1184,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1200,7 +1200,7 @@ public class WidgetReviewStartServletTest
             String date = ""; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1225,7 +1225,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1241,7 +1241,7 @@ public class WidgetReviewStartServletTest
             String date = "*"; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1272,7 +1272,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1288,7 +1288,7 @@ public class WidgetReviewStartServletTest
             String date = ""; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1319,7 +1319,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1335,7 +1335,7 @@ public class WidgetReviewStartServletTest
             String date = "*"; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1366,7 +1366,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms, String)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms, String)
          * @author bmcmullin
          */
@@ -1382,7 +1382,7 @@ public class WidgetReviewStartServletTest
             String date = ""; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms, date);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms, String)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms, String)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1413,7 +1413,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms)
          * @author bmcmullin
          */
@@ -1428,7 +1428,7 @@ public class WidgetReviewStartServletTest
             SearchTerms searchTerms = mock(SearchTerms.class);
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1453,7 +1453,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms)
          * @author bmcmullin
          */
@@ -1468,7 +1468,7 @@ public class WidgetReviewStartServletTest
             SearchTerms searchTerms = mock(SearchTerms.class);
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1493,7 +1493,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms)
          * @author bmcmullin
          */
@@ -1508,7 +1508,7 @@ public class WidgetReviewStartServletTest
             SearchTerms searchTerms = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {
@@ -1539,7 +1539,7 @@ public class WidgetReviewStartServletTest
         /**
          * Parasoft Jtest UTA: Test for fromWidget(String, List, SearchTerms)
          *
-         * @see com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet.Selection#fromWidget(String, List,
+         * @see com.sim.chatserver.web.dashboard.widgets.Selection#fromWidget(String, List,
          *      SearchTerms)
          * @author bmcmullin
          */
@@ -1554,7 +1554,7 @@ public class WidgetReviewStartServletTest
             SearchTerms searchTerms = null; // UTA: configured value
             Selection result = invokeFromWidget(widgetId, chatIds, searchTerms);
     
-            // Then - assertions for result of method fromWidget(String, List, WidgetReviewStartServlet.SearchTerms)
+            // Then - assertions for result of method fromWidget(String, List, SearchTerms)
             assertAll(() -> {
                 assertNotNull(result);
             }, () -> {

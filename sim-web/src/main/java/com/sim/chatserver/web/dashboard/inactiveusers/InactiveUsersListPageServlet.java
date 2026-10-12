@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.inactiveusers;
 
+import com.sim.chatserver.util.SessionLabel;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,8 +21,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
@@ -39,6 +42,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "InactiveUsersListPageServlet", urlPatterns = {"/dashboard/inactive-users/list"})
 public class InactiveUsersListPageServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(InactiveUsersListPageServlet.class.getCanonicalName());
@@ -51,58 +57,37 @@ public class InactiveUsersListPageServlet extends HttpServlet {
 
     private static final int FRUSTRATION_PROMPT_SCAN_LIMIT = 8;
 
-    static final class Row {
-
-        String sessionId;
-        String displayLabel;
-        String widgetId;
-        String widgetLabel;
-        long chatCount;
-        Timestamp lastEntry;
-
-        boolean frustrationDetected;
-        double frustrationScore;
-        String frustrationReason;
-    }
-
-    static final class FrustrationResult {
-
-        boolean detected;
-        double score;
-        String reason;
-    }
-
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         String contextPath = req.getContextPath() == null ? "" : req.getContextPath();
         HttpSession s = req.getSession(false);
-        if (s == null || s.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (s == null || s.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
         String scope = nvl(ServletRequestParamUtil.firstParam(req, "scope", 256, false, false)).trim();
-        if (!"widget".equalsIgnoreCase(scope)) {
-            scope = "all";
+        if (!com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET.equalsIgnoreCase(scope)) {
+            scope = com.sim.chatserver.util.CommonLiteralConstants.VALUE_ALL;
         }
 
-        String widgetIdFilter = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, false, false));
-        String search = sanitizeSearch(ServletRequestParamUtil.firstParam(req, "search", 256, false, false));
+        String widgetIdFilter = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, 256, false, false));
+        String search = sanitizeSearch(ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_SEARCH, 256, false, false));
         String searchLower = search.toLowerCase();
         boolean hasSearch = !searchLower.isBlank();
 
-        int days = parseInt(ServletRequestParamUtil.firstParam(req, "days", 256, false, false), DEFAULT_DAYS);
+        int days = parseInt(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_DAYS, 256, false, false), DEFAULT_DAYS);
         if (days < 1) {
             days = DEFAULT_DAYS;
         }
 
-        int page = parseInt(ServletRequestParamUtil.firstParam(req, "page", 256, false, false), 1);
+        int page = parseInt(ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_PAGE, 256, false, false), 1);
         if (page < 1) {
             page = 1;
         }
 
-        int limit = parseInt(ServletRequestParamUtil.firstParam(req, "limit", 256, false, false), DEFAULT_LIMIT);
+        int limit = parseInt(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_LIMIT, 256, false, false), DEFAULT_LIMIT);
         if (limit < 1) {
             limit = DEFAULT_LIMIT;
         }
@@ -137,7 +122,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         );
 
         Set<String> ids = allRows.stream().map(r -> r.sessionId).collect(Collectors.toSet());
-        Map<String, SessionLabelStore.SessionLabel> labels = Map.of();
+        Map<String, SessionLabel> labels = Map.of();
         try {
             if (!ids.isEmpty()) {
                 labels = SessionLabelStore.mapDisplayNames(ids);
@@ -175,14 +160,14 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         String jsonData = buildJson(pageRows);
         String template = sanitizeTemplate(loadTemplate(req.getServletContext(), TEMPLATE_PATH));
 
-        String title = "all".equals(scope)
+        String title = com.sim.chatserver.util.CommonLiteralConstants.VALUE_ALL.equals(scope)
                 ? "All Inactive Users"
                 : "Inactive Users: " + widgetNameById.getOrDefault(widgetIdFilter, widgetIdFilter);
 
         String sessionUser = safeSessionUser(s);
         String rendered = template
-            .replace("${contextPath}", escapeHtml(contextPath))
-            .replace("${user}", escapeHtml(sessionUser))
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, escapeHtml(contextPath))
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(sessionUser))
                 .replace("${title}", escapeHtml(title))
                 .replace("${scope}", escapeHtml(scope))
                 .replace("${widgetId}", escapeHtml(widgetIdFilter))
@@ -195,12 +180,12 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                 .replace("${rowsJson}", escapeForJs(jsonData));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     
-        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -211,12 +196,12 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
-    private FrustrationResult detectFrustration(List<String> prompts) {
-        FrustrationResult out = new FrustrationResult();
+    private InactiveUsersListFrustrationResult detectFrustration(List<String> prompts) {
+        InactiveUsersListFrustrationResult out = new InactiveUsersListFrustrationResult();
         out.detected = false;
         out.score = 0.0;
         out.reason = "";
@@ -285,9 +270,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         JsonArrayBuilder arr = Json.createArrayBuilder();
         for (Row r : rows) {
             arr.add(Json.createObjectBuilder()
-                    .add("sessionId", nvl(r.sessionId))
-                    .add("displayLabel", nvl(r.displayLabel))
-                    .add("widgetId", nvl(r.widgetId))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, nvl(r.sessionId))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_LABEL, nvl(r.displayLabel))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, nvl(r.widgetId))
                     .add("widgetLabel", nvl(r.widgetLabel))
                     .add("chatCount", r.chatCount)
                     .add("lastEntry", formatTimestamp(r.lastEntry))
@@ -295,7 +280,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
                     .add("frustrationScore", r.frustrationScore)
                     .add("frustrationReason", nvl(r.frustrationReason)));
         }
-        JsonObject obj = Json.createObjectBuilder().add("rows", arr).build();
+        JsonObject obj = Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ROWS, arr).build();
         try (java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream(); JsonWriter writer = Json.createWriter(bos)) {
             writer.writeObject(obj);
             return new String(bos.toByteArray(), StandardCharsets.UTF_8);
@@ -307,7 +292,7 @@ public class InactiveUsersListPageServlet extends HttpServlet {
     private String loadTemplate(ServletContext context, String path) {
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                log.log(Level.WARNING, "Template not found: {0}", path);
+                log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_TEMPLATE_NOT_FOUND_FORMAT, path);
                 return "";
             }
             byte[] bytes = stream.readAllBytes();
@@ -322,9 +307,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (template == null) {
             return null;
         }
-        String normalized = template.replace("\u0000", "").replace(System.lineSeparator(), "");
+        String normalized = template.replace(com.sim.chatserver.util.CommonLiteralConstants.NULL_CHAR_STRING, "").replace(System.lineSeparator(), "");
         if (normalized.length() > 500_000) {
-            return safeSlice(normalized, 0, 500_000);
+            return TextIoSanitizerUtil.safeSlice(normalized, 0, 500_000);
         }
         return normalized;
     }
@@ -353,12 +338,12 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (session == null) {
             return "";
         }
-        Object user = session.getAttribute("user");
+        Object user = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
         if (!(user instanceof String userText)) {
             return "";
         }
         String normalized = userText.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
-        return normalized.length() > 256 ? safeSlice(normalized, 0, 256) : normalized;
+        return normalized.length() > 256 ? TextIoSanitizerUtil.safeSlice(normalized, 0, 256) : normalized;
     }
 
     private String nvl(String s) {
@@ -382,24 +367,9 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         }
         String trimmed = raw.trim();
         if (trimmed.length() > MAX_SEARCH_LENGTH) {
-            return safeSlice(trimmed, 0, MAX_SEARCH_LENGTH);
+            return TextIoSanitizerUtil.safeSlice(trimmed, 0, MAX_SEARCH_LENGTH);
         }
         return trimmed;
-    }
-
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null) {
-            return "";
-        }
-        int start = Math.max(0, Math.min(beginIndex, value.length()));
-        int end = Math.max(start, Math.min(endIndex, value.length()));
-        int length = end - start;
-        if (length <= 0) {
-            return "";
-        }
-        char[] copied = new char[length];
-        value.getChars(start, end, copied, 0);
-        return new String(copied);
     }
 
     private String formatTimestamp(Timestamp value) {
@@ -414,11 +384,11 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         for (int i = 0; i < in.length(); i++) {
             char c = in.charAt(i);
             switch (c) {
-                case '&' -> escaped.append("&amp;");
-                case '<' -> escaped.append("&lt;");
-                case '>' -> escaped.append("&gt;");
-                case '"' -> escaped.append("&quot;");
-                case '\'' -> escaped.append("&#39;");
+                case '&' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '"' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> escaped.append(c);
             }
         }
@@ -429,10 +399,36 @@ public class InactiveUsersListPageServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace(System.lineSeparator(), "\\n")
-                .replace(System.lineSeparator(), "\\r");
+        return value.replace("\\", com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO)
+                .replace("'", com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_SINGLE_QUOTE)
+                .replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO)
+                .replace(System.lineSeparator(), com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_CARRIAGE_RETURN);
     }
 
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
 }
+
+final class InactiveUsersListFrustrationResult {
+
+    boolean detected;
+    double score;
+    String reason;
+}
+
+final class Row {
+
+    String sessionId;
+    String displayLabel;
+    String widgetId;
+    String widgetLabel;
+    long chatCount;
+    Timestamp lastEntry;
+
+    boolean frustrationDetected;
+    double frustrationScore;
+    String frustrationReason;
+}
+

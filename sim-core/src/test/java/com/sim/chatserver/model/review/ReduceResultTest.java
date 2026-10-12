@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.review.ReduceResult.Builder;
+import com.sim.chatserver.model.review.ReduceResultBuilder;
 
 import jakarta.json.JsonObject;
 
@@ -30,7 +30,7 @@ public class ReduceResultTest
     public void testBuilder() throws Throwable
     {
         // When
-        Builder result = ReduceResult.builder();
+        ReduceResultBuilder result = ReduceResult.builder();
 
     }
 

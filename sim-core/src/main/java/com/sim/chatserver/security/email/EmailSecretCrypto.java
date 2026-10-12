@@ -29,6 +29,18 @@ public final class EmailSecretCrypto {
 
     private static final Logger log = Logger.getLogger(EmailSecretCrypto.class.getCanonicalName());
 
+    private static final String EMPTY = "";
+    private static final String AES = "AES";
+    private static final String GCM_NO_PADDING = "/GCM/NoPadding";
+    private static final String CONTROL_CHAR_REGEX = com.sim.chatserver.util.CommonLiteralConstants.REGEX_CTRL_EXCEPT_CRLF_TAB;
+    private static final String MSG_ENCRYPT_FAILED = "Failed to encrypt secret";
+    private static final String MSG_NOT_BASE64_LEGACY_FALLBACK = "Secret payload is not Base64; using legacy plaintext fallback";
+    private static final String MSG_DECRYPT_FAILED = "Failed to decrypt secret";
+    private static final String MSG_MISSING_REQUIRED_ENV_PREFIX = "Missing required environment variable: ";
+    private static final String MSG_MUST_BE_VALID_BASE64_SUFFIX = " must be valid Base64";
+    private static final String MSG_MUST_DECODE_32_BYTES_SUFFIX = " must decode to exactly 32 bytes (AES-256 key)";
+    private static final String MSG_GENERATE_AES_KEY_FAILED = "Unable to generate AES key";
+
     private static final String ENV_KEY = "SIM_EMAIL_CRYPTO_KEY";
     private static final String ENV_TRANSFORM = "SIM_EMAIL_CRYPTO_TRANSFORMATION";
     private static final String DEFAULT_TRANSFORM = buildDefaultCipherTransformation();
@@ -44,7 +56,7 @@ public final class EmailSecretCrypto {
 
     public static String encrypt(String plainText) {
         if (plainText == null || plainText.isEmpty()) {
-            return "";
+            return EMPTY;
         }
 
         try {
@@ -64,13 +76,13 @@ public final class EmailSecretCrypto {
 
             return Base64.getEncoder().encodeToString(bb.array());
         } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to encrypt secret", e);
+            throw new IllegalStateException(MSG_ENCRYPT_FAILED, e);
         }
     }
 
     public static String decrypt(String encoded) {
         if (encoded == null || encoded.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         // Backward compatibility:
@@ -103,31 +115,31 @@ public final class EmailSecretCrypto {
             byte[] plain = cipher.doFinal(cipherBytes);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException notBase64) {
-            log.log(Level.FINE, "Secret payload is not Base64; using legacy plaintext fallback", notBase64);
+            log.log(Level.FINE, MSG_NOT_BASE64_LEGACY_FALLBACK, notBase64);
             return encoded; // legacy plaintext
         } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to decrypt secret", e);
+            throw new IllegalStateException(MSG_DECRYPT_FAILED, e);
         }
     }
 
     private static SecretKey loadKey() {
         String b64 = readEnvCanonical(ENV_KEY, 4096);
         if (b64 == null || b64.isBlank()) {
-            throw new IllegalStateException("Missing required environment variable: " + ENV_KEY);
+            throw new IllegalStateException(MSG_MISSING_REQUIRED_ENV_PREFIX + ENV_KEY);
         }
 
         byte[] keyBytes;
         try {
             keyBytes = Base64.getDecoder().decode(b64.trim());
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException(ENV_KEY + " must be valid Base64", e);
+            throw new IllegalStateException(ENV_KEY + MSG_MUST_BE_VALID_BASE64_SUFFIX, e);
         }
 
         if (keyBytes.length != 32) {
-            throw new IllegalStateException(ENV_KEY + " must decode to exactly 32 bytes (AES-256 key)");
+            throw new IllegalStateException(ENV_KEY + MSG_MUST_DECODE_32_BYTES_SUFFIX);
         }
 
-        return new SecretKeySpec(keyBytes, "AES");
+        return new SecretKeySpec(keyBytes, AES);
     }
 
     /**
@@ -135,12 +147,12 @@ public final class EmailSecretCrypto {
      */
     static String generateBase64Key() {
         try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            KeyGenerator keyGenerator = KeyGenerator.getInstance(AES);
             keyGenerator.init(256);
             SecretKey key = keyGenerator.generateKey();
             return Base64.getEncoder().encodeToString(key.getEncoded());
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Unable to generate AES key", e);
+            throw new IllegalStateException(MSG_GENERATE_AES_KEY_FAILED, e);
         }
     }
 
@@ -161,7 +173,7 @@ public final class EmailSecretCrypto {
     }
 
     private static String buildDefaultCipherTransformation() {
-        return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
+        return new StringBuilder(32).append(AES).append(GCM_NO_PADDING).toString();
     }
 
     private static String readEnvCanonical(String key, int maxChars) {
@@ -170,7 +182,7 @@ public final class EmailSecretCrypto {
             return null;
         }
         String normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC)
-                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+            .replaceAll(CONTROL_CHAR_REGEX, EMPTY)
                 .trim();
         if (maxChars > 0 && normalized.length() > maxChars) {
             return new String(normalized.toCharArray(), 0, maxChars);

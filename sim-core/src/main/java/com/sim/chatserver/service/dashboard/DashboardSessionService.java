@@ -25,12 +25,13 @@ import java.util.stream.Collectors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionAccumulator;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.SessionAccumulator;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.SessionTimeline;
 import com.sim.chatserver.util.DashboardDbUtil;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -41,16 +42,40 @@ import jakarta.json.JsonObject;
 
 public class DashboardSessionService {
 
+    private static final String EMPTY = "";
+        private static final String DASH = "-";
+        private static final String JSON_KEY_SESSION_ID = com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID;
+        private static final String JSON_KEY_COUNTS = "counts";
+        private static final String JSON_KEY_LABELS = com.sim.chatserver.util.CommonLiteralConstants.FIELD_LABELS;
+        private static final String JSON_KEY_SERIES = "series";
+        private static final String JSON_KEY_RANGE_START = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_START;
+        private static final String JSON_KEY_RANGE_END = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_END;
+        private static final String COL_TOTAL = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL;
+        private static final String COL_LAST_ENTRY = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_LAST_ENTRY;
+        private static final String COL_DAY_VALUE = "day_value";
+        private static final String COL_DAY_COUNT = "day_count";
+        private static final String SQL_SELECT_SESSION_COUNTS_PREFIX =
+            com.sim.chatserver.util.CommonLiteralConstants.SQL_SELECT_SESSION_COUNTS_PREFIX;
+        private static final String SQL_SELECT_FIRST_SEEN_PREFIX =
+            "SELECT session_id, MIN(created_at) AS first_seen FROM ";
+        private static final String SQL_SELECT_SESSION_DAY_COUNTS_PREFIX =
+            "SELECT session_id, CAST(created_at AS DATE) AS day_value, COUNT(*) AS day_count FROM ";
+        private static final String SQL_GROUP_BY_SESSION_DAY = " GROUP BY session_id, CAST(created_at AS DATE)";
+        private static final String SQL_SESSION_ID_IN_PREFIX = " WHERE session_id IN (";
+        private static final String SQL_SESSION_ID_IN_DATE_RANGE_SUFFIX = ") AND created_at >= ? AND created_at < ?";
+        private static final String LOG_LOCALDATE_PARSE_FALLBACK = "LocalDate parse fallback for column ";
+        private static final String LOG_INSTANT_PARSE_FALLBACK = "Instant parse fallback for column ";
+        private static final String LOG_TIMESTAMP_PARSE_FALLBACK = "Timestamp parse fallback for column ";
+
+
     private static final Logger log = Logger.getLogger(DashboardSessionService.class.getCanonicalName());
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -84,22 +109,22 @@ public class DashboardSessionService {
                 }
 
                 // Existing totals/last-entry aggregation
-                String sql = "SELECT session_id, COUNT(*) AS total, MAX(created_at) AS last_entry FROM "
+                String sql = SQL_SELECT_SESSION_COUNTS_PREFIX
                         + DashboardDbUtil.quoteIdentifier(tableName)
-                        + " WHERE session_id IS NOT NULL GROUP BY session_id";
+                    + SqlLiteralConstants.SQL_SESSION_ID_NOT_NULL_GROUP_BY;
 
                 try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
+                        String sessionId = readDbText(rs, SqlLiteralConstants.COL_SESSION_ID, 256);
                         if (sessionId == null || sessionId.isBlank()) {
                             continue;
                         }
 
                         sessionId = sessionId.trim();
                         SessionAccumulator acc = accumulators.computeIfAbsent(sessionId, k -> new SessionAccumulator());
-                        acc.addCount(rs.getInt("total"));
+                        acc.addCount(rs.getInt(COL_TOTAL));
 
-                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, "last_entry");
+                        Timestamp lastEntry = SqlTimeUtil.safeTimestamp(rs, COL_LAST_ENTRY);
                         if (lastEntry != null && (acc.getLastEntry() == null || lastEntry.after(acc.getLastEntry()))) {
                             acc.setLastEntry(lastEntry);
                         }
@@ -107,14 +132,14 @@ public class DashboardSessionService {
                 }
 
                 // Existing new-sessions support: first-seen per session in this table
-                String firstSeenSql = "SELECT session_id, MIN(created_at) AS first_seen FROM "
+                String firstSeenSql = SQL_SELECT_FIRST_SEEN_PREFIX
                         + DashboardDbUtil.quoteIdentifier(tableName)
-                        + " WHERE session_id IS NOT NULL GROUP BY session_id";
+                        + SqlLiteralConstants.SQL_SESSION_ID_NOT_NULL_GROUP_BY;
 
                 try (PreparedStatement ps = conn.prepareStatement(firstSeenSql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
-                        Timestamp firstSeenTs = SqlTimeUtil.safeTimestamp(rs, "first_seen");
+                        String sessionId = readDbText(rs, SqlLiteralConstants.COL_SESSION_ID, 256);
+                        Timestamp firstSeenTs = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_FIRST_SEEN);
                         if (sessionId == null || sessionId.isBlank() || firstSeenTs == null) {
                             continue;
                         }
@@ -137,12 +162,7 @@ public class DashboardSessionService {
 
         // Current active/inactive
         Instant cutoffNow = Instant.now().minus(activeDays, ChronoUnit.DAYS);
-        int inactiveUsers = 0;
-        for (SessionAccumulator acc : accumulators.values()) {
-            if (acc.getLastEntry() != null && acc.getLastEntry().toInstant().isBefore(cutoffNow)) {
-                inactiveUsers++;
-            }
-        }
+        int inactiveUsers = countInactiveUsers(accumulators, cutoffNow, false);
         int activeUsers = Math.max(0, totalUsers - inactiveUsers);
 
         // NEW: yesterday active/inactive baseline (same activeDays window, shifted by 1 day)
@@ -150,13 +170,7 @@ public class DashboardSessionService {
                 .minus(1, ChronoUnit.DAYS)
                 .minus(activeDays, ChronoUnit.DAYS);
 
-        int inactiveUsersYesterday = 0;
-        for (SessionAccumulator acc : accumulators.values()) {
-            Timestamp last = acc.getLastEntry();
-            if (last == null || last.toInstant().isBefore(cutoffYesterday)) {
-                inactiveUsersYesterday++;
-            }
-        }
+        int inactiveUsersYesterday = countInactiveUsers(accumulators, cutoffYesterday, true);
         int activeUsersYesterday = Math.max(0, totalUsers - inactiveUsersYesterday);
 
         ProgressStat activeUsersProgression = new ProgressStat(activeUsers, activeUsersYesterday);
@@ -173,21 +187,7 @@ public class DashboardSessionService {
         }
         ProgressStat newSessionsProgression = new ProgressStat(newSessionsToday, newSessionsYesterday);
 
-        final int limit = 10;
-        PriorityQueue<Map.Entry<String, SessionAccumulator>> pq
-                = new PriorityQueue<>(Comparator.comparingInt(e -> e.getValue().getCount()));
-
-        for (Map.Entry<String, SessionAccumulator> entry : accumulators.entrySet()) {
-            if (pq.size() < limit) {
-                pq.offer(entry);
-            } else if (entry.getValue().getCount() > pq.peek().getValue().getCount()) {
-                pq.poll();
-                pq.offer(entry);
-            }
-        }
-
-        List<Map.Entry<String, SessionAccumulator>> topEntries = new ArrayList<>(pq);
-        topEntries.sort((a, b) -> Integer.compare(b.getValue().getCount(), a.getValue().getCount()));
+        List<Map.Entry<String, SessionAccumulator>> topEntries = selectTopSessionEntries(accumulators, 10);
 
         List<SessionStat> topSessions = new ArrayList<>(topEntries.size());
         for (Map.Entry<String, SessionAccumulator> entry : topEntries) {
@@ -229,32 +229,22 @@ public class DashboardSessionService {
             Map<String, Boolean> tableExistsCache
     ) throws SQLException {
 
-        List<LocalDate> labelDates = new ArrayList<>();
-        LocalDate cursor = rangeStart;
-        if (!cursor.isAfter(rangeEnd)) {
-            while (!cursor.isAfter(rangeEnd)) {
-                labelDates.add(cursor);
-                cursor = cursor.plusDays(1);
-            }
-        } else {
-            labelDates.add(rangeStart);
-        }
+        List<LocalDate> labelDates = buildLabelDates(rangeStart, rangeEnd);
 
-        List<String> labels = new ArrayList<>(labelDates.size());
-        for (LocalDate date : labelDates) {
-            labels.add(date.format(DATE_FORMATTER));
-        }
+        List<String> labels = buildDateLabels(labelDates);
 
         Map<String, List<Integer>> countsBySession = new LinkedHashMap<>();
+        int labelCount = labels.size();
         for (String sessionId : sessionIds) {
-            countsBySession.put(sessionId, new ArrayList<>(Collections.nCopies(labels.size(), Integer.valueOf(0))));
+            countsBySession.put(sessionId, buildZeroCounts(labelCount));
         }
 
         if (sessionIds.isEmpty() || widgets == null || widgets.isEmpty() || labels.isEmpty()) {
             return new SessionTimeline(labels, countsBySession);
         }
 
-        String inClause = String.join(", ", Collections.nCopies(sessionIds.size(), "?"));
+        String inClause = String.join(SqlLiteralConstants.COMMA_SPACE,
+                Collections.nCopies(sessionIds.size(), SqlLiteralConstants.QUESTION_MARK));
         Timestamp startTs = Timestamp.valueOf(rangeStart.atStartOfDay());
         Timestamp endTs = Timestamp.valueOf(rangeEnd.plusDays(1).atStartOfDay());
 
@@ -268,10 +258,10 @@ public class DashboardSessionService {
                 continue;
             }
 
-            String sql = "SELECT session_id, CAST(created_at AS DATE) AS day_value, COUNT(*) AS day_count FROM "
+                String sql = SQL_SELECT_SESSION_DAY_COUNTS_PREFIX
                     + DashboardDbUtil.quoteIdentifier(tableName)
-                    + " WHERE session_id IN (" + inClause + ") AND created_at >= ? AND created_at < ?"
-                    + " GROUP BY session_id, CAST(created_at AS DATE)";
+                    + SQL_SESSION_ID_IN_PREFIX + inClause + SQL_SESSION_ID_IN_DATE_RANGE_SUFFIX
+                    + SQL_GROUP_BY_SESSION_DAY;
 
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 int idx = 1;
@@ -283,9 +273,9 @@ public class DashboardSessionService {
 
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
-                        String sessionId = readDbText(rs, "session_id", 256);
-                        LocalDate entryDate = readLocalDateColumn(rs, "day_value");
-                        int dayCount = rs.getInt("day_count");
+                        String sessionId = readDbText(rs, SqlLiteralConstants.COL_SESSION_ID, 256);
+                        LocalDate entryDate = readLocalDateColumn(rs, COL_DAY_VALUE);
+                        int dayCount = rs.getInt(COL_DAY_COUNT);
                         if (sessionId == null || entryDate == null) {
                             continue;
                         }
@@ -311,6 +301,78 @@ public class DashboardSessionService {
         return new SessionTimeline(labels, countsBySession);
     }
 
+    private int countInactiveUsers(
+            Map<String, SessionAccumulator> accumulators,
+            Instant cutoff,
+            boolean countMissingLastEntryAsInactive) {
+        int inactiveUsers = 0;
+        for (SessionAccumulator acc : accumulators.values()) {
+            Timestamp last = acc.getLastEntry();
+            if (last == null) {
+                if (countMissingLastEntryAsInactive) {
+                    inactiveUsers++;
+                }
+                continue;
+            }
+            if (last.toInstant().isBefore(cutoff)) {
+                inactiveUsers++;
+            }
+        }
+        return inactiveUsers;
+    }
+
+    private List<Map.Entry<String, SessionAccumulator>> selectTopSessionEntries(
+            Map<String, SessionAccumulator> accumulators,
+            int limit) {
+        PriorityQueue<Map.Entry<String, SessionAccumulator>> queue =
+                new PriorityQueue<>(Comparator.comparingInt(e -> e.getValue().getCount()));
+
+        for (Map.Entry<String, SessionAccumulator> entry : accumulators.entrySet()) {
+            if (queue.size() < limit) {
+                queue.offer(entry);
+            } else if (entry.getValue().getCount() > queue.peek().getValue().getCount()) {
+                queue.poll();
+                queue.offer(entry);
+            }
+        }
+
+        List<Map.Entry<String, SessionAccumulator>> topEntries = new ArrayList<>(queue);
+        topEntries.sort((a, b) -> Integer.compare(b.getValue().getCount(), a.getValue().getCount()));
+        return topEntries;
+    }
+
+    private List<LocalDate> buildLabelDates(LocalDate rangeStart, LocalDate rangeEnd) {
+        List<LocalDate> labelDates = new ArrayList<>();
+        LocalDate cursor = rangeStart;
+        if (!cursor.isAfter(rangeEnd)) {
+            while (!cursor.isAfter(rangeEnd)) {
+                labelDates.add(cursor);
+                cursor = cursor.plusDays(1);
+            }
+            return labelDates;
+        }
+        labelDates.add(rangeStart);
+        return labelDates;
+    }
+
+    private List<String> buildDateLabels(List<LocalDate> labelDates) {
+        List<String> labels = new ArrayList<>();
+        if (labelDates == null || labelDates.isEmpty()) {
+            return labels;
+        }
+        for (LocalDate date : labelDates) {
+            labels.add(date.format(DATE_FORMATTER));
+        }
+        return labels;
+    }
+
+    private List<Integer> buildZeroCounts(int size) {
+        if (size <= 0) {
+            return new ArrayList<>();
+        }
+        return new ArrayList<>(Collections.nCopies(size, Integer.valueOf(0)));
+    }
+
     public String buildSessionChartPayload(SessionOverview overview, LocalDate rangeStart, LocalDate rangeEnd) {
         JsonArrayBuilder labelBuilder = Json.createArrayBuilder();
         for (String label : overview.getTimeline().getLabels()) {
@@ -332,15 +394,15 @@ public class DashboardSessionService {
             }
 
             seriesBuilder.add(Json.createObjectBuilder()
-                    .add("sessionId", session.getSessionId())
-                    .add("counts", countsBuilder));
+                    .add(JSON_KEY_SESSION_ID, session.getSessionId())
+                    .add(JSON_KEY_COUNTS, countsBuilder));
         }
 
         JsonObject payload = Json.createObjectBuilder()
-                .add("labels", labelBuilder)
-                .add("series", seriesBuilder)
-                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
-                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+                .add(JSON_KEY_LABELS, labelBuilder)
+                .add(JSON_KEY_SERIES, seriesBuilder)
+                .add(JSON_KEY_RANGE_START, rangeStart.format(DATE_FORMATTER))
+                .add(JSON_KEY_RANGE_END, rangeEnd.format(DATE_FORMATTER))
                 .build();
 
         return payload.toString();
@@ -348,22 +410,22 @@ public class DashboardSessionService {
 
     public String buildEmptySessionPayload(LocalDate rangeStart, LocalDate rangeEnd) {
         JsonObject payload = Json.createObjectBuilder()
-                .add("labels", Json.createArrayBuilder())
-                .add("series", Json.createArrayBuilder())
-                .add("rangeStart", rangeStart.format(DATE_FORMATTER))
-                .add("rangeEnd", rangeEnd.format(DATE_FORMATTER))
+                .add(JSON_KEY_LABELS, Json.createArrayBuilder())
+                .add(JSON_KEY_SERIES, Json.createArrayBuilder())
+                .add(JSON_KEY_RANGE_START, rangeStart.format(DATE_FORMATTER))
+                .add(JSON_KEY_RANGE_END, rangeEnd.format(DATE_FORMATTER))
                 .build();
         return payload.toString();
     }
 
     private LocalDate readLocalDateColumn(ResultSet rs, String column) throws SQLException {
-        String columnName = column == null ? "" : column;
+        String columnName = column == null ? EMPTY : column;
         String dayText = readDbText(rs, column, 64);
         if (dayText != null && !dayText.isBlank()) {
             try {
                 return LocalDate.parse(dayText.trim(), DATE_FORMATTER);
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "LocalDate parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, LOG_LOCALDATE_PARSE_FALLBACK + columnName, ex);
             }
 
             try {
@@ -371,7 +433,7 @@ public class DashboardSessionService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (DateTimeParseException ex) {
-                log.log(Level.FINE, "Instant parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, LOG_INSTANT_PARSE_FALLBACK + columnName, ex);
             }
 
             try {
@@ -380,7 +442,7 @@ public class DashboardSessionService {
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate();
             } catch (IllegalArgumentException ex) {
-                log.log(Level.FINE, "Timestamp parse fallback for column " + columnName, ex);
+                log.log(Level.FINE, LOG_TIMESTAMP_PARSE_FALLBACK + columnName, ex);
             }
         }
 
@@ -389,11 +451,11 @@ public class DashboardSessionService {
 
     private String readDbText(ResultSet rs, String column, int maxLen) throws SQLException {
         if (column == null || column.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String raw = readRawDbText(rs, column);
         if (raw == null) {
-            return "";
+            return EMPTY;
         }
         return TextIoSanitizerUtil.validateCanonicalized(raw, maxLen);
     }
@@ -407,56 +469,15 @@ public class DashboardSessionService {
     }
 
     private String readRawDbText(ResultSet rs, String column) {
-        try {
-            Reader reader = rs.getCharacterStream(column);
-            if (reader != null) {
-                try (Reader closeable = reader) {
-                    return TextIoSanitizerUtil.validateCanonicalized(
-                            TextIoSanitizerUtil.readAtMostChars(closeable, 4096), 4096);
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB character stream for column " + column, ex);
-        } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to decode DB character stream for column " + column, ex);
-        }
-
-        try {
-            byte[] rawBytes = rs.getBytes(column);
-            if (rawBytes != null) {
-                return TextIoSanitizerUtil.validateCanonicalized(
-                        new String(rawBytes, StandardCharsets.UTF_8), 4096);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB bytes for column " + column, ex);
-        }
-
-        try {
-            String raw = rs.getString(column);
-            if (raw != null) {
-                return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB string for column " + column, ex);
-        }
-
-        try {
-            Object raw = rs.getObject(column);
-            if (raw == null) {
-                return null;
-            }
-            return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to read DB object text for column " + column, ex);
-            return null;
-        }
+        return TextIoSanitizerUtil.readRawDbText(rs, column, 4096, log);
     }
 
 
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "-";
+            return DASH;
         }
         return ts.toInstant().atZone(ZoneId.systemDefault()).format(ENTRY_FORMATTER);
     }
 }
+

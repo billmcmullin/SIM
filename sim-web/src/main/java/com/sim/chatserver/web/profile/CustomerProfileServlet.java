@@ -30,14 +30,16 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "CustomerProfileServlet", urlPatterns = {"/customer-profile"})
 public class CustomerProfileServlet extends HttpServlet {
 
     private static final Logger LOGGER = Logger.getLogger(CustomerProfileServlet.class.getCanonicalName());
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/customer_profile.html";
-    private static final String LOGIN_PATH = "/login";
+    private static final String LOGIN_PATH = com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN;
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private static final Pattern FRIENDLY_NAME_PATTERN = Pattern.compile("[\\p{L}\\p{N} .,'_-]{1,128}");
     private static final CustomerIdentityService IDENTITY_SERVICE = new CustomerIdentityService();
@@ -46,12 +48,12 @@ public class CustomerProfileServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             resp.sendRedirect(LOGIN_PATH);
             return;
         }
 
-        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, "sessionId", 256, true, true));
+        String sessionId = trimToNull(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, 256, true, true));
         String friendlyNameParam = trimToNull(ServletRequestParamUtil.firstParam(req, "friendlyName", 256, true, true));
 
         if (sessionId != null && !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
@@ -106,8 +108,8 @@ public class CustomerProfileServlet extends HttpServlet {
             String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
 
             String rendered = template
-                    .replace("${contextPath}", contextPath)
-                    .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+                    .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, contextPath)
+                    .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER))))
                     .replace("${sessionId}", escapeHtml(nullToDash(resolvedSessionId)))
                     .replace("${rawSessionId}", escapeHtml(nullToEmpty(sessionId)))
                     .replace("${friendlyName}", escapeHtml(nullToDash(friendlyName)))
@@ -123,7 +125,7 @@ public class CustomerProfileServlet extends HttpServlet {
                     // Add this placeholder to your HTML where you want the related sessions table body/rows
                     .replace("${linkedSessionsRows}", linkedSessionsHtml);
 
-            resp.setContentType("text/html;charset=UTF-8");
+            resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8);
             try (PrintWriter out = resp.getWriter()) {
                 out.print(rendered);
             }
@@ -133,12 +135,12 @@ public class CustomerProfileServlet extends HttpServlet {
         }
     
         } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
-            LOGGER.log(Level.WARNING, "Unhandled exception in doGet", e);
+            LOGGER.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    LOGGER.log(Level.FINE, "Failed sending fallback server error.", ioe);
+                    LOGGER.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -159,7 +161,7 @@ public class CustomerProfileServlet extends HttpServlet {
             String sid = nullToEmpty(link.getSessionId());
             String display = nullToEmpty(link.getDisplayNameSnapshot());
             String email = nullToEmpty(link.getContactEmailSnapshot());
-            String updated = link.getUpdatedAt() == null ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : formatOffsetDateTime(link.getUpdatedAt());
+            String updated = link.getUpdatedAt() == null ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : formatOffsetDateTime(link.getUpdatedAt());
 
             String profileHref = contextPath + "/customer-profile?sessionId=" + urlEncode(sid);
 
@@ -173,11 +175,11 @@ public class CustomerProfileServlet extends HttpServlet {
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(display.isBlank() ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : display));
+            row.append(escapeHtml(display.isBlank() ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : display));
             closeTag(row, "td");
 
             openTag(row, "td");
-            row.append(escapeHtml(email.isBlank() ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : email));
+            row.append(escapeHtml(email.isBlank() ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : email));
             closeTag(row, "td");
 
             openTag(row, "td");
@@ -238,7 +240,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String nullToDash(String value) {
         String v = trimToNull(value);
-        return v == null ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : v;
+        return v == null ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : v;
     }
 
     private String firstNonBlank(String... values) {
@@ -261,11 +263,11 @@ public class CustomerProfileServlet extends HttpServlet {
         for (int i = 0; i < input.length(); i++) {
             char ch = input.charAt(i);
             switch (ch) {
-                case '&' -> escaped.append("&amp;");
-                case '<' -> escaped.append("&lt;");
-                case '>' -> escaped.append("&gt;");
-                case '"' -> escaped.append("&quot;");
-                case '\'' -> escaped.append("&#39;");
+                case '&' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '"' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> escaped.append(ch);
             }
         }
@@ -278,7 +280,7 @@ public class CustomerProfileServlet extends HttpServlet {
 
     private String formatOffsetDateTime(OffsetDateTime value) {
         if (value == null) {
-            return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â";
+            return com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA;
         }
         return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
     }
@@ -286,4 +288,9 @@ public class CustomerProfileServlet extends HttpServlet {
     private CustomerIdentityService identityService() {
         return IDENTITY_SERVICE;
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

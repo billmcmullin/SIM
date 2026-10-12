@@ -10,18 +10,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardProgressMetrics;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.TermSummary;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.service.dashboard.DashboardProgressMetrics;
+import com.sim.chatserver.util.NamedDaemonThreadFactory;
 
 /**
  * Thread-safe dashboard cache registry with: - TTL caching -
@@ -30,63 +30,60 @@ import com.sim.chatserver.service.dashboard.DashboardMetricsService.DashboardPro
  */
 public class DashboardCacheRegistry {
 
-    private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getCanonicalName());
-    private static final AtomicInteger REFRESH_THREAD_INDEX = new AtomicInteger(1);
-    private static final ExecutorService CACHE_REFRESH_EXECUTOR = Executors.newFixedThreadPool(2, r -> {
-        Thread t = new Thread(r, "dashboard-cache-refresh-" + REFRESH_THREAD_INDEX.getAndIncrement());
-        t.setDaemon(true);
-        return t;
-    });
 
-    @SuppressWarnings("unused")
+    private static final Logger log = Logger.getLogger(DashboardCacheRegistry.class.getCanonicalName());
+    private static final String LOG_CACHE_REFRESH_SATURATED = "Dashboard cache refresh executor saturated; running task inline";
+    private static final String LOG_CACHE_REFRESH_LOADER_FAILED = "Dashboard cache refresh loader failed; using fallback value";
+    private static final String CACHE_REFRESH_THREAD_PREFIX = "dashboard-cache-refresh-";
+    private static final ExecutorService CACHE_REFRESH_EXECUTOR = createCacheRefreshExecutor();
+
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     // TTLs (shorter for day-sensitive metrics)
-    private static final long WIDGET_STATS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long TERM_SUMMARY_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
-    private static final long SESSION_OVERVIEW_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long CHAT_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long NEW_USER_PROGRESSION_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long TOP_TOPICS_TTL_MILLIS = Duration.ofSeconds(20).toMillis();
-    private static final long OTHER_PARASOFT_LATEST_TTL_MILLIS = Duration.ofSeconds(30).toMillis();
-    private static final long DASHBOARD_PROGRESS_TTL_MILLIS = Duration.ofSeconds(15).toMillis();
+    private static final long WIDGET_STATS_TTL_MILLIS = ttlMillis(20);
+    private static final long TERM_SUMMARY_TTL_MILLIS = ttlMillis(30);
+    private static final long SESSION_OVERVIEW_TTL_MILLIS = ttlMillis(20);
+    private static final long CHAT_PROGRESSION_TTL_MILLIS = ttlMillis(20);
+    private static final long NEW_USER_PROGRESSION_TTL_MILLIS = ttlMillis(20);
+    private static final long TOP_TOPICS_TTL_MILLIS = ttlMillis(20);
+    private static final long OTHER_PARASOFT_LATEST_TTL_MILLIS = ttlMillis(30);
+    private static final long DASHBOARD_PROGRESS_TTL_MILLIS = ttlMillis(15);
 
-    private static final long STALE_GRACE_MILLIS = Duration.ofSeconds(8).toMillis();
+    private static final long STALE_GRACE_MILLIS = ttlMillis(8);
 
     private static final int SESSION_OVERVIEW_CACHE_MAX = 64;
 
     // Single-value caches
     private final Object widgetLock = new Object();
-    private volatile Entry<List<WidgetStat>> widgetStatsCache;
+    private volatile DashboardCacheEntry<List<WidgetStat>> widgetStatsCache;
 
     private final Object termLock = new Object();
-    private volatile Entry<TermSummary> termSummaryCache;
+    private volatile DashboardCacheEntry<TermSummary> termSummaryCache;
 
     private final Object chatProgLock = new Object();
-    private volatile Entry<ProgressStat> chatProgressionCache;
+    private volatile DashboardCacheEntry<ProgressStat> chatProgressionCache;
 
     private final Object newUserProgLock = new Object();
-    private volatile Entry<ProgressStat> newUserProgressionCache;
+    private volatile DashboardCacheEntry<ProgressStat> newUserProgressionCache;
 
     private final Object topTopicsLock = new Object();
-    private volatile Entry<List<TopTopic>> topTopicsCache;
+    private volatile DashboardCacheEntry<List<TopTopic>> topTopicsCache;
 
     private final Object otherParasoftLock = new Object();
-    private volatile Entry<List<OtherParasoftEntry>> otherParasoftLatestCache;
+    private volatile DashboardCacheEntry<List<OtherParasoftEntry>> otherParasoftLatestCache;
 
     private final Object dashboardProgressLock = new Object();
-    private volatile Entry<DashboardProgressMetrics> dashboardProgressCache;
+    private volatile DashboardCacheEntry<DashboardProgressMetrics> dashboardProgressCache;
 
     // Keyed cache
     private final Object sessionLock = new Object();
-    private final LinkedHashMap<String, Entry<SessionOverview>> sessionOverviewCache
+    private final LinkedHashMap<String, DashboardCacheEntry<SessionOverview>> sessionOverviewCache
             = new LinkedHashMap<>(16, 0.75f, true);
 
     // Day keys so stale "today/yesterday" values are dropped when date rolls over.
@@ -202,7 +199,7 @@ public class DashboardCacheRegistry {
         SessionOverview valueToReturn = null;
         synchronized (sessionLock) {
             long now = nowMillis();
-            Entry<SessionOverview> current = sessionOverviewCache.get(key);
+            DashboardCacheEntry<SessionOverview> current = sessionOverviewCache.get(key);
             if (isFresh(current, now)) {
                 return current.value;
             }
@@ -216,7 +213,7 @@ public class DashboardCacheRegistry {
             } else {
                 SessionOverview fallback = current == null ? null : current.value;
                 SessionOverview fresh = safeLoad(loader, fallback);
-                Entry<SessionOverview> updated = Entry.of(
+                DashboardCacheEntry<SessionOverview> updated = DashboardCacheEntry.of(
                         fresh,
                         now + SESSION_OVERVIEW_TTL_MILLIS,
                         now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
@@ -270,8 +267,8 @@ public class DashboardCacheRegistry {
 
     private <T> T getSingle(
             Object lock,
-            Supplier<Entry<T>> getter,
-            java.util.function.Consumer<Entry<T>> setter,
+                Supplier<DashboardCacheEntry<T>> getter,
+                java.util.function.Consumer<DashboardCacheEntry<T>> setter,
             long ttlMillis,
             Supplier<T> loader
     ) {
@@ -279,7 +276,7 @@ public class DashboardCacheRegistry {
         T valueToReturn = null;
         synchronized (lock) {
             long now = nowMillis();
-            Entry<T> current = getter.get();
+            DashboardCacheEntry<T> current = getter.get();
 
             if (isFresh(current, now)) {
                 return current.value;
@@ -294,7 +291,7 @@ public class DashboardCacheRegistry {
             } else {
                 T fallback = current == null ? null : current.value;
                 T fresh = safeLoad(loader, fallback);
-                Entry<T> updated = Entry.of(
+                DashboardCacheEntry<T> updated = DashboardCacheEntry.of(
                         fresh,
                         now + ttlMillis,
                         now + ttlMillis + STALE_GRACE_MILLIS
@@ -312,22 +309,22 @@ public class DashboardCacheRegistry {
 
     private <T> void startAsyncSingleRefresh(
             Object lock,
-            Supplier<Entry<T>> getter,
-            java.util.function.Consumer<Entry<T>> setter,
+            Supplier<DashboardCacheEntry<T>> getter,
+            java.util.function.Consumer<DashboardCacheEntry<T>> setter,
             long ttlMillis,
             Supplier<T> loader
     ) {
         submitRefreshTask(() -> {
-            Entry<T> snapshot = getter.get();
+            DashboardCacheEntry<T> snapshot = getter.get();
             T fallback = snapshot == null ? null : snapshot.value;
             T fresh = safeLoad(loader, fallback);
             long now = nowMillis();
 
             synchronized (lock) {
-                Entry<T> current = getter.get();
-                Entry<T> target;
+                DashboardCacheEntry<T> current = getter.get();
+                DashboardCacheEntry<T> target;
                 if (current == null) {
-                    target = Entry.of(
+                    target = DashboardCacheEntry.of(
                             fresh,
                             now + ttlMillis,
                             now + ttlMillis + STALE_GRACE_MILLIS
@@ -346,17 +343,17 @@ public class DashboardCacheRegistry {
 
     private void startAsyncSessionRefresh(String key, Supplier<SessionOverview> loader) {
         submitRefreshTask(() -> {
-            Entry<SessionOverview> snapshot = currentSessionOverviewEntry(key);
+            DashboardCacheEntry<SessionOverview> snapshot = currentSessionOverviewEntry(key);
 
             SessionOverview fallback = snapshot == null ? null : snapshot.value;
             SessionOverview fresh = safeLoad(loader, fallback);
             long now = nowMillis();
 
             synchronized (sessionLock) {
-                Entry<SessionOverview> current = sessionOverviewCache.get(key);
-                Entry<SessionOverview> target;
+                DashboardCacheEntry<SessionOverview> current = sessionOverviewCache.get(key);
+                DashboardCacheEntry<SessionOverview> target;
                 if (current == null) {
-                    target = Entry.of(
+                    target = DashboardCacheEntry.of(
                             fresh,
                             now + SESSION_OVERVIEW_TTL_MILLIS,
                             now + SESSION_OVERVIEW_TTL_MILLIS + STALE_GRACE_MILLIS
@@ -374,7 +371,7 @@ public class DashboardCacheRegistry {
         });
     }
 
-    private Entry<SessionOverview> currentSessionOverviewEntry(String key) {
+    private DashboardCacheEntry<SessionOverview> currentSessionOverviewEntry(String key) {
         synchronized (sessionLock) {
             return sessionOverviewCache.get(key);
         }
@@ -384,16 +381,16 @@ public class DashboardCacheRegistry {
         try {
             CACHE_REFRESH_EXECUTOR.execute(task);
         } catch (RejectedExecutionException ex) {
-            log.log(Level.FINE, "Dashboard cache refresh executor saturated; running task inline", ex);
+            log.log(Level.FINE, LOG_CACHE_REFRESH_SATURATED, ex);
             task.run();
         }
     }
 
-    private static boolean isFresh(Entry<?> e, long now) {
+    private static boolean isFresh(DashboardCacheEntry<?> e, long now) {
         return e != null && now < e.expiresAt;
     }
 
-    private static boolean isWithinGrace(Entry<?> e, long now) {
+    private static boolean isWithinGrace(DashboardCacheEntry<?> e, long now) {
         return e != null && now >= e.expiresAt && now < e.staleUntil;
     }
 
@@ -409,7 +406,7 @@ public class DashboardCacheRegistry {
                         return value != null ? value : fallback;
                     }
                     Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-                    log.log(Level.WARNING, "Dashboard cache refresh loader failed; using fallback value", cause);
+                    log.log(Level.WARNING, LOG_CACHE_REFRESH_LOADER_FAILED, cause);
                     return fallback;
                 })
                 .join();
@@ -427,22 +424,16 @@ public class DashboardCacheRegistry {
         return LocalDate.now(ZoneId.systemDefault()).toString();
     }
 
-    static final class Entry<T> {
-
-        volatile T value;
-        volatile long expiresAt;
-        volatile long staleUntil;
-        volatile boolean refreshing;
-
-        Entry(T value, long expiresAt, long staleUntil) {
-            this.value = value;
-            this.expiresAt = expiresAt;
-            this.staleUntil = staleUntil;
-            this.refreshing = false;
-        }
-
-        private static <T> Entry<T> of(T value, long expiresAt, long staleUntil) {
-            return new Entry<>(value, expiresAt, staleUntil);
-        }
+    private static ExecutorService createCacheRefreshExecutor() {
+        return Executors.newFixedThreadPool(2, NamedDaemonThreadFactory.of(CACHE_REFRESH_THREAD_PREFIX));
     }
+
+    private static long ttlMillis(long seconds) {
+        return Duration.ofSeconds(seconds).toMillis();
+    }
+
+
+
 }
+
+

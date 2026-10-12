@@ -2,13 +2,13 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
+import com.sim.chatserver.model.SessionStat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Parasoft Jtest UTA: Test class for SessionStat
  *
- * @see com.sim.chatserver.model.DashboardViewModels.SessionStat
+ * @see com.sim.chatserver.model.SessionStat
  * @author bmcmullin
  */
 public class DashboardViewModels_SessionStatTest
@@ -17,7 +17,7 @@ public class DashboardViewModels_SessionStatTest
     /**
      * Parasoft Jtest UTA: Test for getCount()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionStat#getCount()
+     * @see com.sim.chatserver.model.SessionStat#getCount()
      * @author bmcmullin
      */
     @Test
@@ -43,7 +43,7 @@ public class DashboardViewModels_SessionStatTest
     /**
      * Parasoft Jtest UTA: Test for getLastEntry()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionStat#getLastEntry()
+     * @see com.sim.chatserver.model.SessionStat#getLastEntry()
      * @author bmcmullin
      */
     @Test
@@ -69,7 +69,7 @@ public class DashboardViewModels_SessionStatTest
     /**
      * Parasoft Jtest UTA: Test for getSessionId()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionStat#getSessionId()
+     * @see com.sim.chatserver.model.SessionStat#getSessionId()
      * @author bmcmullin
      */
     @Test
@@ -89,3 +89,4 @@ public class DashboardViewModels_SessionStatTest
 
     }
 }
+

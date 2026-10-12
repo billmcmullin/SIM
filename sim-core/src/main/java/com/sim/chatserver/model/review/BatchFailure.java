@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -13,6 +15,48 @@ import jakarta.json.JsonObject;
  * Immutable model describing one failed map batch.
  */
 public final class BatchFailure {
+
+    private static final String EMPTY = "";
+    private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
+    private static final String FIELD_BATCH_INDEX = "batchIndex";
+    private static final String FIELD_TOTAL_BATCHES = CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_BATCH_ID = "batchId";
+    private static final String FIELD_REASON_CODE = "reasonCode";
+    private static final String FIELD_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String FIELD_HTTP_STATUS = "httpStatus";
+    private static final String FIELD_RETRY_ATTEMPTED = "retryAttempted";
+    private static final String FIELD_RETRY_SUCCEEDED = "retrySucceeded";
+    private static final String FIELD_CONTEXT_TOO_LARGE_DETECTED = "contextTooLargeDetected";
+    private static final String FIELD_LATENCY_MS = CommonLiteralConstants.FIELD_LATENCY_MS;
+    private static final String FIELD_BATCH_CHAT_IDS = "batchChatIds";
+    private static final String ERR_BATCH_INDEX_GT_TOTAL = "batchIndex cannot be greater than totalBatches";
+    private static final String BATCH_ID_PREFIX = "batch-";
+    private static final String REASON_CONTEXT_TOO_LARGE = "context_too_large";
+    private static final String REASON_UPSTREAM_4XX = "upstream_4xx";
+    private static final String REASON_UPSTREAM_5XX = "upstream_5xx";
+    private static final String REASON_TIMEOUT = "timeout";
+    private static final String REASON_NETWORK_ERROR = "network_error";
+    private static final String REASON_PARSE_ERROR = "parse_error";
+    private static final String REASON_TEXT_CONTEXT_LIMIT = "token/context limit";
+    private static final String REASON_TEXT_UPSTREAM_CLIENT = "upstream client error";
+    private static final String REASON_TEXT_UPSTREAM_SERVER = "upstream server error";
+    private static final String REASON_TEXT_TIMEOUT = "batch processing timeout";
+    private static final String REASON_TEXT_NETWORK = "network error";
+    private static final String REASON_TEXT_PARSE = "malformed content";
+    private static final String REASON_TEXT_DEFAULT = "batch processing failure";
+    private static final String TOSTRING_PREFIX = "BatchFailure{";
+    private static final String TOSTRING_REQUEST_ID_PREFIX = CommonLiteralConstants.TOSTRING_REQUEST_ID_PREFIX;
+    private static final String TOSTRING_BATCH_INDEX_PREFIX = ", batchIndex=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_BATCH_ID_PREFIX = ", batchId='";
+    private static final String TOSTRING_REASON_CODE_PREFIX = ", reasonCode='";
+    private static final String TOSTRING_HTTP_STATUS_PREFIX = ", httpStatus=";
+    private static final String TOSTRING_RETRY_ATTEMPTED_PREFIX = ", retryAttempted=";
+    private static final String TOSTRING_RETRY_SUCCEEDED_PREFIX = ", retrySucceeded=";
+    private static final String TOSTRING_CONTEXT_TOO_LARGE_PREFIX = ", contextTooLargeDetected=";
+    private static final String TOSTRING_LATENCY_PREFIX = ", latencyMs=";
+    private static final String ERR_REQUIRED_SUFFIX = CommonLiteralConstants.ERR_REQUIRED_SUFFIX;
+    private static final String ERR_MUST_BE_POSITIVE_SUFFIX = " must be > 0";
 
     private final String requestId;
     private final int batchIndex;
@@ -31,18 +75,18 @@ public final class BatchFailure {
 
     private final List<String> batchChatIds;
 
-    private BatchFailure(Builder b) {
-        this.requestId = requireNonBlank(b.requestId, "requestId");
-        this.batchIndex = requirePositive(b.batchIndex, "batchIndex");
-        this.totalBatches = requirePositive(b.totalBatches, "totalBatches");
+    BatchFailure(BatchFailureBuilder b) {
+        this.requestId = requireNonBlank(b.requestId, FIELD_REQUEST_ID);
+        this.batchIndex = requirePositive(b.batchIndex, FIELD_BATCH_INDEX);
+        this.totalBatches = requirePositive(b.totalBatches, FIELD_TOTAL_BATCHES);
         if (this.batchIndex > this.totalBatches) {
-            throw new IllegalArgumentException("batchIndex cannot be greater than totalBatches");
+            throw new IllegalArgumentException(ERR_BATCH_INDEX_GT_TOTAL);
         }
 
-        this.batchId = defaultIfBlank(b.batchId, "batch-" + this.batchIndex);
+        this.batchId = defaultIfBlank(b.batchId, BATCH_ID_PREFIX + this.batchIndex);
 
-        this.reasonCode = normalizeReasonCode(requireNonBlank(b.reasonCode, "reasonCode"));
-        this.message = defaultIfNull(b.message, "");
+        this.reasonCode = normalizeReasonCode(requireNonBlank(b.reasonCode, FIELD_REASON_CODE));
+        this.message = defaultIfNull(b.message, EMPTY);
 
         this.httpStatus = Math.max(0, b.httpStatus);
         this.retryAttempted = b.retryAttempted;
@@ -53,8 +97,8 @@ public final class BatchFailure {
         this.batchChatIds = immutableStringList(b.batchChatIds);
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static BatchFailureBuilder builder() {
+        return new BatchFailureBuilder();
     }
 
     static BatchFailure of(
@@ -124,152 +168,66 @@ public final class BatchFailure {
     public String reasonForCoverage() {
         // Human-friendly reason for "Coverage and Carry-Forward" section.
         return switch (reasonCode) {
-            case "context_too_large" ->
-                "token/context limit";
-            case "upstream_4xx" ->
-                "upstream client error";
-            case "upstream_5xx" ->
-                "upstream server error";
-            case "timeout" ->
-                "batch processing timeout";
-            case "network_error" ->
-                "network error";
-            case "parse_error" ->
-                "malformed content";
+            case REASON_CONTEXT_TOO_LARGE ->
+                REASON_TEXT_CONTEXT_LIMIT;
+            case REASON_UPSTREAM_4XX ->
+                REASON_TEXT_UPSTREAM_CLIENT;
+            case REASON_UPSTREAM_5XX ->
+                REASON_TEXT_UPSTREAM_SERVER;
+            case REASON_TIMEOUT ->
+                REASON_TEXT_TIMEOUT;
+            case REASON_NETWORK_ERROR ->
+                REASON_TEXT_NETWORK;
+            case REASON_PARSE_ERROR ->
+                REASON_TEXT_PARSE;
             default ->
-                "batch processing failure";
+                REASON_TEXT_DEFAULT;
         };
     }
 
     JsonObject toJson() {
         return Json.createObjectBuilder()
-                .add("requestId", requestId)
-                .add("batchIndex", batchIndex)
-                .add("totalBatches", totalBatches)
-                .add("batchId", batchId)
-                .add("reasonCode", reasonCode)
-                .add("message", message)
-                .add("httpStatus", httpStatus)
-                .add("retryAttempted", retryAttempted)
-                .add("retrySucceeded", retrySucceeded)
-                .add("contextTooLargeDetected", contextTooLargeDetected)
-                .add("latencyMs", latencyMs)
-                .add("batchChatIds", toJsonArray(batchChatIds))
+            .add(FIELD_REQUEST_ID, requestId)
+            .add(FIELD_BATCH_INDEX, batchIndex)
+            .add(FIELD_TOTAL_BATCHES, totalBatches)
+            .add(FIELD_BATCH_ID, batchId)
+            .add(FIELD_REASON_CODE, reasonCode)
+            .add(FIELD_MESSAGE, message)
+            .add(FIELD_HTTP_STATUS, httpStatus)
+            .add(FIELD_RETRY_ATTEMPTED, retryAttempted)
+            .add(FIELD_RETRY_SUCCEEDED, retrySucceeded)
+            .add(FIELD_CONTEXT_TOO_LARGE_DETECTED, contextTooLargeDetected)
+            .add(FIELD_LATENCY_MS, latencyMs)
+            .add(FIELD_BATCH_CHAT_IDS, toJsonArray(batchChatIds))
                 .build();
     }
 
     @Override
     public String toString() {
-        return "BatchFailure{"
-                + "requestId='" + requestId + '\''
-                + ", batchIndex=" + batchIndex
-                + ", totalBatches=" + totalBatches
-                + ", batchId='" + batchId + '\''
-                + ", reasonCode='" + reasonCode + '\''
-                + ", httpStatus=" + httpStatus
-                + ", retryAttempted=" + retryAttempted
-                + ", retrySucceeded=" + retrySucceeded
-                + ", contextTooLargeDetected=" + contextTooLargeDetected
-                + ", latencyMs=" + latencyMs
+        return TOSTRING_PREFIX
+            + TOSTRING_REQUEST_ID_PREFIX + requestId + '\''
+            + TOSTRING_BATCH_INDEX_PREFIX + batchIndex
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_BATCH_ID_PREFIX + batchId + '\''
+            + TOSTRING_REASON_CODE_PREFIX + reasonCode + '\''
+            + TOSTRING_HTTP_STATUS_PREFIX + httpStatus
+            + TOSTRING_RETRY_ATTEMPTED_PREFIX + retryAttempted
+            + TOSTRING_RETRY_SUCCEEDED_PREFIX + retrySucceeded
+            + TOSTRING_CONTEXT_TOO_LARGE_PREFIX + contextTooLargeDetected
+            + TOSTRING_LATENCY_PREFIX + latencyMs
                 + '}';
-    }
-
-    public static final class Builder {
-
-        private String requestId;
-        private int batchIndex;
-        private int totalBatches;
-        private String batchId;
-
-        private String reasonCode;
-        private String message;
-
-        private int httpStatus = 0;
-        private boolean retryAttempted;
-        private boolean retrySucceeded;
-        private boolean contextTooLargeDetected;
-
-        private long latencyMs = 0L;
-        private List<String> batchChatIds = new ArrayList<>();
-
-        private Builder() {
-        }
-
-        public Builder requestId(String requestId) {
-            this.requestId = requestId;
-            return this;
-        }
-
-        public Builder batchIndex(int batchIndex) {
-            this.batchIndex = batchIndex;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder batchId(String batchId) {
-            this.batchId = batchId;
-            return this;
-        }
-
-        public Builder reasonCode(String reasonCode) {
-            this.reasonCode = reasonCode;
-            return this;
-        }
-
-        public Builder message(String message) {
-            this.message = message;
-            return this;
-        }
-
-        public Builder httpStatus(int httpStatus) {
-            this.httpStatus = httpStatus;
-            return this;
-        }
-
-        public Builder retryAttempted(boolean retryAttempted) {
-            this.retryAttempted = retryAttempted;
-            return this;
-        }
-
-        public Builder retrySucceeded(boolean retrySucceeded) {
-            this.retrySucceeded = retrySucceeded;
-            return this;
-        }
-
-        public Builder contextTooLargeDetected(boolean contextTooLargeDetected) {
-            this.contextTooLargeDetected = contextTooLargeDetected;
-            return this;
-        }
-
-        public Builder latencyMs(long latencyMs) {
-            this.latencyMs = latencyMs;
-            return this;
-        }
-
-        public Builder batchChatIds(List<String> batchChatIds) {
-            this.batchChatIds = batchChatIds == null ? new ArrayList<>() : batchChatIds;
-            return this;
-        }
-
-        public BatchFailure build() {
-            return new BatchFailure(this);
-        }
     }
 
     private static String requireNonBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new IllegalArgumentException(field + ERR_REQUIRED_SUFFIX);
         }
         return value;
     }
 
     private static int requirePositive(int value, String field) {
         if (value <= 0) {
-            throw new IllegalArgumentException(field + " must be > 0");
+            throw new IllegalArgumentException(field + ERR_MUST_BE_POSITIVE_SUFFIX);
         }
         return value;
     }
@@ -312,4 +270,6 @@ public final class BatchFailure {
         }
         return b.build();
     }
+
 }
+

@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.sessions;
 
+import com.sim.chatserver.util.SessionLabel;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +16,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
+import com.sim.chatserver.service.dashboard.SessionAccumulatorData;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
@@ -33,6 +36,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardSessionNamesJsonServlet", urlPatterns = {"/dashboard/session-names.json"})
 public class DashboardSessionNamesJsonServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionNamesJsonServlet.class.getCanonicalName());
@@ -46,21 +52,21 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         try {
         String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
-                    Json.createObjectBuilder().add("status", "unauthorized").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.TEXT_UNAUTHORIZED).build());
             return;
         }
 
         String query = ServletRequestParamUtil.firstParam(req, "q", 256, true, true);
         if (query == null || query.isBlank()) {
-            query = ServletRequestParamUtil.firstParam(req, "search", 256, true, true);
+            query = ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_SEARCH, 256, true, true);
         }
 
-        boolean labeledOnly = "true".equalsIgnoreCase(ServletRequestParamUtil.firstParam(req, "labeledOnly", 16, true, true));
+        boolean labeledOnly = com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equalsIgnoreCase(ServletRequestParamUtil.firstParam(req, "labeledOnly", 16, true, true));
 
-        int limit = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, "limit", 32, true, true), DEFAULT_LIMIT);
-        int page = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, "page", 32, true, true), 1);
+        int limit = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_LIMIT, 32, true, true), DEFAULT_LIMIT);
+        int page = parsePositiveInteger(ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_PAGE, 32, true, true), 1);
         int offset = parseNonNegativeInteger(ServletRequestParamUtil.firstParam(req, "offset", 32, true, true), -1);
 
         if (offset >= 0) {
@@ -75,14 +81,14 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         }
 
         try {
-            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+            Map<String, SessionAccumulatorData> accumulators =
                 QUERY_SERVICE.collectAccumulators(widgets, query);
 
-            Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
+            Map<String, SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
 
-            List<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>> sorted = new ArrayList<>(accumulators.entrySet());
+            List<Map.Entry<String, SessionAccumulatorData>> sorted = new ArrayList<>(accumulators.entrySet());
             sorted.sort(
-                Comparator.<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>>comparingInt(e -> e.getValue().count).reversed()
+                Comparator.<Map.Entry<String, SessionAccumulatorData>>comparingInt(e -> e.getValue().count).reversed()
                             .thenComparing(Map.Entry::getKey));
 
             if (labeledOnly) {
@@ -90,7 +96,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
                     if (entry == null || entry.getKey() == null) {
                         return true;
                     }
-                    SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
+                    SessionLabel label = labels.get(entry.getKey());
                     if (label == null) {
                         return true;
                     }
@@ -110,34 +116,34 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             int start = Math.max(0, (page - 1) * limit);
             int end = Math.min(start + limit, totalSessions);
 
-            List<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>> pageSlice = sorted.subList(start, end);
+            List<Map.Entry<String, SessionAccumulatorData>> pageSlice = sorted.subList(start, end);
 
             JsonArrayBuilder sessions = Json.createArrayBuilder();
-            for (Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> entry : pageSlice) {
-                DashboardSessionAggregationQueryService.SessionAccumulatorData acc = entry.getValue();
-                SessionLabelStore.SessionLabel label = labels.get(entry.getKey());
+            for (Map.Entry<String, SessionAccumulatorData> entry : pageSlice) {
+                SessionAccumulatorData acc = entry.getValue();
+                SessionLabel label = labels.get(entry.getKey());
                 String displayLabel = SessionLabelStore.resolveDisplayLabel(entry.getKey(), label);
 
                 JsonObjectBuilder builder = Json.createObjectBuilder()
-                        .add("sessionId", entry.getKey())
-                        .add("displayLabel", displayLabel)
-                        .add("count", acc.count)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, entry.getKey())
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_LABEL, displayLabel)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, acc.count)
                     .add("lastEntry", formatTimestamp(acc.lastEntry))
                     .add("reviewUrl", buildReviewUrl(contextPath, entry.getKey()))
-                        .add("displayName", label == null ? "" : nullSafe(label.getDisplayName()))
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_NAME, label == null ? "" : nullSafe(label.getDisplayName()))
                         .add("email", label == null ? "" : nullSafe(label.getEmail()));
                 sessions.add(builder);
             }
 
             JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("labeledOnly", labeledOnly)
-                    .add("total", totalSessions)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL, totalSessions)
                     .add("totalSessions", totalSessions)
-                    .add("page", page)
-                    .add("limit", limit)
+                    .add(CommonLiteralConstants.PARAM_PAGE, page)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_LIMIT, limit)
                     .add("totalPages", totalPages)
-                    .add("sessions", sessions)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSIONS, sessions)
                     .build();
 
             writeJson(resp, HttpServletResponse.SC_OK, payload);
@@ -145,21 +151,21 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to collect session catalog", e);
             JsonObject error = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to load session catalog")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to load session catalog")
                     .build();
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, error);
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -175,7 +181,7 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
     }
 
     private String formatTimestamp(Timestamp value) {
-        return value == null ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" : ISO_INSTANT_FMT.format(value.toInstant());
+        return value == null ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA : ISO_INSTANT_FMT.format(value.toInstant());
     }
 
     private int parsePositiveInteger(String value, int fallback) {
@@ -211,12 +217,17 @@ public class DashboardSessionNamesJsonServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to write session-names JSON response", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

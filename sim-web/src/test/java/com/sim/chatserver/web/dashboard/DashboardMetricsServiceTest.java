@@ -32,10 +32,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.TermDayCount;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.TermDayCount;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.web.dashboard.DashboardProgressMetrics;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
@@ -152,12 +153,12 @@ class DashboardMetricsServiceTest {
             dbUtil.when(() -> DashboardDbUtil.tableExistsCached(any(Connection.class), anyString(), any(Map.class)))
                     .thenReturn(true);
 
-            DashboardLocalViewModels.ProgressStat chatProgression = service.buildChatProgression(widgets);
+            ProgressStat chatProgression = service.buildChatProgression(widgets);
             assertEquals(5, chatProgression.getToday());
             assertEquals(3, chatProgression.getYesterday());
             assertEquals(2, chatProgression.getDelta());
 
-            DashboardMetricsService.DashboardProgressMetrics metrics = service.buildDashboardProgressMetrics(widgets);
+            DashboardProgressMetrics metrics = service.buildDashboardProgressMetrics(widgets);
             assertEquals(5, metrics.getChatsToday());
             assertEquals(3, metrics.getChatsYesterday());
             assertEquals(1, metrics.getTermsToday());
@@ -176,12 +177,12 @@ class DashboardMetricsServiceTest {
 
         DashboardMetricsService service = DashboardMetricsService.create(dsHolder, mock(TermsStore.class), 10);
 
-        DashboardLocalViewModels.ProgressStat progression = service.buildChatProgression(List.of(widget("w1", "W1")));
+        ProgressStat progression = service.buildChatProgression(List.of(widget("w1", "W1")));
         assertEquals(0, progression.getToday());
         assertEquals(0, progression.getYesterday());
         assertEquals(0, progression.getDelta());
 
-        DashboardMetricsService.DashboardProgressMetrics metrics = service.buildDashboardProgressMetrics(List.of(widget("w1", "W1")));
+        DashboardProgressMetrics metrics = service.buildDashboardProgressMetrics(List.of(widget("w1", "W1")));
         assertEquals(0, metrics.getChatsToday());
         assertEquals(0, metrics.getChatsYesterday());
         assertEquals(0, metrics.getTermsToday());
@@ -215,13 +216,13 @@ class DashboardMetricsServiceTest {
             dbUtil.when(() -> DashboardDbUtil.tableExistsCached(any(Connection.class), anyString(), any(Map.class)))
                     .thenReturn(true);
 
-            DashboardLocalViewModels.ProgressStat progression = service.buildNewUserProgression(List.of(widget("w1", "W1")));
+            ProgressStat progression = service.buildNewUserProgression(List.of(widget("w1", "W1")));
             assertEquals(1, progression.getToday());
             assertEquals(1, progression.getYesterday());
         }
 
         when(ds.getConnection()).thenThrow(new SQLException("db down"));
-        DashboardLocalViewModels.ProgressStat fallback = service.buildNewUserProgression(List.of(widget("w1", "W1")));
+        ProgressStat fallback = service.buildNewUserProgression(List.of(widget("w1", "W1")));
         assertEquals(0, fallback.getToday());
         assertEquals(0, fallback.getYesterday());
     }
@@ -428,3 +429,5 @@ class DashboardMetricsServiceTest {
         Mockito.reset(mocks);
     }
 }
+
+

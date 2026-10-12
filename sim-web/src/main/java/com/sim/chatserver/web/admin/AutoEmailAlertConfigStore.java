@@ -21,6 +21,47 @@ import java.util.logging.Logger;
 public final class AutoEmailAlertConfigStore {
 
     private static final Logger log = Logger.getLogger(AutoEmailAlertConfigStore.class.getCanonicalName());
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String EMPTY = "";
+    private static final String COL_ID = "id";
+    private static final String COL_HEALTH_ENABLED = "health_enabled";
+    private static final String COL_HEALTH_CHECK_INTERVAL_SECONDS = "health_check_interval_seconds";
+    private static final String COL_HEALTH_OFFLINE_DELAY_SECONDS = "health_offline_delay_seconds";
+    private static final String COL_HEALTH_RESEND_INTERVAL_SECONDS = "health_resend_interval_seconds";
+    private static final String COL_HEALTH_RECIPIENTS = "health_recipients";
+    private static final String COL_HEALTH_SUBJECT = "health_subject";
+    private static final String COL_HEALTH_MESSAGE = "health_message";
+    private static final String COL_HEALTH_RUNBOOK_URL = "health_runbook_url";
+    private static final String COL_HEALTH_RUNBOOK_ATTACHMENT_PATH = "health_runbook_attachment_path";
+    private static final String COL_TERM_ENABLED = "term_enabled";
+    private static final String COL_TERM_CHECK_INTERVAL_SECONDS = "term_check_interval_seconds";
+    private static final String COL_TERM_NAME = "term_name";
+    private static final String COL_TERM_RECIPIENTS = "term_recipients";
+    private static final String COL_TERM_SUBJECT = "term_subject";
+    private static final String COL_TERM_MESSAGE = "term_message";
+    private static final String COL_HEALTH_LAST_STATUS = "health_last_status";
+    private static final String COL_HEALTH_LAST_CHECKED_AT = "health_last_checked_at";
+    private static final String COL_HEALTH_OFFLINE_SINCE = "health_offline_since";
+    private static final String COL_HEALTH_LAST_ALERT_AT = "health_last_alert_at";
+    private static final String COL_HEALTH_LAST_RESTART_ATTEMPT_AT = "health_last_restart_attempt_at";
+    private static final String COL_TERM_LAST_CHECKED_AT = "term_last_checked_at";
+    private static final String COL_TERM_LAST_COUNT = "term_last_count";
+    private static final String COL_TERM_LAST_ALERT_AT = "term_last_alert_at";
+    private static final String COL_UPDATED_BY = "updated_by";
+    private static final String COL_UPDATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_UPDATED_AT;
+    private static final String RE_LONG = "^-?\\d{1,18}$";
+    private static final String RE_INT = "^-?\\d{1,10}$";
+    private static final String BOOL_TRUE = com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE;
+    private static final String BOOL_T = "t";
+    private static final String BOOL_ONE = "1";
+    private static final String BOOL_YES = com.sim.chatserver.util.CommonLiteralConstants.VALUE_YES;
+    private static final String BOOL_Y = "y";
+    private static final String LOG_READ_INT_PREFIX = "Unable to read integer column ";
+    private static final String LOG_READ_LONG_PREFIX = "Unable to read long column ";
+    private static final String LOG_PARSE_INT_PREFIX = "Unable to parse integer column ";
+    private static final String LOG_TS_FALLBACK_PREFIX = "Falling back to SQL timestamp parse for column ";
+    private static final String LOG_READ_TS_PREFIX = "Unable to read timestamp column ";
+    private static final String LOG_READ_TEXT_PREFIX = "Unable to read text column ";
 
     static final int SINGLETON_ID = 1;
 
@@ -29,12 +70,12 @@ public final class AutoEmailAlertConfigStore {
 
     private final DataSource dataSource;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -305,37 +346,37 @@ public final class AutoEmailAlertConfigStore {
 
     private AutoEmailAlertConfig mapRow(ResultSet rs) throws SQLException {
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
-        cfg.setId(readNonNegativeInt(rs, "id"));
+        cfg.setId(readNonNegativeInt(rs, COL_ID));
 
-        cfg.setHealthEnabled(readSafeBoolean(rs, "health_enabled", false));
-        cfg.setHealthCheckIntervalSeconds(readIntervalSeconds(rs, "health_check_interval_seconds", 300));
-        cfg.setHealthOfflineDelaySeconds(readDelaySeconds(rs, "health_offline_delay_seconds", 300));
-        cfg.setHealthResendIntervalSeconds(readIntervalSeconds(rs, "health_resend_interval_seconds", 1800));
-        cfg.setHealthRecipients(readSafeText(rs, "health_recipients", 4000));
-        cfg.setHealthSubject(readSafeText(rs, "health_subject", 500));
-        cfg.setHealthMessage(readSafeText(rs, "health_message", 8000));
-        cfg.setHealthRunbookUrl(readSafeText(rs, "health_runbook_url", 2000));
-        cfg.setHealthRunbookAttachmentPath(readSafeText(rs, "health_runbook_attachment_path", 1024));
+        cfg.setHealthEnabled(readSafeBoolean(rs, COL_HEALTH_ENABLED, false));
+        cfg.setHealthCheckIntervalSeconds(readIntervalSeconds(rs, COL_HEALTH_CHECK_INTERVAL_SECONDS, 300));
+        cfg.setHealthOfflineDelaySeconds(readDelaySeconds(rs, COL_HEALTH_OFFLINE_DELAY_SECONDS, 300));
+        cfg.setHealthResendIntervalSeconds(readIntervalSeconds(rs, COL_HEALTH_RESEND_INTERVAL_SECONDS, 1800));
+        cfg.setHealthRecipients(readSafeText(rs, COL_HEALTH_RECIPIENTS, 4000));
+        cfg.setHealthSubject(readSafeText(rs, COL_HEALTH_SUBJECT, 500));
+        cfg.setHealthMessage(readSafeText(rs, COL_HEALTH_MESSAGE, 8000));
+        cfg.setHealthRunbookUrl(readSafeText(rs, COL_HEALTH_RUNBOOK_URL, 2000));
+        cfg.setHealthRunbookAttachmentPath(readSafeText(rs, COL_HEALTH_RUNBOOK_ATTACHMENT_PATH, 1024));
 
-        cfg.setTermEnabled(readSafeBoolean(rs, "term_enabled", false));
-        cfg.setTermCheckIntervalSeconds(readIntervalSeconds(rs, "term_check_interval_seconds", 600));
-        cfg.setTermName(readSafeText(rs, "term_name", 255));
-        cfg.setTermRecipients(readSafeText(rs, "term_recipients", 4000));
-        cfg.setTermSubject(readSafeText(rs, "term_subject", 500));
-        cfg.setTermMessage(readSafeText(rs, "term_message", 8000));
+        cfg.setTermEnabled(readSafeBoolean(rs, COL_TERM_ENABLED, false));
+        cfg.setTermCheckIntervalSeconds(readIntervalSeconds(rs, COL_TERM_CHECK_INTERVAL_SECONDS, 600));
+        cfg.setTermName(readSafeText(rs, COL_TERM_NAME, 255));
+        cfg.setTermRecipients(readSafeText(rs, COL_TERM_RECIPIENTS, 4000));
+        cfg.setTermSubject(readSafeText(rs, COL_TERM_SUBJECT, 500));
+        cfg.setTermMessage(readSafeText(rs, COL_TERM_MESSAGE, 8000));
 
-        cfg.setHealthLastStatus(readSafeText(rs, "health_last_status", 32));
-        cfg.setHealthLastCheckedAt(readSafeInstant(rs, "health_last_checked_at"));
-        cfg.setHealthOfflineSince(readSafeInstant(rs, "health_offline_since"));
-        cfg.setHealthLastAlertAt(readSafeInstant(rs, "health_last_alert_at"));
-        cfg.setHealthLastRestartAttemptAt(readSafeInstant(rs, "health_last_restart_attempt_at"));
+        cfg.setHealthLastStatus(readSafeText(rs, COL_HEALTH_LAST_STATUS, 32));
+        cfg.setHealthLastCheckedAt(readSafeInstant(rs, COL_HEALTH_LAST_CHECKED_AT));
+        cfg.setHealthOfflineSince(readSafeInstant(rs, COL_HEALTH_OFFLINE_SINCE));
+        cfg.setHealthLastAlertAt(readSafeInstant(rs, COL_HEALTH_LAST_ALERT_AT));
+        cfg.setHealthLastRestartAttemptAt(readSafeInstant(rs, COL_HEALTH_LAST_RESTART_ATTEMPT_AT));
 
-        cfg.setTermLastCheckedAt(readSafeInstant(rs, "term_last_checked_at"));
-        cfg.setTermLastCount(readNonNegativeLong(rs, "term_last_count"));
-        cfg.setTermLastAlertAt(readSafeInstant(rs, "term_last_alert_at"));
+        cfg.setTermLastCheckedAt(readSafeInstant(rs, COL_TERM_LAST_CHECKED_AT));
+        cfg.setTermLastCount(readNonNegativeLong(rs, COL_TERM_LAST_COUNT));
+        cfg.setTermLastAlertAt(readSafeInstant(rs, COL_TERM_LAST_ALERT_AT));
 
-        cfg.setUpdatedBy(readSafeText(rs, "updated_by", 100));
-        cfg.setUpdatedAt(readSafeInstant(rs, "updated_at"));
+        cfg.setUpdatedBy(readSafeText(rs, COL_UPDATED_BY, 100));
+        cfg.setUpdatedAt(readSafeInstant(rs, COL_UPDATED_AT));
 
         return cfg;
     }
@@ -373,7 +414,7 @@ public final class AutoEmailAlertConfigStore {
             }
             return Math.max(0, normalized);
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to read integer column " + column, e);
+            log.log(Level.FINE, LOG_READ_INT_PREFIX + column, e);
             return 0;
         }
     }
@@ -381,26 +422,26 @@ public final class AutoEmailAlertConfigStore {
     private long readNonNegativeLong(ResultSet rs, String column) {
         try {
             String raw = readSafeText(rs, column, 32);
-            if (raw == null || raw.isBlank() || !raw.matches("^-?\\d{1,18}$")) {
+            if (raw == null || raw.isBlank() || !raw.matches(RE_LONG)) {
                 return 0L;
             }
             long value = Long.parseLong(raw);
             return Math.max(0L, value);
         } catch (NumberFormatException e) {
-            log.log(Level.FINE, "Unable to read long column " + column, e);
+            log.log(Level.FINE, LOG_READ_LONG_PREFIX + column, e);
             return 0L;
         }
     }
 
     private Integer readSafeInteger(ResultSet rs, String column) throws SQLException {
         String raw = readSafeText(rs, column, 16);
-        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d{1,10}$")) {
+        if (raw == null || raw.isBlank() || !raw.matches(RE_INT)) {
             return null;
         }
         try {
             return Integer.valueOf(raw);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse integer column " + column, ex);
+            log.log(Level.FINE, LOG_PARSE_INT_PREFIX + column, ex);
             return null;
         }
     }
@@ -414,7 +455,8 @@ public final class AutoEmailAlertConfigStore {
         if (text.isEmpty()) {
             return fallback;
         }
-        return "true".equals(text) || "t".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text);
+        return BOOL_TRUE.equals(text) || BOOL_T.equals(text) || BOOL_ONE.equals(text)
+            || BOOL_YES.equals(text) || BOOL_Y.equals(text);
     }
 
     private int readIntervalSeconds(ResultSet rs, String column, int fallback) {
@@ -457,11 +499,11 @@ public final class AutoEmailAlertConfigStore {
             try {
                 return Instant.parse(text);
             } catch (DateTimeException ex) {
-                log.log(Level.FINE, "Falling back to SQL timestamp parse for column " + column, ex);
+                log.log(Level.FINE, LOG_TS_FALLBACK_PREFIX + column, ex);
                 return Timestamp.valueOf(text.replace('T', ' ')).toInstant();
             }
         } catch (DateTimeException e) {
-            log.log(Level.FINE, "Unable to read timestamp column " + column, e);
+            log.log(Level.FINE, LOG_READ_TS_PREFIX + column, e);
             return null;
         }
     }
@@ -491,7 +533,7 @@ public final class AutoEmailAlertConfigStore {
                 return sanitizeText(out.toString(), maxChars);
             }
         } catch (SQLException | IOException e) {
-            log.log(Level.FINE, "Unable to read text column " + column, e);
+            log.log(Level.FINE, LOG_READ_TEXT_PREFIX + column, e);
             return null;
         }
     }
@@ -507,7 +549,7 @@ public final class AutoEmailAlertConfigStore {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace(System.lineSeparator(), "")
+            .replace(System.lineSeparator(), EMPTY)
                 .trim();
         if (normalized.isEmpty()) {
             return null;
@@ -519,8 +561,8 @@ public final class AutoEmailAlertConfigStore {
     }
 
     private boolean eqIgnoreCaseTrim(String a, String b) {
-        String aa = a == null ? "" : a.trim();
-        String bb = b == null ? "" : b.trim();
+        String aa = a == null ? EMPTY : a.trim();
+        String bb = b == null ? EMPTY : b.trim();
         return aa.equalsIgnoreCase(bb);
     }
 
@@ -540,246 +582,5 @@ public final class AutoEmailAlertConfigStore {
         }
     }
 
-    static final class AutoEmailAlertConfig {
-
-        private int id;
-
-        private boolean healthEnabled;
-        private int healthCheckIntervalSeconds;
-        private int healthOfflineDelaySeconds;
-        private int healthResendIntervalSeconds;
-        private String healthRecipients;
-        private String healthSubject;
-        private String healthMessage;
-        private String healthRunbookUrl;
-        private String healthRunbookAttachmentPath;
-
-        private boolean termEnabled;
-        private int termCheckIntervalSeconds;
-        private String termName;
-        private String termRecipients;
-        private String termSubject;
-        private String termMessage;
-
-        private String healthLastStatus;
-        private Instant healthLastCheckedAt;
-        private Instant healthOfflineSince;
-        private Instant healthLastAlertAt;
-        private Instant healthLastRestartAttemptAt;
-
-        private Instant termLastCheckedAt;
-        private long termLastCount;
-        private Instant termLastAlertAt;
-
-        private String updatedBy;
-        private Instant updatedAt;
-
-        int getId() {
-            return id;
-        }
-
-        private void setId(int id) {
-            this.id = id;
-        }
-
-        boolean isHealthEnabled() {
-            return healthEnabled;
-        }
-
-        void setHealthEnabled(boolean healthEnabled) {
-            this.healthEnabled = healthEnabled;
-        }
-
-        int getHealthCheckIntervalSeconds() {
-            return healthCheckIntervalSeconds;
-        }
-
-        void setHealthCheckIntervalSeconds(int healthCheckIntervalSeconds) {
-            this.healthCheckIntervalSeconds = healthCheckIntervalSeconds;
-        }
-
-        int getHealthOfflineDelaySeconds() {
-            return healthOfflineDelaySeconds;
-        }
-
-        void setHealthOfflineDelaySeconds(int healthOfflineDelaySeconds) {
-            this.healthOfflineDelaySeconds = healthOfflineDelaySeconds;
-        }
-
-        int getHealthResendIntervalSeconds() {
-            return healthResendIntervalSeconds;
-        }
-
-        void setHealthResendIntervalSeconds(int healthResendIntervalSeconds) {
-            this.healthResendIntervalSeconds = healthResendIntervalSeconds;
-        }
-
-        String getHealthRecipients() {
-            return healthRecipients;
-        }
-
-        void setHealthRecipients(String healthRecipients) {
-            this.healthRecipients = healthRecipients;
-        }
-
-        String getHealthSubject() {
-            return healthSubject;
-        }
-
-        void setHealthSubject(String healthSubject) {
-            this.healthSubject = healthSubject;
-        }
-
-        String getHealthMessage() {
-            return healthMessage;
-        }
-
-        void setHealthMessage(String healthMessage) {
-            this.healthMessage = healthMessage;
-        }
-
-        String getHealthRunbookUrl() {
-            return healthRunbookUrl;
-        }
-
-        void setHealthRunbookUrl(String healthRunbookUrl) {
-            this.healthRunbookUrl = healthRunbookUrl;
-        }
-
-        String getHealthRunbookAttachmentPath() {
-            return healthRunbookAttachmentPath;
-        }
-
-        void setHealthRunbookAttachmentPath(String healthRunbookAttachmentPath) {
-            this.healthRunbookAttachmentPath = healthRunbookAttachmentPath;
-        }
-
-        boolean isTermEnabled() {
-            return termEnabled;
-        }
-
-        void setTermEnabled(boolean termEnabled) {
-            this.termEnabled = termEnabled;
-        }
-
-        int getTermCheckIntervalSeconds() {
-            return termCheckIntervalSeconds;
-        }
-
-        void setTermCheckIntervalSeconds(int termCheckIntervalSeconds) {
-            this.termCheckIntervalSeconds = termCheckIntervalSeconds;
-        }
-
-        String getTermName() {
-            return termName;
-        }
-
-        void setTermName(String termName) {
-            this.termName = termName;
-        }
-
-        String getTermRecipients() {
-            return termRecipients;
-        }
-
-        void setTermRecipients(String termRecipients) {
-            this.termRecipients = termRecipients;
-        }
-
-        String getTermSubject() {
-            return termSubject;
-        }
-
-        void setTermSubject(String termSubject) {
-            this.termSubject = termSubject;
-        }
-
-        String getTermMessage() {
-            return termMessage;
-        }
-
-        void setTermMessage(String termMessage) {
-            this.termMessage = termMessage;
-        }
-
-        String getHealthLastStatus() {
-            return healthLastStatus;
-        }
-
-        private void setHealthLastStatus(String healthLastStatus) {
-            this.healthLastStatus = healthLastStatus;
-        }
-
-        Instant getHealthLastCheckedAt() {
-            return healthLastCheckedAt;
-        }
-
-        private void setHealthLastCheckedAt(Instant healthLastCheckedAt) {
-            this.healthLastCheckedAt = healthLastCheckedAt;
-        }
-
-        Instant getHealthOfflineSince() {
-            return healthOfflineSince;
-        }
-
-        private void setHealthOfflineSince(Instant healthOfflineSince) {
-            this.healthOfflineSince = healthOfflineSince;
-        }
-
-        Instant getHealthLastAlertAt() {
-            return healthLastAlertAt;
-        }
-
-        private void setHealthLastAlertAt(Instant healthLastAlertAt) {
-            this.healthLastAlertAt = healthLastAlertAt;
-        }
-
-        Instant getHealthLastRestartAttemptAt() {
-            return healthLastRestartAttemptAt;
-        }
-
-        private void setHealthLastRestartAttemptAt(Instant healthLastRestartAttemptAt) {
-            this.healthLastRestartAttemptAt = healthLastRestartAttemptAt;
-        }
-
-        Instant getTermLastCheckedAt() {
-            return termLastCheckedAt;
-        }
-
-        private void setTermLastCheckedAt(Instant termLastCheckedAt) {
-            this.termLastCheckedAt = termLastCheckedAt;
-        }
-
-        long getTermLastCount() {
-            return termLastCount;
-        }
-
-        private void setTermLastCount(long termLastCount) {
-            this.termLastCount = termLastCount;
-        }
-
-        Instant getTermLastAlertAt() {
-            return termLastAlertAt;
-        }
-
-        private void setTermLastAlertAt(Instant termLastAlertAt) {
-            this.termLastAlertAt = termLastAlertAt;
-        }
-
-        String getUpdatedBy() {
-            return updatedBy;
-        }
-
-        private void setUpdatedBy(String updatedBy) {
-            this.updatedBy = updatedBy;
-        }
-
-        Instant getUpdatedAt() {
-            return updatedAt;
-        }
-
-        private void setUpdatedAt(Instant updatedAt) {
-            this.updatedAt = updatedAt;
-        }
-    }
 }
+

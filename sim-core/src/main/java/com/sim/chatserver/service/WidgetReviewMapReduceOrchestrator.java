@@ -26,8 +26,10 @@ import com.sim.chatserver.model.review.MapBatchRequest;
 import com.sim.chatserver.model.review.MapBatchResult;
 import com.sim.chatserver.model.review.ReduceRequest;
 import com.sim.chatserver.model.review.ReduceResult;
+import com.sim.chatserver.security.review.ReviewValidationResult;
 import com.sim.chatserver.security.review.ReviewOutputValidator;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -61,6 +63,74 @@ public class WidgetReviewMapReduceOrchestrator {
     private static final int DEFAULT_FINAL_REDUCE_MAX_ATTEMPTS = 2;
     private static final String LINE_SEPARATOR = System.lineSeparator();
     private static final String DOUBLE_LINE_SEPARATOR = LINE_SEPARATOR + LINE_SEPARATOR;
+    private static final String EMPTY = "";
+    private static final String CONTENT_TYPE_APPLICATION_JSON = com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String WORKSPACE_FIELD_TEXT_RESPONSE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TEXT_RESPONSE;
+    private static final String WORKSPACE_FIELD_RESPONSE = CommonLiteralConstants.FIELD_RESPONSE;
+    private static final String WORKSPACE_FIELD_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String WORKSPACE_FIELD_ANSWER = "answer";
+    private static final String WORKSPACE_FIELD_OUTPUT = "output";
+    private static final String MSG_NO_SELECTED_ENTRIES = "No selected entries provided.";
+    private static final String MSG_NO_INPUT = "no input";
+    private static final String REASON_BATCH_PROCESSING = "batch processing failure";
+    private static final String REASON_CODE_BATCH_PROCESSING_FAILURE = "batch_processing_failure";
+    private static final String REASON_CODE_UPSTREAM_4XX_AUTH_FAILURE = "upstream_4xx_auth_failure";
+    private static final String REASON_CODE_CONTEXT_TOO_LARGE = "context_too_large";
+    private static final String REASON_CODE_UPSTREAM_4XX = "upstream_4xx";
+    private static final String REASON_CODE_UPSTREAM_5XX = "upstream_5xx";
+    private static final String REASON_CODE_PARSE_ERROR = "parse_error";
+    private static final String JSON_STATUS_ERROR_PREFIX = "{\"status\":\"error\",\"message\":\"";
+    private static final String JSON_AUTH_ERROR_PREFIX = "{\"error\":\"No valid api key found.\",\"message\":\"";
+    private static final String JSON_SUFFIX = "\"}";
+    private static final String MSG_UNHANDLED_MAP_BATCH_FAILURE = "Unhandled map batch failure";
+    private static final String MSG_ADAPTIVE_SUB_BATCH_ALL_FAILED = "Adaptive sub-batches all failed.";
+    private static final String MSG_BATCH_PROCESSING_FAILED_PRIMARY_RECOVERY = "Batch processing failed (primary+recovery).";
+    private static final String MSG_AUTH_FAILED_ALL_SUMMARY_BATCHES = "Workspace authentication failed for all summary map batches (HTTP 401/403).";
+    private static final String MSG_REDUCE_CALL_FAILED_PREFIX = "Reduce call failed with status ";
+    private static final String MSG_COVERAGE_INCOMPLETE_PREFIX = "Coverage incomplete. Missing chat IDs: ";
+    private static final String MSG_MAP_CALL_FAILED_OR_EMPTY_PREFIX = "Map call failed or empty output (status=";
+    private static final String LOG_FMT_PROCESSING_COVERAGE_ACTIVE = "[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId={0}";
+    private static final String LOG_FMT_STOPPING_AFTER_AUTH_FAIL = "[map-reduce][{0}] stopping after round {1} due to authentication failures across all map batches.";
+    private static final String LOG_PREFIX_MAP_REDUCE = "[map-reduce][";
+    private static final String LOG_SUFFIX_BATCH_FAILED_INDEX = "] batch failed batchIndex=";
+    private static final String LOG_FMT_MAP_NON_FATAL_VALIDATION = "[map-reduce][{0}][map] non-fatal validation errors batch={1} errors={2}";
+    private static final String LOG_MSG_SKIP_INVALID_INTEGER = "Skipping invalid integer value while deduplicating indexes";
+    private static final String LOG_MSG_PARSE_RESPONSE_FAILED = "[map-reduce] failed parsing workspace response; returning raw body";
+    private static final String PREFIX_ROUND = "round-";
+    private static final String SEGMENT_BATCH = "-batch-";
+    private static final String SEGMENT_RECOVERY = "-recovery";
+    private static final String SEGMENT_SUB = "-sub-";
+    private static final String SEGMENT_REDUCE_LEVEL = "-L";
+    private static final String SEGMENT_REDUCE_CHUNK = "-C";
+    private static final String PREFIX_BATCH_OUTPUT = "### Batch ";
+    private static final String PREFIX_REDUCE_LEVEL_OUTPUT = "### Reduce Level ";
+    private static final String LABEL_CHUNK = " Chunk ";
+    private static final String CONTEXT_LIMIT_MAXIMUM_CONTEXT_LENGTH = "maximum context length";
+    private static final String CONTEXT_LIMIT_REQUESTED = "requested";
+    private static final String CONTEXT_LIMIT_FAILED_TO_EMBED = "failed_to_embed";
+    private static final String CONTEXT_LIMIT_REDUCE_PROMPT = "reduce your prompt";
+    private static final String CONTEXT_LIMIT_TOO_LARGE = "too large";
+    private static final String HINT_RE_BATCH = "re-batch";
+    private static final String PROMPT_EXPECTED_CHAT_IDS_PREFIX = "Expected chat IDs in this batch: ";
+    private static final String PROMPT_BATCH_TASK = "Batch Task:";
+    private static final String PROMPT_BATCH_ANALYSIS = "Produce markdown analysis for this batch with aggregate insights and metrics.";
+    private static final String PROMPT_BATCH_NO_PER_CHAT = "Do NOT produce per-chat sections unless explicitly requested.";
+    private static final String PROMPT_BATCH_COVERED_IDS_CONTRACT = "Include covered_chat_ids: [..] contract line if possible.";
+    private static final String PROMPT_REDUCE_TASK = "Reduce Task:";
+    private static final String PROMPT_REDUCE_MANAGER_REPORT = "Synthesize a manager-ready final report.";
+    private static final String PROMPT_REDUCE_NO_PER_CHAT = "Do NOT include 'Per-Chat Analysis'.";
+    private static final String PROMPT_REDUCE_COVERAGE = "Provide overall executive analysis, metrics, risks/opportunities, recommendations, and coverage.";
+    private static final String REGEX_CONTROL_CHARS = com.sim.chatserver.util.CommonLiteralConstants.REGEX_CTRL_EXCEPT_CRLF_TAB;
+    private static final String PREFIX_SELECTED_CHATS_CONTEXT = "Selected chats context:";
+    private static final String SESSION_PREFIX_DASHBOARD_DAILY_SUMMARY = "dashboard-daily-summary";
+    private static final String VALUE_ZERO = "0";
+    private static final String CSV_DELIMITER_COMMA = ",";
+    private static final String ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+    private static final String ARG_WORKSPACE_CLIENT = "workspaceClient";
+    private static final String ARG_CONTEXT_BUILDER_SERVICE = "contextBuilderService";
+    private static final String ARG_PROMPT_TEMPLATE_SERVICE = "promptTemplateService";
+    private static final String ARG_REVIEW_OUTPUT_VALIDATOR = "reviewOutputValidator";
+    private static final String DELIMITER_SEMICOLON_SPACE = "; ";
 
     private final WorkspaceClient workspaceClient;
     private final ReviewContextBuilderService contextBuilderService;
@@ -289,10 +359,10 @@ public class WidgetReviewMapReduceOrchestrator {
             int finalReduceSummaryMaxChars,
             int finalReduceMaxAttempts
     ) {
-        this.workspaceClient = Objects.requireNonNull(workspaceClient, "workspaceClient");
-        this.contextBuilderService = Objects.requireNonNull(contextBuilderService, "contextBuilderService");
-        this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "promptTemplateService");
-        this.reviewOutputValidator = Objects.requireNonNull(reviewOutputValidator, "reviewOutputValidator");
+        this.workspaceClient = Objects.requireNonNull(workspaceClient, ARG_WORKSPACE_CLIENT);
+        this.contextBuilderService = Objects.requireNonNull(contextBuilderService, ARG_CONTEXT_BUILDER_SERVICE);
+        this.promptTemplateService = Objects.requireNonNull(promptTemplateService, ARG_PROMPT_TEMPLATE_SERVICE);
+        this.reviewOutputValidator = Objects.requireNonNull(reviewOutputValidator, ARG_REVIEW_OUTPUT_VALIDATOR);
 
         this.mapMaxParallel = Math.max(1, mapMaxParallel);
         this.mapMessageMaxChars = Math.max(1000, mapMessageMaxChars);
@@ -344,15 +414,15 @@ public class WidgetReviewMapReduceOrchestrator {
             ) throws IOException, InterruptedException {
 
         ProgressListener listener = progress == null ? NOOP_PROGRESS_LISTENER : progress;
-        log.log(Level.INFO, "[MR-ORCH-PROCESSING-COVERAGE-V8] ACTIVE requestId={0}", requestId);
+        log.log(Level.INFO, LOG_FMT_PROCESSING_COVERAGE_ACTIVE, requestId);
 
         if (selectedEntries == null || selectedEntries.isEmpty()) {
-            WorkspaceResponse empty = new WorkspaceResponse(400, "{\"status\":\"error\",\"message\":\"No selected entries provided.\"}", "application/json");
+            WorkspaceResponse empty = new WorkspaceResponse(400, JSON_STATUS_ERROR_PREFIX + MSG_NO_SELECTED_ENTRIES + JSON_SUFFIX, CONTENT_TYPE_APPLICATION_JSON);
             ReduceResult rr = ReduceResult.builder()
-                    .requestId(requestId).httpStatus(400).success(false).finalReport("")
-                    .errorMessage("No selected entries provided.")
+                    .requestId(requestId).httpStatus(400).success(false).finalReport(EMPTY)
+                .errorMessage(MSG_NO_SELECTED_ENTRIES)
                     .totalSelected(0).totalBatches(0).mapOutputsReceived(0)
-                    .failedBatchIndexes(List.of()).failedBatchReasons(List.of("no input"))
+                    .failedBatchIndexes(List.of()).failedBatchReasons(List.of(MSG_NO_INPUT))
                     .allSelectedChatIds(List.of()).usedChatIds(List.of()).missingChatIds(List.of())
                     .coverageComplete(false).build();
 
@@ -418,7 +488,7 @@ public class WidgetReviewMapReduceOrchestrator {
                             .totalSelected(totalSelected)
                             .totalBatches(roundBatchUpperBound)
                             .batchIndex(batchIndex)
-                            .batchId("round-" + round + "-batch-" + (i + 1))
+                            .batchId(PREFIX_ROUND + round + SEGMENT_BATCH + (i + 1))
                             .entries(batch)
                             .targetUrl(targetUrl)
                             .mode(mode)
@@ -456,7 +526,7 @@ public class WidgetReviewMapReduceOrchestrator {
                             roundAnySuccess = true;
                             usedByProcessing.addAll(expectedForReq);
                             if (r.outputText != null && !r.outputText.isBlank()) {
-                                mapOutputs.add("### Batch " + req.getBatchIndex() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + r.outputText);
+                                mapOutputs.add(PREFIX_BATCH_OUTPUT + req.getBatchIndex() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + r.outputText);
                             }
                         } else {
                             failedBatches.add(Integer.valueOf(req.getBatchIndex()));
@@ -481,12 +551,12 @@ public class WidgetReviewMapReduceOrchestrator {
                         );
                     } catch (CompletionException ex) {
                         failedBatches.add(Integer.valueOf(req.getBatchIndex()));
-                        log.log(Level.WARNING, "[map-reduce][" + requestId + "] batch failed batchIndex=" + req.getBatchIndex(), ex);
+                        log.log(Level.WARNING, LOG_PREFIX_MAP_REDUCE + requestId + LOG_SUFFIX_BATCH_FAILED_INDEX + req.getBatchIndex(), ex);
 
                         BatchFailure failure = BatchFailure.builder()
                                 .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(req.getTotalBatches())
-                                .batchId(req.getBatchId()).reasonCode("batch_processing_failure")
-                                .message("Unhandled map batch failure").httpStatus(0)
+                            .batchId(req.getBatchId()).reasonCode(REASON_CODE_BATCH_PROCESSING_FAILURE)
+                                .message(MSG_UNHANDLED_MAP_BATCH_FAILURE).httpStatus(0)
                                 .retryAttempted(true).retrySucceeded(false).contextTooLargeDetected(false)
                                 .batchChatIds(req.batchChatIds()).build();
                         allBatchFailures.add(failure);
@@ -494,7 +564,7 @@ public class WidgetReviewMapReduceOrchestrator {
                         allMapBatchResults.add(MapBatchResult.builder()
                                 .requestId(requestId).batchIndex(req.getBatchIndex()).totalBatches(req.getTotalBatches())
                                 .batchId(req.getBatchId()).httpStatus(0).success(false).retryUsed(true)
-                                .contextTooLargeDetected(false).modelOutput("").errorMessage("Unhandled map batch failure")
+                            .contextTooLargeDetected(false).modelOutput(EMPTY).errorMessage(MSG_UNHANDLED_MAP_BATCH_FAILURE)
                                 .inputEntriesCount(req.batchSize()).usedEntriesCount(0).omittedEntriesCount(req.batchSize())
                                 .batchChatIds(req.batchChatIds()).usedChatIds(List.of()).omittedChatIds(req.batchChatIds())
                                 .expectedChatIds(req.batchChatIds()).foundChatIds(List.of())
@@ -527,7 +597,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
             if (!roundAnySuccess && roundAllAuthFailures) {
                 log.log(Level.WARNING,
-                        "[map-reduce][{0}] stopping after round {1} due to authentication failures across all map batches.",
+                    LOG_FMT_STOPPING_AFTER_AUTH_FAIL,
                         new Object[]{requestId, Integer.valueOf(round)});
                 break;
             }
@@ -542,11 +612,11 @@ public class WidgetReviewMapReduceOrchestrator {
         if (mapOutputs.isEmpty() && allMapFailuresAreAuthFailures(allMapBatchResults)) {
             listener.onReduceStarted(requestId, totalSelected, totalBatches, 0, missingIds.size());
 
-            String authError = "Workspace authentication failed for all summary map batches (HTTP 401/403).";
+            String authError = MSG_AUTH_FAILED_ALL_SUMMARY_BATCHES;
             WorkspaceResponse authFailureResponse = new WorkspaceResponse(
                 403,
-                "{\"error\":\"No valid api key found.\",\"message\":\"" + authError + "\"}",
-                "application/json"
+                JSON_AUTH_ERROR_PREFIX + authError + JSON_SUFFIX,
+                CONTENT_TYPE_APPLICATION_JSON
             );
             ReduceResult authFailureReduce = ReduceResult.builder()
                 .requestId(requestId)
@@ -554,13 +624,13 @@ public class WidgetReviewMapReduceOrchestrator {
                 .success(false)
                 .retryUsed(false)
                 .contextTooLargeDetected(false)
-                .finalReport("")
+                .finalReport(EMPTY)
                 .errorMessage(authError)
                 .totalSelected(totalSelected)
                 .totalBatches(totalBatches)
                 .mapOutputsReceived(0)
                 .failedBatchIndexes(failedDistinct)
-                .failedBatchReasons(List.of("upstream_4xx_auth_failure"))
+                .failedBatchReasons(List.of(REASON_CODE_UPSTREAM_4XX_AUTH_FAILURE))
                 .allSelectedChatIds(authoritativeAllIds)
                 .usedChatIds(usedIds)
                 .missingChatIds(missingIds)
@@ -638,7 +708,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
                     ReduceExecutionResult chunkResult = executeReduce(
                             targetUrl, apiKey, controlledPrompt, mode, sessionId, attachments,
-                            totalSelected, totalBatches, chunkOutputs, failedBatches, requestId + "-L" + level + "-C" + chunkIndex,
+                            totalSelected, totalBatches, chunkOutputs, failedBatches, requestId + SEGMENT_REDUCE_LEVEL + level + SEGMENT_REDUCE_CHUNK + chunkIndex,
                             coverageComplete, missingChatIds, allSelectedChatIds, usedChatIds,
                             false
                     );
@@ -660,7 +730,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     }
 
                     String summary = trimTo(chunkResult.reduceResult.getFinalReport(), reduceChunkSummaryMaxChars);
-                    nextLevel.add("### Reduce Level " + level + " Chunk " + chunkIndex + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + summary);
+                    nextLevel.add(PREFIX_REDUCE_LEVEL_OUTPUT + level + LABEL_CHUNK + chunkIndex + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + summary);
                 }
 
                 if (anyChunkFailed) {
@@ -716,7 +786,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 return last;
             }
 
-            String body = last == null || last.response == null ? "" : (last.response.body() == null ? "" : last.response.body());
+            String body = last == null || last.response == null ? EMPTY : (last.response.body() == null ? EMPTY : last.response.body());
             boolean tooLarge = (last != null && last.reduceResult != null && last.reduceResult.isContextTooLargeDetected())
                     || isLikelyContextLimitError(body, last == null || last.response == null ? 0 : last.response.statusCode());
 
@@ -757,12 +827,12 @@ public class WidgetReviewMapReduceOrchestrator {
     }
 
     private boolean isLikelyContextLimitError(String body, int status) {
-        String b = body == null ? "" : body.toLowerCase(Locale.ROOT);
+        String b = body == null ? EMPTY : body.toLowerCase(Locale.ROOT);
         return status == 400
-                && (b.contains("maximum context length")
-                || b.contains("requested")
-                || b.contains("failed_to_embed")
-                || b.contains("reduce your prompt"));
+            && (b.contains(CONTEXT_LIMIT_MAXIMUM_CONTEXT_LENGTH)
+            || b.contains(CONTEXT_LIMIT_REQUESTED)
+            || b.contains(CONTEXT_LIMIT_FAILED_TO_EMBED)
+            || b.contains(CONTEXT_LIMIT_REDUCE_PROMPT));
     }
 
     private List<List<String>> chunk(List<String> src, int size) {
@@ -819,7 +889,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .totalSelected(req.getTotalSelected())
                 .totalBatches(req.getTotalBatches())
                 .batchIndex(req.getBatchIndex())
-                .batchId(req.getBatchId() + "-recovery")
+                .batchId(req.getBatchId() + SEGMENT_RECOVERY)
                 .entries(missingEntries)
                 .targetUrl(req.getTargetUrl())
                 .mode(req.getMode())
@@ -844,10 +914,10 @@ public class WidgetReviewMapReduceOrchestrator {
 
         boolean mergedSuccess = primary.result.isSuccess() || recovery.result.isSuccess();
 
-        String mergedOutput = (primary.outputText == null ? "" : primary.outputText)
-            + ((recovery.outputText == null || recovery.outputText.isBlank()) ? "" : DOUBLE_LINE_SEPARATOR + recovery.outputText);
+        String mergedOutput = (primary.outputText == null ? EMPTY : primary.outputText)
+            + ((recovery.outputText == null || recovery.outputText.isBlank()) ? EMPTY : DOUBLE_LINE_SEPARATOR + recovery.outputText);
 
-        String mergedErr = mergedSuccess ? "" : "Batch processing failed (primary+recovery).";
+        String mergedErr = mergedSuccess ? EMPTY : MSG_BATCH_PROCESSING_FAILED_PRIMARY_RECOVERY;
 
         MapBatchResult merged = MapBatchResult.builder()
                 .requestId(req.getRequestId())
@@ -882,7 +952,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchIndex(req.getBatchIndex())
                 .totalBatches(req.getTotalBatches())
                 .batchId(req.getBatchId())
-                .reasonCode("batch_processing_failure")
+            .reasonCode(REASON_CODE_BATCH_PROCESSING_FAILURE)
                 .message(mergedErr)
                 .httpStatus(merged.getHttpStatus())
                 .retryAttempted(true)
@@ -892,7 +962,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchChatIds(expected)
                 .build();
 
-        return new MapBatchExecutionResult("", merged, failure, mergedMarkerUsed);
+        return new MapBatchExecutionResult(EMPTY, merged, failure, mergedMarkerUsed);
     }
 
     private MapBatchExecutionResult executeMapBatchWithAdaptiveRebatch(
@@ -901,8 +971,8 @@ public class WidgetReviewMapReduceOrchestrator {
         try {
             return executeMapBatch(apiKey, attachments, req, requestId);
         } catch (IllegalArgumentException ex) {
-            String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase(Locale.ROOT);
-            boolean likelyTooLarge = msg.contains("too large") || msg.contains("re-batch");
+            String msg = ex.getMessage() == null ? EMPTY : ex.getMessage().toLowerCase(Locale.ROOT);
+            boolean likelyTooLarge = msg.contains(CONTEXT_LIMIT_TOO_LARGE) || msg.contains(HINT_RE_BATCH);
             if (!likelyTooLarge || req.batchSize() <= minBatchSize) {
                 throw ex;
             }
@@ -934,7 +1004,7 @@ public class WidgetReviewMapReduceOrchestrator {
                         .totalSelected(req.getTotalSelected())
                         .totalBatches(req.getTotalBatches())
                         .batchIndex(req.getBatchIndex())
-                        .batchId(req.getBatchId() + "-sub-" + subIdx)
+                        .batchId(req.getBatchId() + SEGMENT_SUB + subIdx)
                         .entries(sub)
                         .targetUrl(req.getTargetUrl())
                         .mode(req.getMode())
@@ -948,7 +1018,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 MapBatchExecutionResult sr = executeMapBatchWithAdaptiveRebatch(apiKey, attachments, subReq, requestId, round);
 
                 MapBatchResult r = sr.result;
-                mergedOutputs.add(sr.outputText == null ? "" : sr.outputText);
+                mergedOutputs.add(sr.outputText == null ? EMPTY : sr.outputText);
                 mergedMarkers.addAll(normalizeIds(sr.usedIdsDetected));
                 mergedExpected.addAll(normalizeIds(r.getExpectedChatIds()));
                 boolean subSuccess = r.isSuccess();
@@ -969,7 +1039,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
             boolean success = anySuccess;
             String modelOutput = String.join(DOUBLE_LINE_SEPARATOR, mergedOutputs);
-            String err = success ? "" : (subErrors.isEmpty() ? "Adaptive sub-batches all failed." : String.join("; ", subErrors));
+            String err = success ? EMPTY : (subErrors.isEmpty() ? MSG_ADAPTIVE_SUB_BATCH_ALL_FAILED : String.join(DELIMITER_SEMICOLON_SPACE, subErrors));
 
             MapBatchResult mergedResult = MapBatchResult.builder()
                     .requestId(req.getRequestId())
@@ -1004,7 +1074,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     .batchIndex(req.getBatchIndex())
                     .totalBatches(req.getTotalBatches())
                     .batchId(req.getBatchId())
-                    .reasonCode("batch_processing_failure")
+                    .reasonCode(REASON_CODE_BATCH_PROCESSING_FAILURE)
                     .message(err)
                     .httpStatus(worstHttp)
                     .retryAttempted(true)
@@ -1014,7 +1084,7 @@ public class WidgetReviewMapReduceOrchestrator {
                     .batchChatIds(expectedDistinct)
                     .build();
 
-            return new MapBatchExecutionResult("", mergedResult, failure, markerDistinct);
+            return new MapBatchExecutionResult(EMPTY, mergedResult, failure, markerDistinct);
         }
     }
 
@@ -1029,10 +1099,10 @@ public class WidgetReviewMapReduceOrchestrator {
 
         List<String> expectedIds = normalizeIds(req.batchChatIds());
 
-        String mapPrompt = req.getControlledPrompt() + DOUBLE_LINE_SEPARATOR + deterministicHeader + LINE_SEPARATOR + "Expected chat IDs in this batch: " + expectedIds
-            + LINE_SEPARATOR + "Batch Task:" + LINE_SEPARATOR + "Produce markdown analysis for this batch with aggregate insights and metrics." + LINE_SEPARATOR
-            + "Do NOT produce per-chat sections unless explicitly requested." + LINE_SEPARATOR
-                + "Include covered_chat_ids: [..] contract line if possible.";
+        String mapPrompt = req.getControlledPrompt() + DOUBLE_LINE_SEPARATOR + deterministicHeader + LINE_SEPARATOR + PROMPT_EXPECTED_CHAT_IDS_PREFIX + expectedIds
+            + LINE_SEPARATOR + PROMPT_BATCH_TASK + LINE_SEPARATOR + PROMPT_BATCH_ANALYSIS + LINE_SEPARATOR
+            + PROMPT_BATCH_NO_PER_CHAT + LINE_SEPARATOR
+                + PROMPT_BATCH_COVERED_IDS_CONTRACT;
 
         String mapContext = contextBuilderService.buildMapBatchContext(
                 mapPrompt, req.getEntries(), req.getBatchIndex(), req.getTotalBatches(), mapContextMaxChars, expectedIds
@@ -1059,15 +1129,15 @@ public class WidgetReviewMapReduceOrchestrator {
         }
 
         int status = response.statusCode();
-        String mapText = status >= 400 ? "" : extractPrimaryTextFromWorkspaceResponse(response.body());
+        String mapText = status >= 400 ? EMPTY : extractPrimaryTextFromWorkspaceResponse(response.body());
         String canonicalMapText = canonicalizeForValidation(mapText);
 
-        ReviewOutputValidator.ValidationResult validation = reviewOutputValidator.validateMapOutput(canonicalMapText, mapMessageMaxChars);
+        ReviewValidationResult validation = reviewOutputValidator.validateMapOutput(canonicalMapText, mapMessageMaxChars);
         boolean mapOutputValid = validation.isValid();
         if (!mapOutputValid) {
             log.log(
                 Level.INFO,
-                "[map-reduce][{0}][map] non-fatal validation errors batch={1} errors={2}",
+                LOG_FMT_MAP_NON_FATAL_VALIDATION,
                 new Object[]{requestId, req.getBatchIndex(), validation.getErrors()}
             );
         }
@@ -1079,7 +1149,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
         boolean success = status < 400 && mapText != null && !mapText.isBlank();
 
-        String err = success ? "" : ("Map call failed or empty output (status=" + status + ')');
+        String err = success ? EMPTY : (MSG_MAP_CALL_FAILED_OR_EMPTY_PREFIX + status + ')');
 
         List<String> usedForCoverage = success ? expectedIds : List.of();
         List<String> omittedForCoverage = success ? List.of() : expectedIds;
@@ -1093,7 +1163,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .success(success)
                 .retryUsed(retryUsed)
                 .contextTooLargeDetected(contextTooLarge)
-                .modelOutput(mapText == null ? "" : mapText)
+                .modelOutput(mapText == null ? EMPTY : mapText)
                 .errorMessage(err)
                 .inputEntriesCount(req.batchSize())
                 .usedEntriesCount(usedForCoverage.size())
@@ -1127,7 +1197,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .batchChatIds(expectedIds)
                 .build();
 
-        return new MapBatchExecutionResult("", result, failure, markerDetected);
+        return new MapBatchExecutionResult(EMPTY, result, failure, markerDetected);
     }
 
     private ReduceExecutionResult executeReduce(
@@ -1191,10 +1261,10 @@ public class WidgetReviewMapReduceOrchestrator {
                     Integer.valueOf(missingIdsNorm.size())
                 );
 
-        String reducePrompt = controlledPrompt + DOUBLE_LINE_SEPARATOR + deterministicReduceHeader + LINE_SEPARATOR + "Reduce Task:" + LINE_SEPARATOR
-            + "Synthesize a manager-ready final report." + LINE_SEPARATOR
-            + "Do NOT include 'Per-Chat Analysis'." + LINE_SEPARATOR
-                + "Provide overall executive analysis, metrics, risks/opportunities, recommendations, and coverage.";
+        String reducePrompt = controlledPrompt + DOUBLE_LINE_SEPARATOR + deterministicReduceHeader + LINE_SEPARATOR + PROMPT_REDUCE_TASK + LINE_SEPARATOR
+            + PROMPT_REDUCE_MANAGER_REPORT + LINE_SEPARATOR
+            + PROMPT_REDUCE_NO_PER_CHAT + LINE_SEPARATOR
+                + PROMPT_REDUCE_COVERAGE;
 
         String reduceContext = contextBuilderService.buildReduceContext(
                 reducePrompt, mapOutputs, failedBatches, allIdsNorm, missingIdsNorm, minimalHeader ? Math.max(800, retryContextChars) : reduceContextMaxChars
@@ -1216,7 +1286,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .totalBatches(totalBatches)
                 .mapOutputs(mapOutputs)
                 .failedBatchIndexes(failedBatches)
-                .failedBatchReasons(List.of("batch processing failure"))
+                .failedBatchReasons(List.of(REASON_BATCH_PROCESSING))
                 .allSelectedChatIds(allIdsNorm)
                 .usedChatIds(usedIdsNorm)
                 .missingChatIds(missingIdsNorm)
@@ -1245,20 +1315,20 @@ public class WidgetReviewMapReduceOrchestrator {
         String reduceText = extractPrimaryTextFromWorkspaceResponse(reduceResponse.body());
         String canonicalReduceText = canonicalizeForValidation(reduceText);
 
-        ReviewOutputValidator.ValidationResult validation
+        ReviewValidationResult validation
             = reviewOutputValidator.validateFinalReportHierarchical(canonicalReduceText, allIdsNorm, Math.max(1200, reduceMessageMaxChars));
         boolean reduceOutputValid = validation.isValid();
 
         boolean reduceSuccess = reduceResponse.statusCode() < 400 && reduceOutputValid && effectiveCoverageComplete;
 
-        String err = "";
+        String err = EMPTY;
         if (!reduceSuccess) {
             if (reduceResponse.statusCode() >= 400) {
-                err = "Reduce call failed with status " + reduceResponse.statusCode();
+                err = MSG_REDUCE_CALL_FAILED_PREFIX + reduceResponse.statusCode();
             } else if (!reduceOutputValid) {
-                err = String.join("; ", validation.getErrors());
+                err = String.join(DELIMITER_SEMICOLON_SPACE, validation.getErrors());
             } else {
-                err = "Coverage incomplete. Missing chat IDs: " + missingIdsNorm;
+                err = MSG_COVERAGE_INCOMPLETE_PREFIX + missingIdsNorm;
             }
         }
 
@@ -1274,7 +1344,7 @@ public class WidgetReviewMapReduceOrchestrator {
                 .totalBatches(totalBatches)
                 .mapOutputsReceived(mapOutputs.size())
                 .failedBatchIndexes(failedBatches)
-                .failedBatchReasons(List.of("batch processing failure"))
+                .failedBatchReasons(List.of(REASON_BATCH_PROCESSING))
                 .allSelectedChatIds(allIdsNorm)
                 .usedChatIds(usedIdsNorm)
                 .missingChatIds(missingIdsNorm)
@@ -1298,11 +1368,11 @@ public class WidgetReviewMapReduceOrchestrator {
             return List.of();
         }
 
-        String[] parts = inner.split(",");
+        String[] parts = inner.split(CSV_DELIMITER_COMMA);
         Set<String> out = new LinkedHashSet<>();
         for (String p : parts) {
             String id = normalizeId(p);
-            if (!id.isBlank() && !"...".equals(id)) {
+            if (!id.isBlank() && !ELLIPSIS.equals(id)) {
                 out.add(id);
             }
         }
@@ -1326,18 +1396,18 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private String determineReasonCode(int status, boolean contextTooLarge, boolean validMapOutput) {
         if (contextTooLarge) {
-            return "context_too_large";
+            return REASON_CODE_CONTEXT_TOO_LARGE;
         }
         if (status >= 400 && status < 500) {
-            return "upstream_4xx";
+            return REASON_CODE_UPSTREAM_4XX;
         }
         if (status >= 500) {
-            return "upstream_5xx";
+            return REASON_CODE_UPSTREAM_5XX;
         }
         if (!validMapOutput) {
-            return "parse_error";
+            return REASON_CODE_PARSE_ERROR;
         }
-        return "batch_processing_failure";
+        return REASON_CODE_BATCH_PROCESSING_FAILURE;
     }
 
     private boolean isDailySummarySession(String sessionId) {
@@ -1345,7 +1415,7 @@ public class WidgetReviewMapReduceOrchestrator {
             return false;
         }
         String normalized = sessionId.trim().toLowerCase(Locale.ROOT);
-        return normalized.startsWith("dashboard-daily-summary");
+        return normalized.startsWith(SESSION_PREFIX_DASHBOARD_DAILY_SUMMARY);
     }
 
     private boolean allMapFailuresAreAuthFailures(List<MapBatchResult> results) {
@@ -1405,7 +1475,7 @@ public class WidgetReviewMapReduceOrchestrator {
     }
 
     private String normalizeId(String v) {
-        return v == null ? "" : v.trim().toLowerCase(Locale.ROOT);
+        return v == null ? EMPTY : v.trim().toLowerCase(Locale.ROOT);
     }
 
     private List<String> normalizeIds(List<String> ids) {
@@ -1432,12 +1502,12 @@ public class WidgetReviewMapReduceOrchestrator {
         Set<Integer> s = new LinkedHashSet<>();
         if (src != null) {
             for (Integer i : src) {
-                String candidateText = Objects.toString(i, "0");
+                String candidateText = Objects.toString(i, VALUE_ZERO);
                 int candidate;
                 try {
                     candidate = Integer.parseInt(candidateText);
                 } catch (NumberFormatException ex) {
-                    log.log(Level.FINE, "Skipping invalid integer value while deduplicating indexes", ex);
+                    log.log(Level.FINE, LOG_MSG_SKIP_INVALID_INTEGER, ex);
                     continue;
                 }
                 if (candidate > 0) {
@@ -1459,49 +1529,49 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private String extractPrimaryTextFromWorkspaceResponse(String body) {
         if (body == null || body.isBlank()) {
-            return "";
+            return EMPTY;
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject o = reader.readObject();
-            String t = o.getString("textResponse", "");
+            String t = o.getString(WORKSPACE_FIELD_TEXT_RESPONSE, EMPTY);
             if (!t.isBlank()) {
                 return t;
             }
-            t = o.getString("response", "");
+            t = o.getString(WORKSPACE_FIELD_RESPONSE, EMPTY);
             if (!t.isBlank()) {
                 return t;
             }
-            t = o.getString("message", "");
+            t = o.getString(WORKSPACE_FIELD_MESSAGE, EMPTY);
             if (!t.isBlank()) {
                 return t;
             }
-            t = o.getString("answer", "");
+            t = o.getString(WORKSPACE_FIELD_ANSWER, EMPTY);
             if (!t.isBlank()) {
                 return t;
             }
-            t = o.getString("output", "");
+            t = o.getString(WORKSPACE_FIELD_OUTPUT, EMPTY);
             if (!t.isBlank()) {
                 return t;
             }
             return body;
         } catch (JsonException ex) {
-            log.log(Level.FINE, "[map-reduce] failed parsing workspace response; returning raw body", ex);
+            log.log(Level.FINE, LOG_MSG_PARSE_RESPONSE_FAILED, ex);
             return body;
         }
     }
 
     private String canonicalizeForValidation(String value) {
-        String normalized = Normalizer.normalize(Objects.toString(value, ""), Normalizer.Form.NFKC);
-        return normalized.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
+        String normalized = Normalizer.normalize(Objects.toString(value, EMPTY), Normalizer.Form.NFKC);
+        return normalized.replaceAll(REGEX_CONTROL_CHARS, EMPTY);
     }
 
     private String buildOutboundMessage(String userMessage, String context, int maxTotalChars) {
-        String base = userMessage == null ? "" : userMessage.trim();
+        String base = userMessage == null ? EMPTY : userMessage.trim();
         if (context == null || context.isBlank()) {
             return trimTo(base, maxTotalChars);
         }
 
-        String suffix = DOUBLE_LINE_SEPARATOR + "Selected chats context:" + LINE_SEPARATOR + context;
+        String suffix = DOUBLE_LINE_SEPARATOR + PREFIX_SELECTED_CHATS_CONTEXT + LINE_SEPARATOR + context;
         String combined = base + suffix;
         if (combined.length() <= maxTotalChars) {
             return combined;
@@ -1516,173 +1586,11 @@ public class WidgetReviewMapReduceOrchestrator {
 
     private String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
         return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
-
-    static final class MapBatchExecutionResult {
-
-        final String outputText;
-        final MapBatchResult result;
-        final BatchFailure failure;
-        final List<String> usedIdsDetected;
-
-        private MapBatchExecutionResult(
-            String outputText, MapBatchResult result, BatchFailure failure, List<String> usedIdsDetected
-        ) {
-            this.outputText = outputText;
-            this.result = result;
-            this.failure = failure;
-            this.usedIdsDetected = usedIdsDetected == null ? List.of() : List.copyOf(usedIdsDetected);
-        }
-    }
-
-    static final class ReduceExecutionResult {
-
-        final WorkspaceResponse response;
-        final ReduceRequest reduceRequest;
-        final ReduceResult reduceResult;
-
-        private ReduceExecutionResult(WorkspaceResponse response, ReduceRequest reduceRequest, ReduceResult reduceResult) {
-            this.response = response;
-            this.reduceRequest = reduceRequest;
-            this.reduceResult = reduceResult;
-        }
-    }
-
-    public static final class OrchestrationResult {
-
-        private final WorkspaceResponse finalResponse;
-        private final List<String> mapOutputs;
-        private final List<Integer> failedBatchIndexes;
-        private final List<MapBatchResult> mapBatchResults;
-        private final ReduceRequest reduceRequest;
-        private final ReduceResult reduceResult;
-        private final int totalSelected;
-        private final int totalBatches;
-        private final List<BatchFailure> batchFailures;
-
-        private final List<String> allSelectedChatIds;
-        private final List<String> missingChatIds;
-        private final boolean coverageComplete;
-        private final int coveragePassesUsed;
-
-        private OrchestrationResult(
-                WorkspaceResponse finalResponse,
-                List<String> mapOutputs,
-                List<Integer> failedBatchIndexes,
-                List<MapBatchResult> mapBatchResults,
-                ReduceRequest reduceRequest,
-                ReduceResult reduceResult,
-                int totalSelected,
-                int totalBatches
-        ) {
-            this(finalResponse, mapOutputs, failedBatchIndexes, mapBatchResults, reduceRequest, reduceResult,
-                    totalSelected, totalBatches, List.of(), List.of(), List.of(), false, 0);
-        }
-
-        private OrchestrationResult(
-                WorkspaceResponse finalResponse,
-                List<String> mapOutputs,
-                List<Integer> failedBatchIndexes,
-                List<MapBatchResult> mapBatchResults,
-                ReduceRequest reduceRequest,
-                ReduceResult reduceResult,
-                int totalSelected,
-                int totalBatches,
-                List<BatchFailure> batchFailures,
-                List<String> allSelectedChatIds,
-                List<String> missingChatIds,
-                boolean coverageComplete,
-                int coveragePassesUsed
-        ) {
-            this.finalResponse = finalResponse;
-            this.mapOutputs = mapOutputs == null ? List.of() : List.copyOf(mapOutputs);
-            this.failedBatchIndexes = failedBatchIndexes == null ? List.of() : List.copyOf(failedBatchIndexes);
-            this.mapBatchResults = mapBatchResults == null ? List.of() : List.copyOf(mapBatchResults);
-            this.reduceRequest = reduceRequest;
-            this.reduceResult = reduceResult;
-            this.totalSelected = totalSelected;
-            this.totalBatches = totalBatches;
-            this.batchFailures = batchFailures == null ? List.of() : List.copyOf(batchFailures);
-
-            this.allSelectedChatIds = allSelectedChatIds == null ? List.of() : List.copyOf(allSelectedChatIds);
-            this.missingChatIds = missingChatIds == null ? List.of() : List.copyOf(missingChatIds);
-            this.coverageComplete = coverageComplete;
-            this.coveragePassesUsed = Math.max(0, coveragePassesUsed);
-        }
-
-        private final OrchestrationResult withBatchFailures(List<BatchFailure> failures) {
-            return new OrchestrationResult(
-                    finalResponse, mapOutputs, failedBatchIndexes, mapBatchResults, reduceRequest, reduceResult,
-                    totalSelected, totalBatches, failures, allSelectedChatIds, missingChatIds, coverageComplete, coveragePassesUsed
-            );
-        }
-
-        private final OrchestrationResult withCoverage(
-                List<String> allSelectedChatIds, List<String> missingChatIds, boolean coverageComplete, int coveragePassesUsed
-        ) {
-            return new OrchestrationResult(
-                    finalResponse, mapOutputs, failedBatchIndexes, mapBatchResults, reduceRequest, reduceResult,
-                    totalSelected, totalBatches, batchFailures, allSelectedChatIds, missingChatIds, coverageComplete, coveragePassesUsed
-            );
-        }
-
-        public WorkspaceResponse finalResponse() {
-            return finalResponse;
-        }
-
-        List<String> mapOutputs() {
-            return mapOutputs;
-        }
-
-        public List<Integer> failedBatchIndexes() {
-            return failedBatchIndexes;
-        }
-
-        public List<MapBatchResult> mapBatchResults() {
-            return mapBatchResults;
-        }
-
-        public ReduceRequest reduceRequest() {
-            return reduceRequest;
-        }
-
-        public ReduceResult reduceResult() {
-            return reduceResult;
-        }
-
-        int totalSelected() {
-            return totalSelected;
-        }
-
-        public int totalBatches() {
-            return totalBatches;
-        }
-
-        public List<BatchFailure> batchFailures() {
-            return batchFailures;
-        }
-
-        List<String> allSelectedChatIds() {
-            return allSelectedChatIds;
-        }
-
-        public List<String> missingChatIds() {
-            return missingChatIds;
-        }
-
-        boolean coverageComplete() {
-            return coverageComplete;
-        }
-
-        int coveragePassesUsed() {
-            return coveragePassesUsed;
-        }
-
-        boolean hasFailures() {
-            return !failedBatchIndexes.isEmpty();
-        }
-    }
 }
+
+
+

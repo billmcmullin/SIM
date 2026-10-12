@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -20,6 +22,39 @@ import jakarta.json.JsonObject;
  * - used
  */
 public final class CoverageSummary {
+
+    private static final String FIELD_CHATS_PROVIDED = "chatsProvided";
+    private static final String FIELD_CHATS_USED_IN_ANALYSIS = "chatsUsedInAnalysis";
+    private static final String FIELD_CHATS_NOT_USED = "chatsNotUsed";
+    private static final String FIELD_ALL_SELECTED_CHAT_IDS = CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS;
+    private static final String FIELD_USED_CHAT_IDS = CommonLiteralConstants.FIELD_USED_CHAT_IDS;
+    private static final String FIELD_NOT_USED_CHAT_IDS = "notUsedChatIds";
+    private static final String FIELD_REASONS_CHATS_NOT_USED = "reasonsChatsNotUsed";
+    private static final String FIELD_TOTAL_BATCHES = CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_SUCCESSFUL_BATCHES = "successfulBatches";
+    private static final String FIELD_FAILED_BATCH_COUNT = "failedBatchCount";
+    private static final String FIELD_FAILED_BATCH_INDEXES = CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES;
+    private static final String FIELD_COVERAGE_COMPLETE = CommonLiteralConstants.FIELD_COVERAGE_COMPLETE;
+    private static final String FIELD_COVERAGE_PERCENT = "coveragePercent";
+    private static final String ERR_REQUIRED_NON_NEGATIVE_SUFFIX = " must be >= 0";
+    private static final String ERR_CHATS_PROVIDED_NON_NEGATIVE = "chatsProvided must be >= 0";
+    private static final String ERR_CHATS_USED_NON_NEGATIVE = "chatsUsedInAnalysis must be >= 0";
+    private static final String ERR_CHATS_NOT_USED_NON_NEGATIVE = "chatsNotUsed must be >= 0";
+    private static final String ERR_CHATS_USED_GT_PROVIDED = "chatsUsedInAnalysis cannot exceed chatsProvided";
+    private static final String ERR_CHATS_NOT_USED_GT_PROVIDED = "chatsNotUsed cannot exceed chatsProvided";
+    private static final String ERR_SUCCESSFUL_BATCHES_GT_TOTAL = "successfulBatches cannot exceed totalBatches";
+    private static final String ERR_CHATS_PROVIDED_MISMATCH_ALL_IDS = "chatsProvided must match allSelectedChatIds.size when allSelectedChatIds supplied";
+    private static final String ERR_NOT_USED_SUBSET = "notUsedChatIds must be subset of allSelectedChatIds - usedChatIds";
+    private static final String ERR_COVERAGE_COMPLETE_REQUIRES_NONE = "coverageComplete=true requires no not-used chats";
+    private static final String TOSTRING_PREFIX = "CoverageSummary{";
+    private static final String TOSTRING_CHATS_PROVIDED_PREFIX = "chatsProvided=";
+    private static final String TOSTRING_CHATS_USED_PREFIX = ", chatsUsedInAnalysis=";
+    private static final String TOSTRING_CHATS_NOT_USED_PREFIX = ", chatsNotUsed=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_SUCCESSFUL_BATCHES_PREFIX = ", successfulBatches=";
+    private static final String TOSTRING_FAILED_INDEXES_PREFIX = ", failedBatchIndexes=";
+    private static final String TOSTRING_COVERAGE_COMPLETE_PREFIX = CommonLiteralConstants.TOSTRING_COVERAGE_COMPLETE_PREFIX;
+    private static final String TOSTRING_COVERAGE_PERCENT_PREFIX = ", coveragePercent=";
 
     private final int chatsProvided;
     private final int chatsUsedInAnalysis;
@@ -37,13 +72,13 @@ public final class CoverageSummary {
     private final boolean coverageComplete;
     private final int coveragePercent;
 
-    private CoverageSummary(Builder b) {
+    CoverageSummary(CoverageSummaryBuilder b) {
         this.allSelectedChatIds = immutableDistinctStringListLower(b.allSelectedChatIds);
         this.usedChatIds = immutableDistinctStringListLower(b.usedChatIds);
         this.reasonsChatsNotUsed = immutableDistinctStringListKeepCase(b.reasonsChatsNotUsed);
 
         int provided = b.chatsProvided >= 0 ? b.chatsProvided : this.allSelectedChatIds.size();
-        this.chatsProvided = requireNonNegative(provided, "chatsProvided");
+        this.chatsProvided = requireNonNegative(provided, FIELD_CHATS_PROVIDED);
 
         this.chatsUsedInAnalysis = b.chatsUsedInAnalysis >= 0
                 ? Math.max(0, b.chatsUsedInAnalysis)
@@ -74,8 +109,8 @@ public final class CoverageSummary {
         validateCountsAndConsistency();
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static CoverageSummaryBuilder builder() {
+        return new CoverageSummaryBuilder();
     }
 
     /**
@@ -170,139 +205,57 @@ public final class CoverageSummary {
 
     JsonObject toJson() {
         return Json.createObjectBuilder()
-                .add("chatsProvided", chatsProvided)
-                .add("chatsUsedInAnalysis", chatsUsedInAnalysis)
-                .add("chatsNotUsed", chatsNotUsed)
-                .add("allSelectedChatIds", toJsonArray(allSelectedChatIds))
-                .add("usedChatIds", toJsonArray(usedChatIds))
-                .add("notUsedChatIds", toJsonArray(notUsedChatIds))
-                .add("reasonsChatsNotUsed", toJsonArray(reasonsChatsNotUsed))
-                .add("totalBatches", totalBatches)
-                .add("successfulBatches", successfulBatches)
-                .add("failedBatchCount", getFailedBatchCount())
-                .add("failedBatchIndexes", toJsonArrayInt(failedBatchIndexes))
-                .add("coverageComplete", coverageComplete)
-                .add("coveragePercent", coveragePercent)
+            .add(FIELD_CHATS_PROVIDED, chatsProvided)
+            .add(FIELD_CHATS_USED_IN_ANALYSIS, chatsUsedInAnalysis)
+            .add(FIELD_CHATS_NOT_USED, chatsNotUsed)
+            .add(FIELD_ALL_SELECTED_CHAT_IDS, toJsonArray(allSelectedChatIds))
+            .add(FIELD_USED_CHAT_IDS, toJsonArray(usedChatIds))
+            .add(FIELD_NOT_USED_CHAT_IDS, toJsonArray(notUsedChatIds))
+            .add(FIELD_REASONS_CHATS_NOT_USED, toJsonArray(reasonsChatsNotUsed))
+            .add(FIELD_TOTAL_BATCHES, totalBatches)
+            .add(FIELD_SUCCESSFUL_BATCHES, successfulBatches)
+            .add(FIELD_FAILED_BATCH_COUNT, getFailedBatchCount())
+            .add(FIELD_FAILED_BATCH_INDEXES, toJsonArrayInt(failedBatchIndexes))
+            .add(FIELD_COVERAGE_COMPLETE, coverageComplete)
+            .add(FIELD_COVERAGE_PERCENT, coveragePercent)
                 .build();
     }
 
     @Override
     public String toString() {
-        return "CoverageSummary{"
-                + "chatsProvided=" + chatsProvided
-                + ", chatsUsedInAnalysis=" + chatsUsedInAnalysis
-                + ", chatsNotUsed=" + chatsNotUsed
-                + ", totalBatches=" + totalBatches
-                + ", successfulBatches=" + successfulBatches
-                + ", failedBatchIndexes=" + failedBatchIndexes
-                + ", coverageComplete=" + coverageComplete
-                + ", coveragePercent=" + coveragePercent
+        return TOSTRING_PREFIX
+            + TOSTRING_CHATS_PROVIDED_PREFIX + chatsProvided
+            + TOSTRING_CHATS_USED_PREFIX + chatsUsedInAnalysis
+            + TOSTRING_CHATS_NOT_USED_PREFIX + chatsNotUsed
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_SUCCESSFUL_BATCHES_PREFIX + successfulBatches
+            + TOSTRING_FAILED_INDEXES_PREFIX + failedBatchIndexes
+            + TOSTRING_COVERAGE_COMPLETE_PREFIX + coverageComplete
+            + TOSTRING_COVERAGE_PERCENT_PREFIX + coveragePercent
                 + '}';
-    }
-
-    public static final class Builder {
-
-        private int chatsProvided = -1;
-        private int chatsUsedInAnalysis = -1;
-        private int chatsNotUsed = -1;
-
-        private List<String> allSelectedChatIds = new ArrayList<>();
-        private List<String> usedChatIds = new ArrayList<>();
-        private List<String> notUsedChatIds = new ArrayList<>();
-        private List<String> reasonsChatsNotUsed = new ArrayList<>();
-
-        private int totalBatches = 0;
-        private int successfulBatches = 0;
-        private List<Integer> failedBatchIndexes = new ArrayList<>();
-
-        private boolean coverageCompleteOverride;
-        private boolean coverageCompleteOverrideSet;
-
-        private Builder() {
-        }
-
-        public Builder chatsProvided(int chatsProvided) {
-            this.chatsProvided = chatsProvided;
-            return this;
-        }
-
-        public Builder chatsUsedInAnalysis(int chatsUsedInAnalysis) {
-            this.chatsUsedInAnalysis = chatsUsedInAnalysis;
-            return this;
-        }
-
-        public Builder chatsNotUsed(int chatsNotUsed) {
-            this.chatsNotUsed = chatsNotUsed;
-            return this;
-        }
-
-        public Builder allSelectedChatIds(List<String> allSelectedChatIds) {
-            this.allSelectedChatIds = allSelectedChatIds == null ? new ArrayList<>() : allSelectedChatIds;
-            return this;
-        }
-
-        public Builder usedChatIds(List<String> usedChatIds) {
-            this.usedChatIds = usedChatIds == null ? new ArrayList<>() : usedChatIds;
-            return this;
-        }
-
-        public Builder notUsedChatIds(List<String> notUsedChatIds) {
-            this.notUsedChatIds = notUsedChatIds == null ? new ArrayList<>() : notUsedChatIds;
-            return this;
-        }
-
-        public Builder reasonsChatsNotUsed(List<String> reasonsChatsNotUsed) {
-            this.reasonsChatsNotUsed = reasonsChatsNotUsed == null ? new ArrayList<>() : reasonsChatsNotUsed;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder successfulBatches(int successfulBatches) {
-            this.successfulBatches = successfulBatches;
-            return this;
-        }
-
-        public Builder failedBatchIndexes(List<Integer> failedBatchIndexes) {
-            this.failedBatchIndexes = failedBatchIndexes == null ? new ArrayList<>() : failedBatchIndexes;
-            return this;
-        }
-
-        public Builder coverageComplete(boolean coverageComplete) {
-            this.coverageCompleteOverride = coverageComplete;
-            this.coverageCompleteOverrideSet = true;
-            return this;
-        }
-
-        public CoverageSummary build() {
-            return new CoverageSummary(this);
-        }
     }
 
     private void validateCountsAndConsistency() {
         if (chatsProvided < 0) {
-            throw new IllegalArgumentException("chatsProvided must be >= 0");
+            throw new IllegalArgumentException(ERR_CHATS_PROVIDED_NON_NEGATIVE);
         }
         if (chatsUsedInAnalysis < 0) {
-            throw new IllegalArgumentException("chatsUsedInAnalysis must be >= 0");
+            throw new IllegalArgumentException(ERR_CHATS_USED_NON_NEGATIVE);
         }
         if (chatsNotUsed < 0) {
-            throw new IllegalArgumentException("chatsNotUsed must be >= 0");
+            throw new IllegalArgumentException(ERR_CHATS_NOT_USED_NON_NEGATIVE);
         }
         if (chatsUsedInAnalysis > chatsProvided) {
-            throw new IllegalArgumentException("chatsUsedInAnalysis cannot exceed chatsProvided");
+            throw new IllegalArgumentException(ERR_CHATS_USED_GT_PROVIDED);
         }
         if (chatsNotUsed > chatsProvided) {
-            throw new IllegalArgumentException("chatsNotUsed cannot exceed chatsProvided");
+            throw new IllegalArgumentException(ERR_CHATS_NOT_USED_GT_PROVIDED);
         }
         if (totalBatches < successfulBatches) {
-            throw new IllegalArgumentException("successfulBatches cannot exceed totalBatches");
+            throw new IllegalArgumentException(ERR_SUCCESSFUL_BATCHES_GT_TOTAL);
         }
         if (!allSelectedChatIds.isEmpty() && chatsProvided != allSelectedChatIds.size()) {
-            throw new IllegalArgumentException("chatsProvided must match allSelectedChatIds.size when allSelectedChatIds supplied");
+            throw new IllegalArgumentException(ERR_CHATS_PROVIDED_MISMATCH_ALL_IDS);
         }
 
         if (!allSelectedChatIds.isEmpty()) {
@@ -311,18 +264,18 @@ public final class CoverageSummary {
                 expectedNotUsed.remove(usedId);
             }
             if (!expectedNotUsed.containsAll(notUsedChatIds)) {
-                throw new IllegalArgumentException("notUsedChatIds must be subset of allSelectedChatIds - usedChatIds");
+                throw new IllegalArgumentException(ERR_NOT_USED_SUBSET);
             }
         }
 
         if (coverageComplete && (!notUsedChatIds.isEmpty() || chatsNotUsed != 0)) {
-            throw new IllegalArgumentException("coverageComplete=true requires no not-used chats");
+            throw new IllegalArgumentException(ERR_COVERAGE_COMPLETE_REQUIRES_NONE);
         }
     }
 
     private static int requireNonNegative(int v, String field) {
         if (v < 0) {
-            throw new IllegalArgumentException(field + " must be >= 0");
+            throw new IllegalArgumentException(field + ERR_REQUIRED_NON_NEGATIVE_SUFFIX);
         }
         return v;
     }
@@ -431,4 +384,6 @@ public final class CoverageSummary {
         }
         return b.build();
     }
+
 }
+

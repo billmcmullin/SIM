@@ -17,6 +17,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardTopicsServlet", urlPatterns = {"/dashboard/topics"})
 public class DashboardTopicsServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsServlet.class.getCanonicalName());
@@ -28,28 +31,28 @@ public class DashboardTopicsServlet extends HttpServlet {
         try {
             String contextPath = ServletPathUtil.safeContextPathNoTrailingSlash(req.getContextPath());
             HttpSession session = req.getSession(false);
-            if (session == null || session.getAttribute("user") == null) {
-                req.getRequestDispatcher("/login").forward(req, resp);
+            if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+                com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
                 return;
             }
 
-            String user = String.valueOf(session.getAttribute("user"));
+            String user = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
 
                 String template = loadTemplate(req.getServletContext(), TEMPLATE_PATH);
             String rendered = template
-                    .replace("${contextPath}", escapeHtml(contextPath))
-                    .replace("${user}", escapeHtml(user))
+                    .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, escapeHtml(contextPath))
+                    .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(user))
                     .replace("${globalTopicRows}", "")
                     .replace("${perWidgetTopicTables}", "");
                 String safeRendered = validateCanonicalizedRenderedTemplate(rendered);
 
             resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            resp.setContentType("text/html; charset=UTF-8");
+            resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
                 resp.getOutputStream().write(safeRendered.getBytes(StandardCharsets.UTF_8));
 
-        } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -60,7 +63,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
@@ -70,7 +73,7 @@ public class DashboardTopicsServlet extends HttpServlet {
         }
         try (InputStream stream = context.getResourceAsStream(path)) {
             if (stream == null) {
-                log.log(Level.WARNING, "Template not found: {0}", path);
+                log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_TEMPLATE_NOT_FOUND_FORMAT, path);
                 return "";
             }
             byte[] bytes = stream.readAllBytes();
@@ -89,11 +92,11 @@ public class DashboardTopicsServlet extends HttpServlet {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
             switch (c) {
-                case '&' -> escaped.append("&amp;");
-                case '<' -> escaped.append("&lt;");
-                case '>' -> escaped.append("&gt;");
-                case '"' -> escaped.append("&quot;");
-                case '\'' -> escaped.append("&#39;");
+                case '&' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '"' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> escaped.append(c);
             }
         }
@@ -105,7 +108,12 @@ public class DashboardTopicsServlet extends HttpServlet {
             return "";
         }
         String canonical = TextIoSanitizerUtil.canonicalize(value);
-        return canonical.replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "");
+        return canonical.replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CTRL_EXCEPT_CRLF_TAB, "");
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }
